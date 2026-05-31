@@ -188,6 +188,8 @@ The Qdrant adapter supports both ingestion and named-vector querying. `qdrant-se
 
 Image vectors may use a different embedding space from text vectors. When querying `image_dense`, the searcher can use a per-vector query encoder, such as CLIP text features for CLIP image embeddings, while continuing to use the document text embedder for `text_dense` and `caption_dense`.
 
+Qdrant query paths validate query encoder dimensions against the package collection contract before search. This catches mismatches between package-time embedding models and retrieval-time query encoders before Qdrant executes vector math, and it surfaces the package vector notes so operators can choose the matching model or rebuild the package.
+
 Hierarchical chunk files can be searched with parent collapse enabled. In that mode, dense, BM25, graph, or Qdrant hits against fine child chunks are grouped under the coarse parent chunk while the matched child IDs remain attached as evidence. Retrieval evaluation also treats `source_chunk_id` and `parent_chunk_id` metadata as aliases for expected chunk targets, so benchmark cases and graph triples attached to the original chunk IDs remain valid across semantic, multimodal, and hierarchical candidates. This keeps answer context broad enough for citation while preserving the precise span that triggered retrieval.
 
 ## PostgreSQL Design

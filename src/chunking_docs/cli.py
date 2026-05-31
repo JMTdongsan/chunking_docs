@@ -3423,6 +3423,81 @@ def build_qdrant_query_embedders(
     raise typer.BadParameter("image query backend must be one of: none, same-as-text, hashing, clip")
 
 
+def validate_qdrant_query_encoder_dimensions(
+    selected_vectors: list[str],
+    vector_sizes: dict[str, int],
+    default_embedder,
+    vector_embedders: dict,
+    vector_notes: dict[str, str] | None = None,
+    image_query_backend: str = "none",
+) -> None:
+    mismatches = []
+    for vector_name in selected_vectors:
+        expected = vector_sizes.get(vector_name)
+        embedder = vector_embedders.get(vector_name, default_embedder)
+        actual = getattr(embedder, "embedding_dim", None)
+        if expected is None or actual is None:
+            continue
+        if int(actual) != int(expected):
+            mismatches.append(
+                {
+                    "vector_name": vector_name,
+                    "expected": int(expected),
+                    "actual": int(actual),
+                    "encoder": qdrant_query_encoder_label(
+                        vector_name,
+                        vector_embedders=vector_embedders,
+                        default_embedder=default_embedder,
+                        image_query_backend=image_query_backend,
+                    ),
+                    "note": (vector_notes or {}).get(vector_name, ""),
+                }
+            )
+
+    if not mismatches:
+        return
+
+    details = "; ".join(
+        (
+            f"{item['vector_name']} expects {item['expected']} dimensions, "
+            f"but {item['encoder']} produces {item['actual']}"
+        )
+        for item in mismatches
+    )
+    notes = "; ".join(
+        f"{item['vector_name']} package vector note: {str(item['note']).rstrip('.')}"
+        for item in mismatches
+        if item["note"]
+    )
+    guidance = (
+        "Use a query encoder that matches the package vectors, for example "
+        "--text-backend sentence-transformers --text-model <model-used-for-text_dense>, "
+        "or rebuild the package with the selected query encoder."
+    )
+    if any(item["vector_name"] == "image_dense" for item in mismatches):
+        guidance += (
+            " For image_dense, set --image-query-backend and --image-query-model to the "
+            "text side of the image embedding model."
+        )
+    message = f"Qdrant query encoder dimension mismatch: {details}. {guidance}"
+    if notes:
+        message += f" {notes}."
+    raise typer.BadParameter(message)
+
+
+def qdrant_query_encoder_label(
+    vector_name: str,
+    vector_embedders: dict,
+    default_embedder,
+    image_query_backend: str,
+) -> str:
+    if vector_embedders.get(vector_name, default_embedder) is default_embedder:
+        return "default text query encoder"
+    if vector_name == "image_dense":
+        return f"{image_query_backend} image query encoder"
+    return f"{vector_name} query encoder"
+
+
 def build_payload_filter(
     doc_id: str = "",
     filter_specs: list[str] | None = None,
@@ -3557,6 +3632,10 @@ def prepare_qdrant_hybrid_search(
         name: int(config["size"])
         for name, config in collection_config.get("named_vectors", {}).items()
     }
+    vector_notes = {
+        name: str(config.get("note") or "")
+        for name, config in collection_config.get("named_vectors", {}).items()
+    }
     selected_vectors = [item.strip() for item in vector_names.split(",") if item.strip()]
     unknown_vectors = sorted(set(selected_vectors) - set(named_vectors))
     if unknown_vectors:
@@ -3588,6 +3667,14 @@ def prepare_qdrant_hybrid_search(
         image_query_model=image_query_model,
         device=device,
         hashing_dim=hashing_dim,
+    )
+    validate_qdrant_query_encoder_dimensions(
+        selected_vectors=selected_vectors,
+        vector_sizes=named_vectors,
+        default_embedder=embedder,
+        vector_embedders=vector_embedders,
+        vector_notes=vector_notes,
+        image_query_backend=image_query_backend,
     )
     chunks = read_jsonl(package_dir / "chunks.jsonl", DocumentChunk)
     assets = read_jsonl(package_dir / "assets.jsonl", VisualAsset)

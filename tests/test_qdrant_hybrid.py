@@ -6,6 +6,7 @@ from chunking_docs.cli import (
     build_qdrant_query_embedders,
     build_reranker,
     parse_fusion_weights,
+    validate_qdrant_query_encoder_dimensions,
 )
 from chunking_docs.embeddings.interfaces import HashingTextEmbedder
 from chunking_docs.models import AssetKind, ChunkKind, DocumentChunk, GraphTriple, VisualAsset
@@ -283,6 +284,49 @@ def test_qdrant_query_embedder_requires_image_query_backend_for_mismatched_size(
             device="cpu",
             hashing_dim=3,
         )
+
+
+def test_validate_qdrant_query_encoder_dimensions_accepts_matching_vectors():
+    validate_qdrant_query_encoder_dimensions(
+        selected_vectors=["text_dense", "caption_dense", "image_dense"],
+        vector_sizes={"text_dense": 3, "caption_dense": 3, "image_dense": 5},
+        default_embedder=RecordingTextEmbedder(embedding_dim=3),
+        vector_embedders={"image_dense": RecordingTextEmbedder(embedding_dim=5)},
+        image_query_backend="clip",
+    )
+
+
+def test_validate_qdrant_query_encoder_dimensions_rejects_text_mismatch():
+    with pytest.raises(typer.BadParameter) as exc_info:
+        validate_qdrant_query_encoder_dimensions(
+            selected_vectors=["text_dense"],
+            vector_sizes={"text_dense": 1024},
+            default_embedder=RecordingTextEmbedder(embedding_dim=384),
+            vector_embedders={},
+            vector_notes={"text_dense": "SentenceTransformerTextEmbedder model=BAAI/bge-m3 device=cuda."},
+        )
+
+    message = str(exc_info.value)
+    assert "text_dense expects 1024 dimensions" in message
+    assert "default text query encoder produces 384" in message
+    assert "--text-backend sentence-transformers" in message
+    assert "BAAI/bge-m3" in message
+
+
+def test_validate_qdrant_query_encoder_dimensions_rejects_image_query_mismatch():
+    with pytest.raises(typer.BadParameter) as exc_info:
+        validate_qdrant_query_encoder_dimensions(
+            selected_vectors=["image_dense"],
+            vector_sizes={"image_dense": 768},
+            default_embedder=RecordingTextEmbedder(embedding_dim=1024),
+            vector_embedders={"image_dense": RecordingTextEmbedder(embedding_dim=512)},
+            image_query_backend="clip",
+        )
+
+    message = str(exc_info.value)
+    assert "image_dense expects 768 dimensions" in message
+    assert "clip image query encoder produces 512" in message
+    assert "--image-query-backend" in message
 
 
 def test_build_payload_filter_parses_exact_and_range_filters():
