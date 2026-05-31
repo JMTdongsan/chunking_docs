@@ -1169,6 +1169,7 @@ def annotate_assets_command(
     ocr_engine: str = "",
     ocr_min_confidence: float = 0.0,
     ocr_use_gpu: bool = False,
+    ocr_enable_mkldnn: bool = False,
     vlm: str = "none",
     vlm_profile: str = "",
     vlm_model: str = "",
@@ -1192,6 +1193,7 @@ def annotate_assets_command(
         engine=ocr_engine,
         min_confidence=ocr_min_confidence,
         use_gpu=ocr_use_gpu,
+        enable_mkldnn=ocr_enable_mkldnn,
     )
     vlm_backend, _ = build_vlm_backend(
         vlm,
@@ -1288,6 +1290,7 @@ def run_visual_jobs_command(
     ocr_engine: str = "",
     ocr_min_confidence: float = 0.0,
     ocr_use_gpu: bool = False,
+    ocr_enable_mkldnn: bool = False,
     vlm: str = "none",
     vlm_profile: str = "",
     vlm_model: str = "",
@@ -1314,6 +1317,7 @@ def run_visual_jobs_command(
         engine=ocr_engine,
         min_confidence=ocr_min_confidence,
         use_gpu=ocr_use_gpu,
+        enable_mkldnn=ocr_enable_mkldnn,
     )
     vlm_backend, vlm_name = build_vlm_backend(
         vlm,
@@ -1429,9 +1433,10 @@ def plan_vlm_experiments_command(
     limit: int | None = None,
     ocr: str = "paddleocr",
     ocr_model_lang: str = "korean",
-    ocr_device: str = "gpu:0",
+    ocr_device: str = "cpu",
     ocr_min_confidence: float = 0.3,
     ocr_use_gpu: bool = False,
+    ocr_enable_mkldnn: bool = False,
     vlm_device_map: str = "auto",
     vlm_torch_dtype: str = "auto",
     vlm_max_new_tokens: int | None = None,
@@ -1451,6 +1456,7 @@ def plan_vlm_experiments_command(
             ocr_device=ocr_device,
             ocr_min_confidence=ocr_min_confidence,
             ocr_use_gpu=ocr_use_gpu,
+            ocr_enable_mkldnn=ocr_enable_mkldnn,
             vlm_device_map=vlm_device_map,
             vlm_torch_dtype=vlm_torch_dtype,
             vlm_max_new_tokens=vlm_max_new_tokens,
@@ -3279,6 +3285,7 @@ def build_ocr_backend(
     engine: str = "",
     min_confidence: float = 0.0,
     use_gpu: bool = False,
+    enable_mkldnn: bool = False,
 ) -> tuple[OCRBackend | None, str]:
     normalized = normalize_backend(backend)
     if normalized == "none":
@@ -3298,6 +3305,7 @@ def build_ocr_backend(
                 device=device,
                 engine=engine,
                 min_confidence=min_confidence,
+                enable_mkldnn=enable_mkldnn,
                 use_gpu=True if use_gpu else None,
             ),
             f"paddleocr:{model_lang}",

@@ -457,6 +457,7 @@ def test_build_ocr_backend_passes_paddle_options(monkeypatch):
         engine="paddle_static",
         min_confidence=0.4,
         use_gpu=True,
+        enable_mkldnn=True,
     )
 
     assert isinstance(backend, FakePaddleBackend)
@@ -466,6 +467,7 @@ def test_build_ocr_backend_passes_paddle_options(monkeypatch):
         "device": "gpu:0",
         "engine": "paddle_static",
         "min_confidence": 0.4,
+        "enable_mkldnn": True,
         "use_gpu": True,
     }
 

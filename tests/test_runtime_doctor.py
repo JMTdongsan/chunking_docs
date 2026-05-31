@@ -26,6 +26,13 @@ def test_runtime_report_checks_requested_capabilities():
         "transformers": dep("transformers", False),
         "accelerate": dep("accelerate", True),
         "paddleocr": dep("paddleocr", False),
+        "paddlepaddle": DependencyStatus(
+            name="paddlepaddle",
+            module="paddle",
+            package="paddlepaddle",
+            installed=False,
+            version=None,
+        ),
     }
 
     report = build_runtime_report(
@@ -46,6 +53,7 @@ def test_runtime_report_checks_requested_capabilities():
     assert "dependency:pgvector" in failed
     assert "dependency:transformers" in failed
     assert "dependency:paddleocr" in failed
+    assert "dependency:paddlepaddle" in failed
     assert "dependency:qdrant" not in failed
     assert "torch_cuda_available" not in failed
 
@@ -59,3 +67,28 @@ def test_doctor_cli_writes_report_without_requirements(tmp_path):
     payload = json.loads(output.read_text(encoding="utf-8"))
     assert "dependencies" in payload
     assert "gpus" in payload
+
+
+def test_runtime_report_checks_paddle_cuda_when_gpu_ocr_is_required():
+    dependencies = {
+        "paddlepaddle": DependencyStatus(
+            name="paddlepaddle",
+            module="paddle",
+            package="paddlepaddle",
+            installed=True,
+            version="1.0",
+        ),
+        "paddleocr": dep("paddleocr", True),
+    }
+
+    report = build_runtime_report(
+        dependencies=dependencies,
+        gpus=[GPUDevice(name="GPU")],
+        paddle_cuda=(False, 0),
+        require_gpu=True,
+        require_ocr=True,
+    )
+
+    failed = [check.name for check in report.checks if not check.passed]
+    assert report.passed is False
+    assert "paddle_cuda_available" in failed

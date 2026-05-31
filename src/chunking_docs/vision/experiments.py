@@ -41,9 +41,10 @@ def build_vlm_experiment_plan(
     limit: int | None = None,
     ocr: str = "paddleocr",
     ocr_model_lang: str = "korean",
-    ocr_device: str = "gpu:0",
+    ocr_device: str = "cpu",
     ocr_min_confidence: float = 0.3,
     ocr_use_gpu: bool = False,
+    ocr_enable_mkldnn: bool = False,
     vlm_device_map: str = "auto",
     vlm_torch_dtype: str = "auto",
     vlm_max_new_tokens: int | None = None,
@@ -63,6 +64,7 @@ def build_vlm_experiment_plan(
             ocr_device=ocr_device,
             ocr_min_confidence=ocr_min_confidence,
             ocr_use_gpu=ocr_use_gpu,
+            ocr_enable_mkldnn=ocr_enable_mkldnn,
             vlm_device_map=vlm_device_map,
             vlm_torch_dtype=vlm_torch_dtype,
             vlm_max_new_tokens=vlm_max_new_tokens,
@@ -92,6 +94,7 @@ def vlm_experiment_recipe(
     ocr_device: str,
     ocr_min_confidence: float,
     ocr_use_gpu: bool,
+    ocr_enable_mkldnn: bool,
     vlm_device_map: str,
     vlm_torch_dtype: str,
     vlm_max_new_tokens: int | None,
@@ -135,6 +138,8 @@ def vlm_experiment_recipe(
     ]
     if ocr_use_gpu:
         command_args.append("--ocr-use-gpu")
+    if ocr_enable_mkldnn:
+        command_args.append("--ocr-enable-mkldnn")
     if vlm_attn_implementation:
         command_args.extend(["--vlm-attn-implementation", vlm_attn_implementation])
     if limit is not None:

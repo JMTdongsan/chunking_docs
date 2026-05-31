@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +15,7 @@ class PaddleOCRBackend:
         use_doc_orientation_classify: bool = False,
         use_doc_unwarping: bool = False,
         use_textline_orientation: bool = False,
+        enable_mkldnn: bool = False,
         use_angle_cls: bool = True,
         use_gpu: bool | None = None,
         pipeline: Any | None = None,
@@ -25,6 +27,7 @@ class PaddleOCRBackend:
         self.use_doc_orientation_classify = use_doc_orientation_classify
         self.use_doc_unwarping = use_doc_unwarping
         self.use_textline_orientation = use_textline_orientation
+        self.enable_mkldnn = enable_mkldnn
         self.use_angle_cls = use_angle_cls
         self.use_gpu = use_gpu
 
@@ -37,11 +40,15 @@ class PaddleOCRBackend:
         except ImportError as exc:  # pragma: no cover - depends on optional package.
             raise RuntimeError("Install chunking-docs[ocr] to use PaddleOCR") from exc
 
+        if importlib.util.find_spec("paddle") is None:  # pragma: no cover - depends on optional package.
+            raise RuntimeError("Install chunking-docs[ocr] to use the PaddleOCR engine runtime")
+
         kwargs: dict[str, Any] = {
             "lang": self.lang,
             "use_doc_orientation_classify": self.use_doc_orientation_classify,
             "use_doc_unwarping": self.use_doc_unwarping,
             "use_textline_orientation": self.use_textline_orientation,
+            "enable_mkldnn": self.enable_mkldnn,
         }
         if self.device:
             kwargs["device"] = self.device
@@ -69,6 +76,7 @@ class PaddleOCRBackend:
             "use_doc_orientation_classify": self.use_doc_orientation_classify,
             "use_doc_unwarping": self.use_doc_unwarping,
             "use_textline_orientation": self.use_textline_orientation,
+            "enable_mkldnn": self.enable_mkldnn,
             "use_angle_cls": self.use_angle_cls,
             "use_gpu": self.use_gpu,
         }

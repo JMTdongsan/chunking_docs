@@ -31,7 +31,7 @@ Optional integrations:
 pip install -e ".[qdrant]"              # Qdrant client
 pip install -e ".[postgres]"            # PostgreSQL writer
 pip install -e ".[embeddings,vision]"   # SentenceTransformer, CLIP, VLM backends
-pip install -e ".[ocr]"                 # PaddleOCR backend
+pip install -e ".[ocr]"                 # PaddleOCR backend and engine runtime
 ```
 
 Check local runtime capabilities before GPU-backed OCR, VLM, embedding, or storage work:
@@ -130,7 +130,7 @@ chunking-docs run-visual-jobs \
   --jobs outputs/package/visual_jobs.jsonl \
   --ocr paddleocr \
   --ocr-model-lang korean \
-  --ocr-device gpu:0 \
+  --ocr-device cpu \
   --ocr-min-confidence 0.3 \
   --vlm hf \
   --vlm-profile qwen2_5_vl_7b \
@@ -142,6 +142,7 @@ chunking-docs run-visual-jobs \
 ```
 
 The command writes `visual_annotations.jsonl` and `visual_job_results.jsonl`. With `--apply`, annotations are merged into `assets.jsonl`, `chunks.jsonl`, `triples.jsonl`, BM25, and Qdrant record files.
+PaddleOCR uses a CPU device by default because the standard `paddlepaddle` wheel is CPU-only in many environments. Use `--ocr-device gpu:0` only after `chunking-docs doctor --require-gpu --require-ocr` confirms Paddle CUDA support. `--ocr-enable-mkldnn` can improve CPU throughput after a local smoke test confirms the Paddle runtime is stable with oneDNN enabled.
 
 Use `--vlm-profile` for reproducible Hugging Face VLM experiments. Profiles provide the model id, loader family, dtype, and default generation length for common local VLM families such as Qwen2.5-VL, Qwen2-VL, LLaVA-NeXT, Idefics2, and Phi-3.5 Vision. Override any profile field with `--vlm-model`, `--vlm-model-class`, `--vlm-device-map`, `--vlm-torch-dtype`, `--vlm-max-new-tokens`, or `--vlm-attn-implementation`.
 
@@ -159,7 +160,7 @@ chunking-docs plan-vlm-experiments \
 VLM responses may be plain text or JSON. When JSON includes `title`, `summary`, `key_points`, `visual_elements`, or `triples`, the runner converts those fields into captions, searchable VLM summaries, and graph triple candidates.
 Triples generated from visual annotations include provenance qualifiers such as asset ID, page number, asset kind, annotation source, visual job ID, and prompt metadata when available.
 
-Visual job results include OCR language, backend configuration, VLM prompt name, prompt SHA-256, prompt length, latency, output size, parse status, and triple count. `--ocr-model-lang`, `--ocr-device`, `--ocr-engine`, `--ocr-min-confidence`, `--vlm-device-map`, `--vlm-torch-dtype`, `--vlm-max-new-tokens`, and optional `--vlm-attn-implementation` are recorded in backend configuration. This keeps OCR/VLM experiments reproducible without storing document-specific assumptions in the library.
+Visual job results include OCR language, backend configuration, VLM prompt name, prompt SHA-256, prompt length, latency, output size, parse status, and triple count. `--ocr-model-lang`, `--ocr-device`, `--ocr-engine`, `--ocr-min-confidence`, `--ocr-enable-mkldnn`, `--vlm-device-map`, `--vlm-torch-dtype`, `--vlm-max-new-tokens`, and optional `--vlm-attn-implementation` are recorded in backend configuration. This keeps OCR/VLM experiments reproducible without storing document-specific assumptions in the library.
 
 Summarize visual job runs when comparing OCR/VLM backends:
 
