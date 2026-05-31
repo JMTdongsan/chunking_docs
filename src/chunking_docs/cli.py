@@ -513,6 +513,7 @@ def eval_qdrant_retrieval_command(
         top_k=top_k,
         repeat=repeat,
         index_build_ms=index_build_ms,
+        triples=prepared["triples"],
     )
     evaluation.metadata.update(
         {

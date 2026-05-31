@@ -19,6 +19,7 @@ class RetrievalCase(BaseModel):
     expected_pages: list[int] = Field(default_factory=list)
     expected_chunk_ids: list[str] = Field(default_factory=list)
     expected_asset_ids: list[str] = Field(default_factory=list)
+    expected_triple_ids: list[str] = Field(default_factory=list)
     graph_expand: bool = False
 
 
@@ -31,14 +32,17 @@ class RetrievalCaseResult(BaseModel):
     top_page_ranges: list[tuple[int, int]] = Field(default_factory=list)
     top_chunk_ids: list[str]
     top_asset_ids: list[list[str]] = Field(default_factory=list)
+    top_triple_ids: list[list[str]] = Field(default_factory=list)
     top_evidence_chunk_ids: list[list[str]] = Field(default_factory=list)
     top_sources: list[list[str]] = Field(default_factory=list)
     expected_pages: list[int]
     expected_chunk_ids: list[str]
     expected_asset_ids: list[str] = Field(default_factory=list)
+    expected_triple_ids: list[str] = Field(default_factory=list)
     matched_rank: int | None = None
     matched_chunk_id: str | None = None
     matched_asset_id: str | None = None
+    matched_triple_id: str | None = None
     matched_page: int | None = None
     reciprocal_rank: float = 0.0
 
@@ -99,6 +103,7 @@ def evaluate_retrieval(
         repeat=repeat,
         index_build_ms=index_build_ms,
         graph_expand_override=graph_expand_override,
+        triples=triples,
     )
 
 
@@ -109,8 +114,10 @@ def evaluate_search_results(
     repeat: int = 1,
     index_build_ms: float = 0.0,
     graph_expand_override: bool | None = None,
+    triples: list[GraphTriple] | None = None,
 ) -> RetrievalEvaluation:
     repeat = max(1, repeat)
+    triples_by_chunk = index_triples_by_chunk(triples or [])
     results: list[RetrievalCaseResult] = []
     latency_samples: list[float] = []
     for case in cases:
@@ -131,12 +138,18 @@ def evaluate_search_results(
         ]
         top_chunk_ids = [hit_chunk(hit).chunk_id for hit in hits_with_chunks]
         top_asset_ids = [hit_asset_ids(hit) for hit in hits_with_chunks]
+        top_triple_ids = [hit_triple_ids(hit, triples_by_chunk) for hit in hits_with_chunks]
         top_evidence_chunk_ids = [
             [chunk.chunk_id for chunk in hit_evidence_chunks(hit)] for hit in hits_with_chunks
         ]
         top_sources = [hit_sources(hit) for hit in hits_with_chunks]
-        expected_any = bool(case.expected_pages or case.expected_chunk_ids or case.expected_asset_ids)
-        match = first_relevant_hit(hits_with_chunks, case)
+        expected_any = bool(
+            case.expected_pages
+            or case.expected_chunk_ids
+            or case.expected_asset_ids
+            or case.expected_triple_ids
+        )
+        match = first_relevant_hit(hits_with_chunks, case, triples_by_chunk=triples_by_chunk)
         passed = match is not None if expected_any else bool(hits_with_chunks)
         matched_rank = match.rank if match else (1 if not expected_any and hits_with_chunks else None)
         results.append(
@@ -149,14 +162,17 @@ def evaluate_search_results(
                 top_page_ranges=top_page_ranges,
                 top_chunk_ids=top_chunk_ids,
                 top_asset_ids=top_asset_ids,
+                top_triple_ids=top_triple_ids,
                 top_evidence_chunk_ids=top_evidence_chunk_ids,
                 top_sources=top_sources,
                 expected_pages=case.expected_pages,
                 expected_chunk_ids=case.expected_chunk_ids,
                 expected_asset_ids=case.expected_asset_ids,
+                expected_triple_ids=case.expected_triple_ids,
                 matched_rank=matched_rank,
                 matched_chunk_id=match.chunk_id if match else None,
                 matched_asset_id=match.asset_id if match else None,
+                matched_triple_id=match.triple_id if match else None,
                 matched_page=match.page if match else None,
                 reciprocal_rank=(1.0 / matched_rank) if matched_rank else 0.0,
             )
@@ -165,7 +181,7 @@ def evaluate_search_results(
     expected_results = [
         result
         for result, case in zip(results, cases)
-        if case.expected_pages or case.expected_chunk_ids or case.expected_asset_ids
+        if case.expected_pages or case.expected_chunk_ids or case.expected_asset_ids or case.expected_triple_ids
     ]
     expected_passed = sum(1 for result in expected_results if result.passed)
     return RetrievalEvaluation(
@@ -197,13 +213,20 @@ class RelevantHit(BaseModel):
     rank: int
     chunk_id: str
     asset_id: str | None = None
+    triple_id: str | None = None
     page: int | None = None
 
 
-def first_relevant_hit(hits, case: RetrievalCase) -> RelevantHit | None:
+def first_relevant_hit(
+    hits,
+    case: RetrievalCase,
+    triples_by_chunk: dict[str, list[GraphTriple]] | None = None,
+) -> RelevantHit | None:
     expected_chunk_ids = set(case.expected_chunk_ids)
     expected_asset_ids = set(case.expected_asset_ids)
+    expected_triple_ids = set(case.expected_triple_ids)
     expected_pages = set(case.expected_pages)
+    triples_by_chunk = triples_by_chunk or {}
     for index, hit in enumerate(hits):
         rank = index + 1
         chunk = hit_chunk(hit)
@@ -217,6 +240,9 @@ def first_relevant_hit(hits, case: RetrievalCase) -> RelevantHit | None:
         for asset_id in hit_asset_ids(hit):
             if asset_id in expected_asset_ids:
                 return RelevantHit(rank=rank, chunk_id=chunk.chunk_id, asset_id=asset_id)
+        for triple_id in hit_triple_ids(hit, triples_by_chunk):
+            if triple_id in expected_triple_ids:
+                return RelevantHit(rank=rank, chunk_id=chunk.chunk_id, triple_id=triple_id)
         matched_page = first_page_match(chunk.page_start, chunk.page_end, expected_pages)
         if matched_page is not None:
             return RelevantHit(rank=rank, chunk_id=chunk.chunk_id, page=matched_page)
@@ -250,6 +276,31 @@ def hit_asset_ids(hit) -> list[str]:
         if isinstance(payload, dict):
             add_asset_id(asset_ids, seen, payload.get("asset_id"))
     return asset_ids
+
+
+def hit_triple_ids(hit, triples_by_chunk: dict[str, list[GraphTriple]]) -> list[str]:
+    seen: set[str] = set()
+    triple_ids: list[str] = []
+    chunk = hit_chunk(hit)
+    if chunk is not None:
+        add_triple_ids(triple_ids, seen, triples_by_chunk.get(chunk.chunk_id, []))
+    for evidence_chunk in hit_evidence_chunks(hit):
+        add_triple_ids(triple_ids, seen, triples_by_chunk.get(evidence_chunk.chunk_id, []))
+    return triple_ids
+
+
+def add_triple_ids(triple_ids: list[str], seen: set[str], triples: list[GraphTriple]):
+    for triple in triples:
+        if triple.triple_id not in seen:
+            seen.add(triple.triple_id)
+            triple_ids.append(triple.triple_id)
+
+
+def index_triples_by_chunk(triples: list[GraphTriple]) -> dict[str, list[GraphTriple]]:
+    triples_by_chunk: dict[str, list[GraphTriple]] = {}
+    for triple in triples:
+        triples_by_chunk.setdefault(triple.chunk_id, []).append(triple)
+    return triples_by_chunk
 
 
 def add_asset_id(asset_ids: list[str], seen: set[str], asset_id: str | None):

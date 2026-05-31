@@ -193,6 +193,40 @@ def test_evaluate_retrieval_matches_visual_asset_id_from_evidence_chunk():
     assert result.results[0].matched_asset_id == "asset-map"
 
 
+def test_evaluate_retrieval_matches_expected_triple_id():
+    chunk = DocumentChunk(
+        chunk_id="chunk-1",
+        doc_id="doc",
+        page_start=4,
+        page_end=4,
+        kind=ChunkKind.TEXT,
+        text="unrelated text",
+    )
+    triple = GraphTriple(
+        triple_id="triple-1",
+        doc_id="doc",
+        chunk_id="chunk-1",
+        subject="north district",
+        predicate="connects_to",
+        object="river corridor",
+    )
+    cases = [RetrievalCase(query="north district", expected_triple_ids=["triple-1"])]
+
+    result = evaluate_retrieval(
+        [chunk],
+        [triple],
+        cases,
+        use_dense=False,
+        use_bm25=False,
+        use_graph=True,
+    )
+
+    assert result.recall_at_k == 1.0
+    assert result.results[0].top_triple_ids == [["triple-1"]]
+    assert result.results[0].matched_triple_id == "triple-1"
+    assert result.results[0].top_sources == [["graph"]]
+
+
 def test_evaluate_search_results_matches_visual_asset_id_from_payload():
     chunk = DocumentChunk(
         chunk_id="parent",
@@ -320,6 +354,7 @@ def test_eval_qdrant_retrieval_cli_writes_report(monkeypatch, tmp_path):
             "selected_vectors": ["text_dense"],
             "query_encoders": {"text_dense": "default_text"},
             "upserted": 1,
+            "triples": [],
         }
 
     monkeypatch.setattr(cli_module, "prepare_qdrant_hybrid_search", fake_prepare)
