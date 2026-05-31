@@ -277,6 +277,104 @@ def qdrant_search_package(
     )
 
 
+@app.command(name="qdrant-hybrid-search")
+def qdrant_hybrid_search(
+    query: str,
+    package_dir: Path = Path("outputs/package"),
+    url: str = "http://localhost:6333",
+    collection: str = "",
+    location: str = "",
+    path: str = "",
+    vector_names: str = "text_dense,caption_dense",
+    top_k: int = 5,
+    graph_expand: bool = False,
+    text_backend: str = "hashing",
+    text_model: str = "BAAI/bge-m3",
+    device: str = "cuda",
+    hashing_dim: int = 384,
+    doc_id: str = "",
+    lexical_tokenizer: TokenizerStrategy = "mixed",
+    ngram_min: int = 2,
+    ngram_max: int = 4,
+    ngram_cjk_only: bool = True,
+):
+    """Run Qdrant named-vector + BM25 + optional graph hybrid retrieval."""
+    from chunking_docs.retrieval.qdrant_hybrid import QdrantHybridSearcher
+    from chunking_docs.storage.qdrant_store import QdrantChunkStore
+
+    collection_config = json.loads((package_dir / "qdrant_collection.json").read_text(encoding="utf-8"))
+    collection_name = collection or collection_config["collection"]
+    named_vectors = {
+        name: int(config["size"])
+        for name, config in collection_config.get("named_vectors", {}).items()
+    }
+    selected_vectors = [item.strip() for item in vector_names.split(",") if item.strip()]
+    store = QdrantChunkStore(
+        url=url,
+        collection_name=collection_name,
+        location=location or None,
+        path=path or None,
+    )
+    store.ensure_collection(named_vectors)
+    upserted = upsert_package_records(store, package_dir)
+
+    embedder, _ = build_text_embedder(
+        backend=text_backend,
+        model_name=text_model,
+        device=device,
+        hashing_dim=hashing_dim,
+        vector_name=selected_vectors[0] if selected_vectors else "text_dense",
+    )
+    if embedder is None:
+        raise typer.BadParameter("text backend must not be none for qdrant-hybrid-search")
+
+    chunks = read_jsonl(package_dir / "chunks.jsonl", DocumentChunk)
+    assets = read_jsonl(package_dir / "assets.jsonl", VisualAsset)
+    triples_path = package_dir / "triples.jsonl"
+    triples = read_jsonl(triples_path, GraphTriple) if triples_path.exists() else []
+    searcher = QdrantHybridSearcher(
+        store=store,
+        chunks=chunks,
+        assets=assets,
+        embedder=embedder,
+        triples=triples,
+        tokenizer_config=build_tokenizer_config(
+            lexical_tokenizer,
+            ngram_min=ngram_min,
+            ngram_max=ngram_max,
+            ngram_cjk_only=ngram_cjk_only,
+        ),
+    )
+    hits = searcher.search(
+        query=query,
+        vector_names=selected_vectors,
+        top_k=top_k,
+        graph_expand=graph_expand,
+        doc_id=doc_id or None,
+    )
+    print(
+        {
+            "collection": collection_name,
+            "vector_names": selected_vectors,
+            "upserted": upserted,
+            "stored_count": store.count(),
+            "hits": [
+                {
+                    "rank": index + 1,
+                    "score": hit.score,
+                    "item_id": hit.item_id,
+                    "sources": hit.sources,
+                    "page": [hit.chunk.page_start, hit.chunk.page_end] if hit.chunk else None,
+                    "kind": str(hit.chunk.kind) if hit.chunk else None,
+                    "preview": hit.chunk.text[:180] if hit.chunk else "",
+                    "qdrant_payloads": hit.payloads[:2],
+                }
+                for index, hit in enumerate(hits)
+            ],
+        }
+    )
+
+
 @app.command(name="embed-package")
 def embed_package_command(
     package_dir: Path = Path("outputs/package"),

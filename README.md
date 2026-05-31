@@ -129,6 +129,16 @@ chunking-docs qdrant-search-package "policy corridor" \
   --vector-name text_dense
 ```
 
+Run hybrid retrieval over Qdrant vectors, BM25, and optional graph expansion:
+
+```bash
+chunking-docs qdrant-hybrid-search "policy corridor" \
+  --package-dir outputs/package \
+  --location ':memory:' \
+  --vector-names text_dense,caption_dense \
+  --graph-expand
+```
+
 ## PostgreSQL
 
 PostgreSQL is intended for source metadata, page profiles, chunks, assets, and graph triples. Vector search is handled by Qdrant by default.
