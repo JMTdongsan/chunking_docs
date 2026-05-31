@@ -20,7 +20,12 @@ from chunking_docs.storage.postgres_records import (
     page_row,
     triple_row,
 )
-from chunking_docs.storage.postgres_store import manifest_rows
+from chunking_docs.storage.postgres_store import (
+    EXPECTED_POSTGRES_SCHEMA,
+    PostgresSchemaReport,
+    check_postgres_schema_snapshot,
+    manifest_rows,
+)
 
 
 def test_postgres_row_transforms_are_json_ready():
@@ -139,3 +144,75 @@ def test_manifest_rows_includes_embedding_artifact_provenance(tmp_path):
             },
         }
     ]
+
+
+def test_check_postgres_schema_snapshot_passes_expected_schema():
+    rows = []
+    for table, columns in EXPECTED_POSTGRES_SCHEMA.items():
+        for column, data_type in columns.items():
+            if data_type == "double precision[]":
+                rows.append((table, column, "ARRAY", "_float8"))
+            else:
+                rows.append((table, column, data_type, data_type))
+
+    report = check_postgres_schema_snapshot(rows, extension_names=["plpgsql", "vector"])
+
+    assert report.passed is True
+    assert report.missing_tables == []
+    assert report.failed_checks == []
+
+
+def test_check_postgres_schema_snapshot_flags_missing_table_column_type_and_extension():
+    rows = [
+        ("documents", "doc_id", "text", "text"),
+        ("documents", "metadata", "text", "text"),
+    ]
+
+    report = check_postgres_schema_snapshot(rows, extension_names=["plpgsql"])
+
+    assert report.passed is False
+    assert "vector" not in report.present_extensions
+    assert report.missing_extensions == ["vector"]
+    assert "required_extensions" in report.failed_checks
+    assert "pages" in report.missing_tables
+    assert report.missing_columns["documents"] == ["created_at", "local_path", "source_url", "title"]
+    assert report.type_mismatches["documents"]["metadata"] == {
+        "expected": "jsonb",
+        "actual": "text",
+    }
+
+
+def test_postgres_check_schema_cli_writes_report(tmp_path, monkeypatch):
+    output = tmp_path / "postgres_schema_contract.json"
+
+    class FakeStore:
+        def __init__(self, dsn):
+            self.dsn = dsn
+
+        def check_schema(self, require_pgvector=True):
+            return PostgresSchemaReport(
+                passed=True,
+                required_extensions=["vector"] if require_pgvector else [],
+                present_extensions=["vector"],
+                required_tables=["documents"],
+                present_tables=["documents"],
+            )
+
+    monkeypatch.setattr("chunking_docs.storage.postgres_store.PostgresDocumentStore", FakeStore)
+
+    from chunking_docs.cli import app
+    from typer.testing import CliRunner
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "postgres-check-schema",
+            "postgresql://user:pass@localhost/db",
+            "--output",
+            str(output),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["passed"] is True

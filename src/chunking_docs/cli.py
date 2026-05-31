@@ -1864,6 +1864,43 @@ def postgres_upsert(
     print(result)
 
 
+@app.command(name="postgres-check-schema")
+def postgres_check_schema(
+    dsn: str,
+    output: Path | None = None,
+    apply_schema: bool = False,
+    require_pgvector: bool = True,
+    fail: bool = typer.Option(
+        True,
+        "--fail/--no-fail",
+        help="Exit with status 1 when the PostgreSQL schema contract check fails.",
+    ),
+):
+    """Validate PostgreSQL tables, columns, types, and pgvector extension before metadata upsert."""
+    from chunking_docs.storage.postgres_store import PostgresDocumentStore
+
+    store = PostgresDocumentStore(dsn)
+    if apply_schema:
+        store.apply_schema()
+    report = store.check_schema(require_pgvector=require_pgvector)
+    payload = report.model_dump()
+    if output is not None:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(report.model_dump_json(indent=2), encoding="utf-8")
+        payload = {
+            "output": str(output),
+            "passed": report.passed,
+            "failed_checks": report.failed_checks,
+            "missing_extensions": report.missing_extensions,
+            "missing_tables": report.missing_tables,
+            "missing_columns": report.missing_columns,
+            "type_mismatches": report.type_mismatches,
+        }
+    print(payload)
+    if fail and not report.passed:
+        raise typer.Exit(1)
+
+
 @app.command(name="postgres-rows")
 def postgres_rows(package_dir: Path = Path("outputs/package")):
     """Validate and summarize rows that would be sent to PostgreSQL."""

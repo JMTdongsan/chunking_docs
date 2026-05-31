@@ -150,6 +150,7 @@ Additional processing commands may create:
 - `document_characteristics.json`
 - `ingestion_readiness.json`
 - `package_delta.json`
+- `postgres_schema_contract.json`
 - `qdrant_collection_contract.json`
 - `qdrant_retrieval_eval.json`
 - `qdrant_vector_ablation.json`
@@ -202,6 +203,8 @@ Tables:
 
 The writer upserts in dependency order: documents, pages, chunks, assets, triples, embedding artifacts. The `embedding_artifacts` table stores vector file names, dimensions, counts, checksums, Qdrant collection names, and payload index metadata from `embedding_manifest.json`; vector values remain in Qdrant record files and Qdrant itself.
 
+`postgres-check-schema` validates the live PostgreSQL schema before upsert. It checks required tables, columns, column types, and the pgvector extension so metadata ingestion failures are caught before batch writes.
+
 ## Retrieval Evaluation
 
 Chunking changes should be judged by retrieval behavior, not only by successful execution.
@@ -210,6 +213,7 @@ Recommended checks:
 
 - `audit-package`: structural completeness, orphan checks, OCR/VLM gaps, Qdrant vector dimensions, required payload fields, and payload index definitions.
 - `qdrant-check-collection`: live Qdrant collection contract validation for named-vector dimensions and payload indexes.
+- `postgres-check-schema`: live PostgreSQL schema contract validation for required extensions, tables, columns, and column types.
 - `eval-chunking`: page coverage, chunk size distribution, section coverage, visual linkage, annotation coverage, retrieval recall@k, MRR, target coverage@k, target nDCG@k, precision@k, latency, failed queries, and aggregate quality score.
 - `audit-retrieval-cases`: benchmark case validation for empty or TODO queries, unknown page/chunk/asset/triple targets, duplicate queries, graph-expansion hints, and target-family coverage.
 - `eval-retrieval`: focused top-k retrieval benchmark cases with optional repeated latency sampling, target-specific page/chunk/asset/triple metrics, and source-family contribution metrics.

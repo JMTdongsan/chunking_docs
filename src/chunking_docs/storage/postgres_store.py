@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 from typing import Any, Iterable
 
+from pydantic import BaseModel, Field
+
 from chunking_docs.models import ProcessingManifest
 from chunking_docs.storage.postgres_records import (
     asset_row,
@@ -15,6 +17,93 @@ from chunking_docs.storage.postgres_records import (
 )
 
 SCHEMA_PATH = Path(__file__).with_name("postgres_schema.sql")
+
+
+EXPECTED_POSTGRES_SCHEMA = {
+    "documents": {
+        "doc_id": "text",
+        "title": "text",
+        "source_url": "text",
+        "local_path": "text",
+        "metadata": "jsonb",
+        "created_at": "timestamp with time zone",
+    },
+    "pages": {
+        "doc_id": "text",
+        "page_no": "integer",
+        "width": "double precision",
+        "height": "double precision",
+        "text_quality": "text",
+        "profile": "jsonb",
+    },
+    "chunks": {
+        "chunk_id": "text",
+        "doc_id": "text",
+        "page_start": "integer",
+        "page_end": "integer",
+        "kind": "text",
+        "section": "jsonb",
+        "text": "text",
+        "metadata": "jsonb",
+    },
+    "assets": {
+        "asset_id": "text",
+        "doc_id": "text",
+        "page_no": "integer",
+        "kind": "text",
+        "path": "text",
+        "bbox": "double precision[]",
+        "caption": "text",
+        "ocr_text": "text",
+        "vlm_summary": "text",
+        "metadata": "jsonb",
+    },
+    "triples": {
+        "triple_id": "text",
+        "doc_id": "text",
+        "chunk_id": "text",
+        "subject": "text",
+        "predicate": "text",
+        "object": "text",
+        "qualifiers": "jsonb",
+        "confidence": "double precision",
+    },
+    "embedding_artifacts": {
+        "doc_id": "text",
+        "vector_name": "text",
+        "collection": "text",
+        "file": "text",
+        "record_count": "integer",
+        "dimension": "integer",
+        "distance": "text",
+        "note": "text",
+        "bytes": "bigint",
+        "sha256": "text",
+        "metadata": "jsonb",
+    },
+}
+
+
+class PostgresSchemaCheck(BaseModel):
+    name: str
+    passed: bool
+    severity: str = "error"
+    message: str
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class PostgresSchemaReport(BaseModel):
+    passed: bool
+    required_extensions: list[str] = Field(default_factory=list)
+    present_extensions: list[str] = Field(default_factory=list)
+    missing_extensions: list[str] = Field(default_factory=list)
+    required_tables: list[str] = Field(default_factory=list)
+    present_tables: list[str] = Field(default_factory=list)
+    missing_tables: list[str] = Field(default_factory=list)
+    missing_columns: dict[str, list[str]] = Field(default_factory=dict)
+    type_mismatches: dict[str, dict[str, dict[str, str | None]]] = Field(default_factory=dict)
+    checks: list[PostgresSchemaCheck] = Field(default_factory=list)
+    failed_checks: list[str] = Field(default_factory=list)
 
 
 class PostgresDocumentStore:
@@ -33,6 +122,24 @@ class PostgresDocumentStore:
         schema = SCHEMA_PATH.read_text(encoding="utf-8")
         with self.psycopg.connect(self.dsn) as connection:
             connection.execute(schema)
+
+    def check_schema(self, require_pgvector: bool = True) -> PostgresSchemaReport:
+        table_names = sorted(EXPECTED_POSTGRES_SCHEMA)
+        placeholders = ", ".join(["%s"] * len(table_names))
+        columns_query = f"""
+            select table_name, column_name, data_type, udt_name
+            from information_schema.columns
+            where table_schema = 'public'
+              and table_name in ({placeholders})
+        """
+        with self.psycopg.connect(self.dsn) as connection:
+            extension_rows = connection.execute("select extname from pg_extension").fetchall()
+            column_rows = connection.execute(columns_query, tuple(table_names)).fetchall()
+        return check_postgres_schema_snapshot(
+            column_rows=column_rows,
+            extension_names=[row_value(row, 0, "extname") for row in extension_rows],
+            require_pgvector=require_pgvector,
+        )
 
     def upsert_manifest(self, manifest: ProcessingManifest, base_dir: Path | None = None) -> dict[str, int]:
         rows = manifest_rows(manifest, base_dir=base_dir)
@@ -63,6 +170,104 @@ def manifest_rows(manifest: ProcessingManifest, base_dir: Path | None = None) ->
         "triples": [triple_row(triple) for triple in manifest.triples],
         "embedding_artifacts": embedding_artifact_rows(manifest.doc.doc_id, package_dir=base_dir),
     }
+
+
+def check_postgres_schema_snapshot(
+    column_rows: Iterable,
+    extension_names: Iterable[str],
+    required_schema: dict[str, dict[str, str]] | None = None,
+    require_pgvector: bool = True,
+) -> PostgresSchemaReport:
+    if required_schema is None:
+        required_schema = EXPECTED_POSTGRES_SCHEMA
+    present_extensions = sorted(str(name) for name in extension_names if name)
+    required_extensions = ["vector"] if require_pgvector else []
+    actual_schema: dict[str, dict[str, str]] = {}
+    for row in column_rows:
+        table = str(row_value(row, 0, "table_name"))
+        column = str(row_value(row, 1, "column_name"))
+        data_type = str(row_value(row, 2, "data_type"))
+        udt_name = row_value(row, 3, "udt_name")
+        actual_schema.setdefault(table, {})[column] = normalize_postgres_type(data_type, udt_name)
+
+    required_tables = sorted(required_schema)
+    present_tables = sorted(set(actual_schema))
+    missing_tables = sorted(set(required_tables) - set(present_tables))
+    missing_columns = {
+        table: sorted(set(columns) - set(actual_schema.get(table, {})))
+        for table, columns in sorted(required_schema.items())
+        if table not in missing_tables and set(columns) - set(actual_schema.get(table, {}))
+    }
+    type_mismatches: dict[str, dict[str, dict[str, str | None]]] = {}
+    for table, columns in sorted(required_schema.items()):
+        if table in missing_tables:
+            continue
+        for column, expected_type in sorted(columns.items()):
+            actual_type = actual_schema.get(table, {}).get(column)
+            if actual_type is not None and actual_type != expected_type:
+                type_mismatches.setdefault(table, {})[column] = {
+                    "expected": expected_type,
+                    "actual": actual_type,
+                }
+
+    missing_extensions = sorted(set(required_extensions) - set(present_extensions))
+    checks = [
+        PostgresSchemaCheck(
+            name="required_extensions",
+            passed=not missing_extensions,
+            message="Required PostgreSQL extensions are installed.",
+            metadata={"missing": missing_extensions},
+        ),
+        PostgresSchemaCheck(
+            name="required_tables",
+            passed=not missing_tables,
+            message="Required PostgreSQL tables exist.",
+            metadata={"missing": missing_tables},
+        ),
+        PostgresSchemaCheck(
+            name="required_columns",
+            passed=not missing_columns,
+            message="Required PostgreSQL columns exist.",
+            metadata={"missing": missing_columns},
+        ),
+        PostgresSchemaCheck(
+            name="column_types",
+            passed=not type_mismatches,
+            message="PostgreSQL column types match the package row contract.",
+            metadata={"mismatches": type_mismatches},
+        ),
+    ]
+    failed_checks = [check.name for check in checks if not check.passed and check.severity == "error"]
+    return PostgresSchemaReport(
+        passed=not failed_checks,
+        required_extensions=required_extensions,
+        present_extensions=present_extensions,
+        missing_extensions=missing_extensions,
+        required_tables=required_tables,
+        present_tables=present_tables,
+        missing_tables=missing_tables,
+        missing_columns=missing_columns,
+        type_mismatches=type_mismatches,
+        checks=checks,
+        failed_checks=failed_checks,
+    )
+
+
+def normalize_postgres_type(data_type: str, udt_name: Any = None) -> str:
+    if data_type == "ARRAY" and udt_name == "_float8":
+        return "double precision[]"
+    if data_type == "USER-DEFINED" and udt_name:
+        return str(udt_name)
+    return data_type
+
+
+def row_value(row, index: int, key: str):
+    if isinstance(row, dict):
+        return row.get(key)
+    try:
+        return row[index]
+    except (IndexError, TypeError):
+        return getattr(row, key, None)
 
 
 def json_dump(value: Any) -> str:

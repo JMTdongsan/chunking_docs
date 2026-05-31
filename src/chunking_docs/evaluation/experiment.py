@@ -46,6 +46,7 @@ DEFAULT_ARTIFACTS = [
     "triples.jsonl",
     "bm25_tokens.json",
     "embedding_manifest.json",
+    "postgres_schema_contract.json",
     "qdrant_collection.json",
     "qdrant_collection_contract.json",
     "qdrant_text_records.jsonl",
