@@ -15,8 +15,15 @@ from chunking_docs.embeddings.records import (
 )
 from chunking_docs.graph.heuristics import section_triples
 from chunking_docs.ingest.pdf_loader import load_source_document
-from chunking_docs.io import write_jsonl
-from chunking_docs.models import ProcessingManifest
+from chunking_docs.io import read_jsonl, write_jsonl
+from chunking_docs.models import (
+    DocumentChunk,
+    GraphTriple,
+    PageProfile,
+    ProcessingManifest,
+    SourceDocument,
+    VisualAsset,
+)
 from chunking_docs.vision.assets import attach_assets_to_chunks, build_page_assets
 
 
@@ -144,3 +151,15 @@ def write_split_chunks(output_dir: Path, chunks, max_chars: int = 1600, overlap_
     split_chunks = semantic_subchunks(chunks, max_chars=max_chars, overlap_chars=overlap_chars)
     write_jsonl(output_dir / "chunks.split.jsonl", split_chunks)
     return split_chunks
+
+
+def load_processing_package(package_dir: Path) -> ProcessingManifest:
+    manifest_payload = json.loads((package_dir / "manifest.json").read_text(encoding="utf-8"))
+    return ProcessingManifest(
+        doc=SourceDocument.model_validate(manifest_payload["doc"]),
+        profiles=read_jsonl(package_dir / "pages.jsonl", PageProfile),
+        chunks=read_jsonl(package_dir / "chunks.jsonl", DocumentChunk),
+        assets=read_jsonl(package_dir / "assets.jsonl", VisualAsset),
+        triples=read_jsonl(package_dir / "triples.jsonl", GraphTriple),
+        metadata=manifest_payload.get("metadata", {}),
+    )

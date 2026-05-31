@@ -12,7 +12,12 @@ from chunking_docs.chunking.page_chunker import page_level_chunks
 from chunking_docs.ingest.pdf_loader import load_source_document, render_pages
 from chunking_docs.io import read_jsonl, write_jsonl
 from chunking_docs.models import DocumentChunk, GraphTriple, VisualAsset
-from chunking_docs.pipeline import build_processing_package, rebuild_search_artifacts, write_split_chunks
+from chunking_docs.pipeline import (
+    build_processing_package,
+    load_processing_package,
+    rebuild_search_artifacts,
+    write_split_chunks,
+)
 from chunking_docs.retrieval.local_hybrid import LocalHybridSearcher
 from chunking_docs.storage.records import EmbeddingRecord
 from chunking_docs.vision.annotate import annotate_assets, merge_asset_annotations_into_chunks
@@ -208,7 +213,7 @@ def annotate_assets_command(
     write_jsonl(asset_output, annotated_assets)
     write_jsonl(chunk_output, annotated_chunks)
     if rebuild_search and in_place:
-        rebuild_search_artifacts(package_dir, annotated_chunks)
+        rebuild_search_artifacts(package_dir, annotated_chunks, assets=annotated_assets)
 
     annotated_count = sum(
         1 for asset in annotated_assets if asset.ocr_text is not None or asset.vlm_summary is not None
@@ -306,13 +311,16 @@ def search_local(
     package_dir: Path = Path("outputs/package"),
     chunks_file: str = "chunks.jsonl",
     top_k: int = 5,
+    graph_expand: bool = False,
 ):
     """Run local dry-run hybrid search over package chunks using hashing dense + BM25."""
     from chunking_docs.embeddings.interfaces import HashingTextEmbedder
 
     chunks = read_jsonl(package_dir / chunks_file, DocumentChunk)
-    searcher = LocalHybridSearcher(chunks, HashingTextEmbedder())
-    hits = searcher.search(query, top_k=top_k)
+    triples_path = package_dir / "triples.jsonl"
+    triples = read_jsonl(triples_path, GraphTriple) if triples_path.exists() else []
+    searcher = LocalHybridSearcher(chunks, HashingTextEmbedder(), triples=triples)
+    hits = searcher.search(query, top_k=top_k, graph_expand=graph_expand)
     print(
         [
             {
@@ -326,6 +334,62 @@ def search_local(
             }
             for index, hit in enumerate(hits)
         ]
+    )
+
+
+@app.command(name="export-graph")
+def export_graph_command(package_dir: Path = Path("outputs/package")):
+    """Export triples as graph nodes and edges JSONL."""
+    from chunking_docs.graph.export import export_graph
+
+    chunks = read_jsonl(package_dir / "chunks.jsonl", DocumentChunk)
+    triples = read_jsonl(package_dir / "triples.jsonl", GraphTriple)
+    nodes, edges = export_graph(triples, chunks=chunks)
+    write_jsonl(package_dir / "graph_nodes.jsonl", nodes)
+    write_jsonl(package_dir / "graph_edges.jsonl", edges)
+    print(
+        {
+            "nodes": len(nodes),
+            "edges": len(edges),
+            "nodes_output": str(package_dir / "graph_nodes.jsonl"),
+            "edges_output": str(package_dir / "graph_edges.jsonl"),
+        }
+    )
+
+
+@app.command(name="postgres-upsert")
+def postgres_upsert(
+    dsn: str,
+    package_dir: Path = Path("outputs/package"),
+    apply_schema: bool = True,
+):
+    """Apply schema and upsert package metadata into PostgreSQL."""
+    from chunking_docs.storage.postgres_store import PostgresDocumentStore
+
+    manifest = load_processing_package(package_dir)
+    store = PostgresDocumentStore(dsn)
+    if apply_schema:
+        store.apply_schema()
+    result = store.upsert_manifest(manifest, base_dir=package_dir)
+    print(result)
+
+
+@app.command(name="postgres-rows")
+def postgres_rows(package_dir: Path = Path("outputs/package")):
+    """Validate and summarize rows that would be sent to PostgreSQL."""
+    from chunking_docs.storage.postgres_store import manifest_rows
+
+    manifest = load_processing_package(package_dir)
+    rows = manifest_rows(manifest, base_dir=package_dir)
+    print(
+        {
+            "documents": 1,
+            "pages": len(rows["pages"]),
+            "chunks": len(rows["chunks"]),
+            "assets": len(rows["assets"]),
+            "triples": len(rows["triples"]),
+            "first_document": rows["document"],
+        }
     )
 
 
