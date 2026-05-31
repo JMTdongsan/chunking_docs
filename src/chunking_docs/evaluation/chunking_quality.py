@@ -90,7 +90,7 @@ def evaluate_chunking_quality(
         size_ratio=1.0 - ratio(empty_count + under_min + over_max, len(chunks)),
         section_coverage_ratio=section_coverage,
         visual_asset_linkage_ratio=visual_linkage,
-        retrieval_hit_rate=retrieval.hit_rate if retrieval else None,
+        retrieval_hit_rate=retrieval.recall_at_k if retrieval else None,
     )
 
     return ChunkingQualityReport(
@@ -173,13 +173,18 @@ def quality_issues(
                 metadata={"under_min": under_min, "over_max": over_max},
             )
         )
-    if retrieval is not None and retrieval.hit_rate < 0.8:
+    if retrieval is not None and retrieval.recall_at_k < 0.8:
         issues.append(
             QualityIssue(
                 severity="warning",
                 code="retrieval_hit_rate",
                 message="Retrieval evaluation hit rate is below the recommended threshold.",
-                metadata={"hit_rate": retrieval.hit_rate, "case_count": retrieval.case_count},
+                metadata={
+                    "recall_at_k": retrieval.recall_at_k,
+                    "mrr": retrieval.mrr,
+                    "expected_case_count": retrieval.expected_case_count,
+                    "failed_queries": retrieval.failed_queries[:10],
+                },
             )
         )
     return issues

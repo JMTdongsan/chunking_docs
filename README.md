@@ -139,7 +139,7 @@ chunking-docs eval-chunking --package-dir outputs/package --cases examples/retri
 chunking-docs eval-retrieval examples/retrieval_cases.jsonl --package-dir outputs/package --top-k 5
 ```
 
-`eval-chunking` reports page coverage, chunk size distribution, section coverage, visual asset linkage, visual annotation coverage, retrieval hit rate, and an aggregate quality score. Retrieval cases are JSONL:
+`eval-chunking` reports page coverage, chunk size distribution, section coverage, visual asset linkage, visual annotation coverage, retrieval recall@k, MRR, failed queries, and an aggregate quality score. Retrieval cases are JSONL:
 
 ```jsonl
 {"query":"policy corridor near river","expected_pages":[12],"graph_expand":true}
@@ -175,7 +175,7 @@ chunking-docs compare-chunking \
   --cases examples/retrieval_cases.jsonl
 ```
 
-The `multimodal` strategy keeps semantic text chunks and adds visual asset text chunks from captions, OCR, and VLM summaries. This makes maps, tables, charts, and figures retrievable even when the PDF text layer is weak.
+The `multimodal` strategy keeps semantic text chunks and adds visual asset text chunks from captions, OCR, and VLM summaries. This makes maps, tables, charts, and figures retrievable even when the PDF text layer is weak. Comparison output includes recall@k, MRR, failed queries, chunk size issues, and the best candidate by quality and retrieval behavior.
 
 ## Development Checks
 

@@ -127,9 +127,9 @@ Chunking changes should be judged by retrieval behavior, not only by successful 
 Recommended checks:
 
 - `audit-package`: structural completeness and orphan checks.
-- `eval-chunking`: page coverage, chunk size distribution, section coverage, visual linkage, annotation coverage, retrieval hit rate, and aggregate quality score.
+- `eval-chunking`: page coverage, chunk size distribution, section coverage, visual linkage, annotation coverage, retrieval recall@k, MRR, failed queries, and aggregate quality score.
 - `eval-retrieval`: focused top-k retrieval benchmark cases.
-- `compare-chunking`: side-by-side strategy comparison by quality score and retrieval hit rate.
+- `compare-chunking`: side-by-side strategy comparison by quality score, recall@k, MRR, and failed queries.
 - Qdrant local mode upsert: validates named vector records and payloads.
 
 Benchmark cases should be maintained per document family. A useful case specifies the query, expected page or chunk, and whether graph expansion should be enabled.

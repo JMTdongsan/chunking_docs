@@ -10,6 +10,9 @@ class ChunkingComparisonRow(BaseModel):
     chunk_count: int
     quality_score: float
     retrieval_hit_rate: float | None
+    retrieval_recall_at_k: float | None
+    retrieval_mrr: float | None
+    failed_queries: list[str]
     page_coverage_ratio: float
     visual_annotation_ratio: float
     chunks_under_min_chars: int
@@ -32,6 +35,9 @@ def compare_chunking_reports(
             chunk_count=report.chunk_count,
             quality_score=report.quality_score,
             retrieval_hit_rate=report.retrieval.hit_rate if report.retrieval else None,
+            retrieval_recall_at_k=report.retrieval.recall_at_k if report.retrieval else None,
+            retrieval_mrr=report.retrieval.mrr if report.retrieval else None,
+            failed_queries=report.retrieval.failed_queries if report.retrieval else [],
             page_coverage_ratio=report.page_coverage_ratio,
             visual_annotation_ratio=report.visual_annotation_ratio,
             chunks_under_min_chars=report.chunks_under_min_chars,
@@ -42,15 +48,19 @@ def compare_chunking_reports(
     ]
     rows.sort(
         key=lambda row: (
-            row.retrieval_hit_rate if row.retrieval_hit_rate is not None else -1.0,
+            row.retrieval_recall_at_k if row.retrieval_recall_at_k is not None else -1.0,
+            row.retrieval_mrr if row.retrieval_mrr is not None else -1.0,
             row.quality_score,
         ),
         reverse=True,
     )
     best_by_quality = max(rows, key=lambda row: row.quality_score).name if rows else None
-    retrieval_rows = [row for row in rows if row.retrieval_hit_rate is not None]
+    retrieval_rows = [row for row in rows if row.retrieval_recall_at_k is not None]
     best_by_retrieval = (
-        max(retrieval_rows, key=lambda row: row.retrieval_hit_rate or 0.0).name
+        max(
+            retrieval_rows,
+            key=lambda row: (row.retrieval_recall_at_k or 0.0, row.retrieval_mrr or 0.0),
+        ).name
         if retrieval_rows
         else None
     )

@@ -80,4 +80,43 @@ def test_evaluate_retrieval_hit_rate():
     result = evaluate_retrieval(chunks, triples, cases, top_k=3)
 
     assert result.hit_rate == 1.0
+    assert result.recall_at_k == 1.0
+    assert result.mrr == 1.0
     assert result.results[0].passed
+    assert result.results[0].matched_rank == 1
+    assert result.results[0].matched_page == 12
+
+
+def test_evaluate_retrieval_reports_ranked_failures():
+    chunks = [
+        DocumentChunk(
+            chunk_id="a",
+            doc_id="doc",
+            page_start=1,
+            page_end=2,
+            kind=ChunkKind.TEXT,
+            text="alpha beta",
+        ),
+        DocumentChunk(
+            chunk_id="b",
+            doc_id="doc",
+            page_start=3,
+            page_end=4,
+            kind=ChunkKind.TEXT,
+            text="gamma delta",
+        ),
+    ]
+    cases = [
+        RetrievalCase(query="alpha", expected_pages=[2]),
+        RetrievalCase(query="missing", expected_pages=[9]),
+    ]
+
+    result = evaluate_retrieval(chunks, [], cases, top_k=2)
+
+    assert result.expected_case_count == 2
+    assert result.passed_count == 1
+    assert result.failed_count == 1
+    assert result.recall_at_k == 0.5
+    assert result.mrr == 0.5
+    assert result.failed_queries == ["missing"]
+    assert result.results[0].top_page_ranges == [(1, 2)]

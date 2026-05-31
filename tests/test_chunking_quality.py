@@ -61,6 +61,7 @@ def test_evaluate_chunking_quality_reports_retrieval_and_multimodal_metrics():
     assert report.visual_annotation_ratio == 1.0
     assert report.retrieval is not None
     assert report.retrieval.hit_rate == 1.0
+    assert report.retrieval.mrr == 1.0
     assert report.quality_score > 0.5
 
 
