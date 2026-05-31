@@ -11,13 +11,28 @@ class QdrantChunkStore:
     def __init__(self, url: str, collection_name: str, api_key: str | None = None):
         try:
             from qdrant_client import QdrantClient
-            from qdrant_client.models import PointStruct
+            from qdrant_client.models import Distance, PointStruct, VectorParams
         except ImportError as exc:
             raise RuntimeError("Install chunking-docs[qdrant] to use QdrantChunkStore") from exc
 
         self.client = QdrantClient(url=url, api_key=api_key)
         self.collection_name = collection_name
         self._point_struct = PointStruct
+        self._distance = Distance
+        self._vector_params = VectorParams
+
+    def ensure_collection(self, named_vectors: dict[str, int]) -> None:
+        collections = self.client.get_collections().collections
+        if any(collection.name == self.collection_name for collection in collections):
+            return
+
+        self.client.create_collection(
+            collection_name=self.collection_name,
+            vectors_config={
+                name: self._vector_params(size=size, distance=self._distance.COSINE)
+                for name, size in named_vectors.items()
+            },
+        )
 
     def upsert(self, records: Iterable[EmbeddingRecord]) -> UpsertResult:
         points = [

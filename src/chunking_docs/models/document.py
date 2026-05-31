@@ -99,3 +99,12 @@ class GraphTriple(BaseModel):
     object: str
     qualifiers: dict[str, Any] = Field(default_factory=dict)
     confidence: float | None = None
+
+
+class ProcessingManifest(BaseModel):
+    doc: SourceDocument
+    profiles: list[PageProfile] = Field(default_factory=list)
+    chunks: list[DocumentChunk] = Field(default_factory=list)
+    assets: list[VisualAsset] = Field(default_factory=list)
+    triples: list[GraphTriple] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)

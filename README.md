@@ -31,6 +31,12 @@ Qdrant 연동까지 쓰려면:
 pip install -e ".[qdrant,dev]"
 ```
 
+로컬 GPU에서 dense/VLM 실험까지 하려면:
+
+```bash
+pip install -e ".[embeddings,vision,qdrant,dev]"
+```
+
 ## 사용 예시
 
 ```bash
@@ -41,6 +47,24 @@ chunking-docs download \
 chunking-docs profile data/raw/1_seoul_plan.pdf --output-dir outputs/profile
 chunking-docs render data/raw/1_seoul_plan.pdf --pages 1,4,16,30,100,150,188
 chunking-docs chunk data/raw/1_seoul_plan.pdf --output outputs/chunks.jsonl
+chunking-docs package data/raw/1_seoul_plan.pdf --output-dir outputs/package
+```
+
+`package` 명령은 다음 파일을 만든다.
+
+- `pages.jsonl`: 페이지 profile
+- `chunks.jsonl`: 청킹 결과
+- `assets.jsonl`: 페이지/지도/표/그림 asset manifest
+- `triples.jsonl`: graph triple 후보
+- `bm25_tokens.json`: lexical search token manifest
+- `qdrant_text_records.jsonl`: Qdrant upsert용 dry-run text vector record
+- `qdrant_collection.json`: Qdrant collection 설계 manifest
+
+## Qdrant 로컬 실행
+
+```bash
+docker compose -f docker-compose.qdrant.yml up -d
+chunking-docs qdrant-upsert --records outputs/package/qdrant_text_records.jsonl
 ```
 
 ## 설계 문서
