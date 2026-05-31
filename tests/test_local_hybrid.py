@@ -1,5 +1,5 @@
 from chunking_docs.embeddings.interfaces import HashingTextEmbedder
-from chunking_docs.models import ChunkKind, DocumentChunk, GraphTriple
+from chunking_docs.models import AssetKind, ChunkKind, DocumentChunk, GraphTriple, VisualAsset
 from chunking_docs.retrieval.local_hybrid import LocalHybridSearcher
 
 
@@ -50,6 +50,35 @@ def test_local_hybrid_can_disable_retrieval_components():
     assert bm25_hits[0].chunk.chunk_id == "a"
     assert bm25_hits[0].sources == ["bm25"]
     assert disabled_hits == []
+
+
+def test_local_hybrid_bm25_can_match_linked_visual_asset_text():
+    chunk = DocumentChunk(
+        chunk_id="chunk-1",
+        doc_id="doc",
+        page_start=4,
+        page_end=4,
+        kind=ChunkKind.TEXT,
+        text="base page text",
+        asset_ids=["asset-1"],
+    )
+    asset = VisualAsset(
+        asset_id="asset-1",
+        doc_id="doc",
+        page_no=4,
+        kind=AssetKind.MAP,
+        caption="river corridor transfer diagram",
+    )
+
+    searcher = LocalHybridSearcher(
+        [chunk],
+        HashingTextEmbedder(embedding_dim=64),
+        assets=[asset],
+    )
+    hits = searcher.search("river corridor", top_k=1, use_dense=False, use_bm25=True)
+
+    assert hits[0].chunk.chunk_id == "chunk-1"
+    assert hits[0].sources == ["bm25"]
 
 
 def test_local_hybrid_search_omits_zero_score_noise():

@@ -1875,13 +1875,16 @@ def search_local(
         tokenizer_config=tokenizer_config,
     )
     chunks = read_jsonl(package_dir / chunks_file, DocumentChunk)
+    assets_path = package_dir / "assets.jsonl"
     triples_path = package_dir / "triples.jsonl"
+    assets = read_jsonl(assets_path, VisualAsset) if assets_path.exists() else []
     triples = read_jsonl(triples_path, GraphTriple) if triples_path.exists() else []
     searcher = LocalHybridSearcher(
         chunks,
         HashingTextEmbedder(),
         triples=triples,
         tokenizer_config=tokenizer_config,
+        assets=assets,
     )
     hits = searcher.search(
         query,
@@ -1973,6 +1976,7 @@ def build_rag_context_command(
         HashingTextEmbedder(),
         triples=triples,
         tokenizer_config=tokenizer_config,
+        assets=assets,
     )
     hits = searcher.search(
         query,
@@ -2524,10 +2528,13 @@ def eval_retrieval_command(
         tokenizer_config=tokenizer_config,
     )
     chunks = read_jsonl(package_dir / chunks_file, DocumentChunk)
+    assets_path = package_dir / "assets.jsonl"
     triples_path = package_dir / "triples.jsonl"
+    assets = read_jsonl(assets_path, VisualAsset) if assets_path.exists() else []
     triples = read_jsonl(triples_path, GraphTriple) if triples_path.exists() else []
     evaluation = evaluate_retrieval(
         chunks=chunks,
+        assets=assets,
         triples=triples,
         cases=load_retrieval_cases(cases),
         top_k=top_k,

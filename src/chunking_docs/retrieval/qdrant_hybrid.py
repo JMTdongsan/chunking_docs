@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from chunking_docs.embeddings.bm25 import BM25LexicalIndex
+from chunking_docs.embeddings.bm25 import BM25LexicalIndex, chunk_lexical_texts
 from chunking_docs.embeddings.interfaces import DenseTextEmbedder
 from chunking_docs.embeddings.tokenizers import LexicalTokenizerConfig
 from chunking_docs.graph.export import related_terms
@@ -46,7 +46,11 @@ class QdrantHybridSearcher:
         self.embedder = embedder
         self.vector_embedders = vector_embedders or {}
         self.triples = triples or []
-        self.bm25 = BM25LexicalIndex(chunks, tokenizer_config=tokenizer_config)
+        self.bm25 = BM25LexicalIndex(
+            chunks,
+            tokenizer_config=tokenizer_config,
+            texts=chunk_lexical_texts(chunks, assets),
+        )
         self.chunk_by_id = {chunk.chunk_id: chunk for chunk in chunks}
         self.asset_to_chunk_id = {
             asset_id: chunk.chunk_id

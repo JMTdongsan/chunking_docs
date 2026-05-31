@@ -80,7 +80,7 @@
    - `embedding_manifest.json` records vector files, dimensions, counts, and checksums.
 
 11. **Lexical Search**
-    - BM25 is generated from chunk text.
+    - BM25 is generated from chunk text plus linked visual asset captions, OCR text, and VLM summaries.
     - Lexical search protects exact matches for names, identifiers, dates, codes, and policy terms.
     - Tokenization is configurable as `word`, `char_ngram`, or `mixed`.
     - The default `mixed` tokenizer adds CJK character n-grams so compound terms without whitespace remain retrievable.

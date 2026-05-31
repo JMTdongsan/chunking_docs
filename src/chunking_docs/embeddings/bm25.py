@@ -6,7 +6,7 @@ from pathlib import Path
 from rank_bm25 import BM25Okapi
 
 from chunking_docs.embeddings.tokenizers import LexicalTokenizer, LexicalTokenizerConfig
-from chunking_docs.models import DocumentChunk
+from chunking_docs.models import DocumentChunk, VisualAsset
 
 
 class BM25LexicalIndex:
@@ -14,11 +14,15 @@ class BM25LexicalIndex:
         self,
         chunks: list[DocumentChunk],
         tokenizer_config: LexicalTokenizerConfig | None = None,
+        texts: list[str] | None = None,
     ):
+        if texts is not None and len(texts) != len(chunks):
+            raise ValueError("BM25 text count must match chunk count")
         self.chunks = chunks
+        self.texts = texts or [chunk.text for chunk in chunks]
         self.tokenizer = LexicalTokenizer(tokenizer_config)
         self.tokenizer_config = self.tokenizer.config
-        self.tokens = [self.tokenizer.tokenize(chunk.text) for chunk in chunks]
+        self.tokens = [self.tokenizer.tokenize(text) for text in self.texts]
         self.index = BM25Okapi(self.tokens)
 
     def search(self, query: str, top_k: int = 10) -> list[tuple[DocumentChunk, float]]:
@@ -41,11 +45,56 @@ class BM25LexicalIndex:
         manifest = {
             "tokenizer": self.tokenizer_config.model_dump(),
             "chunks": [
-                {"chunk_id": chunk.chunk_id, "tokens": tokens}
-                for chunk, tokens in zip(self.chunks, self.tokens)
+                {
+                    "chunk_id": chunk.chunk_id,
+                    "text_char_count": len(text),
+                    "tokens": tokens,
+                }
+                for chunk, text, tokens in zip(self.chunks, self.texts, self.tokens)
             ],
         }
         path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def chunk_lexical_texts(
+    chunks: list[DocumentChunk],
+    assets: list[VisualAsset] | None = None,
+) -> list[str]:
+    asset_by_id = {asset.asset_id: asset for asset in assets or []}
+    return [chunk_lexical_text(chunk, asset_by_id) for chunk in chunks]
+
+
+def chunk_lexical_text(
+    chunk: DocumentChunk,
+    asset_by_id: dict[str, VisualAsset],
+) -> str:
+    parts = [chunk.text]
+    for asset_id in chunk.asset_ids:
+        asset = asset_by_id.get(asset_id)
+        if asset is None:
+            continue
+        parts.extend(asset_text_parts(asset))
+    return "\n".join(deduplicate_text_parts(parts))
+
+
+def asset_text_parts(asset: VisualAsset) -> list[str]:
+    return [
+        value.strip()
+        for value in [asset.caption, asset.ocr_text, asset.vlm_summary]
+        if value and value.strip()
+    ]
+
+
+def deduplicate_text_parts(parts: list[str]) -> list[str]:
+    selected = []
+    seen = set()
+    for part in parts:
+        normalized = " ".join(part.split())
+        if not normalized or normalized in seen:
+            continue
+        selected.append(part)
+        seen.add(normalized)
+    return selected
 
 
 def lexical_overlap(query_tokens: set[str], document_tokens: list[str]) -> float:

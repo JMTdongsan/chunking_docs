@@ -3,11 +3,11 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 
-from chunking_docs.embeddings.bm25 import BM25LexicalIndex
+from chunking_docs.embeddings.bm25 import BM25LexicalIndex, chunk_lexical_texts
 from chunking_docs.embeddings.interfaces import DenseTextEmbedder
 from chunking_docs.embeddings.tokenizers import LexicalTokenizerConfig
 from chunking_docs.graph.export import related_terms
-from chunking_docs.models import DocumentChunk, GraphTriple
+from chunking_docs.models import DocumentChunk, GraphTriple, VisualAsset
 from chunking_docs.retrieval.fusion import RankedHit, reciprocal_rank_fusion
 from chunking_docs.retrieval.hierarchy import collapse_ranked_hits, merge_evidence_maps
 from chunking_docs.retrieval.rerank import Reranker, rerank_hits
@@ -28,10 +28,16 @@ class LocalHybridSearcher:
         embedder: DenseTextEmbedder,
         triples: list[GraphTriple] | None = None,
         tokenizer_config: LexicalTokenizerConfig | None = None,
+        assets: list[VisualAsset] | None = None,
     ):
         self.chunks = chunks
+        self.assets = assets or []
         self.embedder = embedder
-        self.bm25 = BM25LexicalIndex(chunks, tokenizer_config=tokenizer_config)
+        self.bm25 = BM25LexicalIndex(
+            chunks,
+            tokenizer_config=tokenizer_config,
+            texts=chunk_lexical_texts(chunks, self.assets),
+        )
         self.chunk_vectors = embedder.embed_texts([chunk.text for chunk in chunks])
         self.triples = triples or []
         self.chunk_by_id = {chunk.chunk_id: chunk for chunk in chunks}

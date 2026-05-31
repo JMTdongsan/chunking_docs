@@ -168,6 +168,36 @@ def test_qdrant_hybrid_maps_asset_hits_to_parent_chunk():
     assert hits[0].payloads[0]["asset_id"] == "asset-1"
 
 
+def test_qdrant_hybrid_bm25_can_match_linked_visual_asset_text():
+    chunk = DocumentChunk(
+        chunk_id="chunk-1",
+        doc_id="doc",
+        page_start=5,
+        page_end=5,
+        kind=ChunkKind.TEXT,
+        text="base text",
+        asset_ids=["asset-1"],
+    )
+    asset = VisualAsset(
+        asset_id="asset-1",
+        doc_id="doc",
+        page_no=5,
+        kind=AssetKind.FIGURE,
+        caption="river corridor diagram",
+    )
+
+    searcher = QdrantHybridSearcher(
+        store=FakeQdrantStore(),
+        chunks=[chunk],
+        assets=[asset],
+        embedder=HashingTextEmbedder(embedding_dim=8),
+    )
+    hits = searcher.search("river corridor", vector_names=["text_dense"], top_k=1)
+
+    assert hits[0].item_id == "chunk-1"
+    assert hits[0].sources == ["bm25"]
+
+
 def test_qdrant_hybrid_can_rerank_fused_candidates():
     weak = DocumentChunk(
         chunk_id="weak",
@@ -232,7 +262,7 @@ def test_qdrant_hybrid_respects_fusion_weights():
         "river corridor",
         vector_names=["caption_dense"],
         top_k=1,
-        fusion_weights={"qdrant": 0.0},
+        fusion_weights={"qdrant": 0.0, "bm25": 0.0},
     )
 
     assert hits == []

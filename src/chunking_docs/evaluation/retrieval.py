@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 from chunking_docs.embeddings.interfaces import HashingTextEmbedder
 from chunking_docs.embeddings.tokenizers import LexicalTokenizerConfig
 from chunking_docs.io import read_jsonl
-from chunking_docs.models import DocumentChunk, GraphTriple
+from chunking_docs.models import DocumentChunk, GraphTriple, VisualAsset
 from chunking_docs.retrieval.local_hybrid import LocalHybridSearcher
 from chunking_docs.retrieval.rerank import Reranker
 
@@ -114,6 +114,7 @@ def evaluate_retrieval(
     chunks: list[DocumentChunk],
     triples: list[GraphTriple],
     cases: list[RetrievalCase],
+    assets: list[VisualAsset] | None = None,
     top_k: int = 5,
     tokenizer_config: LexicalTokenizerConfig | None = None,
     collapse_hierarchical: bool = False,
@@ -133,6 +134,7 @@ def evaluate_retrieval(
         HashingTextEmbedder(),
         triples=triples,
         tokenizer_config=tokenizer_config,
+        assets=assets,
     )
     index_build_ms = elapsed_ms(index_start)
     evaluation = evaluate_search_results(

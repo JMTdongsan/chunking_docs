@@ -10,7 +10,7 @@
 - Renders visual assets for pages that need OCR, VLM summaries, or image embeddings.
 - Extracts structured PDF tables as table chunks and table visual assets.
 - Plans and runs prioritized OCR/VLM jobs for visual-heavy pages.
-- Produces dense text, dense image, caption, and BM25 lexical artifacts.
+- Produces dense text, dense image, caption, and BM25 lexical artifacts over chunk text plus linked visual text.
 - Supports word, character n-gram, and mixed lexical tokenization for languages where whitespace is weak.
 - Builds graph triple candidates from section metadata and visual annotations.
 - Audits and normalizes graph triples before graph expansion or export.
@@ -522,7 +522,7 @@ chunking-docs gate-retrieval outputs/package/retrieval_eval.json \
 
 ## Lexical Tokenization
 
-BM25 uses the `mixed` tokenizer by default. It combines word tokens with CJK character n-grams, which helps retrieve compound terms that may appear without whitespace in PDF text or OCR output.
+BM25 uses the `mixed` tokenizer by default. It combines word tokens with CJK character n-grams, which helps retrieve compound terms that may appear without whitespace in PDF text or OCR output. The lexical corpus includes chunk text plus linked visual asset captions, OCR text, and VLM summaries, so visual-only labels can still recover their parent chunks.
 
 ```bash
 chunking-docs search-local "urban renewal plan" \

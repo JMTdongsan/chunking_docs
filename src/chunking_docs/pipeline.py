@@ -9,7 +9,7 @@ from chunking_docs.analysis.pdf_profile import profile_pdf, summarize_profiles
 from chunking_docs.chunking.page_chunker import page_level_chunks
 from chunking_docs.chunking.section_map import SectionRange
 from chunking_docs.chunking.semantic_splitter import semantic_subchunks
-from chunking_docs.embeddings.bm25 import BM25LexicalIndex
+from chunking_docs.embeddings.bm25 import BM25LexicalIndex, chunk_lexical_texts
 from chunking_docs.embeddings.tokenizers import LexicalTokenizerConfig
 from chunking_docs.embeddings.interfaces import (
     DenseImageEmbedder,
@@ -130,7 +130,11 @@ def write_package(
         encoding="utf-8",
     )
 
-    bm25 = BM25LexicalIndex(manifest.chunks, tokenizer_config=tokenizer_config)
+    bm25 = BM25LexicalIndex(
+        manifest.chunks,
+        tokenizer_config=tokenizer_config,
+        texts=chunk_lexical_texts(manifest.chunks, manifest.assets),
+    )
     bm25.dump_manifest(output_dir / "bm25_tokens.json")
 
     if dry_run_embeddings:
@@ -154,7 +158,11 @@ def rebuild_search_artifacts(
     tokenizer_config: LexicalTokenizerConfig | None = None,
     rebuild_embeddings: bool = False,
 ) -> None:
-    bm25 = BM25LexicalIndex(chunks, tokenizer_config=tokenizer_config)
+    bm25 = BM25LexicalIndex(
+        chunks,
+        tokenizer_config=tokenizer_config,
+        texts=chunk_lexical_texts(chunks, assets),
+    )
     bm25.dump_manifest(output_dir / "bm25_tokens.json")
 
     if not rebuild_embeddings:
