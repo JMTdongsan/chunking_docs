@@ -14,6 +14,11 @@ from chunking_docs.retrieval.hierarchy import (
     collapse_ranked_hits,
     merge_evidence_maps,
 )
+from chunking_docs.retrieval.local_hybrid import (
+    chunk_id_alias_map,
+    graph_match_score,
+    normalize_graph_match_text,
+)
 from chunking_docs.retrieval.rerank import Reranker, rerank_hits
 from chunking_docs.storage.qdrant_store import QdrantChunkStore
 from chunking_docs.storage.records import VectorSearchHit
@@ -52,6 +57,7 @@ class QdrantHybridSearcher:
             texts=chunk_lexical_texts(chunks, assets),
         )
         self.chunk_by_id = {chunk.chunk_id: chunk for chunk in chunks}
+        self.chunk_id_by_alias = chunk_id_alias_map(chunks)
         self.asset_to_chunk_id = {
             asset_id: chunk.chunk_id
             for chunk in chunks
@@ -175,13 +181,14 @@ class QdrantHybridSearcher:
         ]
 
     def _graph_hits(self, query: str, top_k: int) -> list[RankedHit]:
-        query_lower = query.lower()
-        scored: dict[str, int] = {}
+        query_normalized = normalize_graph_match_text(query)
+        scored: dict[str, float] = {}
         for triple in self.triples:
-            haystack = " ".join([triple.subject, triple.predicate, triple.object]).lower()
-            score = sum(1 for token in query_lower.split() if token in haystack)
+            score = graph_match_score(query_normalized, triple)
             if score:
-                scored[triple.chunk_id] = max(scored.get(triple.chunk_id, 0), score)
+                chunk_id = self.chunk_id_by_alias.get(triple.chunk_id, triple.chunk_id)
+                if chunk_id in self.chunk_by_id:
+                    scored[chunk_id] = max(scored.get(chunk_id, 0), score)
         ranked = sorted(scored.items(), key=lambda item: item[1], reverse=True)[:top_k]
         return [
             RankedHit(item_id=chunk_id, rank=index + 1, score=float(score), source="graph")

@@ -447,6 +447,93 @@ def test_qdrant_hybrid_can_include_graph_hits():
     assert "graph" in hits[0].sources
 
 
+def test_qdrant_hybrid_graph_hits_resolve_source_chunk_alias():
+    chunk = DocumentChunk(
+        chunk_id="parent",
+        doc_id="doc",
+        page_start=5,
+        page_end=5,
+        kind=ChunkKind.PAGE_SUMMARY,
+        text="summary",
+        metadata={"source_chunk_id": "source-a"},
+    )
+    triple = GraphTriple(
+        triple_id="triple-1",
+        doc_id="doc",
+        chunk_id="source-a",
+        subject="north district",
+        predicate="uses_axis",
+        object="riverfront axis",
+    )
+
+    searcher = QdrantHybridSearcher(
+        store=FakeQdrantStore(),
+        chunks=[chunk],
+        assets=[],
+        embedder=HashingTextEmbedder(embedding_dim=8),
+        triples=[triple],
+    )
+    hits = searcher.search("north district", vector_names=["text_dense"], top_k=1, graph_expand=True)
+
+    assert hits[0].item_id == "parent"
+    assert hits[0].sources == ["graph"]
+
+
+def test_qdrant_hybrid_graph_hits_prioritize_exact_triple_components():
+    generic = DocumentChunk(
+        chunk_id="generic",
+        doc_id="doc",
+        page_start=1,
+        page_end=1,
+        kind=ChunkKind.TEXT,
+        text="unrelated generic note",
+    )
+    target = DocumentChunk(
+        chunk_id="target",
+        doc_id="doc",
+        page_start=2,
+        page_end=2,
+        kind=ChunkKind.TEXT,
+        text="unrelated target note",
+    )
+    triples = [
+        GraphTriple(
+            triple_id="generic-triple",
+            doc_id="doc",
+            chunk_id="generic",
+            subject="center system",
+            predicate="core",
+            object="generic hub",
+        ),
+        GraphTriple(
+            triple_id="target-triple",
+            doc_id="doc",
+            chunk_id="target",
+            subject="center system",
+            predicate="core",
+            object="specific hub",
+        ),
+    ]
+
+    searcher = QdrantHybridSearcher(
+        store=FakeQdrantStore(),
+        chunks=[generic, target],
+        assets=[],
+        embedder=HashingTextEmbedder(embedding_dim=8),
+        triples=triples,
+    )
+    hits = searcher.search(
+        "center system core specific hub",
+        vector_names=["text_dense"],
+        top_k=1,
+        graph_expand=True,
+        fusion_weights={"qdrant": 0.0, "bm25": 0.0, "graph": 1.0},
+    )
+
+    assert hits[0].item_id == "target"
+    assert hits[0].sources == ["graph"]
+
+
 def test_qdrant_hybrid_can_collapse_hierarchical_child_to_parent():
     parent = DocumentChunk(
         chunk_id="parent",
