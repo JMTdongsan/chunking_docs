@@ -53,6 +53,7 @@ DEFAULT_ARTIFACTS = [
     "graph_nodes.jsonl",
     "graph_edges.jsonl",
     "visual_job_summary.json",
+    "visual_quality.json",
     "chunking_sweep.json",
     "qdrant_retrieval_eval.json",
     "qdrant_vector_ablation.json",

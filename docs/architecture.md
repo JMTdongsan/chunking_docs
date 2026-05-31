@@ -46,6 +46,7 @@
    - Attach asset, page, job, source, and prompt provenance to visual-derived triples.
    - Record OCR language, backend configuration, VLM prompt name, prompt hash, latency, output size, parse status, and triple count.
    - Summarize visual job results by status, backend latency, output size, VLM prompt usage, parse status, and triple count.
+   - Gate visual runs by completion rate, OCR text coverage, VLM summary coverage, JSON parse rate, triple density, and failure counts.
    - Apply annotations back into chunks, assets, graph triples, BM25, and Qdrant records.
 
 8. **Semantic Splitting**
@@ -115,6 +116,7 @@ Additional processing commands may create:
 - `visual_jobs.jsonl`
 - `visual_job_results.jsonl`
 - `visual_job_summary.json`
+- `visual_quality.json`
 - `visual_annotations.jsonl`
 - `assets.tiled.jsonl`
 - `chunks.tiled.jsonl`

@@ -72,6 +72,7 @@ from chunking_docs.vision.jobs import (
     run_visual_jobs,
 )
 from chunking_docs.vision.manual_annotations import AssetAnnotation, apply_asset_annotations
+from chunking_docs.vision.quality import evaluate_visual_results
 from chunking_docs.vision.report import summarize_visual_results
 
 app = typer.Typer(help="Document chunking utilities.")
@@ -1271,6 +1272,61 @@ def summarize_visual_results_command(
         print({"output": str(output), **summary.model_dump()})
         return
     print(summary.model_dump())
+
+
+@app.command(name="gate-visual-results")
+def gate_visual_results_command(
+    results: Path = Path("outputs/package/visual_job_results.jsonl"),
+    output: Path | None = None,
+    min_completion_rate: float = 0.0,
+    min_annotation_rate: float = 0.0,
+    min_ocr_text_coverage: float = 0.0,
+    min_vlm_summary_coverage: float = 0.0,
+    min_vlm_json_parse_rate: float = 0.0,
+    min_triples_per_vlm_job: float = 0.0,
+    min_mean_ocr_text_chars: float = 0.0,
+    min_mean_vlm_summary_chars: float = 0.0,
+    max_failed_count: int | None = None,
+    max_skipped_count: int | None = None,
+    fail: bool = typer.Option(
+        True,
+        "--fail/--no-fail",
+        help="Exit with status 1 when visual quality checks fail.",
+    ),
+):
+    """Fail an OCR/VLM run when usable visual annotation quality is too low."""
+    parsed_results = read_jsonl(results, VisualJobRunResult)
+    report = evaluate_visual_results(
+        parsed_results,
+        min_completion_rate=min_completion_rate,
+        min_annotation_rate=min_annotation_rate,
+        min_ocr_text_coverage=min_ocr_text_coverage,
+        min_vlm_summary_coverage=min_vlm_summary_coverage,
+        min_vlm_json_parse_rate=min_vlm_json_parse_rate,
+        min_triples_per_vlm_job=min_triples_per_vlm_job,
+        min_mean_ocr_text_chars=min_mean_ocr_text_chars,
+        min_mean_vlm_summary_chars=min_mean_vlm_summary_chars,
+        max_failed_count=max_failed_count,
+        max_skipped_count=max_skipped_count,
+    )
+    payload = report.model_dump()
+    if output is not None:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(report.model_dump_json(indent=2), encoding="utf-8")
+        payload = {
+            "output": str(output),
+            "passed": report.passed,
+            "failed_checks": report.failed_checks,
+            "completion_rate": report.completion_rate,
+            "annotation_rate": report.annotation_rate,
+            "ocr_text_coverage": report.ocr_text_coverage,
+            "vlm_summary_coverage": report.vlm_summary_coverage,
+            "vlm_json_parse_rate": report.vlm_json_parse_rate,
+            "triples_per_vlm_job": report.triples_per_vlm_job,
+        }
+    print(payload)
+    if fail and not report.passed:
+        raise typer.Exit(1)
 
 
 @app.command(name="apply-annotations")

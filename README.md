@@ -135,7 +135,17 @@ chunking-docs summarize-visual-results \
   --output outputs/package/visual_job_summary.json
 ```
 
-The summary groups completion counts, backend latency, output size, VLM prompt usage, parse status, and extracted triple counts by operation.
+The summary groups completion counts, backend latency, output size, VLM prompt usage, parse status, and extracted triple counts by operation. Gate a visual run before applying annotations to retrieval artifacts:
+
+```bash
+chunking-docs gate-visual-results \
+  --results outputs/package/visual_job_results.jsonl \
+  --min-completion-rate 0.95 \
+  --min-ocr-text-coverage 0.8 \
+  --min-vlm-summary-coverage 0.9 \
+  --max-failed-count 0 \
+  --output outputs/package/visual_quality.json
+```
 
 ## Structured Tables
 

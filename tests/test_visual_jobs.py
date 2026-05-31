@@ -12,6 +12,8 @@ from chunking_docs.vision.jobs import (
     plan_visual_jobs,
     run_visual_jobs,
 )
+from chunking_docs.vision.manual_annotations import AssetAnnotation
+from chunking_docs.vision.quality import evaluate_visual_results
 from chunking_docs.vision.report import summarize_visual_results
 
 
@@ -229,6 +231,102 @@ def test_summarize_visual_results_cli_writes_json(tmp_path):
 
     assert result.exit_code == 0, result.output
     assert "model-a" in output.read_text(encoding="utf-8")
+
+
+def test_evaluate_visual_results_gates_annotation_quality():
+    results = [
+        VisualJobRunResult(
+            job_id="job-1",
+            asset_id="asset-1",
+            page_no=1,
+            status="completed",
+            annotation=AssetAnnotation(
+                asset_id="asset-1",
+                page_no=1,
+                ocr_text="recognized text",
+                vlm_summary="structured visual summary",
+                triples=[{"subject": "a", "predicate": "relates_to", "object": "b"}],
+                metadata={"vlm_parse_status": "json_object"},
+            ),
+            metadata={
+                "operations": ["ocr", "vlm"],
+                "ocr_text_chars": 15,
+                "vlm_output_chars": 120,
+                "vlm_parse_status": "json_object",
+            },
+        ),
+        VisualJobRunResult(
+            job_id="job-2",
+            asset_id="asset-2",
+            page_no=2,
+            status="failed",
+            error="model error",
+            metadata={"operations": ["vlm"]},
+        ),
+    ]
+
+    report = evaluate_visual_results(
+        results,
+        min_completion_rate=0.8,
+        min_ocr_text_coverage=1.0,
+        min_vlm_summary_coverage=1.0,
+        min_vlm_json_parse_rate=0.8,
+        min_triples_per_vlm_job=0.5,
+        max_failed_count=0,
+    )
+
+    assert report.passed is False
+    assert report.completion_rate == 0.5
+    assert report.ocr_text_coverage == 1.0
+    assert report.vlm_summary_coverage == 0.5
+    assert report.vlm_json_parse_rate == 0.5
+    assert report.triples_per_vlm_job == 0.5
+    assert "min_completion_rate" in report.failed_checks
+    assert "max_failed_count" in report.failed_checks
+    assert report.issues[0].code == "visual_job_failed"
+
+
+def test_gate_visual_results_cli_writes_report(tmp_path):
+    result_path = tmp_path / "results.jsonl"
+    output = tmp_path / "visual_quality.json"
+    write_jsonl(
+        result_path,
+        [
+            VisualJobRunResult(
+                job_id="job-1",
+                asset_id="asset-1",
+                page_no=1,
+                status="completed",
+                annotation=AssetAnnotation(
+                    asset_id="asset-1",
+                    page_no=1,
+                    ocr_text="recognized text",
+                    vlm_summary="visual summary",
+                    metadata={"vlm_parse_status": "raw_text"},
+                ),
+                metadata={"operations": ["ocr", "vlm"], "ocr_text_chars": 15},
+            )
+        ],
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "gate-visual-results",
+            "--results",
+            str(result_path),
+            "--min-completion-rate",
+            "1",
+            "--min-vlm-summary-coverage",
+            "1",
+            "--output",
+            str(output),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "'passed': True" in result.output
+    assert "visual summary" not in output.read_text(encoding="utf-8")
 
 
 def test_plan_visual_jobs_cli_filters_kind(tmp_path):
