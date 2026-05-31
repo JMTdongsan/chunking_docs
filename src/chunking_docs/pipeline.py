@@ -6,6 +6,7 @@ from typing import Any
 
 from chunking_docs.analysis.pdf_profile import profile_pdf, summarize_profiles
 from chunking_docs.chunking.page_chunker import page_level_chunks
+from chunking_docs.chunking.section_map import SectionRange
 from chunking_docs.chunking.semantic_splitter import semantic_subchunks
 from chunking_docs.embeddings.bm25 import BM25LexicalIndex
 from chunking_docs.embeddings.interfaces import (
@@ -59,18 +60,20 @@ def build_processing_package(
     title: str | None = None,
     render_zoom: float = 1.5,
     dry_run_embeddings: bool = True,
+    section_ranges: list[SectionRange] | None = None,
 ) -> ProcessingManifest:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     source = load_source_document(pdf_path, title=title, source_url=source_url)
     profiles = profile_pdf(pdf_path, source.doc_id)
-    chunks = page_level_chunks(pdf_path, source.doc_id, profiles)
+    chunks = page_level_chunks(pdf_path, source.doc_id, profiles, section_ranges=section_ranges)
     assets = build_page_assets(
         pdf_path=pdf_path,
         doc_id=source.doc_id,
         profiles=profiles,
         output_dir=output_dir / "assets",
         zoom=render_zoom,
+        section_ranges=section_ranges,
     )
     chunks = attach_assets_to_chunks(chunks, assets)
     triples = section_triples(chunks)
@@ -84,6 +87,7 @@ def build_processing_package(
         metadata={
             "profile_summary": summarize_profiles(profiles),
             "embedding_mode": "hashing_dry_run" if dry_run_embeddings else "external",
+            "section_map_count": len(section_ranges or []),
         },
     )
     write_package(output_dir, manifest, dry_run_embeddings=dry_run_embeddings)

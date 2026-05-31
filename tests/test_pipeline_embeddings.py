@@ -27,7 +27,7 @@ def test_write_embedding_artifacts_writes_selected_vectors_and_config(tmp_path):
         page_start=1,
         page_end=1,
         kind=ChunkKind.TEXT,
-        text="서울 도시기본계획",
+        text="urban development strategy",
     )
     asset_path = tmp_path / "page.png"
     asset_path.write_bytes(b"fake image")
@@ -37,7 +37,7 @@ def test_write_embedding_artifacts_writes_selected_vectors_and_config(tmp_path):
         page_no=1,
         kind=AssetKind.MAP,
         path=asset_path,
-        caption="동북권 발전구상 지도",
+        caption="north district development map",
     )
 
     (tmp_path / "qdrant_image_records.jsonl").write_text("stale\n", encoding="utf-8")

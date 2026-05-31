@@ -11,7 +11,7 @@ def section_triples(chunks: list[DocumentChunk]) -> list[GraphTriple]:
             add_triple(
                 triples,
                 chunk,
-                subject="2030 서울도시기본계획",
+                subject=chunk.doc_id,
                 predicate="includes_chapter",
                 object_=chunk.section.chapter,
             )
@@ -19,7 +19,7 @@ def section_triples(chunks: list[DocumentChunk]) -> list[GraphTriple]:
             add_triple(
                 triples,
                 chunk,
-                subject=chunk.section.chapter or "2030 서울도시기본계획",
+                subject=chunk.section.chapter or chunk.doc_id,
                 predicate="includes_issue",
                 object_=chunk.section.issue,
             )

@@ -9,7 +9,7 @@ from chunking_docs.models import (
 from chunking_docs.vision.assets import page_kind, should_render_page
 
 
-def test_page_kind_detects_spatial_page_as_map():
+def test_page_kind_detects_visual_dense_page_as_map():
     profile = PageProfile(
         doc_id="doc",
         page_no=150,
@@ -18,8 +18,8 @@ def test_page_kind_detects_spatial_page_as_map():
         char_count=100,
         line_count=10,
         text_block_count=3,
-        image_block_count=1,
-        embedded_image_count=1,
+        image_block_count=2,
+        embedded_image_count=2,
         drawing_count=2,
         text_quality=TextQuality.DEGRADED,
     )

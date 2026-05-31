@@ -1,0 +1,244 @@
+from __future__ import annotations
+
+import hashlib
+from pathlib import Path
+from typing import Any
+from typing import Literal
+
+from pydantic import BaseModel, Field
+
+from chunking_docs.models import AssetKind, VisualAsset
+from chunking_docs.vision.annotate import prompt_for_asset
+from chunking_docs.vision.interfaces import OCRBackend, VLMBackend
+from chunking_docs.vision.manual_annotations import AssetAnnotation
+
+VisualOperation = Literal["ocr", "vlm"]
+VisualJobStatus = Literal["pending", "completed", "failed", "skipped"]
+
+
+class VisualAnnotationJob(BaseModel):
+    job_id: str
+    asset_id: str
+    doc_id: str
+    page_no: int
+    kind: AssetKind
+    asset_path: Path
+    operations: list[VisualOperation]
+    priority: int
+    reason: str
+    section_label: str = ""
+    status: VisualJobStatus = "pending"
+    attempts: int = 0
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class VisualJobRunResult(BaseModel):
+    job_id: str
+    asset_id: str
+    page_no: int
+    status: VisualJobStatus
+    annotation: AssetAnnotation | None = None
+    error: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+def plan_visual_jobs(
+    assets: list[VisualAsset],
+    pages: set[int] | None = None,
+    include_ocr: bool = True,
+    include_vlm: bool = True,
+    limit: int | None = None,
+) -> list[VisualAnnotationJob]:
+    jobs = []
+    for asset in assets:
+        if pages is not None and asset.page_no not in pages:
+            continue
+        job = visual_job_for_asset(asset, include_ocr=include_ocr, include_vlm=include_vlm)
+        if job is not None:
+            jobs.append(job)
+
+    jobs.sort(key=lambda job: (-job.priority, job.page_no, job.asset_id))
+    if limit is not None:
+        return jobs[:limit]
+    return jobs
+
+
+def visual_job_for_asset(
+    asset: VisualAsset,
+    include_ocr: bool = True,
+    include_vlm: bool = True,
+) -> VisualAnnotationJob | None:
+    if asset.path is None:
+        return None
+
+    operations: list[VisualOperation] = []
+    reasons = []
+    if include_ocr and asset.metadata.get("requires_ocr", True) and not asset.ocr_text:
+        operations.append("ocr")
+        reasons.append("missing OCR")
+    if include_vlm and asset.metadata.get("requires_vlm", True) and not asset.vlm_summary:
+        operations.append("vlm")
+        reasons.append("missing VLM summary")
+    if not operations:
+        return None
+
+    return VisualAnnotationJob(
+        job_id=make_visual_job_id(asset.asset_id, operations),
+        asset_id=asset.asset_id,
+        doc_id=asset.doc_id,
+        page_no=asset.page_no,
+        kind=asset.kind,
+        asset_path=asset.path,
+        operations=operations,
+        priority=visual_job_priority(asset, operations),
+        reason=", ".join(reasons),
+        section_label=str(asset.metadata.get("section_label", "")),
+        metadata={
+            "text_quality": str(asset.metadata.get("text_quality", "")),
+            "image_block_count": asset.metadata.get("image_block_count"),
+            "embedded_image_count": asset.metadata.get("embedded_image_count"),
+            "drawing_count": asset.metadata.get("drawing_count"),
+        },
+    )
+
+
+def run_visual_jobs(
+    jobs: list[VisualAnnotationJob],
+    assets: list[VisualAsset],
+    ocr_backend: OCRBackend | None = None,
+    vlm_backend: VLMBackend | None = None,
+    limit: int | None = None,
+    ocr_language: str = "kor+eng",
+    ocr_backend_name: str = "",
+    vlm_backend_name: str = "",
+) -> list[VisualJobRunResult]:
+    assets_by_id = {asset.asset_id: asset for asset in assets}
+    results = []
+    processed = 0
+    for job in jobs:
+        if limit is not None and processed >= limit:
+            results.append(skipped_result(job, "limit reached"))
+            continue
+        if job.status != "pending":
+            results.append(skipped_result(job, f"job status is {job.status}"))
+            continue
+
+        asset = assets_by_id.get(job.asset_id)
+        if asset is None:
+            results.append(failed_result(job, "asset not found"))
+            continue
+        if "ocr" in job.operations and ocr_backend is None:
+            results.append(failed_result(job, "ocr backend is required"))
+            continue
+        if "vlm" in job.operations and vlm_backend is None:
+            results.append(failed_result(job, "vlm backend is required"))
+            continue
+
+        try:
+            annotation = run_one_visual_job(
+                job,
+                asset,
+                ocr_backend=ocr_backend,
+                vlm_backend=vlm_backend,
+                ocr_language=ocr_language,
+                ocr_backend_name=ocr_backend_name,
+                vlm_backend_name=vlm_backend_name,
+            )
+        except Exception as exc:  # pragma: no cover - exercised with real model failures.
+            results.append(failed_result(job, str(exc)))
+            continue
+
+        processed += 1
+        results.append(
+            VisualJobRunResult(
+                job_id=job.job_id,
+                asset_id=job.asset_id,
+                page_no=job.page_no,
+                status="completed",
+                annotation=annotation,
+                metadata={"operations": job.operations},
+            )
+        )
+    return results
+
+
+def run_one_visual_job(
+    job: VisualAnnotationJob,
+    asset: VisualAsset,
+    ocr_backend: OCRBackend | None,
+    vlm_backend: VLMBackend | None,
+    ocr_language: str,
+    ocr_backend_name: str = "",
+    vlm_backend_name: str = "",
+) -> AssetAnnotation:
+    ocr_text = None
+    vlm_summary = None
+    if "ocr" in job.operations and ocr_backend is not None:
+        ocr_text = ocr_backend.recognize(job.asset_path, language=ocr_language)
+    if "vlm" in job.operations and vlm_backend is not None:
+        vlm_summary = vlm_backend.summarize(job.asset_path, prompt=prompt_for_asset(asset))
+
+    return AssetAnnotation(
+        asset_id=job.asset_id,
+        page_no=job.page_no,
+        kind=asset.kind,
+        ocr_text=ocr_text,
+        vlm_summary=vlm_summary,
+        metadata={
+            "annotation_source": "visual_job",
+            "visual_job_id": job.job_id,
+            "operations": job.operations,
+            "priority": job.priority,
+            "ocr_backend": ocr_backend_name,
+            "vlm_backend": vlm_backend_name,
+        },
+    )
+
+
+def visual_job_priority(asset: VisualAsset, operations: list[VisualOperation]) -> int:
+    priority = {
+        AssetKind.MAP: 1000,
+        AssetKind.TABLE: 900,
+        AssetKind.CHART: 850,
+        AssetKind.FIGURE: 800,
+        AssetKind.PAGE_IMAGE: 650,
+        AssetKind.UNKNOWN: 500,
+    }[asset.kind]
+    if "vlm" in operations:
+        priority += 200
+    if "ocr" in operations:
+        priority += 100
+    if str(asset.metadata.get("text_quality", "")) == "empty":
+        priority += 50
+    if asset.metadata.get("section_label"):
+        priority += 20
+    return priority
+
+
+def make_visual_job_id(asset_id: str, operations: list[VisualOperation]) -> str:
+    raw = f"{asset_id}:{','.join(operations)}".encode("utf-8")
+    return hashlib.sha256(raw).hexdigest()[:24]
+
+
+def completed_annotations(results: list[VisualJobRunResult]) -> list[AssetAnnotation]:
+    return [result.annotation for result in results if result.annotation is not None]
+
+
+def failed_result(job: VisualAnnotationJob, error: str) -> VisualJobRunResult:
+    return VisualJobRunResult(
+        job_id=job.job_id,
+        asset_id=job.asset_id,
+        page_no=job.page_no,
+        status="failed",
+        error=error,
+    )
+
+
+def skipped_result(job: VisualAnnotationJob, reason: str) -> VisualJobRunResult:
+    return VisualJobRunResult(
+        job_id=job.job_id,
+        asset_id=job.asset_id,
+        page_no=job.page_no,
+        status="skipped",
+        error=reason,
+    )

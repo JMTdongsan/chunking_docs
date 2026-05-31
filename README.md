@@ -1,25 +1,20 @@
 # chunking_docs
 
-도시계획 PDF를 RAG용 데이터로 만들기 위한 청킹·임베딩 라이브러리다.
+`chunking_docs` is a Python library and CLI for preparing complex PDF documents for RAG systems. It focuses on chunking strategy, multimodal document assets, hybrid retrieval artifacts, and storage-ready outputs rather than on a single target document.
 
-현재 목표 문서는 서울시 `2030 서울도시기본계획` PDF다.
+## What It Does
 
-원본: https://urban.seoul.go.kr/UpisArchive/DATA/PWEB/STATIC/1_seoul_plan.pdf
+- Profiles PDF pages and detects degraded or missing text layers.
+- Creates page-level starter chunks and optional semantic subchunks.
+- Accepts an external section map so document-specific structure stays outside the library.
+- Renders visual assets for pages that need OCR, VLM summaries, or image embeddings.
+- Plans and runs prioritized OCR/VLM jobs for visual-heavy pages.
+- Produces dense text, dense image, caption, and BM25 lexical artifacts.
+- Builds graph triple candidates from section metadata and visual annotations.
+- Exports Qdrant upsert records and PostgreSQL-ready normalized rows.
+- Evaluates chunking quality and retrieval hit rate with reusable benchmark cases.
 
-## 현재 범위
-
-- PDF 다운로드
-- 페이지 profile 생성
-- 텍스트 레이어 품질 판정
-- 목차 기반 section metadata 부여
-- page-level starter chunk 생성
-- BM25 lexical index
-- Qdrant upsert record와 local mode 검증
-- PostgreSQL 적재 row/schema/optional writer
-- OCR/VLM/graph extraction interface
-- local dense+BM25+graph hybrid search
-
-## 설치
+## Install
 
 ```bash
 python -m venv .venv
@@ -27,58 +22,76 @@ source .venv/bin/activate
 pip install -e ".[dev]"
 ```
 
-Qdrant 연동까지 쓰려면:
+Optional integrations:
 
 ```bash
-pip install -e ".[qdrant,dev]"
+pip install -e ".[qdrant]"              # Qdrant client
+pip install -e ".[postgres]"            # PostgreSQL writer
+pip install -e ".[embeddings,vision]"   # SentenceTransformer, CLIP, VLM backends
 ```
 
-로컬 GPU에서 dense/VLM 실험까지 하려면:
+## Basic Pipeline
 
 ```bash
-pip install -e ".[embeddings,vision,qdrant,dev]"
+chunking-docs download "https://example.com/document.pdf" data/raw/document.pdf
+chunking-docs profile data/raw/document.pdf --output-dir outputs/profile
+chunking-docs package data/raw/document.pdf --output-dir outputs/package
 ```
 
-## 사용 예시
+The package directory contains:
 
-```bash
-chunking-docs download \
-  "https://urban.seoul.go.kr/UpisArchive/DATA/PWEB/STATIC/1_seoul_plan.pdf" \
-  data/raw/1_seoul_plan.pdf
-
-chunking-docs profile data/raw/1_seoul_plan.pdf --output-dir outputs/profile
-chunking-docs render data/raw/1_seoul_plan.pdf --pages 1,4,16,30,100,150,188
-chunking-docs chunk data/raw/1_seoul_plan.pdf --output outputs/chunks.jsonl
-chunking-docs package data/raw/1_seoul_plan.pdf --output-dir outputs/package
-```
-
-`package` 명령은 다음 파일을 만든다.
-
-- `pages.jsonl`: 페이지 profile
-- `chunks.jsonl`: 청킹 결과
-- `assets.jsonl`: 페이지/지도/표/그림 asset manifest
-- `triples.jsonl`: graph triple 후보
+- `manifest.json`: document and processing metadata
+- `pages.jsonl`: page profiles and text quality signals
+- `chunks.jsonl`: chunk records
+- `assets.jsonl`: rendered visual asset records
+- `triples.jsonl`: graph triple candidates
 - `bm25_tokens.json`: lexical search token manifest
-- `qdrant_text_records.jsonl`: Qdrant upsert용 dry-run text vector record
-- `qdrant_image_records.jsonl`: Qdrant upsert용 dry-run image vector record
-- `qdrant_caption_records.jsonl`: Qdrant upsert용 dry-run caption vector record
-- `qdrant_collection.json`: Qdrant collection 설계 manifest
+- `qdrant_*_records.jsonl`: Qdrant upsert records
+- `qdrant_collection.json`: named-vector collection configuration
 
-OCR/VLM 주석을 붙일 때:
+## Document Structure
+
+Document-specific structure should be supplied as data, not hardcoded in the library.
+
+```jsonl
+{"page_start":1,"page_end":5,"chapter":"Overview"}
+{"page_start":6,"page_end":20,"section":{"chapter":"Strategy","section":"Mobility"}}
+```
+
+Use it with:
 
 ```bash
-chunking-docs annotate-assets --package-dir outputs/package --ocr tesseract --in-place
-chunking-docs annotate-assets \
+chunking-docs package data/raw/document.pdf \
+  --output-dir outputs/package \
+  --section-map examples/section_map.jsonl
+```
+
+## Visual Processing
+
+For documents with maps, diagrams, charts, scans, or broken text layers, plan OCR/VLM work first:
+
+```bash
+chunking-docs plan-visual-jobs --package-dir outputs/package
+```
+
+Run a small batch:
+
+```bash
+chunking-docs run-visual-jobs \
   --package-dir outputs/package \
+  --jobs outputs/package/visual_jobs.jsonl \
+  --ocr tesseract \
   --vlm hf \
   --vlm-model <local-or-huggingface-vlm-model> \
-  --pages 100,150,188 \
-  --in-place
+  --limit 10 \
+  --apply
 ```
 
-`--in-place`와 기본 `--rebuild-search`를 함께 쓰면 OCR/VLM 결과가 `chunks.jsonl`, `bm25_tokens.json`, `qdrant_text_records.jsonl`에 반영된다.
+The command writes `visual_annotations.jsonl` and `visual_job_results.jsonl`. With `--apply`, annotations are merged into `assets.jsonl`, `chunks.jsonl`, `triples.jsonl`, BM25, and Qdrant record files.
 
-실제 dense/image 모델로 Qdrant 레코드를 다시 만들 때:
+## Embeddings
+
+The default package command writes deterministic hashing vectors so the pipeline can be tested without downloading models. Rebuild model-backed records with:
 
 ```bash
 chunking-docs embed-package \
@@ -91,49 +104,57 @@ chunking-docs embed-package \
   --device cuda
 ```
 
-이 명령은 `qdrant_*_records.jsonl`와 `qdrant_collection.json`을 실제 모델 차원에 맞춰 재생성한다. 모델 다운로드 없이 경로만 검증하려면 `--text-backend hashing --caption-backend same-as-text --image-backend hashing`을 사용할 수 있다.
+This regenerates Qdrant text, caption, and image records using the selected model dimensions.
 
-외부 VLM 또는 사람이 검수한 주석을 JSONL로 반영할 수도 있다.
-
-```bash
-chunking-docs apply-annotations examples/seoul_plan_seed_annotations.jsonl --package-dir outputs/package --in-place
-chunking-docs split-chunks --package-dir outputs/package --max-chars 600 --overlap-chars 80 --in-place
-chunking-docs search-local "동북권 발전구상 중랑천" --package-dir outputs/package --top-k 5
-chunking-docs search-local "동북권 발전구상 중랑천" --package-dir outputs/package --graph-expand --top-k 5
-chunking-docs export-graph --package-dir outputs/package
-chunking-docs audit-package --package-dir outputs/package
-chunking-docs eval-retrieval examples/seoul_plan_retrieval_cases.jsonl --package-dir outputs/package --top-k 5
-```
-
-`apply-annotations`는 `assets.jsonl`, `chunks.jsonl`, `triples.jsonl`, BM25, Qdrant dry-run records를 갱신한다.
-`audit-package`는 누락 chunk, orphan triple, 남은 OCR/VLM 대상 페이지를 확인한다.
-`eval-retrieval`은 seed query가 기대 페이지를 top-k 안에서 찾는지 검증한다.
-
-## Qdrant 로컬 실행
+## Qdrant
 
 ```bash
 docker compose -f docker-compose.qdrant.yml up -d
-chunking-docs qdrant-upsert --records outputs/package/qdrant_text_records.jsonl
 chunking-docs qdrant-upsert-package --package-dir outputs/package
 ```
 
-Docker가 없는 환경에서는 qdrant-client local mode로 upsert 로직을 검증할 수 있다.
+Without Docker, validate the upsert path with qdrant-client local mode:
 
 ```bash
 chunking-docs qdrant-upsert-package --package-dir outputs/package --location ':memory:'
 ```
 
-## PostgreSQL 적재
+## PostgreSQL
 
-PostgreSQL은 원본 문서/페이지/chunk/asset/triple metadata 보관용이다. vector 검색은 기본적으로 Qdrant가 담당한다.
+PostgreSQL is intended for source metadata, page profiles, chunks, assets, and graph triples. Vector search is handled by Qdrant by default.
 
 ```bash
-pip install -e ".[postgres]"
 chunking-docs postgres-rows --package-dir outputs/package
-chunking-docs postgres-upsert "postgresql://user:password@localhost:5432/chunking_docs" --package-dir outputs/package
+chunking-docs postgres-upsert "postgresql://user:password@localhost:5432/chunking_docs" \
+  --package-dir outputs/package
 ```
 
-## 설계 문서
+## Evaluation
 
-- [문서 관찰 메모](docs/seoul_plan_observations.md)
-- [아키텍처](docs/architecture.md)
+Correct execution is not enough for a chunking library. Use evaluation commands to check whether the chunking strategy is useful for retrieval.
+
+```bash
+chunking-docs audit-package --package-dir outputs/package
+chunking-docs eval-chunking --package-dir outputs/package --cases examples/retrieval_cases.jsonl
+chunking-docs eval-retrieval examples/retrieval_cases.jsonl --package-dir outputs/package --top-k 5
+```
+
+`eval-chunking` reports page coverage, chunk size distribution, section coverage, visual asset linkage, visual annotation coverage, retrieval hit rate, and an aggregate quality score. Retrieval cases are JSONL:
+
+```jsonl
+{"query":"policy corridor near river","expected_pages":[12],"graph_expand":true}
+{"query":"capital investment table","expected_chunk_ids":["chunk-id"]}
+```
+
+For portfolio or production use, maintain benchmark cases for each document family and compare chunking strategies before changing defaults.
+
+## Development Checks
+
+```bash
+ruff check src tests
+pytest
+```
+
+## Design Notes
+
+- [Architecture](docs/architecture.md)

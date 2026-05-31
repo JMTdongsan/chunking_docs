@@ -16,9 +16,9 @@ def test_remap_triples_to_first_available_child_chunk():
         triple_id="triple-1",
         doc_id="doc",
         chunk_id="parent-1",
-        subject="동북권",
+        subject="north district",
         predicate="uses_axis",
-        object="중랑천",
+        object="river corridor",
     )
 
     remapped = remap_triples_to_available_chunks([triple], [child])

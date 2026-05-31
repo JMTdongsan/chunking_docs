@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
 
 from chunking_docs.models import SectionPath
 
@@ -12,60 +15,39 @@ class SectionRange:
     section: SectionPath
 
 
-SEOUL_PLAN_SECTION_RANGES = [
-    SectionRange(1, 16, SectionPath(chapter="제1장 2030 서울플랜의 개요")),
-    SectionRange(17, 32, SectionPath(chapter="제2장 2030 서울의 미래상")),
-    SectionRange(33, 134, SectionPath(chapter="제3장 핵심이슈별 계획")),
-    SectionRange(
-        37,
-        61,
-        SectionPath(
-            chapter="제3장 핵심이슈별 계획",
-            issue="핵심이슈 1 차별없이 더불어 사는 사람중심 도시",
-        ),
-    ),
-    SectionRange(
-        62,
-        77,
-        SectionPath(
-            chapter="제3장 핵심이슈별 계획",
-            issue="핵심이슈 2 일자리와 활력이 넘치는 글로벌 상생도시",
-        ),
-    ),
-    SectionRange(
-        78,
-        92,
-        SectionPath(
-            chapter="제3장 핵심이슈별 계획",
-            issue="핵심이슈 3 역사가 살아있는 즐거운 문화도시",
-        ),
-    ),
-    SectionRange(
-        93,
-        111,
-        SectionPath(
-            chapter="제3장 핵심이슈별 계획",
-            issue="핵심이슈 4 생명이 살아 숨 쉬는 안심도시",
-        ),
-    ),
-    SectionRange(
-        112,
-        134,
-        SectionPath(
-            chapter="제3장 핵심이슈별 계획",
-            issue="핵심이슈 5 주거가 안정되고 이동이 편한 주민 공동체 도시",
-        ),
-    ),
-    SectionRange(135, 166, SectionPath(chapter="제4장 공간구조 및 토지이용계획")),
-    SectionRange(167, 194, SectionPath(chapter="제5장 생활권계획")),
-    SectionRange(195, 206, SectionPath(chapter="제6장 계획의 실현")),
-    SectionRange(207, 225, SectionPath(chapter="부록 계획단계별 참여진")),
-]
-
-
 def section_for_page(page_no: int, ranges: list[SectionRange] | None = None) -> SectionPath:
-    ranges = ranges or SEOUL_PLAN_SECTION_RANGES
+    ranges = ranges or []
     matches = [item for item in ranges if item.page_start <= page_no <= item.page_end]
     if not matches:
         return SectionPath()
     return max(matches, key=lambda item: item.page_start).section
+
+
+def load_section_ranges(path: Path | None) -> list[SectionRange]:
+    if path is None:
+        return []
+    if path.suffix == ".jsonl":
+        records = [
+            json.loads(line)
+            for line in path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+    else:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        records = payload["sections"] if isinstance(payload, dict) and "sections" in payload else payload
+    return [section_range_from_mapping(record) for record in records]
+
+
+def section_range_from_mapping(record: dict[str, Any]) -> SectionRange:
+    section_payload = record.get("section")
+    if section_payload is None:
+        section_payload = {
+            key: record.get(key)
+            for key in ["chapter", "section", "subsection", "issue"]
+            if record.get(key) is not None
+        }
+    return SectionRange(
+        page_start=int(record["page_start"]),
+        page_end=int(record["page_end"]),
+        section=SectionPath.model_validate(section_payload),
+    )

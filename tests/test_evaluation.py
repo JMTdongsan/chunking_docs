@@ -59,10 +59,10 @@ def test_evaluate_retrieval_hit_rate():
         DocumentChunk(
             chunk_id="a",
             doc_id="doc",
-            page_start=188,
-            page_end=188,
+            page_start=12,
+            page_end=12,
             kind=ChunkKind.TEXT,
-            text="동북권 발전구상 중랑천",
+            text="north district river corridor",
         )
     ]
     triples = [
@@ -70,12 +70,12 @@ def test_evaluate_retrieval_hit_rate():
             triple_id="t",
             doc_id="doc",
             chunk_id="a",
-            subject="동북권",
+            subject="north district",
             predicate="uses_axis",
-            object="중랑천",
+            object="river corridor",
         )
     ]
-    cases = [RetrievalCase(query="동북권", expected_pages=[188], graph_expand=True)]
+    cases = [RetrievalCase(query="north district", expected_pages=[12], graph_expand=True)]
 
     result = evaluate_retrieval(chunks, triples, cases, top_k=3)
 

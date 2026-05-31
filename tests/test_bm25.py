@@ -10,7 +10,7 @@ def test_bm25_uses_lexical_overlap_when_idf_is_zero():
             page_start=1,
             page_end=1,
             kind=ChunkKind.TEXT,
-            text="동북권 발전구상 중랑천",
+            text="north district river corridor",
         ),
         DocumentChunk(
             chunk_id="b",
@@ -18,11 +18,11 @@ def test_bm25_uses_lexical_overlap_when_idf_is_zero():
             page_start=2,
             page_end=2,
             kind=ChunkKind.TEXT,
-            text="인구구조 변화",
+            text="population structure change",
         ),
     ]
 
-    results = BM25LexicalIndex(chunks).search("동북권 중랑천", top_k=2)
+    results = BM25LexicalIndex(chunks).search("north river", top_k=2)
 
     assert len(results) == 1
     assert results[0][0].chunk_id == "a"

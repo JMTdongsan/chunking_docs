@@ -5,7 +5,7 @@ from pathlib import Path
 
 import fitz
 
-from chunking_docs.chunking.section_map import section_for_page
+from chunking_docs.chunking.section_map import SectionRange, section_for_page
 from chunking_docs.models import AssetKind, PageProfile, TextQuality, VisualAsset
 
 
@@ -18,10 +18,6 @@ def page_kind(profile: PageProfile) -> AssetKind:
     if profile.page_no <= 3:
         return AssetKind.PAGE_IMAGE
 
-    section = section_for_page(profile.page_no)
-    label = section.label()
-    if "공간구조" in label or "생활권" in label:
-        return AssetKind.MAP
     if profile.embedded_image_count + profile.image_block_count >= 4:
         return AssetKind.MAP
     if profile.drawing_count >= 20:
@@ -46,6 +42,7 @@ def build_page_assets(
     profiles: list[PageProfile],
     output_dir: Path,
     zoom: float = 2.0,
+    section_ranges: list[SectionRange] | None = None,
 ) -> list[VisualAsset]:
     output_dir.mkdir(parents=True, exist_ok=True)
     profile_map = {profile.page_no: profile for profile in profiles}
@@ -57,6 +54,7 @@ def build_page_assets(
             if not should_render_page(profile):
                 continue
 
+            section = section_for_page(page_no, section_ranges)
             kind = page_kind(profile)
             asset_id = make_asset_id(doc_id, page_no, kind, "page")
             path = output_dir / f"{asset_id}_page_{page_no:04d}.png"
@@ -79,7 +77,7 @@ def build_page_assets(
                         "image_block_count": profile.image_block_count,
                         "embedded_image_count": profile.embedded_image_count,
                         "drawing_count": profile.drawing_count,
-                        "section_label": section_for_page(page_no).label(),
+                        "section_label": section.label(),
                         "requires_ocr": profile.text_quality != TextQuality.GOOD,
                         "requires_vlm": True,
                     },

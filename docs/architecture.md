@@ -1,174 +1,137 @@
-# Chunking Docs Architecture
+# Architecture
 
-## 목표
+`chunking_docs` prepares complex PDFs for retrieval-augmented generation. The package keeps document-specific assumptions in external data files so the core library can be reused across planning documents, reports, manuals, scanned PDFs, and visual-heavy PDFs.
 
-`chunking_docs`는 도시계획 PDF를 RAG에 넣기 전 단계의 전처리 라이브러리다. 산출물은 단일 텍스트 chunk가 아니라 다음을 모두 포함한다.
+## Pipeline
 
-- 텍스트 chunk
-- 표/그래프/지도/그림 asset
-- OCR 텍스트
-- VLM 요약
-- dense embedding
-- BM25 lexical index
-- graph triple
-- Qdrant 적재 record
-- 추후 PostgreSQL 적재 가능한 정규화 record
+1. **Document Intake**
+   - Download or load a PDF.
+   - Generate a stable `doc_id` from file content.
+   - Store source metadata and local path.
 
-## 파이프라인
+2. **Page Profiling**
+   - Measure page size, text length, text blocks, image blocks, embedded images, and drawing count.
+   - Classify the text layer as `good`, `degraded`, or `empty`.
+   - Use the profile to decide which pages need OCR, VLM summaries, or visual embeddings.
 
-1. **Document intake**
-   - 원본 PDF 다운로드
-   - 파일 hash 기반 `doc_id` 생성
-   - PDF metadata와 페이지 수 저장
+3. **Section Mapping**
+   - Accept optional section ranges as JSON or JSONL.
+   - Attach `chapter`, `section`, `subsection`, and `issue` metadata to chunks.
+   - Keep section maps outside package code because each document family has different structure.
 
-2. **Page profiling**
-   - 페이지 크기, 텍스트 길이, 이미지 개수, drawing 개수 측정
-   - 텍스트 레이어 품질을 `good`, `degraded`, `empty`로 분류
-   - 시각 정보가 많은 페이지를 별도 큐로 보냄
+4. **Starter Chunking**
+   - Create page-level chunks as the first stable unit.
+   - Good text-layer pages receive cleaned PDF text.
+   - Degraded or empty text-layer pages receive an explicit placeholder that marks OCR/VLM requirements.
 
-3. **Layout and section mapping**
-   - 목차에서 장/절 범위를 구성
-   - 각 chunk에 `chapter`, `section`, `issue` 메타데이터 부여
-   - 향후 OCR 기반 제목 검출로 section map 자동화
+5. **Visual Assets**
+   - Render pages that have weak text layers or visual density.
+   - Store each rendered image in `assets.jsonl` with page, kind, path, and processing hints.
+   - Link visual assets back to chunks through `asset_ids`.
 
-4. **Text/OCR/VLM extraction**
-   - 텍스트 레이어가 좋은 페이지: PDF text를 정제
-   - 텍스트 레이어가 깨진 페이지: OCR을 실행
-   - 지도·표·그래프·장 전환 페이지: VLM summary 생성
-   - RTX 5090 환경에서는 VLM backend를 `transformers` 또는 별도 inference server로 연결
+6. **OCR/VLM Job Planning**
+   - Build `visual_jobs.jsonl` from missing OCR/VLM annotations.
+   - Prioritize maps, tables, charts, figures, and pages with empty text.
+   - Run jobs in bounded batches and store `visual_job_results.jsonl` plus `visual_annotations.jsonl`.
+   - Apply annotations back into chunks, assets, graph triples, BM25, and Qdrant records.
 
-5. **Chunk generation**
-   - page text chunk
-   - table chunk
-   - chart chunk
-   - map chunk
-   - page summary chunk
-   - section summary chunk
+7. **Semantic Splitting**
+   - Split long annotated chunks into subchunks using paragraph and line boundaries.
+   - Preserve original chunk IDs when a chunk does not need splitting.
+   - Remap triples to available child chunks when splitting changes IDs.
 
-6. **Embedding generation**
-   - `text_dense`: 본문, OCR, VLM summary 대상
-   - `image_dense`: page/figure/map image 대상
-   - `caption_dense`: asset caption과 VLM summary 대상
-   - Qdrant named vector 또는 collection 분리 전략을 선택 가능하게 둠
-   - `embed-package`로 hashing dry-run 산출물을 실제 SentenceTransformer/CLIP 계열 모델 산출물로 교체
+8. **Embedding Artifacts**
+   - `text_dense`: chunk text, OCR text, and VLM summaries.
+   - `caption_dense`: asset caption, OCR, and VLM summary text.
+   - `image_dense`: rendered page or visual asset image.
+   - Default hashing embedders make the pipeline testable without model downloads.
+   - `embed-package` regenerates artifacts with model-backed text and image embedders.
 
-7. **Lexical index**
-   - BM25 토큰 index 생성
-   - 한국어 형태소 분석기는 추후 교체 가능하게 tokenizer interface로 둠
-   - 정책명, 지명, 연도, 법령명 같은 exact match 회수를 담당
+9. **Lexical Search**
+   - BM25 is generated from chunk text.
+   - Lexical search protects exact matches for names, identifiers, dates, codes, and policy terms.
+   - Dense and lexical results are combined with Reciprocal Rank Fusion in the local evaluator.
 
-8. **Graph extraction**
-   - VLM/LLM이 `subject, predicate, object` triple 후보 생성
-   - 예: `동북권 -> 발전구상 -> 중랑천 상계`, `2030 서울플랜 -> 중심지체계 -> 3도심 7광역중심 12지역중심`
-   - triple은 검색 확장, 근거 연결, 지식 그래프 시각화에 사용
+10. **Graph Triples**
+    - Section metadata creates baseline graph relationships.
+    - OCR/VLM or external annotations can add `subject, predicate, object` triples.
+    - Graph terms are used for query expansion and relationship browsing.
 
-9. **Storage**
-   - Qdrant: dense vector와 payload 저장
-   - BM25: lexical index manifest 저장 또는 별도 검색엔진으로 이전
-   - PostgreSQL: documents/pages/chunks/assets/triples 정규화 저장
+11. **Storage**
+    - Qdrant stores named vectors and payloads.
+    - PostgreSQL stores normalized document, page, chunk, asset, and triple metadata.
+    - BM25 can remain as a local manifest or be replaced by a dedicated lexical search service.
 
-## Qdrant 설계
+## Package Files
 
-초기에는 collection 하나를 사용한다.
+`chunking-docs package` writes a local processing package:
 
-- collection: `planning_chunks`
-- point id: stable UUIDv5 derived from source id and vector name
-- named vectors:
-  - `text_dense`
-  - `image_dense`
-  - `caption_dense`
-- payload:
-  - `doc_id`
-  - `chunk_id`
-  - `page_start`
-  - `page_end`
-  - `kind`
-  - `section`
-  - `text_quality`
-  - `asset_ids`
-  - `source_url`
+- `manifest.json`
+- `pages.jsonl`
+- `chunks.jsonl`
+- `assets.jsonl`
+- `triples.jsonl`
+- `bm25_tokens.json`
+- `qdrant_text_records.jsonl`
+- `qdrant_image_records.jsonl`
+- `qdrant_caption_records.jsonl`
+- `qdrant_collection.json`
 
-지도와 페이지 이미지는 이미지 vector가 없는 환경에서도 `caption_dense`로 검색 가능해야 한다.
+Additional processing commands may create:
 
-## PostgreSQL 고려
+- `visual_jobs.jsonl`
+- `visual_job_results.jsonl`
+- `visual_annotations.jsonl`
+- `chunks.split.jsonl`
+- `graph_nodes.jsonl`
+- `graph_edges.jsonl`
 
-PostgreSQL은 원본성과 관계형 질의에 사용한다.
+## Qdrant Design
 
-- documents: 문서 metadata
-- pages: 페이지 profile
-- chunks: 검색 단위
-- assets: 지도/표/그림 이미지와 캡션
-- triples: 그래프 관계
+The default collection is `planning_chunks`, but callers can choose another collection name.
 
-Vector를 PostgreSQL에 바로 넣는 경우를 대비해 `pgvector` extension을 고려하지만, 기본 검색 vector store는 Qdrant로 둔다.
+Named vectors:
 
-`PostgresDocumentStore`는 package를 읽어 다음 순서로 upsert한다.
+- `text_dense`
+- `image_dense`
+- `caption_dense`
 
-1. `documents`
-2. `pages`
-3. `chunks`
-4. `assets`
-5. `triples`
+Payload fields include document ID, chunk ID, asset ID, page range, asset kind, section metadata, source references, and text fields needed for answer citation.
 
-이 순서를 지키면 foreign key 제약을 깨지 않고 재실행 가능한 적재가 가능하다.
+## PostgreSQL Design
 
-## Retrieval
+PostgreSQL is used for provenance and relational queries, not as the default vector store.
 
-질의는 다음 결과를 결합한다.
+Tables:
 
-- dense text search
-- dense image/caption search
-- BM25 lexical search
-- graph expansion
+- `documents`
+- `pages`
+- `chunks`
+- `assets`
+- `triples`
 
-초기 결합 방식은 Reciprocal Rank Fusion으로 둔다. 이후 질의 타입을 분류해서 지도 질의는 image/caption 가중치를 높이고, 지명·정책명 질의는 BM25 가중치를 높인다.
+The writer upserts in dependency order: documents, pages, chunks, assets, triples.
 
-로컬 검증용 `search-local`은 hashing dense vector, BM25, optional graph expansion을 사용한다. 실제 운영에서는 같은 인터페이스를 Qdrant dense/caption/image search와 PostgreSQL 또는 graph store 기반 관계 확장으로 교체한다.
+## Retrieval Evaluation
 
-## Evaluation
+Chunking changes should be judged by retrieval behavior, not only by successful execution.
 
-품질 평가는 두 단계로 둔다.
+Recommended checks:
 
-- `audit-package`: page/chunk/asset/triple 수, orphan triple, OCR/VLM 미처리 페이지, annotation coverage를 점검한다.
-- `eval-retrieval`: seed query JSONL을 기준으로 expected page 또는 chunk가 top-k 검색 결과에 포함되는지 확인한다.
+- `audit-package`: structural completeness and orphan checks.
+- `eval-chunking`: page coverage, chunk size distribution, section coverage, visual linkage, annotation coverage, retrieval hit rate, and aggregate quality score.
+- `eval-retrieval`: focused top-k retrieval benchmark cases.
+- Qdrant local mode upsert: validates named vector records and payloads.
 
-이 평가는 VLM 모델, OCR 모델, chunk 크기, BM25 tokenizer를 바꿔도 같은 기준으로 반복 실행할 수 있어야 한다.
+Benchmark cases should be maintained per document family. A useful case specifies the query, expected page or chunk, and whether graph expansion should be enabled.
 
-## 현재 산출물 패키지
+## Model Strategy
 
-`chunking-docs package`는 DB에 바로 넣기 전 검토 가능한 로컬 패키지를 만든다.
+The library exposes interfaces instead of locking in one model:
 
-- `manifest.json`: 전체 처리 요약
-- `pages.jsonl`: 페이지별 텍스트 품질과 시각 요소 밀도
-- `chunks.jsonl`: 검색 단위. 현재는 page-level starter chunk이며 OCR/VLM 결과가 붙으면 세분화한다.
-- `assets.jsonl`: 페이지 렌더링 이미지와 지도/표/그림 분류 힌트
-- `triples.jsonl`: 목차/section 기반 graph triple 후보
-- `bm25_tokens.json`: BM25 토큰 manifest
-- `qdrant_text_records.jsonl`: Qdrant upsert dry-run record
-- `qdrant_image_records.jsonl`: rendered page/image dry-run vector record
-- `qdrant_caption_records.jsonl`: caption/OCR/VLM summary dry-run vector record
-- `qdrant_collection.json`: named vector와 payload index 설계
+- OCR: `TesseractOCRBackend`, with room for PaddleOCR or EasyOCR adapters.
+- VLM: `HuggingFaceVLMBackend`.
+- Text dense: `SentenceTransformerTextEmbedder`.
+- Image dense: `TransformersImageEmbedder`.
 
-OCR/VLM 후처리는 별도 단계로 둔다. `annotate-assets`는 `assets.jsonl`의 렌더링 이미지에 OCR/VLM backend를 적용하고, 결과를 chunk text에 병합한다. 이후 BM25와 Qdrant text record를 재생성하면 그림 속 텍스트와 VLM 설명도 검색 대상이 된다.
-
-외부 VLM batch job이나 사람이 검수한 결과는 `apply-annotations`로 반영한다. 이 경로는 지도/표/그래프 설명을 assets에 저장하고 chunk text에 병합하며, triple 후보도 `triples.jsonl`에 추가한다. 병합 후 `split-chunks`를 실행하면 OCR/VLM으로 길어진 page chunk를 문단·불릿·섹션 경계 기준으로 subchunk화한다.
-
-## RTX 5090 활용
-
-GPU는 배치 처리용으로 사용한다.
-
-- 페이지 렌더링 이미지를 batch로 VLM에 투입
-- 지도/그래프/표 페이지 우선 처리
-- 텍스트 OCR과 VLM summary를 별도 캐시에 저장
-- 실패한 페이지는 재시도 가능한 job record로 남김
-
-VLM backend는 모델을 고정하지 않고 interface로 둔다. 로컬에서 사용할 수 있는 Korean-capable VLM 또는 OCR 모델을 바꿔가며 같은 산출 schema에 기록한다.
-
-초기 backend 후보:
-
-- OCR: `TesseractOCRBackend` 또는 추후 PaddleOCR/EasyOCR adapter
-- VLM: `HuggingFaceVLMBackend`
-- text dense: `SentenceTransformerTextEmbedder`, 기본 후보 `BAAI/bge-m3`
-- image dense: `TransformersImageEmbedder`, 기본 후보 `openai/clip-vit-large-patch14`
-
-`embed-package`는 `chunks.jsonl`과 `assets.jsonl`을 읽어 `qdrant_text_records.jsonl`, `qdrant_caption_records.jsonl`, `qdrant_image_records.jsonl`을 다시 만들고, `qdrant_collection.json`의 named vector 차원도 실제 모델에 맞춰 갱신한다. 실제 운영에서는 모델별 결과를 같은 산출 schema로 만들고 `audit-package`, `eval-retrieval`, Qdrant local mode upsert로 비교한다.
+Local GPUs can be used for VLM summaries and image embedding batches. Failed jobs remain visible in job result files so experiments can be retried safely.

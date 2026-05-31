@@ -11,7 +11,7 @@ def test_local_hybrid_search_returns_bm25_and_dense_sources():
             page_start=1,
             page_end=1,
             kind=ChunkKind.TEXT,
-            text="동북권 발전구상 중랑천 상계 창동",
+            text="north district river corridor station hub",
         ),
         DocumentChunk(
             chunk_id="b",
@@ -19,12 +19,12 @@ def test_local_hybrid_search_returns_bm25_and_dense_sources():
             page_start=2,
             page_end=2,
             kind=ChunkKind.TEXT,
-            text="인구구조 변화 고령인구 1인 가구",
+            text="population aging single household trend",
         ),
     ]
 
     searcher = LocalHybridSearcher(chunks, HashingTextEmbedder(embedding_dim=64))
-    hits = searcher.search("동북권 중랑천", top_k=1)
+    hits = searcher.search("north river", top_k=1)
 
     assert hits[0].chunk.chunk_id == "a"
     assert "bm25" in hits[0].sources
@@ -39,7 +39,7 @@ def test_local_hybrid_search_omits_zero_score_noise():
             page_start=1,
             page_end=1,
             kind=ChunkKind.TEXT,
-            text="동북권 발전구상",
+            text="north district development concept",
         ),
         DocumentChunk(
             chunk_id="b",
@@ -52,7 +52,7 @@ def test_local_hybrid_search_omits_zero_score_noise():
     ]
 
     searcher = LocalHybridSearcher(chunks, HashingTextEmbedder(embedding_dim=64))
-    hits = searcher.search("동북권", top_k=10)
+    hits = searcher.search("north district", top_k=10)
 
     assert [hit.chunk.chunk_id for hit in hits] == ["a"]
 
@@ -65,7 +65,7 @@ def test_local_hybrid_graph_expansion_can_recover_related_chunk():
             page_start=188,
             page_end=188,
             kind=ChunkKind.TEXT,
-            text="중랑천 수변축 동부간선도로 축",
+            text="riverfront axis expressway corridor",
         )
     ]
     triples = [
@@ -73,14 +73,14 @@ def test_local_hybrid_graph_expansion_can_recover_related_chunk():
             triple_id="t",
             doc_id="doc",
             chunk_id="a",
-            subject="동북권",
+            subject="north district",
             predicate="uses_axis",
-            object="중랑천 수변축",
+            object="riverfront axis",
         )
     ]
 
     searcher = LocalHybridSearcher(chunks, HashingTextEmbedder(embedding_dim=64), triples=triples)
-    hits = searcher.search("동북권", top_k=1, graph_expand=True)
+    hits = searcher.search("north district", top_k=1, graph_expand=True)
 
     assert hits[0].chunk.chunk_id == "a"
     assert "graph" in hits[0].sources

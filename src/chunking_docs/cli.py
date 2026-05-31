@@ -8,8 +8,10 @@ import typer
 from rich import print
 
 from chunking_docs.analysis.pdf_profile import profile_pdf, summarize_profiles, write_profile_outputs
+from chunking_docs.chunking.section_map import load_section_ranges
 from chunking_docs.chunking.page_chunker import page_level_chunks
 from chunking_docs.evaluation.audit import audit_package
+from chunking_docs.evaluation.chunking_quality import evaluate_chunking_quality
 from chunking_docs.evaluation.retrieval import evaluate_retrieval, load_retrieval_cases
 from chunking_docs.graph.repair import remap_triples_to_available_chunks
 from chunking_docs.ingest.pdf_loader import load_source_document, render_pages
@@ -25,6 +27,13 @@ from chunking_docs.pipeline import (
 from chunking_docs.retrieval.local_hybrid import LocalHybridSearcher
 from chunking_docs.storage.records import EmbeddingRecord
 from chunking_docs.vision.annotate import annotate_assets, merge_asset_annotations_into_chunks
+from chunking_docs.vision.interfaces import OCRBackend, VLMBackend
+from chunking_docs.vision.jobs import (
+    VisualAnnotationJob,
+    completed_annotations,
+    plan_visual_jobs,
+    run_visual_jobs,
+)
 from chunking_docs.vision.manual_annotations import AssetAnnotation, apply_asset_annotations
 
 app = typer.Typer(help="Document chunking utilities.")
@@ -60,11 +69,20 @@ def render(pdf: Path, output_dir: Path = Path("outputs/renders"), pages: str = "
 
 
 @app.command()
-def chunk(pdf: Path, output: Path = Path("outputs/chunks.jsonl")):
+def chunk(
+    pdf: Path,
+    output: Path = Path("outputs/chunks.jsonl"),
+    section_map: Path | None = None,
+):
     """Create page-level starter chunks."""
     source = load_source_document(pdf)
     profiles = profile_pdf(pdf, source.doc_id)
-    chunks = page_level_chunks(pdf, source.doc_id, profiles)
+    chunks = page_level_chunks(
+        pdf,
+        source.doc_id,
+        profiles,
+        section_ranges=load_section_ranges(section_map),
+    )
     write_jsonl(output, chunks)
     print(f"Wrote {len(chunks)} chunks to {output}")
 
@@ -76,6 +94,7 @@ def package_pdf(
     source_url: str = "",
     title: str = "",
     render_zoom: float = 1.5,
+    section_map: Path | None = None,
 ):
     """Build the full local processing package for DB ingestion."""
     manifest = build_processing_package(
@@ -84,6 +103,7 @@ def package_pdf(
         source_url=source_url or None,
         title=title or None,
         render_zoom=render_zoom,
+        section_ranges=load_section_ranges(section_map),
     )
     print(
         {
@@ -264,23 +284,8 @@ def annotate_assets_command(
     chunks = read_jsonl(package_dir / "chunks.jsonl", DocumentChunk)
     assets = read_jsonl(package_dir / "assets.jsonl", VisualAsset)
 
-    ocr_backend = None
-    if ocr == "tesseract":
-        from chunking_docs.vision.tesseract_ocr import TesseractOCRBackend
-
-        ocr_backend = TesseractOCRBackend()
-    elif ocr != "none":
-        raise typer.BadParameter("ocr must be one of: none, tesseract")
-
-    vlm_backend = None
-    if vlm == "hf":
-        if not vlm_model:
-            raise typer.BadParameter("--vlm-model is required when --vlm hf")
-        from chunking_docs.vision.hf_vlm import HuggingFaceVLMBackend
-
-        vlm_backend = HuggingFaceVLMBackend(model_name=vlm_model)
-    elif vlm != "none":
-        raise typer.BadParameter("vlm must be one of: none, hf")
+    ocr_backend, _ = build_ocr_backend(ocr)
+    vlm_backend, _ = build_vlm_backend(vlm, vlm_model)
 
     annotated_assets = annotate_assets(
         assets,
@@ -309,6 +314,108 @@ def annotate_assets_command(
             "asset_output": str(asset_output),
             "chunk_output": str(chunk_output),
             "rebuilt_search": bool(rebuild_search and in_place),
+        }
+    )
+
+
+@app.command(name="plan-visual-jobs")
+def plan_visual_jobs_command(
+    package_dir: Path = Path("outputs/package"),
+    output: Path | None = None,
+    pages: str = "",
+    limit: int | None = None,
+    include_ocr: bool = True,
+    include_vlm: bool = True,
+):
+    """Plan prioritized OCR/VLM jobs for rendered visual assets."""
+    selected_pages = {int(item) for item in pages.split(",") if item.strip()} or None
+    assets = read_jsonl(package_dir / "assets.jsonl", VisualAsset)
+    jobs = plan_visual_jobs(
+        assets,
+        pages=selected_pages,
+        include_ocr=include_ocr,
+        include_vlm=include_vlm,
+        limit=limit,
+    )
+    output_path = output or package_dir / "visual_jobs.jsonl"
+    write_jsonl(output_path, jobs)
+    print(
+        {
+            "jobs": len(jobs),
+            "output": str(output_path),
+            "top_pages": [job.page_no for job in jobs[:10]],
+            "operation_counts": operation_counts(jobs),
+            "kind_counts": kind_counts(jobs),
+        }
+    )
+
+
+@app.command(name="run-visual-jobs")
+def run_visual_jobs_command(
+    package_dir: Path = Path("outputs/package"),
+    jobs: Path | None = None,
+    annotations_output: Path | None = None,
+    results_output: Path | None = None,
+    limit: int | None = None,
+    ocr: str = "none",
+    vlm: str = "none",
+    vlm_model: str = "",
+    ocr_language: str = "kor+eng",
+    apply: bool = False,
+    rebuild_search: bool = True,
+):
+    """Run planned OCR/VLM jobs and optionally apply the resulting annotations."""
+    job_path = jobs or package_dir / "visual_jobs.jsonl"
+    annotation_path = annotations_output or package_dir / "visual_annotations.jsonl"
+    result_path = results_output or package_dir / "visual_job_results.jsonl"
+    planned_jobs = read_jsonl(job_path, VisualAnnotationJob)
+    assets = read_jsonl(package_dir / "assets.jsonl", VisualAsset)
+
+    ocr_backend, ocr_name = build_ocr_backend(ocr)
+    vlm_backend, vlm_name = build_vlm_backend(vlm, vlm_model)
+    results = run_visual_jobs(
+        planned_jobs,
+        assets,
+        ocr_backend=ocr_backend,
+        vlm_backend=vlm_backend,
+        limit=limit,
+        ocr_language=ocr_language,
+        ocr_backend_name=ocr_name,
+        vlm_backend_name=vlm_name,
+    )
+    annotations = completed_annotations(results)
+    write_jsonl(result_path, results)
+    write_jsonl(annotation_path, annotations)
+
+    applied = False
+    if apply and annotations:
+        chunks = read_jsonl(package_dir / "chunks.jsonl", DocumentChunk)
+        triples_path = package_dir / "triples.jsonl"
+        triples = read_jsonl(triples_path, GraphTriple) if triples_path.exists() else []
+        updated_assets, updated_chunks, updated_triples = apply_asset_annotations(
+            assets,
+            chunks,
+            annotations,
+            existing_triples=triples,
+        )
+        write_jsonl(package_dir / "assets.jsonl", updated_assets)
+        write_jsonl(package_dir / "chunks.jsonl", updated_chunks)
+        write_jsonl(package_dir / "triples.jsonl", updated_triples)
+        if rebuild_search:
+            rebuild_search_artifacts(package_dir, updated_chunks, assets=updated_assets)
+        applied = True
+
+    print(
+        {
+            "jobs": len(planned_jobs),
+            "completed": sum(1 for result in results if result.status == "completed"),
+            "failed": sum(1 for result in results if result.status == "failed"),
+            "skipped": sum(1 for result in results if result.status == "skipped"),
+            "annotations": len(annotations),
+            "annotations_output": str(annotation_path),
+            "results_output": str(result_path),
+            "applied": applied,
+            "rebuilt_search": bool(applied and rebuild_search),
         }
     )
 
@@ -520,6 +627,30 @@ def eval_retrieval_command(
     print(evaluation.model_dump())
 
 
+@app.command(name="eval-chunking")
+def eval_chunking_command(
+    package_dir: Path = Path("outputs/package"),
+    cases: Path | None = None,
+    top_k: int = 5,
+    min_chars: int = 120,
+    max_chars: int = 1800,
+):
+    """Evaluate chunking quality and optional retrieval performance."""
+    manifest = load_processing_package(package_dir)
+    retrieval_cases = load_retrieval_cases(cases) if cases is not None else None
+    report = evaluate_chunking_quality(
+        chunks=manifest.chunks,
+        profiles=manifest.profiles,
+        assets=manifest.assets,
+        triples=manifest.triples,
+        retrieval_cases=retrieval_cases,
+        top_k=top_k,
+        min_chars=min_chars,
+        max_chars=max_chars,
+    )
+    print(report.model_dump())
+
+
 def print_json(payload: dict):
     print(json.dumps(payload, ensure_ascii=False, indent=2))
 
@@ -603,3 +734,43 @@ def build_image_embedder(
 
 def normalize_backend(value: str) -> str:
     return value.strip().lower()
+
+
+def build_ocr_backend(backend: str) -> tuple[OCRBackend | None, str]:
+    normalized = normalize_backend(backend)
+    if normalized == "none":
+        return None, ""
+    if normalized == "tesseract":
+        from chunking_docs.vision.tesseract_ocr import TesseractOCRBackend
+
+        return TesseractOCRBackend(), "tesseract"
+    raise typer.BadParameter("ocr must be one of: none, tesseract")
+
+
+def build_vlm_backend(backend: str, model_name: str) -> tuple[VLMBackend | None, str]:
+    normalized = normalize_backend(backend)
+    if normalized == "none":
+        return None, ""
+    if normalized == "hf":
+        if not model_name:
+            raise typer.BadParameter("--vlm-model is required when --vlm hf")
+        from chunking_docs.vision.hf_vlm import HuggingFaceVLMBackend
+
+        return HuggingFaceVLMBackend(model_name=model_name), f"hf:{model_name}"
+    raise typer.BadParameter("vlm must be one of: none, hf")
+
+
+def operation_counts(jobs: list[VisualAnnotationJob]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for job in jobs:
+        for operation in job.operations:
+            counts[operation] = counts.get(operation, 0) + 1
+    return counts
+
+
+def kind_counts(jobs: list[VisualAnnotationJob]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for job in jobs:
+        kind = str(job.kind)
+        counts[kind] = counts.get(kind, 0) + 1
+    return counts

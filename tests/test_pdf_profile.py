@@ -3,7 +3,7 @@ from chunking_docs.models import TextQuality
 
 
 def test_classify_good_korean_text():
-    text = "서울도시기본계획은 도시의 미래상과 공간구조를 제시한다."
+    text = "도시계획 문서는 지역의 미래상과 교통 전략을 제시한다."
 
     assert classify_text_quality(text) == TextQuality.GOOD
 

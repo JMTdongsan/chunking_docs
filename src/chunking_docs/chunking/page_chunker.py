@@ -6,7 +6,7 @@ from pathlib import Path
 import fitz
 
 from chunking_docs.analysis.pdf_profile import classify_text_quality
-from chunking_docs.chunking.section_map import section_for_page
+from chunking_docs.chunking.section_map import SectionRange, section_for_page
 from chunking_docs.models import ChunkKind, DocumentChunk, PageProfile, TextQuality
 
 
@@ -20,7 +20,12 @@ def clean_pdf_text(text: str) -> str:
     return "\n".join(line for line in lines if line)
 
 
-def page_level_chunks(pdf_path: Path, doc_id: str, profiles: list[PageProfile]) -> list[DocumentChunk]:
+def page_level_chunks(
+    pdf_path: Path,
+    doc_id: str,
+    profiles: list[PageProfile],
+    section_ranges: list[SectionRange] | None = None,
+) -> list[DocumentChunk]:
     profile_map = {profile.page_no: profile for profile in profiles}
     chunks: list[DocumentChunk] = []
 
@@ -30,7 +35,7 @@ def page_level_chunks(pdf_path: Path, doc_id: str, profiles: list[PageProfile]) 
             profile = profile_map.get(page_no)
             text = clean_pdf_text(page.get_text("text") or "")
             quality = profile.text_quality if profile else classify_text_quality(text)
-            section = section_for_page(page_no)
+            section = section_for_page(page_no, section_ranges)
 
             if quality == TextQuality.GOOD and text:
                 chunks.append(

@@ -3,7 +3,7 @@ from chunking_docs.models import ChunkKind, DocumentChunk, SectionPath
 
 
 def test_split_text_keeps_overlap_for_long_blocks():
-    text = "\n\n".join([f"{index}. " + ("서울 도시계획 " * 35) for index in range(8)])
+    text = "\n\n".join([f"{index}. " + ("urban planning " * 35) for index in range(8)])
 
     chunks = split_text(text, max_chars=500, overlap_chars=50)
 
@@ -18,8 +18,8 @@ def test_semantic_subchunks_preserve_metadata_and_parent():
         page_start=10,
         page_end=10,
         kind=ChunkKind.PAGE_SUMMARY,
-        text="\n\n".join([f"제{index}절 " + ("공간구조 " * 60) for index in range(1, 4)]),
-        section=SectionPath(chapter="제4장 공간구조 및 토지이용계획"),
+        text="\n\n".join([f"Section {index} " + ("transit corridor " * 60) for index in range(1, 4)]),
+        section=SectionPath(chapter="Chapter 4 Mobility Strategy"),
         metadata={"source": "test"},
     )
 
@@ -28,4 +28,4 @@ def test_semantic_subchunks_preserve_metadata_and_parent():
     assert len(chunks) > 1
     assert chunks[0].kind == ChunkKind.TEXT
     assert chunks[0].metadata["parent_chunk_id"] == "parent-1"
-    assert chunks[0].section.chapter == "제4장 공간구조 및 토지이용계획"
+    assert chunks[0].section.chapter == "Chapter 4 Mobility Strategy"

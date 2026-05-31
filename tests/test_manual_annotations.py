@@ -6,15 +6,15 @@ def test_apply_asset_annotations_updates_assets_chunks_and_triples():
     asset = VisualAsset(
         asset_id="asset-1",
         doc_id="doc",
-        page_no=188,
+        page_no=12,
         kind=AssetKind.PAGE_IMAGE,
         caption="page",
     )
     chunk = DocumentChunk(
         chunk_id="chunk-1",
         doc_id="doc",
-        page_start=188,
-        page_end=188,
+        page_start=12,
+        page_end=12,
         kind=ChunkKind.PAGE_SUMMARY,
         text="base",
         asset_ids=["asset-1"],
@@ -25,14 +25,14 @@ def test_apply_asset_annotations_updates_assets_chunks_and_triples():
         [chunk],
         [
             AssetAnnotation(
-                page_no=188,
+                page_no=12,
                 kind=AssetKind.MAP,
-                vlm_summary="동북권 발전구상 중랑천",
+                vlm_summary="north district river corridor",
                 triples=[
                     {
-                        "subject": "동북권",
+                        "subject": "north district",
                         "predicate": "has_development_concept",
-                        "object": "중랑천 중심 발전구상",
+                        "object": "river corridor development concept",
                     }
                 ],
             )
@@ -50,5 +50,5 @@ def test_apply_asset_annotations_updates_assets_chunks_and_triples():
     )
 
     assert assets[0].kind == AssetKind.MAP
-    assert "동북권 발전구상" in chunks[0].text
+    assert "north district river" in chunks[0].text
     assert len(triples) == 2

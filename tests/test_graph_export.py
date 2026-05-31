@@ -9,20 +9,20 @@ def test_export_graph_builds_nodes_and_edges():
         page_start=188,
         page_end=188,
         kind=ChunkKind.TEXT,
-        text="동북권 발전구상",
+        text="north district development concept",
     )
     triple = GraphTriple(
         triple_id="triple-1",
         doc_id="doc",
         chunk_id="chunk-1",
-        subject="동북권",
+        subject="north district",
         predicate="uses_axis",
-        object="중랑천 수변축",
+        object="riverfront axis",
     )
 
     nodes, edges = export_graph([triple], chunks=[chunk])
 
-    assert {node.label for node in nodes} == {"동북권", "중랑천 수변축"}
+    assert {node.label for node in nodes} == {"north district", "riverfront axis"}
     assert edges[0].predicate == "uses_axis"
     assert edges[0].metadata["page_start"] == 188
 
@@ -33,10 +33,10 @@ def test_related_terms_from_triples():
             triple_id="triple-1",
             doc_id="doc",
             chunk_id="chunk-1",
-            subject="동북권",
+            subject="north district",
             predicate="uses_axis",
-            object="중랑천 수변축",
+            object="riverfront axis",
         )
     ]
 
-    assert "중랑천 수변축" in related_terms(triples, "동북권")
+    assert "riverfront axis" in related_terms(triples, "north district")
