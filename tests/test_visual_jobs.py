@@ -187,6 +187,55 @@ def test_plan_visual_jobs_retries_unstructured_vlm_summary(tmp_path):
     assert jobs[0].operations == ["vlm"]
 
 
+def test_plan_visual_jobs_does_not_retry_empty_completed_ocr(tmp_path):
+    image_path = tmp_path / "page.png"
+    image_path.write_bytes(b"page")
+    assets = [
+        VisualAsset(
+            asset_id="empty-ocr",
+            doc_id="doc",
+            page_no=1,
+            kind=AssetKind.PAGE_IMAGE,
+            path=image_path,
+            ocr_text="",
+            vlm_summary="structured summary",
+            metadata={
+                "requires_ocr": True,
+                "requires_vlm": True,
+                "ocr_text_chars": 0,
+                "ocr_backend": "fake-ocr",
+                "vlm_parse_status": "json_object",
+            },
+        )
+    ]
+
+    jobs = plan_visual_jobs(assets)
+
+    assert jobs == []
+
+
+def test_plan_visual_jobs_retries_vlm_summary_without_parse_status(tmp_path):
+    image_path = tmp_path / "map.png"
+    image_path.write_bytes(b"map")
+    assets = [
+        VisualAsset(
+            asset_id="legacy-summary",
+            doc_id="doc",
+            page_no=1,
+            kind=AssetKind.MAP,
+            path=image_path,
+            ocr_text="recognized text",
+            vlm_summary="legacy manual visual summary",
+            metadata={"requires_ocr": True, "requires_vlm": True},
+        )
+    ]
+
+    jobs = plan_visual_jobs(assets)
+
+    assert [job.asset_id for job in jobs] == ["legacy-summary"]
+    assert jobs[0].operations == ["vlm"]
+
+
 def test_run_visual_jobs_returns_asset_annotations(tmp_path):
     image_path = tmp_path / "map.png"
     image_path.write_bytes(b"map")
@@ -253,6 +302,7 @@ def test_map_prompt_requires_single_json_object():
     assert "마크다운 코드블록" in MAP_SUMMARY_PROMPT_KO
     assert "최대 3개" in MAP_SUMMARY_PROMPT_KO
     assert "기호만 단독" in MAP_SUMMARY_PROMPT_KO
+    assert "반복하지" in MAP_SUMMARY_PROMPT_KO
 
 
 def test_summarize_visual_results_reports_backend_metrics(tmp_path):
@@ -376,6 +426,29 @@ def test_evaluate_visual_results_gates_annotation_quality():
     assert "min_completion_rate" in report.failed_checks
     assert "max_failed_count" in report.failed_checks
     assert report.issues[0].code == "visual_job_failed"
+
+
+def test_evaluate_visual_results_counts_repaired_json_as_structured():
+    results = [
+        VisualJobRunResult(
+            job_id="job-1",
+            asset_id="asset-1",
+            page_no=1,
+            status="completed",
+            annotation=AssetAnnotation(
+                asset_id="asset-1",
+                page_no=1,
+                vlm_summary="structured visual summary",
+                metadata={"vlm_parse_status": "json_repaired", "vlm_parse_repaired": True},
+            ),
+            metadata={"operations": ["vlm"], "vlm_parse_status": "json_repaired"},
+        )
+    ]
+
+    report = evaluate_visual_results(results, min_vlm_json_parse_rate=1.0)
+
+    assert report.passed is True
+    assert report.vlm_json_parse_rate == 1.0
 
 
 def test_gate_visual_results_cli_writes_report(tmp_path):

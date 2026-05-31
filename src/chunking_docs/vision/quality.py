@@ -6,6 +6,8 @@ from pydantic import BaseModel, Field
 
 from chunking_docs.vision.jobs import VisualJobRunResult
 
+STRUCTURED_VLM_PARSE_STATUSES = {"json_object", "json_list", "json_repaired"}
+
 
 class VisualQualityCheck(BaseModel):
     name: str
@@ -121,7 +123,7 @@ def evaluate_visual_results(
             parse_status = vlm_parse_status(result)
             if parse_status:
                 parse_status_counts[parse_status] = parse_status_counts.get(parse_status, 0) + 1
-            if parse_status in {"json_object", "json_list"}:
+            if parse_status in STRUCTURED_VLM_PARSE_STATUSES:
                 vlm_json_parse_count += 1
 
         if result.annotation is not None:

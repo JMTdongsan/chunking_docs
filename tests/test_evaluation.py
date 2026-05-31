@@ -115,6 +115,95 @@ def test_audit_package_treats_unstructured_vlm_as_requiring_retry():
     assert audit.pages_requiring_vlm == [1]
 
 
+def test_audit_package_does_not_require_empty_completed_ocr_retry():
+    profiles = [
+        PageProfile(
+            doc_id="doc",
+            page_no=1,
+            width=1,
+            height=1,
+            char_count=0,
+            line_count=0,
+            text_block_count=0,
+            image_block_count=1,
+            embedded_image_count=1,
+            drawing_count=0,
+            text_quality=TextQuality.EMPTY,
+        )
+    ]
+    chunks = [
+        DocumentChunk(
+            chunk_id="chunk",
+            doc_id="doc",
+            page_start=1,
+            page_end=1,
+            kind=ChunkKind.PAGE_SUMMARY,
+            text="",
+        )
+    ]
+    assets = [
+        VisualAsset(
+            asset_id="asset",
+            doc_id="doc",
+            page_no=1,
+            kind=AssetKind.PAGE_IMAGE,
+            ocr_text="",
+            metadata={
+                "requires_ocr": True,
+                "ocr_text_chars": 0,
+                "ocr_backend": "fake-ocr",
+            },
+        )
+    ]
+
+    audit = audit_package(profiles, chunks, assets, [])
+
+    assert audit.pages_requiring_ocr == []
+
+
+def test_audit_package_requires_vlm_retry_when_parse_status_is_missing():
+    profiles = [
+        PageProfile(
+            doc_id="doc",
+            page_no=1,
+            width=1,
+            height=1,
+            char_count=10,
+            line_count=1,
+            text_block_count=1,
+            image_block_count=1,
+            embedded_image_count=1,
+            drawing_count=0,
+            text_quality=TextQuality.DEGRADED,
+        )
+    ]
+    chunks = [
+        DocumentChunk(
+            chunk_id="chunk",
+            doc_id="doc",
+            page_start=1,
+            page_end=1,
+            kind=ChunkKind.PAGE_SUMMARY,
+            text="summary",
+        )
+    ]
+    assets = [
+        VisualAsset(
+            asset_id="asset",
+            doc_id="doc",
+            page_no=1,
+            kind=AssetKind.MAP,
+            vlm_summary="legacy visual summary",
+            metadata={"requires_vlm": True},
+        )
+    ]
+
+    audit = audit_package(profiles, chunks, assets, [], require_annotations_for_visual_pages=True)
+
+    assert not audit.passed
+    assert audit.pages_requiring_vlm == [1]
+
+
 def test_audit_package_validates_qdrant_artifacts(tmp_path):
     profiles = [
         PageProfile(

@@ -37,6 +37,45 @@ def test_parse_vlm_output_falls_back_to_raw_text():
     assert parsed.metadata["vlm_parse_status"] == "raw_text"
 
 
+def test_parse_vlm_output_repairs_truncated_json_object():
+    parsed = parse_vlm_output(
+        """
+        ```json
+        {
+          "page_type": "text",
+          "title": "Service Strategy",
+          "summary": "Shows service improvement options.",
+          "key_points": ["expand coverage", "improve transfer"],
+          "visual_elements": [],
+          "entities": [
+            "transit",
+            "service",
+            "service",
+            "transfer",
+            "coverage",
+            "network",
+            "hub",
+            "route",
+            "extra"
+        """
+    )
+
+    assert parsed.caption == "Service Strategy"
+    assert "Shows service improvement options." in parsed.summary
+    assert parsed.metadata["entities"] == [
+        "transit",
+        "service",
+        "transfer",
+        "coverage",
+        "network",
+        "hub",
+        "route",
+        "extra",
+    ]
+    assert parsed.metadata["vlm_parse_status"] == "json_repaired"
+    assert parsed.metadata["vlm_parse_repaired"] is True
+
+
 def test_parse_vlm_output_normalizes_object_underscore():
     parsed = parse_vlm_output(
         '[{"subject":"policy","predicate":"uses","object_":"river corridor"}]'

@@ -79,7 +79,7 @@ def visual_job_for_asset(
 
     operations: list[VisualOperation] = []
     reasons = []
-    if include_ocr and asset.metadata.get("requires_ocr", True) and not asset.ocr_text:
+    if include_ocr and asset.metadata.get("requires_ocr", True) and asset_needs_ocr(asset):
         operations.append("ocr")
         reasons.append("missing OCR")
     if include_vlm and asset.metadata.get("requires_vlm", True) and asset_needs_vlm(asset):
@@ -279,11 +279,21 @@ def visual_complexity_bonus(asset: VisualAsset) -> int:
     return min(image_blocks, 5) * 40 + min(embedded_images, 5) * 40 + min(drawings, 20) * 5
 
 
+def asset_needs_ocr(asset: VisualAsset) -> bool:
+    if asset.ocr_text:
+        return False
+    return not ocr_attempted(asset)
+
+
 def asset_needs_vlm(asset: VisualAsset) -> bool:
     if not asset.vlm_summary:
         return True
     parse_status = str(asset.metadata.get("vlm_parse_status", "")).strip()
-    return parse_status in {"raw_text", "json_scalar"}
+    return parse_status not in {"json_object", "json_list", "json_repaired"}
+
+
+def ocr_attempted(asset: VisualAsset) -> bool:
+    return "ocr_text_chars" in asset.metadata or bool(asset.metadata.get("ocr_backend"))
 
 
 def metadata_int(asset: VisualAsset, key: str) -> int:

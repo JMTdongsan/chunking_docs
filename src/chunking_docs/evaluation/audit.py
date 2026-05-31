@@ -92,7 +92,7 @@ def audit_package(
         )
 
     pages_requiring_ocr = sorted(
-        asset.page_no for asset in assets if asset.metadata.get("requires_ocr") and not asset.ocr_text
+        asset.page_no for asset in assets if asset.metadata.get("requires_ocr") and asset_requires_ocr(asset)
     )
     pages_requiring_vlm = sorted(
         asset.page_no for asset in assets if asset.metadata.get("requires_vlm") and asset_requires_vlm(asset)
@@ -144,7 +144,13 @@ def asset_requires_vlm(asset: VisualAsset) -> bool:
     if not asset.vlm_summary:
         return True
     parse_status = str(asset.metadata.get("vlm_parse_status", "")).strip()
-    return parse_status in {"raw_text", "json_scalar"}
+    return parse_status not in {"json_object", "json_list", "json_repaired"}
+
+
+def asset_requires_ocr(asset: VisualAsset) -> bool:
+    if asset.ocr_text:
+        return False
+    return "ocr_text_chars" not in asset.metadata and not asset.metadata.get("ocr_backend")
 
 
 def audit_qdrant_artifacts(
