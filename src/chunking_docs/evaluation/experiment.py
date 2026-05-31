@@ -53,6 +53,7 @@ DEFAULT_ARTIFACTS = [
     "graph_nodes.jsonl",
     "graph_edges.jsonl",
     "visual_job_summary.json",
+    "visual_run_comparison.json",
     "visual_quality.json",
     "document_characteristics.json",
     "chunking_comparison.json",

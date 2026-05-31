@@ -73,6 +73,7 @@ from chunking_docs.vision.assets import (
     build_page_tile_assets,
     merge_visual_assets,
 )
+from chunking_docs.vision.compare import compare_visual_runs
 from chunking_docs.vision.interfaces import OCRBackend, VLMBackend
 from chunking_docs.vision.jobs import (
     VisualAnnotationJob,
@@ -1321,6 +1322,37 @@ def summarize_visual_results_command(
         print({"output": str(output), **summary.model_dump()})
         return
     print(summary.model_dump())
+
+
+@app.command(name="compare-visual-runs")
+def compare_visual_runs_command(
+    runs: list[str] = typer.Option(
+        None,
+        "--run",
+        help="Visual run in name=results.jsonl form. Repeat for multiple OCR/VLM runs.",
+    ),
+    output: Path | None = None,
+):
+    """Compare multiple OCR/VLM result files by coverage, parse rate, triples, and latency."""
+    parsed_runs = parse_visual_run_inputs(runs)
+    comparison = compare_visual_runs(
+        {
+            name: read_jsonl(path, VisualJobRunResult)
+            for name, path in parsed_runs.items()
+        }
+    )
+    payload = comparison.model_dump()
+    if output is not None:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(comparison.model_dump_json(indent=2), encoding="utf-8")
+        payload = {
+            "output": str(output),
+            "run_count": len(comparison.rows),
+            "best_by_quality": comparison.best_by_quality,
+            "fastest_by_total_latency": comparison.fastest_by_total_latency,
+            "best_by_triple_density": comparison.best_by_triple_density,
+        }
+    print(payload)
 
 
 @app.command(name="gate-visual-results")
@@ -3086,6 +3118,21 @@ def parse_candidates(values: list[str] | None, package_dir: Path) -> dict[str, P
         if not candidate_path.is_absolute() and not candidate_path.exists():
             candidate_path = package_dir / candidate_path
         parsed[name] = candidate_path
+    return parsed
+
+
+def parse_visual_run_inputs(values: list[str] | None) -> dict[str, Path]:
+    if not values:
+        raise typer.BadParameter("At least one --run name=results.jsonl value is required")
+    parsed = {}
+    for value in values:
+        if "=" not in value:
+            raise typer.BadParameter("--run must be in name=results.jsonl form")
+        name, path = value.split("=", 1)
+        name = name.strip()
+        if not name:
+            raise typer.BadParameter("--run name must not be empty")
+        parsed[name] = Path(path)
     return parsed
 
 

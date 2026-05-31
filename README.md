@@ -154,7 +154,18 @@ chunking-docs summarize-visual-results \
   --output outputs/package/visual_job_summary.json
 ```
 
-The summary groups completion counts, backend latency, output size, VLM prompt usage, parse status, and extracted triple counts by operation. Gate a visual run before applying annotations to retrieval artifacts:
+The summary groups completion counts, backend latency, output size, VLM prompt usage, parse status, and extracted triple counts by operation. Compare separate runs when testing multiple OCR/VLM backends on the same job set:
+
+```bash
+chunking-docs compare-visual-runs \
+  --run vlm_a=outputs/package/visual_job_results.vlm_a.jsonl \
+  --run vlm_b=outputs/package/visual_job_results.vlm_b.jsonl \
+  --output outputs/package/visual_run_comparison.json
+```
+
+The comparison ranks OCR/VLM runs by completion rate, annotation coverage, OCR text coverage, VLM summary coverage, JSON parse rate, triple density, and total latency.
+
+Gate a visual run before applying annotations to retrieval artifacts:
 
 ```bash
 chunking-docs gate-visual-results \
