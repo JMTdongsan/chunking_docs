@@ -84,12 +84,16 @@ def test_evaluate_retrieval_hit_rate():
     ]
     cases = [RetrievalCase(query="north district", expected_pages=[12], graph_expand=True)]
 
-    result = evaluate_retrieval(chunks, triples, cases, top_k=3)
+    result = evaluate_retrieval(chunks, triples, cases, top_k=3, repeat=2)
 
     assert result.hit_rate == 1.0
     assert result.recall_at_k == 1.0
     assert result.mrr == 1.0
+    assert result.repeat == 2
+    assert result.mean_latency_ms >= 0.0
+    assert result.p95_latency_ms >= 0.0
     assert result.results[0].passed
+    assert len(result.results[0].latency_samples_ms) == 2
     assert result.results[0].matched_rank == 1
     assert result.results[0].matched_page == 12
 
@@ -175,11 +179,54 @@ def test_evaluate_retrieval_ablation_compares_modes():
         [],
         cases,
         modes=parse_ablation_modes("dense,bm25,hybrid"),
+        repeat=2,
     )
 
     assert [row.mode.name for row in report.rows]
     assert report.best_by_recall in {"dense", "bm25", "hybrid"}
+    assert report.fastest_by_mean_latency in {"dense", "bm25", "hybrid"}
     assert all(row.evaluation.case_count == 1 for row in report.rows)
+    assert all(row.evaluation.repeat == 2 for row in report.rows)
+
+
+def test_eval_retrieval_cli_writes_latency_report(tmp_path):
+    package_dir = tmp_path / "package"
+    package_dir.mkdir()
+    output = tmp_path / "retrieval.json"
+    cases_path = tmp_path / "cases.jsonl"
+    chunks = [
+        DocumentChunk(
+            chunk_id="chunk-1",
+            doc_id="doc",
+            page_start=1,
+            page_end=1,
+            kind=ChunkKind.TEXT,
+            text="capital budget transit corridor",
+        )
+    ]
+    write_jsonl(package_dir / "chunks.jsonl", chunks)
+    write_jsonl(package_dir / "triples.jsonl", [])
+    write_jsonl(cases_path, [RetrievalCase(query="capital budget", expected_pages=[1])])
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "eval-retrieval",
+            str(cases_path),
+            "--package-dir",
+            str(package_dir),
+            "--repeat",
+            "2",
+            "--output",
+            str(output),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["repeat"] == 2
+    assert payload["mean_latency_ms"] >= 0.0
+    assert len(payload["results"][0]["latency_samples_ms"]) == 2
 
 
 def test_eval_retrieval_ablation_cli_writes_report(tmp_path):
@@ -218,4 +265,5 @@ def test_eval_retrieval_ablation_cli_writes_report(tmp_path):
     assert result.exit_code == 0, result.output
     payload = json.loads(output.read_text(encoding="utf-8"))
     assert payload["best_by_recall"] in {"bm25", "hybrid"}
+    assert payload["fastest_by_mean_latency"] in {"bm25", "hybrid"}
     assert {row["mode"]["name"] for row in payload["rows"]} == {"bm25", "hybrid"}

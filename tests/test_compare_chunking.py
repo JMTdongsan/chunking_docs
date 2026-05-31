@@ -35,5 +35,7 @@ def test_compare_chunking_reports_ranks_by_retrieval_then_quality():
 
     assert comparison.rows[0].name == "strong"
     assert comparison.best_by_retrieval == "strong"
+    assert comparison.fastest_by_mean_latency in {"weak", "strong"}
     assert comparison.rows[0].retrieval_recall_at_k == 1.0
+    assert comparison.rows[0].retrieval_mean_latency_ms is not None
     assert comparison.rows[-1].failed_queries == ["river corridor"]

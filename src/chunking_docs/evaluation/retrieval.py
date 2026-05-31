@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from time import perf_counter
 
 from pydantic import BaseModel, Field
 
@@ -21,6 +22,8 @@ class RetrievalCase(BaseModel):
 class RetrievalCaseResult(BaseModel):
     query: str
     passed: bool
+    latency_ms: float = 0.0
+    latency_samples_ms: list[float] = Field(default_factory=list)
     top_pages: list[int]
     top_page_ranges: list[tuple[int, int]] = Field(default_factory=list)
     top_chunk_ids: list[str]
@@ -43,6 +46,11 @@ class RetrievalEvaluation(BaseModel):
     recall_at_k: float
     mrr: float
     top_k: int
+    repeat: int = 1
+    index_build_ms: float = 0.0
+    total_query_latency_ms: float = 0.0
+    mean_latency_ms: float = 0.0
+    p95_latency_ms: float = 0.0
     failed_queries: list[str]
     results: list[RetrievalCaseResult]
 
@@ -58,25 +66,38 @@ def evaluate_retrieval(
     use_dense: bool = True,
     use_bm25: bool = True,
     use_graph: bool | None = None,
+    repeat: int = 1,
 ) -> RetrievalEvaluation:
+    repeat = max(1, repeat)
+    index_start = perf_counter()
     searcher = LocalHybridSearcher(
         chunks,
         HashingTextEmbedder(),
         triples=triples,
         tokenizer_config=tokenizer_config,
     )
+    index_build_ms = elapsed_ms(index_start)
     results: list[RetrievalCaseResult] = []
+    latency_samples: list[float] = []
     for case in cases:
         graph_expand = case.graph_expand if graph_expand_override is None else graph_expand_override
-        hits = searcher.search(
-            case.query,
-            top_k=top_k,
-            graph_expand=graph_expand,
-            collapse_hierarchical=collapse_hierarchical,
-            use_dense=use_dense,
-            use_bm25=use_bm25,
-            use_graph=use_graph,
-        )
+        hits = []
+        case_latencies = []
+        for index in range(repeat):
+            query_start = perf_counter()
+            search_hits = searcher.search(
+                case.query,
+                top_k=top_k,
+                graph_expand=graph_expand,
+                collapse_hierarchical=collapse_hierarchical,
+                use_dense=use_dense,
+                use_bm25=use_bm25,
+                use_graph=use_graph,
+            )
+            case_latencies.append(elapsed_ms(query_start))
+            if index == 0:
+                hits = search_hits
+        latency_samples.extend(case_latencies)
         top_pages = [hit.chunk.page_start for hit in hits]
         top_page_ranges = [(hit.chunk.page_start, hit.chunk.page_end) for hit in hits]
         top_chunk_ids = [hit.chunk.chunk_id for hit in hits]
@@ -90,6 +111,8 @@ def evaluate_retrieval(
             RetrievalCaseResult(
                 query=case.query,
                 passed=passed,
+                latency_ms=sum(case_latencies) / len(case_latencies) if case_latencies else 0.0,
+                latency_samples_ms=case_latencies,
                 top_pages=top_pages,
                 top_page_ranges=top_page_ranges,
                 top_chunk_ids=top_chunk_ids,
@@ -119,6 +142,11 @@ def evaluate_retrieval(
         if expected_results
         else 0.0,
         top_k=top_k,
+        repeat=repeat,
+        index_build_ms=index_build_ms,
+        total_query_latency_ms=sum(latency_samples),
+        mean_latency_ms=sum(latency_samples) / len(latency_samples) if latency_samples else 0.0,
+        p95_latency_ms=percentile_latency(latency_samples, 0.95),
         failed_queries=[result.query for result in results if not result.passed],
         results=results,
     )
@@ -155,3 +183,20 @@ def first_page_match(page_start: int, page_end: int, expected_pages: set[int]) -
         if page_start <= page <= page_end:
             return page
     return None
+
+
+def elapsed_ms(start: float) -> float:
+    return (perf_counter() - start) * 1000
+
+
+def percentile_latency(values: list[float], quantile: float) -> float:
+    if not values:
+        return 0.0
+    ordered = sorted(values)
+    index = (len(ordered) - 1) * quantile
+    lower = int(index)
+    upper = min(lower + 1, len(ordered) - 1)
+    if lower == upper:
+        return ordered[lower]
+    fraction = index - lower
+    return ordered[lower] * (1 - fraction) + ordered[upper] * fraction

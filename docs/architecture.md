@@ -154,10 +154,10 @@ Chunking changes should be judged by retrieval behavior, not only by successful 
 Recommended checks:
 
 - `audit-package`: structural completeness and orphan checks.
-- `eval-chunking`: page coverage, chunk size distribution, section coverage, visual linkage, annotation coverage, retrieval recall@k, MRR, failed queries, and aggregate quality score.
-- `eval-retrieval`: focused top-k retrieval benchmark cases.
-- `eval-retrieval-ablation`: dense-only, BM25-only, graph-only, hybrid, and graph-expanded hybrid comparison on the same cases.
-- `compare-chunking`: side-by-side strategy comparison by quality score, recall@k, MRR, and failed queries.
+- `eval-chunking`: page coverage, chunk size distribution, section coverage, visual linkage, annotation coverage, retrieval recall@k, MRR, latency, failed queries, and aggregate quality score.
+- `eval-retrieval`: focused top-k retrieval benchmark cases with optional repeated latency sampling.
+- `eval-retrieval-ablation`: dense-only, BM25-only, graph-only, hybrid, and graph-expanded hybrid comparison on the same cases, including mean and p95 latency.
+- `compare-chunking`: side-by-side strategy comparison by quality score, recall@k, MRR, latency, and failed queries.
 - `sweep-chunking`: parameter grid generation for max size, overlap, parent size, and visual context size.
 - `write-experiment-report`: reproducible package report with artifact checksums, record counts, tokenizer settings, Qdrant configuration, and candidate comparison metrics.
 - Qdrant local mode upsert: validates named vector records and payloads.
@@ -165,6 +165,8 @@ Recommended checks:
 Benchmark cases should be maintained per document family. A useful case specifies the query, expected page or chunk, and whether graph expansion should be enabled.
 
 Tokenizer settings are part of the retrieval experiment. Strategy comparisons should keep the tokenizer fixed unless the experiment is explicitly measuring lexical tokenization.
+
+Use repeated retrieval evaluation when comparing strategies whose recall is similar. The latency fields are intended to show whether higher recall comes with an acceptable retrieval cost.
 
 For hierarchical candidates, enable parent collapse during `eval-retrieval`, `compare-chunking`, or `write-experiment-report` when the benchmark expects page-level or parent-level citation behavior.
 

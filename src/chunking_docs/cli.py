@@ -1015,7 +1015,9 @@ def eval_retrieval_command(
     cases: Path,
     package_dir: Path = Path("outputs/package"),
     chunks_file: str = "chunks.jsonl",
+    output: Path | None = None,
     top_k: int = 5,
+    repeat: int = 1,
     collapse_hierarchical: bool = False,
     lexical_tokenizer: TokenizerStrategy = "mixed",
     ngram_min: int = 2,
@@ -1031,6 +1033,7 @@ def eval_retrieval_command(
         triples=triples,
         cases=load_retrieval_cases(cases),
         top_k=top_k,
+        repeat=repeat,
         collapse_hierarchical=collapse_hierarchical,
         tokenizer_config=build_tokenizer_config(
             lexical_tokenizer,
@@ -1039,6 +1042,20 @@ def eval_retrieval_command(
             ngram_cjk_only=ngram_cjk_only,
         ),
     )
+    if output is not None:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(evaluation.model_dump_json(indent=2), encoding="utf-8")
+        print(
+            {
+                "output": str(output),
+                "case_count": evaluation.case_count,
+                "recall_at_k": evaluation.recall_at_k,
+                "mrr": evaluation.mrr,
+                "mean_latency_ms": evaluation.mean_latency_ms,
+                "p95_latency_ms": evaluation.p95_latency_ms,
+            }
+        )
+        return
     print(evaluation.model_dump())
 
 
@@ -1050,6 +1067,7 @@ def eval_retrieval_ablation_command(
     output: Path | None = None,
     modes: str = "dense,bm25,hybrid,graph,hybrid_graph",
     top_k: int = 5,
+    repeat: int = 1,
     collapse_hierarchical: bool = False,
     lexical_tokenizer: TokenizerStrategy = "mixed",
     ngram_min: int = 2,
@@ -1070,6 +1088,7 @@ def eval_retrieval_ablation_command(
         cases=load_retrieval_cases(cases),
         modes=parsed_modes,
         top_k=top_k,
+        repeat=repeat,
         collapse_hierarchical=collapse_hierarchical,
         tokenizer_config=build_tokenizer_config(
             lexical_tokenizer,
@@ -1086,12 +1105,16 @@ def eval_retrieval_ablation_command(
             "output": str(output),
             "best_by_recall": report.best_by_recall,
             "best_by_mrr": report.best_by_mrr,
+            "fastest_by_mean_latency": report.fastest_by_mean_latency,
             "rows": [
                 {
                     "mode": row.mode.name,
                     "recall_at_k": row.evaluation.recall_at_k,
                     "mrr": row.evaluation.mrr,
                     "hit_rate": row.evaluation.hit_rate,
+                    "repeat": row.evaluation.repeat,
+                    "mean_latency_ms": row.evaluation.mean_latency_ms,
+                    "p95_latency_ms": row.evaluation.p95_latency_ms,
                     "failed_queries": row.evaluation.failed_queries,
                 }
                 for row in report.rows
@@ -1105,6 +1128,7 @@ def eval_chunking_command(
     package_dir: Path = Path("outputs/package"),
     cases: Path | None = None,
     top_k: int = 5,
+    retrieval_repeat: int = 1,
     min_chars: int = 120,
     max_chars: int = 1800,
     collapse_hierarchical: bool = False,
@@ -1123,6 +1147,7 @@ def eval_chunking_command(
         triples=manifest.triples,
         retrieval_cases=retrieval_cases,
         top_k=top_k,
+        retrieval_repeat=retrieval_repeat,
         min_chars=min_chars,
         max_chars=max_chars,
         collapse_hierarchical=collapse_hierarchical,
@@ -1146,6 +1171,7 @@ def compare_chunking_command(
     ),
     cases: Path | None = None,
     top_k: int = 5,
+    retrieval_repeat: int = 1,
     min_chars: int = 120,
     max_chars: int = 1800,
     collapse_hierarchical: bool = False,
@@ -1168,6 +1194,7 @@ def compare_chunking_command(
             triples=manifest.triples,
             retrieval_cases=retrieval_cases,
             top_k=top_k,
+            retrieval_repeat=retrieval_repeat,
             min_chars=min_chars,
             max_chars=max_chars,
             collapse_hierarchical=collapse_hierarchical,
@@ -1210,6 +1237,7 @@ def sweep_chunking_command(
     ),
     cases: Path | None = None,
     top_k: int = 5,
+    retrieval_repeat: int = 1,
     collapse_hierarchical: bool = True,
     write_candidates: bool = True,
     lexical_tokenizer: TokenizerStrategy = "mixed",
@@ -1240,6 +1268,7 @@ def sweep_chunking_command(
         visual_context_chars_values=visual_context_chars or [500, 700],
         retrieval_cases=retrieval_cases,
         top_k=top_k,
+        retrieval_repeat=retrieval_repeat,
         tokenizer_config=tokenizer_config,
         collapse_hierarchical=collapse_hierarchical,
         output_dir=candidate_output_dir,
@@ -1255,6 +1284,7 @@ def sweep_chunking_command(
             "candidate_count": len(report.candidates),
             "best_by_quality": report.comparison.best_by_quality,
             "best_by_retrieval": report.comparison.best_by_retrieval,
+            "fastest_by_mean_latency": report.comparison.fastest_by_mean_latency,
             "top_candidates": [
                 {
                     "name": candidate.name,
@@ -1263,6 +1293,9 @@ def sweep_chunking_command(
                     if candidate.report.retrieval
                     else None,
                     "mrr": candidate.report.retrieval.mrr if candidate.report.retrieval else None,
+                    "mean_latency_ms": candidate.report.retrieval.mean_latency_ms
+                    if candidate.report.retrieval
+                    else None,
                     "chunks_file": candidate.chunks_file,
                 }
                 for candidate in report.candidates[:5]
@@ -1282,6 +1315,7 @@ def write_experiment_report_command(
     ),
     cases: Path | None = None,
     top_k: int = 5,
+    retrieval_repeat: int = 1,
     min_chars: int = 120,
     max_chars: int = 1800,
     collapse_hierarchical: bool = False,
@@ -1306,12 +1340,14 @@ def write_experiment_report_command(
         candidates=parsed_candidates,
         retrieval_cases=retrieval_cases,
         top_k=top_k,
+        retrieval_repeat=retrieval_repeat,
         min_chars=min_chars,
         max_chars=max_chars,
         tokenizer_config=tokenizer_config,
         collapse_hierarchical=collapse_hierarchical,
         config={
             "top_k": top_k,
+            "retrieval_repeat": retrieval_repeat,
             "min_chars": min_chars,
             "max_chars": max_chars,
             "collapse_hierarchical": collapse_hierarchical,
@@ -1328,6 +1364,9 @@ def write_experiment_report_command(
             "candidates": list(parsed_candidates),
             "best_by_quality": report.comparison.best_by_quality if report.comparison else None,
             "best_by_retrieval": report.comparison.best_by_retrieval if report.comparison else None,
+            "fastest_by_mean_latency": report.comparison.fastest_by_mean_latency
+            if report.comparison
+            else None,
         }
     )
 

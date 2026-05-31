@@ -203,14 +203,19 @@ Correct execution is not enough for a chunking library. Use evaluation commands 
 ```bash
 chunking-docs audit-package --package-dir outputs/package
 chunking-docs eval-chunking --package-dir outputs/package --cases examples/retrieval_cases.jsonl
-chunking-docs eval-retrieval examples/retrieval_cases.jsonl --package-dir outputs/package --top-k 5
+chunking-docs eval-retrieval examples/retrieval_cases.jsonl \
+  --package-dir outputs/package \
+  --top-k 5 \
+  --repeat 3 \
+  --output outputs/package/retrieval_eval.json
 chunking-docs eval-retrieval-ablation examples/retrieval_cases.jsonl \
   --package-dir outputs/package \
   --modes dense,bm25,hybrid,graph,hybrid_graph \
+  --repeat 3 \
   --output outputs/package/retrieval_ablation.json
 ```
 
-`eval-chunking` reports page coverage, chunk size distribution, section coverage, visual asset linkage, visual annotation coverage, retrieval recall@k, MRR, failed queries, and an aggregate quality score. `eval-retrieval-ablation` compares dense-only, BM25-only, graph-only, hybrid, and graph-expanded hybrid retrieval so the effect of each retrieval signal is visible. Retrieval cases are JSONL:
+`eval-chunking` reports page coverage, chunk size distribution, section coverage, visual asset linkage, visual annotation coverage, retrieval recall@k, MRR, failed queries, and an aggregate quality score. `eval-retrieval` also records per-query latency samples plus mean and p95 latency when `--repeat` is greater than one. `eval-retrieval-ablation` compares dense-only, BM25-only, graph-only, hybrid, and graph-expanded hybrid retrieval so the effect and runtime cost of each retrieval signal is visible. Retrieval cases are JSONL:
 
 ```jsonl
 {"query":"policy corridor near river","expected_pages":[12],"graph_expand":true}
@@ -268,10 +273,11 @@ chunking-docs compare-chunking \
   --candidate multimodal=outputs/package/chunks.multimodal.jsonl \
   --candidate hierarchical=outputs/package/chunks.hierarchical.jsonl \
   --collapse-hierarchical \
+  --retrieval-repeat 3 \
   --cases examples/retrieval_cases.jsonl
 ```
 
-The `multimodal` strategy keeps semantic text chunks and adds visual asset text chunks from captions, OCR, and VLM summaries. The `hierarchical` strategy emits coarse parent chunks plus fine child chunks with shared visual context, which supports experiments where broad queries should find a page or section while precise queries should retrieve a smaller evidence span. `--collapse-hierarchical` reports the parent as the final hit while preserving matched child chunks as evidence. Comparison output includes recall@k, MRR, failed queries, chunk size issues, and the best candidate by quality and retrieval behavior.
+The `multimodal` strategy keeps semantic text chunks and adds visual asset text chunks from captions, OCR, and VLM summaries. The `hierarchical` strategy emits coarse parent chunks plus fine child chunks with shared visual context, which supports experiments where broad queries should find a page or section while precise queries should retrieve a smaller evidence span. `--collapse-hierarchical` reports the parent as the final hit while preserving matched child chunks as evidence. Comparison output includes recall@k, MRR, latency, failed queries, chunk size issues, and the best candidate by quality and retrieval behavior.
 
 Run a parameter sweep when choosing defaults:
 
@@ -288,11 +294,12 @@ chunking-docs sweep-chunking \
   --visual-context-chars 500 \
   --visual-context-chars 700 \
   --collapse-hierarchical \
+  --retrieval-repeat 3 \
   --cases examples/retrieval_cases.jsonl \
   --output outputs/package/chunking_sweep.json
 ```
 
-The sweep writes candidate chunk files under `outputs/package/chunking_sweep/` and ranks them with the same quality, recall@k, MRR, and failed-query metrics used by `compare-chunking`.
+The sweep writes candidate chunk files under `outputs/package/chunking_sweep/` and ranks them with the same quality, recall@k, MRR, latency, and failed-query metrics used by `compare-chunking`.
 
 Write a reproducible experiment report for a package:
 
@@ -304,11 +311,12 @@ chunking-docs write-experiment-report \
   --candidate multimodal=outputs/package/chunks.multimodal.jsonl \
   --candidate hierarchical=outputs/package/chunks.hierarchical.jsonl \
   --collapse-hierarchical \
+  --retrieval-repeat 3 \
   --cases examples/retrieval_cases.jsonl \
   --output outputs/package/experiment_report.json
 ```
 
-The report records package artifact checksums, JSONL record counts, BM25 tokenizer settings, Qdrant named-vector configuration, chunking quality metrics, retrieval recall@k, MRR, failed queries, and the best candidate by retrieval behavior. This makes chunking changes reviewable and repeatable before new defaults are adopted.
+The report records package artifact checksums, JSONL record counts, BM25 tokenizer settings, Qdrant named-vector configuration, chunking quality metrics, retrieval recall@k, MRR, latency, failed queries, and the best candidate by retrieval behavior. This makes chunking changes reviewable and repeatable before new defaults are adopted.
 
 ## Development Checks
 

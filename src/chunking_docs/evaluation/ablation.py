@@ -24,6 +24,7 @@ class RetrievalAblationReport(BaseModel):
     rows: list[RetrievalAblationRow]
     best_by_recall: str | None
     best_by_mrr: str | None
+    fastest_by_mean_latency: str | None
 
 
 DEFAULT_ABLATION_MODES = {
@@ -54,6 +55,7 @@ def evaluate_retrieval_ablation(
     top_k: int = 5,
     tokenizer_config: LexicalTokenizerConfig | None = None,
     collapse_hierarchical: bool = False,
+    repeat: int = 1,
 ) -> RetrievalAblationReport:
     rows = [
         RetrievalAblationRow(
@@ -69,6 +71,7 @@ def evaluate_retrieval_ablation(
                 use_dense=mode.use_dense,
                 use_bm25=mode.use_bm25,
                 use_graph=mode.use_graph,
+                repeat=repeat,
             ),
         )
         for mode in (modes or list(DEFAULT_ABLATION_MODES.values()))
@@ -85,6 +88,9 @@ def evaluate_retrieval_ablation(
         rows=rows,
         best_by_recall=rows[0].mode.name if rows else None,
         best_by_mrr=max(rows, key=lambda row: row.evaluation.mrr).mode.name if rows else None,
+        fastest_by_mean_latency=min(rows, key=lambda row: row.evaluation.mean_latency_ms).mode.name
+        if rows
+        else None,
     )
 
 

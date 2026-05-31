@@ -12,6 +12,8 @@ class ChunkingComparisonRow(BaseModel):
     retrieval_hit_rate: float | None
     retrieval_recall_at_k: float | None
     retrieval_mrr: float | None
+    retrieval_mean_latency_ms: float | None
+    retrieval_p95_latency_ms: float | None
     failed_queries: list[str]
     page_coverage_ratio: float
     visual_annotation_ratio: float
@@ -24,6 +26,7 @@ class ChunkingComparison(BaseModel):
     rows: list[ChunkingComparisonRow]
     best_by_quality: str | None
     best_by_retrieval: str | None
+    fastest_by_mean_latency: str | None
 
 
 def compare_chunking_reports(
@@ -37,6 +40,8 @@ def compare_chunking_reports(
             retrieval_hit_rate=report.retrieval.hit_rate if report.retrieval else None,
             retrieval_recall_at_k=report.retrieval.recall_at_k if report.retrieval else None,
             retrieval_mrr=report.retrieval.mrr if report.retrieval else None,
+            retrieval_mean_latency_ms=report.retrieval.mean_latency_ms if report.retrieval else None,
+            retrieval_p95_latency_ms=report.retrieval.p95_latency_ms if report.retrieval else None,
             failed_queries=report.retrieval.failed_queries if report.retrieval else [],
             page_coverage_ratio=report.page_coverage_ratio,
             visual_annotation_ratio=report.visual_annotation_ratio,
@@ -64,8 +69,12 @@ def compare_chunking_reports(
         if retrieval_rows
         else None
     )
+    latency_rows = [row for row in rows if row.retrieval_mean_latency_ms is not None]
     return ChunkingComparison(
         rows=rows,
         best_by_quality=best_by_quality,
         best_by_retrieval=best_by_retrieval,
+        fastest_by_mean_latency=min(latency_rows, key=lambda row: row.retrieval_mean_latency_ms or 0.0).name
+        if latency_rows
+        else None,
     )

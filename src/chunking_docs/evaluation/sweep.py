@@ -47,6 +47,7 @@ def run_chunking_sweep(
     top_k: int = 5,
     tokenizer_config: LexicalTokenizerConfig | None = None,
     collapse_hierarchical: bool = True,
+    retrieval_repeat: int = 1,
     output_dir: Path | None = None,
     write_candidates: bool = True,
 ) -> ChunkingSweepReport:
@@ -80,6 +81,7 @@ def run_chunking_sweep(
             max_chars=int(config["max_chars"]),
             tokenizer_config=tokenizer_config,
             collapse_hierarchical=collapse_hierarchical,
+            retrieval_repeat=retrieval_repeat,
         )
         reports[name] = report
         candidates.append(
@@ -108,6 +110,7 @@ def run_chunking_sweep(
             "top_k": top_k,
             "min_chars": min_chars,
             "collapse_hierarchical": collapse_hierarchical,
+            "retrieval_repeat": retrieval_repeat,
             "tokenizer": tokenizer_config.model_dump() if tokenizer_config else None,
         },
         candidates=candidates,

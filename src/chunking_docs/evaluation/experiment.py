@@ -68,6 +68,7 @@ def build_experiment_report(
     max_chars: int = 1800,
     tokenizer_config: LexicalTokenizerConfig | None = None,
     collapse_hierarchical: bool = False,
+    retrieval_repeat: int = 1,
     config: dict[str, Any] | None = None,
 ) -> ExperimentReport:
     comparison = None
@@ -86,6 +87,7 @@ def build_experiment_report(
                 max_chars=max_chars,
                 tokenizer_config=tokenizer_config,
                 collapse_hierarchical=collapse_hierarchical,
+                retrieval_repeat=retrieval_repeat,
             )
         comparison = compare_chunking_reports(reports)
 
