@@ -194,8 +194,23 @@ def quality_issues(
                 metadata={
                     "recall_at_k": retrieval.recall_at_k,
                     "mrr": retrieval.mrr,
+                    "target_coverage_at_k": retrieval.target_coverage_at_k,
+                    "mean_precision_at_k": retrieval.mean_precision_at_k,
                     "expected_case_count": retrieval.expected_case_count,
                     "failed_queries": retrieval.failed_queries[:10],
+                },
+            )
+        )
+    if retrieval is not None and retrieval.expected_case_count and retrieval.target_coverage_at_k < 0.8:
+        issues.append(
+            QualityIssue(
+                severity="warning",
+                code="retrieval_target_coverage",
+                message="Retrieval target coverage is below the recommended threshold.",
+                metadata={
+                    "target_coverage_at_k": retrieval.target_coverage_at_k,
+                    "recall_at_k": retrieval.recall_at_k,
+                    "mean_precision_at_k": retrieval.mean_precision_at_k,
                 },
             )
         )

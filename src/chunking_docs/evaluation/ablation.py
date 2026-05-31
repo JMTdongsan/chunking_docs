@@ -23,6 +23,7 @@ class RetrievalAblationRow(BaseModel):
 class RetrievalAblationReport(BaseModel):
     rows: list[RetrievalAblationRow]
     best_by_recall: str | None
+    best_by_target_coverage: str | None
     best_by_mrr: str | None
     fastest_by_mean_latency: str | None
 
@@ -41,6 +42,7 @@ class QdrantVectorAblationRow(BaseModel):
 class QdrantVectorAblationReport(BaseModel):
     rows: list[QdrantVectorAblationRow]
     best_by_recall: str | None
+    best_by_target_coverage: str | None
     best_by_mrr: str | None
     fastest_by_mean_latency: str | None
 
@@ -132,6 +134,7 @@ def evaluate_retrieval_ablation(
     rows.sort(
         key=lambda row: (
             row.evaluation.recall_at_k,
+            row.evaluation.target_coverage_at_k,
             row.evaluation.mrr,
             row.evaluation.hit_rate,
         ),
@@ -140,6 +143,12 @@ def evaluate_retrieval_ablation(
     return RetrievalAblationReport(
         rows=rows,
         best_by_recall=rows[0].mode.name if rows else None,
+        best_by_target_coverage=max(
+            rows,
+            key=lambda row: (row.evaluation.target_coverage_at_k, row.evaluation.recall_at_k),
+        ).mode.name
+        if rows
+        else None,
         best_by_mrr=max(rows, key=lambda row: row.evaluation.mrr).mode.name if rows else None,
         fastest_by_mean_latency=min(rows, key=lambda row: row.evaluation.mean_latency_ms).mode.name
         if rows
@@ -185,6 +194,7 @@ def build_qdrant_vector_ablation_report(
         rows,
         key=lambda row: (
             row.evaluation.recall_at_k,
+            row.evaluation.target_coverage_at_k,
             row.evaluation.mrr,
             row.evaluation.hit_rate,
         ),
@@ -193,6 +203,12 @@ def build_qdrant_vector_ablation_report(
     return QdrantVectorAblationReport(
         rows=rows,
         best_by_recall=rows[0].mode.name if rows else None,
+        best_by_target_coverage=max(
+            rows,
+            key=lambda row: (row.evaluation.target_coverage_at_k, row.evaluation.recall_at_k),
+        ).mode.name
+        if rows
+        else None,
         best_by_mrr=max(rows, key=lambda row: row.evaluation.mrr).mode.name if rows else None,
         fastest_by_mean_latency=min(rows, key=lambda row: row.evaluation.mean_latency_ms).mode.name
         if rows

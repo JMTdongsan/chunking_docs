@@ -204,6 +204,61 @@ def test_evaluate_retrieval_reports_target_type_metrics():
     assert result.results[0].target_matches == {"page": True, "asset": False}
 
 
+def test_evaluate_search_results_reports_target_coverage_and_precision():
+    chunk_a = DocumentChunk(
+        chunk_id="a",
+        doc_id="doc",
+        page_start=1,
+        page_end=1,
+        kind=ChunkKind.TEXT,
+        text="alpha",
+        asset_ids=["asset-a"],
+    )
+    chunk_b = DocumentChunk(
+        chunk_id="b",
+        doc_id="doc",
+        page_start=2,
+        page_end=2,
+        kind=ChunkKind.TEXT,
+        text="beta",
+    )
+
+    class Hit:
+        def __init__(self, chunk):
+            self.chunk = chunk
+            self.sources = ["test"]
+            self.evidence_chunks = []
+            self.payloads = []
+
+    result = evaluate_search_results(
+        cases=[
+            RetrievalCase(
+                query="multi target",
+                expected_pages=[1, 2],
+                expected_chunk_ids=["missing-chunk"],
+                expected_asset_ids=["asset-a"],
+            )
+        ],
+        search_fn=lambda case, graph_expand: [Hit(chunk_a), Hit(chunk_b)],
+        top_k=3,
+    )
+
+    case_result = result.results[0]
+    assert case_result.expected_target_count == 4
+    assert case_result.matched_target_count == 3
+    assert case_result.target_coverage_at_k == 0.75
+    assert case_result.relevant_hit_count == 2
+    assert case_result.precision_at_k == 2 / 3
+    assert case_result.top_matched_targets == [["page:1", "asset:asset-a"], ["page:2"]]
+    assert result.target_coverage_at_k == 0.75
+    assert result.mean_precision_at_k == 2 / 3
+    assert result.target_metrics["page"].target_count == 2
+    assert result.target_metrics["page"].matched_target_count == 2
+    assert result.target_metrics["page"].coverage_at_k == 1.0
+    assert result.target_metrics["chunk"].coverage_at_k == 0.0
+    assert result.target_metrics["asset"].coverage_at_k == 1.0
+
+
 def test_evaluate_retrieval_reports_ranked_failures():
     chunks = [
         DocumentChunk(
@@ -383,6 +438,7 @@ def test_evaluate_retrieval_ablation_compares_modes():
 
     assert [row.mode.name for row in report.rows]
     assert report.best_by_recall in {"dense", "bm25", "hybrid"}
+    assert report.best_by_target_coverage in {"dense", "bm25", "hybrid"}
     assert report.fastest_by_mean_latency in {"dense", "bm25", "hybrid"}
     assert all(row.evaluation.case_count == 1 for row in report.rows)
     assert all(row.evaluation.repeat == 2 for row in report.rows)
@@ -569,8 +625,10 @@ def test_eval_qdrant_vector_ablation_cli_writes_report(monkeypatch, tmp_path):
     payload = json.loads(output.read_text(encoding="utf-8"))
     rows = {row["mode"]["name"]: row for row in payload["rows"]}
     assert payload["best_by_recall"] == "caption"
+    assert payload["best_by_target_coverage"] == "caption"
     assert rows["text"]["evaluation"]["recall_at_k"] == 0.0
     assert rows["caption"]["evaluation"]["recall_at_k"] == 1.0
+    assert rows["caption"]["evaluation"]["target_coverage_at_k"] == 1.0
     assert rows["caption"]["evaluation"]["metadata"]["vector_names"] == ["caption_dense"]
     assert calls.count((("caption_dense",), False)) == 2
 
@@ -611,5 +669,6 @@ def test_eval_retrieval_ablation_cli_writes_report(tmp_path):
     assert result.exit_code == 0, result.output
     payload = json.loads(output.read_text(encoding="utf-8"))
     assert payload["best_by_recall"] in {"bm25", "hybrid"}
+    assert payload["best_by_target_coverage"] in {"bm25", "hybrid"}
     assert payload["fastest_by_mean_latency"] in {"bm25", "hybrid"}
     assert {row["mode"]["name"] for row in payload["rows"]} == {"bm25", "hybrid"}

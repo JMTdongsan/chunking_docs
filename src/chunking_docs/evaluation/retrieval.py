@@ -35,10 +35,16 @@ class RetrievalCaseResult(BaseModel):
     top_triple_ids: list[list[str]] = Field(default_factory=list)
     top_evidence_chunk_ids: list[list[str]] = Field(default_factory=list)
     top_sources: list[list[str]] = Field(default_factory=list)
+    top_matched_targets: list[list[str]] = Field(default_factory=list)
     expected_pages: list[int]
     expected_chunk_ids: list[str]
     expected_asset_ids: list[str] = Field(default_factory=list)
     expected_triple_ids: list[str] = Field(default_factory=list)
+    expected_target_count: int = 0
+    matched_target_count: int = 0
+    target_coverage_at_k: float = 0.0
+    relevant_hit_count: int = 0
+    precision_at_k: float = 0.0
     matched_rank: int | None = None
     matched_chunk_id: str | None = None
     matched_asset_id: str | None = None
@@ -55,6 +61,9 @@ class RetrievalTargetMetric(BaseModel):
     passed_count: int = 0
     recall_at_k: float = 0.0
     mrr: float = 0.0
+    target_count: int = 0
+    matched_target_count: int = 0
+    coverage_at_k: float = 0.0
     failed_queries: list[str] = Field(default_factory=list)
 
 
@@ -67,6 +76,8 @@ class RetrievalEvaluation(BaseModel):
     hit_rate: float
     recall_at_k: float
     mrr: float
+    target_coverage_at_k: float = 0.0
+    mean_precision_at_k: float = 0.0
     top_k: int
     repeat: int = 1
     index_build_ms: float = 0.0
@@ -149,6 +160,7 @@ def evaluate_search_results(
                 hits = search_hits
         latency_samples.extend(case_latencies)
         hits_with_chunks = [hit for hit in hits if hit_chunk(hit) is not None]
+        hits_with_chunks = hits_with_chunks[:top_k] if top_k > 0 else []
         top_pages = [hit_chunk(hit).page_start for hit in hits_with_chunks]
         top_page_ranges = [
             (hit_chunk(hit).page_start, hit_chunk(hit).page_end) for hit in hits_with_chunks
@@ -160,6 +172,17 @@ def evaluate_search_results(
             [chunk.chunk_id for chunk in hit_evidence_chunks(hit)] for hit in hits_with_chunks
         ]
         top_sources = [hit_sources(hit) for hit in hits_with_chunks]
+        expected_targets = expected_target_keys(case)
+        seen_targets: set[str] = set()
+        top_matched_targets: list[list[str]] = []
+        relevant_hit_count = 0
+        for hit in hits_with_chunks:
+            matched_targets = hit_target_keys(hit, case, triples_by_chunk=triples_by_chunk)
+            if matched_targets:
+                relevant_hit_count += 1
+            seen_targets.update(matched_targets)
+            top_matched_targets.append(sorted_target_keys(matched_targets))
+        matched_target_count = len(seen_targets)
         expected_any = bool(
             case.expected_pages
             or case.expected_chunk_ids
@@ -192,10 +215,18 @@ def evaluate_search_results(
                 top_triple_ids=top_triple_ids,
                 top_evidence_chunk_ids=top_evidence_chunk_ids,
                 top_sources=top_sources,
+                top_matched_targets=top_matched_targets,
                 expected_pages=case.expected_pages,
                 expected_chunk_ids=case.expected_chunk_ids,
                 expected_asset_ids=case.expected_asset_ids,
                 expected_triple_ids=case.expected_triple_ids,
+                expected_target_count=len(expected_targets),
+                matched_target_count=matched_target_count,
+                target_coverage_at_k=matched_target_count / len(expected_targets)
+                if expected_targets
+                else 0.0,
+                relevant_hit_count=relevant_hit_count,
+                precision_at_k=relevant_hit_count / top_k if top_k > 0 else 0.0,
                 matched_rank=matched_rank,
                 matched_chunk_id=match.chunk_id if match else None,
                 matched_asset_id=match.asset_id if match else None,
@@ -226,6 +257,14 @@ def evaluate_search_results(
         hit_rate=passed_count / len(cases) if cases else 0.0,
         recall_at_k=expected_passed / len(expected_results) if expected_results else 0.0,
         mrr=sum(result.reciprocal_rank for result in expected_results) / len(expected_results)
+        if expected_results
+        else 0.0,
+        target_coverage_at_k=sum(result.matched_target_count for result in expected_results)
+        / sum(result.expected_target_count for result in expected_results)
+        if sum(result.expected_target_count for result in expected_results)
+        else 0.0,
+        mean_precision_at_k=sum(result.precision_at_k for result in expected_results)
+        / len(expected_results)
         if expected_results
         else 0.0,
         top_k=top_k,
@@ -367,6 +406,51 @@ def first_page_match(page_start: int, page_end: int, expected_pages: set[int]) -
     return None
 
 
+def expected_target_keys(case: RetrievalCase) -> set[str]:
+    keys = {f"page:{page}" for page in case.expected_pages}
+    keys.update(f"chunk:{chunk_id}" for chunk_id in case.expected_chunk_ids)
+    keys.update(f"asset:{asset_id}" for asset_id in case.expected_asset_ids)
+    keys.update(f"triple:{triple_id}" for triple_id in case.expected_triple_ids)
+    return keys
+
+
+def hit_target_keys(
+    hit,
+    case: RetrievalCase,
+    triples_by_chunk: dict[str, list[GraphTriple]],
+) -> set[str]:
+    chunk = hit_chunk(hit)
+    if chunk is None:
+        return set()
+
+    keys: set[str] = set()
+    expected_pages = set(case.expected_pages)
+    expected_chunk_ids = set(case.expected_chunk_ids)
+    expected_asset_ids = set(case.expected_asset_ids)
+    expected_triple_ids = set(case.expected_triple_ids)
+
+    candidate_chunks = [chunk, *hit_evidence_chunks(hit)]
+    for candidate_chunk in candidate_chunks:
+        for page in expected_pages:
+            if candidate_chunk.page_start <= page <= candidate_chunk.page_end:
+                keys.add(f"page:{page}")
+        if candidate_chunk.chunk_id in expected_chunk_ids:
+            keys.add(f"chunk:{candidate_chunk.chunk_id}")
+
+    for asset_id in hit_asset_ids(hit):
+        if asset_id in expected_asset_ids:
+            keys.add(f"asset:{asset_id}")
+    for triple_id in hit_triple_ids(hit, triples_by_chunk):
+        if triple_id in expected_triple_ids:
+            keys.add(f"triple:{triple_id}")
+    return keys
+
+
+def sorted_target_keys(keys: set[str]) -> list[str]:
+    order = {"page": 0, "chunk": 1, "asset": 2, "triple": 3}
+    return sorted(keys, key=lambda key: (order.get(key.split(":", 1)[0], 99), key))
+
+
 def hit_chunk(hit):
     return getattr(hit, "chunk", None)
 
@@ -431,17 +515,46 @@ def target_metrics(results: list[RetrievalCaseResult]) -> dict[str, RetrievalTar
         if not target_results:
             continue
         passed_count = sum(1 for result in target_results if result.target_matches.get(target))
+        target_count = sum(len(expected_result_target_keys(result, target)) for result in target_results)
+        matched_target_count = sum(
+            len(matched_result_target_keys(result, target)) for result in target_results
+        )
         metrics[target] = RetrievalTargetMetric(
             expected_count=len(target_results),
             passed_count=passed_count,
             recall_at_k=passed_count / len(target_results),
             mrr=sum(result.target_reciprocal_ranks.get(target, 0.0) for result in target_results)
             / len(target_results),
+            target_count=target_count,
+            matched_target_count=matched_target_count,
+            coverage_at_k=matched_target_count / target_count if target_count else 0.0,
             failed_queries=[
                 result.query for result in target_results if not result.target_matches.get(target)
             ],
         )
     return metrics
+
+
+def expected_result_target_keys(result: RetrievalCaseResult, target: str) -> set[str]:
+    if target == "page":
+        return {f"page:{page}" for page in result.expected_pages}
+    if target == "chunk":
+        return {f"chunk:{chunk_id}" for chunk_id in result.expected_chunk_ids}
+    if target == "asset":
+        return {f"asset:{asset_id}" for asset_id in result.expected_asset_ids}
+    if target == "triple":
+        return {f"triple:{triple_id}" for triple_id in result.expected_triple_ids}
+    return set()
+
+
+def matched_result_target_keys(result: RetrievalCaseResult, target: str) -> set[str]:
+    prefix = f"{target}:"
+    return {
+        target_key
+        for matched_targets in result.top_matched_targets
+        for target_key in matched_targets
+        if target_key.startswith(prefix)
+    }
 
 
 def elapsed_ms(start: float) -> float:

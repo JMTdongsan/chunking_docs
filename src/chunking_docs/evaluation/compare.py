@@ -12,6 +12,8 @@ class ChunkingComparisonRow(BaseModel):
     retrieval_hit_rate: float | None
     retrieval_recall_at_k: float | None
     retrieval_mrr: float | None
+    retrieval_target_coverage_at_k: float | None
+    retrieval_mean_precision_at_k: float | None
     retrieval_mean_latency_ms: float | None
     retrieval_p95_latency_ms: float | None
     failed_queries: list[str]
@@ -40,6 +42,12 @@ def compare_chunking_reports(
             retrieval_hit_rate=report.retrieval.hit_rate if report.retrieval else None,
             retrieval_recall_at_k=report.retrieval.recall_at_k if report.retrieval else None,
             retrieval_mrr=report.retrieval.mrr if report.retrieval else None,
+            retrieval_target_coverage_at_k=report.retrieval.target_coverage_at_k
+            if report.retrieval
+            else None,
+            retrieval_mean_precision_at_k=report.retrieval.mean_precision_at_k
+            if report.retrieval
+            else None,
             retrieval_mean_latency_ms=report.retrieval.mean_latency_ms if report.retrieval else None,
             retrieval_p95_latency_ms=report.retrieval.p95_latency_ms if report.retrieval else None,
             failed_queries=report.retrieval.failed_queries if report.retrieval else [],
@@ -54,6 +62,9 @@ def compare_chunking_reports(
     rows.sort(
         key=lambda row: (
             row.retrieval_recall_at_k if row.retrieval_recall_at_k is not None else -1.0,
+            row.retrieval_target_coverage_at_k
+            if row.retrieval_target_coverage_at_k is not None
+            else -1.0,
             row.retrieval_mrr if row.retrieval_mrr is not None else -1.0,
             row.quality_score,
         ),
@@ -64,7 +75,11 @@ def compare_chunking_reports(
     best_by_retrieval = (
         max(
             retrieval_rows,
-            key=lambda row: (row.retrieval_recall_at_k or 0.0, row.retrieval_mrr or 0.0),
+            key=lambda row: (
+                row.retrieval_recall_at_k or 0.0,
+                row.retrieval_target_coverage_at_k or 0.0,
+                row.retrieval_mrr or 0.0,
+            ),
         ).name
         if retrieval_rows
         else None

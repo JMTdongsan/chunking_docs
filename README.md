@@ -244,7 +244,7 @@ chunking-docs eval-retrieval-ablation examples/retrieval_cases.jsonl \
   --output outputs/package/retrieval_ablation.json
 ```
 
-`audit-package` checks structural completeness, orphan triples, remaining OCR/VLM work, Qdrant vector dimensions, required payload fields, and payload index definitions. `eval-chunking` reports page coverage, chunk size distribution, section coverage, visual asset linkage, visual annotation coverage, retrieval recall@k, MRR, failed queries, and an aggregate quality score. `eval-retrieval` also records per-query latency samples plus mean and p95 latency when `--repeat` is greater than one. Retrieval reports include target-specific recall and MRR for page, chunk, visual asset, and graph triple expectations. `eval-qdrant-retrieval` runs the same benchmark cases through Qdrant named vectors, BM25, and optional graph expansion so the production retrieval path can be validated. `eval-qdrant-vector-ablation` compares Qdrant text, visual caption, optional image, and graph-expanded modes on the same cases. `eval-retrieval-ablation` compares dense-only, BM25-only, graph-only, hybrid, and graph-expanded hybrid retrieval so the effect and runtime cost of each retrieval signal is visible. Retrieval cases are JSONL:
+`audit-package` checks structural completeness, orphan triples, remaining OCR/VLM work, Qdrant vector dimensions, required payload fields, and payload index definitions. `eval-chunking` reports page coverage, chunk size distribution, section coverage, visual asset linkage, visual annotation coverage, retrieval recall@k, MRR, target coverage@k, precision@k, failed queries, and an aggregate quality score. `eval-retrieval` also records per-query latency samples plus mean and p95 latency when `--repeat` is greater than one. Retrieval reports include target-specific recall, MRR, and coverage for page, chunk, visual asset, and graph triple expectations. `eval-qdrant-retrieval` runs the same benchmark cases through Qdrant named vectors, BM25, and optional graph expansion so the production retrieval path can be validated. `eval-qdrant-vector-ablation` compares Qdrant text, visual caption, optional image, and graph-expanded modes on the same cases. `eval-retrieval-ablation` compares dense-only, BM25-only, graph-only, hybrid, and graph-expanded hybrid retrieval so the effect and runtime cost of each retrieval signal is visible. Retrieval cases are JSONL:
 
 Qdrant vector ablation modes include `text`, `caption`, `image`, `text_caption`, `text_image`, `caption_image`, `all`, `text_caption_graph`, and `all_graph`. Image modes require an `image_dense` record file and a compatible image-query encoder.
 
@@ -312,7 +312,7 @@ chunking-docs compare-chunking \
   --cases examples/retrieval_cases.jsonl
 ```
 
-The `multimodal` strategy keeps semantic text chunks and adds visual asset text chunks from captions, OCR, and VLM summaries. The `hierarchical` strategy emits coarse parent chunks plus fine child chunks with shared visual context, which supports experiments where broad queries should find a page or section while precise queries should retrieve a smaller evidence span. `--collapse-hierarchical` reports the parent as the final hit while preserving matched child chunks as evidence. Comparison output includes recall@k, MRR, latency, failed queries, chunk size issues, and the best candidate by quality and retrieval behavior.
+The `multimodal` strategy keeps semantic text chunks and adds visual asset text chunks from captions, OCR, and VLM summaries. The `hierarchical` strategy emits coarse parent chunks plus fine child chunks with shared visual context, which supports experiments where broad queries should find a page or section while precise queries should retrieve a smaller evidence span. `--collapse-hierarchical` reports the parent as the final hit while preserving matched child chunks as evidence. Comparison output includes recall@k, MRR, target coverage@k, precision@k, latency, failed queries, chunk size issues, and the best candidate by quality and retrieval behavior.
 
 Run a parameter sweep when choosing defaults:
 
@@ -334,7 +334,7 @@ chunking-docs sweep-chunking \
   --output outputs/package/chunking_sweep.json
 ```
 
-The sweep writes candidate chunk files under `outputs/package/chunking_sweep/` and ranks them with the same quality, recall@k, MRR, latency, and failed-query metrics used by `compare-chunking`.
+The sweep writes candidate chunk files under `outputs/package/chunking_sweep/` and ranks them with the same quality, recall@k, MRR, target coverage@k, precision@k, latency, and failed-query metrics used by `compare-chunking`.
 
 Write a reproducible experiment report for a package:
 
@@ -351,7 +351,7 @@ chunking-docs write-experiment-report \
   --output outputs/package/experiment_report.json
 ```
 
-The report records package artifact checksums, JSONL record counts, BM25 tokenizer settings, Qdrant named-vector configuration, chunking quality metrics, retrieval recall@k, MRR, latency, failed queries, and the best candidate by retrieval behavior. This makes chunking changes reviewable and repeatable before new defaults are adopted.
+The report records package artifact checksums, JSONL record counts, BM25 tokenizer settings, Qdrant named-vector configuration, chunking quality metrics, retrieval recall@k, MRR, target coverage@k, precision@k, latency, failed queries, and the best candidate by retrieval behavior. This makes chunking changes reviewable and repeatable before new defaults are adopted.
 
 ## Development Checks
 

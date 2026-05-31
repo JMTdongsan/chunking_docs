@@ -597,6 +597,8 @@ def eval_qdrant_retrieval_command(
                 "case_count": evaluation.case_count,
                 "recall_at_k": evaluation.recall_at_k,
                 "mrr": evaluation.mrr,
+                "target_coverage_at_k": evaluation.target_coverage_at_k,
+                "mean_precision_at_k": evaluation.mean_precision_at_k,
                 "mean_latency_ms": evaluation.mean_latency_ms,
                 "p95_latency_ms": evaluation.p95_latency_ms,
                 "target_metrics": retrieval_target_metrics_payload(evaluation),
@@ -721,6 +723,7 @@ def eval_qdrant_vector_ablation_command(
             {
                 "output": str(output),
                 "best_by_recall": report.best_by_recall,
+                "best_by_target_coverage": report.best_by_target_coverage,
                 "best_by_mrr": report.best_by_mrr,
                 "fastest_by_mean_latency": report.fastest_by_mean_latency,
                 "rows": [
@@ -731,6 +734,8 @@ def eval_qdrant_vector_ablation_command(
                         "recall_at_k": row.evaluation.recall_at_k,
                         "mrr": row.evaluation.mrr,
                         "hit_rate": row.evaluation.hit_rate,
+                        "target_coverage_at_k": row.evaluation.target_coverage_at_k,
+                        "mean_precision_at_k": row.evaluation.mean_precision_at_k,
                         "repeat": row.evaluation.repeat,
                         "mean_latency_ms": row.evaluation.mean_latency_ms,
                         "p95_latency_ms": row.evaluation.p95_latency_ms,
@@ -1397,6 +1402,8 @@ def eval_retrieval_command(
                 "case_count": evaluation.case_count,
                 "recall_at_k": evaluation.recall_at_k,
                 "mrr": evaluation.mrr,
+                "target_coverage_at_k": evaluation.target_coverage_at_k,
+                "mean_precision_at_k": evaluation.mean_precision_at_k,
                 "mean_latency_ms": evaluation.mean_latency_ms,
                 "p95_latency_ms": evaluation.p95_latency_ms,
                 "target_metrics": retrieval_target_metrics_payload(evaluation),
@@ -1458,6 +1465,7 @@ def eval_retrieval_ablation_command(
         payload = {
             "output": str(output),
             "best_by_recall": report.best_by_recall,
+            "best_by_target_coverage": report.best_by_target_coverage,
             "best_by_mrr": report.best_by_mrr,
             "fastest_by_mean_latency": report.fastest_by_mean_latency,
             "rows": [
@@ -1466,6 +1474,8 @@ def eval_retrieval_ablation_command(
                     "recall_at_k": row.evaluation.recall_at_k,
                     "mrr": row.evaluation.mrr,
                     "hit_rate": row.evaluation.hit_rate,
+                    "target_coverage_at_k": row.evaluation.target_coverage_at_k,
+                    "mean_precision_at_k": row.evaluation.mean_precision_at_k,
                     "repeat": row.evaluation.repeat,
                     "mean_latency_ms": row.evaluation.mean_latency_ms,
                     "p95_latency_ms": row.evaluation.p95_latency_ms,
@@ -1666,6 +1676,9 @@ def sweep_chunking_command(
                     "name": candidate.name,
                     "quality_score": round(candidate.report.quality_score, 6),
                     "recall_at_k": candidate.report.retrieval.recall_at_k
+                    if candidate.report.retrieval
+                    else None,
+                    "target_coverage_at_k": candidate.report.retrieval.target_coverage_at_k
                     if candidate.report.retrieval
                     else None,
                     "mrr": candidate.report.retrieval.mrr if candidate.report.retrieval else None,
