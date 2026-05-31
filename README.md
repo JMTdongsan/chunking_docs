@@ -86,9 +86,13 @@ chunking-docs split-chunks --package-dir outputs/package --max-chars 600 --overl
 chunking-docs search-local "동북권 발전구상 중랑천" --package-dir outputs/package --top-k 5
 chunking-docs search-local "동북권 발전구상 중랑천" --package-dir outputs/package --graph-expand --top-k 5
 chunking-docs export-graph --package-dir outputs/package
+chunking-docs audit-package --package-dir outputs/package
+chunking-docs eval-retrieval examples/seoul_plan_retrieval_cases.jsonl --package-dir outputs/package --top-k 5
 ```
 
 `apply-annotations`는 `assets.jsonl`, `chunks.jsonl`, `triples.jsonl`, BM25, Qdrant dry-run records를 갱신한다.
+`audit-package`는 누락 chunk, orphan triple, 남은 OCR/VLM 대상 페이지를 확인한다.
+`eval-retrieval`은 seed query가 기대 페이지를 top-k 안에서 찾는지 검증한다.
 
 ## Qdrant 로컬 실행
 

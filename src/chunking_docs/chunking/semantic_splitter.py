@@ -17,7 +17,7 @@ def semantic_subchunks(
     results: list[DocumentChunk] = []
     for chunk in chunks:
         parts = split_text(chunk.text, max_chars=max_chars, overlap_chars=overlap_chars)
-        if len(parts) == 1 and len(parts[0]) < min_chars:
+        if len(parts) <= 1:
             results.append(chunk)
             continue
 

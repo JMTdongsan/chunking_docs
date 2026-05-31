@@ -9,6 +9,9 @@ from rich import print
 
 from chunking_docs.analysis.pdf_profile import profile_pdf, summarize_profiles, write_profile_outputs
 from chunking_docs.chunking.page_chunker import page_level_chunks
+from chunking_docs.evaluation.audit import audit_package
+from chunking_docs.evaluation.retrieval import evaluate_retrieval, load_retrieval_cases
+from chunking_docs.graph.repair import remap_triples_to_available_chunks
 from chunking_docs.ingest.pdf_loader import load_source_document, render_pages
 from chunking_docs.io import read_jsonl, write_jsonl
 from chunking_docs.models import DocumentChunk, GraphTriple, VisualAsset
@@ -291,6 +294,12 @@ def split_chunks_command(
     output = package_dir / "chunks.split.jsonl"
     if in_place:
         write_jsonl(package_dir / "chunks.jsonl", split_chunks)
+        triples_path = package_dir / "triples.jsonl"
+        remapped_triples = []
+        if triples_path.exists():
+            triples = read_jsonl(triples_path, GraphTriple)
+            remapped_triples = remap_triples_to_available_chunks(triples, split_chunks)
+            write_jsonl(triples_path, remapped_triples)
         if rebuild_search:
             rebuild_search_artifacts(package_dir, split_chunks)
     print(
@@ -301,6 +310,7 @@ def split_chunks_command(
             "split_chunks": len(split_chunks),
             "in_place": in_place,
             "rebuilt_search": bool(in_place and rebuild_search),
+            "remapped_triples": len(remapped_triples) if in_place else 0,
         }
     )
 
@@ -391,6 +401,43 @@ def postgres_rows(package_dir: Path = Path("outputs/package")):
             "first_document": rows["document"],
         }
     )
+
+
+@app.command(name="audit-package")
+def audit_package_command(
+    package_dir: Path = Path("outputs/package"),
+    require_annotations_for_visual_pages: bool = False,
+):
+    """Audit package completeness and remaining OCR/VLM work."""
+    manifest = load_processing_package(package_dir)
+    audit = audit_package(
+        manifest.profiles,
+        manifest.chunks,
+        manifest.assets,
+        manifest.triples,
+        require_annotations_for_visual_pages=require_annotations_for_visual_pages,
+    )
+    print(audit.model_dump())
+
+
+@app.command(name="eval-retrieval")
+def eval_retrieval_command(
+    cases: Path,
+    package_dir: Path = Path("outputs/package"),
+    chunks_file: str = "chunks.jsonl",
+    top_k: int = 5,
+):
+    """Evaluate local hybrid retrieval against JSONL seed cases."""
+    chunks = read_jsonl(package_dir / chunks_file, DocumentChunk)
+    triples_path = package_dir / "triples.jsonl"
+    triples = read_jsonl(triples_path, GraphTriple) if triples_path.exists() else []
+    evaluation = evaluate_retrieval(
+        chunks=chunks,
+        triples=triples,
+        cases=load_retrieval_cases(cases),
+        top_k=top_k,
+    )
+    print(evaluation.model_dump())
 
 
 def print_json(payload: dict):
