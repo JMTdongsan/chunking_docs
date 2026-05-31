@@ -67,3 +67,45 @@ def test_apply_asset_annotations_updates_assets_chunks_and_triples():
     assert visual_triple.qualifiers["visual_job_id"] == "job-1"
     assert "confidence" not in visual_triple.qualifiers
     assert visual_triple.confidence == 0.8
+
+
+def test_apply_asset_annotations_uses_source_ref_for_triple_chunk():
+    asset = VisualAsset(
+        asset_id="asset-1",
+        doc_id="doc",
+        page_no=12,
+        kind=AssetKind.PAGE_IMAGE,
+        caption="page",
+    )
+    chunk = DocumentChunk(
+        chunk_id="chunk-1",
+        doc_id="doc",
+        page_start=12,
+        page_end=12,
+        kind=ChunkKind.PAGE_SUMMARY,
+        text="base",
+        source_refs=["asset:asset-1"],
+    )
+
+    assets, chunks, triples = apply_asset_annotations(
+        [asset],
+        [chunk],
+        [
+            AssetAnnotation(
+                asset_id="asset-1",
+                vlm_summary="source ref visual summary",
+                triples=[
+                    {
+                        "subject": "source ref visual",
+                        "predicate": "shows",
+                        "object": "mapped condition",
+                    }
+                ],
+            )
+        ],
+    )
+
+    assert assets[0].vlm_summary == "source ref visual summary"
+    assert "source ref visual summary" in chunks[0].text
+    assert triples[0].chunk_id == "chunk-1"
+    assert triples[0].qualifiers["asset_id"] == "asset-1"

@@ -5,6 +5,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from chunking_docs.graph.extractor import triples_from_vlm_json
+from chunking_docs.graph.provenance import chunk_asset_ids
 from chunking_docs.graph.quality import normalize_graph_triples
 from chunking_docs.models import AssetKind, DocumentChunk, GraphTriple, VisualAsset
 from chunking_docs.vision.annotate import merge_asset_annotations_into_chunks
@@ -92,7 +93,7 @@ def chunk_for_annotation(
 ) -> DocumentChunk | None:
     if annotation.asset_id is not None:
         for chunk in chunks:
-            if annotation.asset_id in chunk.asset_ids:
+            if annotation.asset_id in chunk_asset_ids(chunk):
                 return chunk
     if annotation.page_no is not None:
         for chunk in chunks:

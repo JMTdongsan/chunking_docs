@@ -56,7 +56,7 @@
    - Compare multiple OCR/VLM runs by completion, annotation coverage, parse rate, triple density, latency, and whether the same visual job IDs were used.
    - Write VLM experiment plans so several profiles can be run against the same visual job set and compared afterward.
    - Gate visual runs by completion rate, OCR text coverage, VLM summary coverage, JSON parse rate, triple density, and failure counts.
-   - Apply annotations back into chunks, assets, graph triples, BM25, and Qdrant records.
+   - Apply annotations back into chunks, assets, graph triples, BM25, and Qdrant records through direct asset links and `asset:` source refs.
    - Compare before/after package directories to verify how annotations changed chunks, assets, graph triples, and vector records.
 
 8. **Semantic Splitting**

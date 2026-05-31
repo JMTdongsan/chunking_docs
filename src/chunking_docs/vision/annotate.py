@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from chunking_docs.graph.provenance import chunk_asset_ids
 from chunking_docs.models import AssetKind, DocumentChunk, VisualAsset
 from chunking_docs.vision.interfaces import OCRBackend, VLMBackend
 from chunking_docs.vision.prompts import MAP_SUMMARY_PROMPT_KO, PAGE_SUMMARY_PROMPT_KO
@@ -60,20 +61,24 @@ def merge_asset_annotations_into_chunks(
     merged: list[DocumentChunk] = []
     for chunk in chunks:
         additions = []
-        for asset_id in chunk.asset_ids:
+        annotated_asset_ids = set()
+        for asset_id in chunk_asset_ids(chunk):
             asset = assets_by_id.get(asset_id)
             if asset is None:
                 continue
             if asset.ocr_text:
                 additions.append(f"[OCR page {asset.page_no}]\n{asset.ocr_text}")
+                annotated_asset_ids.add(asset.asset_id)
             if asset.vlm_summary:
                 additions.append(f"[VLM page {asset.page_no} {asset.kind}]\n{asset.vlm_summary}")
+                annotated_asset_ids.add(asset.asset_id)
         if additions:
             text = chunk.text.rstrip() + "\n\n" + "\n\n".join(additions)
             metadata = {
                 **chunk.metadata,
                 "has_visual_annotations": True,
-                "annotation_asset_count": len(additions),
+                "annotation_asset_count": len(annotated_asset_ids),
+                "annotation_asset_ids": sorted(annotated_asset_ids),
             }
             merged.append(chunk.model_copy(update={"text": text, "metadata": metadata}))
         else:

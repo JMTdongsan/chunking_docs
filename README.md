@@ -141,7 +141,7 @@ chunking-docs run-visual-jobs \
   --apply
 ```
 
-The command writes `visual_annotations.jsonl` and `visual_job_results.jsonl`. With `--apply`, annotations are merged into `assets.jsonl`, `chunks.jsonl`, `triples.jsonl`, and BM25. Run `embed-package` after applying annotations to refresh dense, caption, image, and Qdrant record artifacts with the intended embedding models.
+The command writes `visual_annotations.jsonl` and `visual_job_results.jsonl`. With `--apply`, annotations are merged into `assets.jsonl`, `chunks.jsonl`, `triples.jsonl`, and BM25. Chunk updates follow visual asset links from both `asset_ids` and `asset:` source refs. Run `embed-package` after applying annotations to refresh dense, caption, image, and Qdrant record artifacts with the intended embedding models.
 PaddleOCR uses a CPU device by default because the standard `paddlepaddle` wheel is CPU-only in many environments. Use `--ocr-device gpu:0` only after `chunking-docs doctor --require-gpu --require-ocr` confirms Paddle CUDA support. `--ocr-enable-mkldnn` can improve CPU throughput after a local smoke test confirms the Paddle runtime is stable with oneDNN enabled.
 
 Use `--vlm-profile` for reproducible Hugging Face VLM experiments. Profiles provide the model id, loader family, dtype, and default generation length for common local VLM families such as Qwen2.5-VL, Qwen2-VL, LLaVA-NeXT, Idefics2, and Phi-3.5 Vision. The `vision` extra installs Transformers, Accelerate, PyTorch, and Torchvision; run `chunking-docs doctor --require-vision` before long VLM batches. Override any profile field with `--vlm-model`, `--vlm-model-class`, `--vlm-device-map`, `--vlm-torch-dtype`, `--vlm-max-new-tokens`, or `--vlm-attn-implementation`.
