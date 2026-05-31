@@ -152,9 +152,13 @@ def rebuild_search_artifacts(
     chunks,
     assets=None,
     tokenizer_config: LexicalTokenizerConfig | None = None,
+    rebuild_embeddings: bool = False,
 ) -> None:
     bm25 = BM25LexicalIndex(chunks, tokenizer_config=tokenizer_config)
     bm25.dump_manifest(output_dir / "bm25_tokens.json")
+
+    if not rebuild_embeddings:
+        return
 
     embedder = HashingTextEmbedder()
     write_embedding_artifacts(

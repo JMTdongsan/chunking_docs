@@ -115,7 +115,44 @@ def test_write_embedding_artifacts_supports_image_vectors(tmp_path):
     assert len(image_records[0].vector) == 5
 
 
-def test_rebuild_search_artifacts_preserves_existing_collection_name(tmp_path):
+def test_rebuild_search_artifacts_refreshes_bm25_without_overwriting_embeddings(tmp_path):
+    (tmp_path / "qdrant_collection.json").write_text(
+        json.dumps(
+            {
+                "collection": "custom_documents",
+                "named_vectors": {"text_dense": {"size": 1024, "distance": "Cosine"}},
+            }
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "embedding_manifest.json").write_text(
+        json.dumps(
+            {
+                "collection": "custom_documents",
+                "vectors": {"text_dense": {"dimension": 1024}},
+            }
+        ),
+        encoding="utf-8",
+    )
+    chunk = DocumentChunk(
+        chunk_id="chunk-1",
+        doc_id="doc",
+        page_start=1,
+        page_end=1,
+        kind=ChunkKind.TEXT,
+        text="renewal strategy",
+    )
+
+    rebuild_search_artifacts(tmp_path, [chunk])
+
+    config = json.loads((tmp_path / "qdrant_collection.json").read_text(encoding="utf-8"))
+    manifest = json.loads((tmp_path / "embedding_manifest.json").read_text(encoding="utf-8"))
+    assert (tmp_path / "bm25_tokens.json").exists()
+    assert config["named_vectors"]["text_dense"]["size"] == 1024
+    assert manifest["vectors"]["text_dense"]["dimension"] == 1024
+
+
+def test_rebuild_search_artifacts_can_rebuild_hashing_embeddings(tmp_path):
     (tmp_path / "qdrant_collection.json").write_text(
         json.dumps({"collection": "custom_documents", "named_vectors": {}}),
         encoding="utf-8",
@@ -129,7 +166,7 @@ def test_rebuild_search_artifacts_preserves_existing_collection_name(tmp_path):
         text="renewal strategy",
     )
 
-    rebuild_search_artifacts(tmp_path, [chunk])
+    rebuild_search_artifacts(tmp_path, [chunk], rebuild_embeddings=True)
 
     config = json.loads((tmp_path / "qdrant_collection.json").read_text(encoding="utf-8"))
     manifest = json.loads((tmp_path / "embedding_manifest.json").read_text(encoding="utf-8"))
