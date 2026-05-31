@@ -53,3 +53,51 @@ def test_visual_asset_chunks_skip_assets_without_text():
     )
 
     assert visual_asset_chunks([chunk], [asset]) == []
+
+
+def test_hierarchical_strategy_adds_parent_and_child_context():
+    chunk = DocumentChunk(
+        chunk_id="chunk-1",
+        doc_id="doc",
+        page_start=4,
+        page_end=4,
+        kind=ChunkKind.TEXT,
+        text="\n\n".join(
+            [
+                "Transit corridor overview " + ("station access " * 12),
+                "Investment table notes " + ("capital program " * 12),
+            ]
+        ),
+        section=SectionPath(chapter="Strategy", section="Access"),
+        asset_ids=["asset-1"],
+    )
+    asset = VisualAsset(
+        asset_id="asset-1",
+        doc_id="doc",
+        page_no=4,
+        kind=AssetKind.TABLE,
+        caption="capital investment table",
+        vlm_summary="table lists investment priorities by access corridor",
+    )
+
+    chunks = build_strategy_chunks(
+        [chunk],
+        [asset],
+        strategy="hierarchical",
+        max_chars=180,
+        overlap_chars=20,
+        min_chars=40,
+        parent_max_chars=120,
+        visual_context_chars=160,
+    )
+
+    parent = chunks[0]
+    children = chunks[1:]
+    assert parent.metadata["retrieval_role"] == "parent"
+    assert parent.metadata["chunking_strategy"] == "hierarchical_parent"
+    assert "Visual context" in parent.text
+    assert len(children) > 1
+    assert all(child.metadata["retrieval_role"] == "child" for child in children)
+    assert all(child.metadata["hierarchical_parent_chunk_id"] == parent.chunk_id for child in children)
+    assert any("capital investment table" in child.text for child in children)
+    assert all(f"parent:{parent.chunk_id}" in child.source_refs for child in children)

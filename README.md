@@ -202,6 +202,11 @@ chunking-docs build-chunk-strategy \
   --package-dir outputs/package \
   --strategy multimodal \
   --output outputs/package/chunks.multimodal.jsonl
+
+chunking-docs build-chunk-strategy \
+  --package-dir outputs/package \
+  --strategy hierarchical \
+  --output outputs/package/chunks.hierarchical.jsonl
 ```
 
 Compare candidates with the same retrieval cases:
@@ -212,10 +217,11 @@ chunking-docs compare-chunking \
   --candidate baseline=outputs/package/chunks.jsonl \
   --candidate semantic=outputs/package/chunks.semantic.jsonl \
   --candidate multimodal=outputs/package/chunks.multimodal.jsonl \
+  --candidate hierarchical=outputs/package/chunks.hierarchical.jsonl \
   --cases examples/retrieval_cases.jsonl
 ```
 
-The `multimodal` strategy keeps semantic text chunks and adds visual asset text chunks from captions, OCR, and VLM summaries. This makes maps, tables, charts, and figures retrievable even when the PDF text layer is weak. Comparison output includes recall@k, MRR, failed queries, chunk size issues, and the best candidate by quality and retrieval behavior.
+The `multimodal` strategy keeps semantic text chunks and adds visual asset text chunks from captions, OCR, and VLM summaries. The `hierarchical` strategy emits coarse parent chunks plus fine child chunks with shared visual context, which supports experiments where broad queries should find a page or section while precise queries should retrieve a smaller evidence span. Comparison output includes recall@k, MRR, failed queries, chunk size issues, and the best candidate by quality and retrieval behavior.
 
 Write a reproducible experiment report for a package:
 
@@ -225,6 +231,7 @@ chunking-docs write-experiment-report \
   --candidate baseline=outputs/package/chunks.jsonl \
   --candidate semantic=outputs/package/chunks.semantic.jsonl \
   --candidate multimodal=outputs/package/chunks.multimodal.jsonl \
+  --candidate hierarchical=outputs/package/chunks.hierarchical.jsonl \
   --cases examples/retrieval_cases.jsonl \
   --output outputs/package/experiment_report.json
 ```

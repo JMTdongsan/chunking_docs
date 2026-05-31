@@ -3,11 +3,12 @@ from __future__ import annotations
 import hashlib
 from typing import Literal
 
+from chunking_docs.chunking.hierarchical import build_hierarchical_chunks
 from chunking_docs.chunking.semantic_splitter import semantic_subchunks
 from chunking_docs.embeddings.records import asset_text
 from chunking_docs.models import ChunkKind, DocumentChunk, VisualAsset
 
-ChunkStrategy = Literal["page", "semantic", "multimodal"]
+ChunkStrategy = Literal["page", "semantic", "multimodal", "hierarchical"]
 
 
 def build_strategy_chunks(
@@ -18,6 +19,8 @@ def build_strategy_chunks(
     overlap_chars: int = 180,
     min_chars: int = 180,
     include_context_prefix: bool = True,
+    parent_max_chars: int = 900,
+    visual_context_chars: int = 700,
 ) -> list[DocumentChunk]:
     if strategy == "page":
         return contextualize_chunks(chunks, include_context_prefix=include_context_prefix)
@@ -37,6 +40,17 @@ def build_strategy_chunks(
             min_chars=min_chars,
         )
         return base + visual_asset_chunks(chunks, assets, include_context_prefix=include_context_prefix)
+    if strategy == "hierarchical":
+        return build_hierarchical_chunks(
+            contextualize_chunks(chunks, include_context_prefix=include_context_prefix),
+            assets,
+            split_fn=semantic_subchunks,
+            max_chars=max_chars,
+            overlap_chars=overlap_chars,
+            min_chars=min_chars,
+            parent_max_chars=parent_max_chars,
+            visual_context_chars=visual_context_chars,
+        )
     raise ValueError(f"Unsupported chunk strategy: {strategy}")
 
 

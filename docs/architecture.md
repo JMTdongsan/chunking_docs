@@ -45,6 +45,7 @@
    - `page`: baseline page chunks with optional context prefix.
    - `semantic`: boundary-aware subchunks for long text.
    - `multimodal`: semantic chunks plus visual asset text chunks from captions, OCR, and VLM summaries.
+   - `hierarchical`: coarse parent chunks plus fine child chunks that share page, section, and visual context.
    - `compare-chunking` evaluates candidate files with the same benchmark cases.
 
 9. **Embedding Artifacts**
@@ -94,6 +95,7 @@ Additional processing commands may create:
 - `chunks.split.jsonl`
 - `chunks.semantic.jsonl`
 - `chunks.multimodal.jsonl`
+- `chunks.hierarchical.jsonl`
 - `graph_nodes.jsonl`
 - `graph_edges.jsonl`
 - `experiment_report.json`

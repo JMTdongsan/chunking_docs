@@ -698,6 +698,8 @@ def build_chunk_strategy_command(
     overlap_chars: int = 180,
     min_chars: int = 180,
     context_prefix: bool = True,
+    parent_max_chars: int = 900,
+    visual_context_chars: int = 700,
 ):
     """Build an alternate chunk file for a named chunking strategy."""
     chunks = read_jsonl(package_dir / "chunks.jsonl", DocumentChunk)
@@ -710,6 +712,8 @@ def build_chunk_strategy_command(
         overlap_chars=overlap_chars,
         min_chars=min_chars,
         include_context_prefix=context_prefix,
+        parent_max_chars=parent_max_chars,
+        visual_context_chars=visual_context_chars,
     )
     output_path = output or package_dir / f"chunks.{strategy}.jsonl"
     write_jsonl(output_path, strategy_chunks)
