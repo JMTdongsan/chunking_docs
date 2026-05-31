@@ -5,7 +5,12 @@ from typer.testing import CliRunner
 import chunking_docs.cli as cli_module
 from chunking_docs.cli import app
 from chunking_docs.evaluation.audit import audit_package, degraded_page_ratio
-from chunking_docs.evaluation.ablation import evaluate_retrieval_ablation, parse_ablation_modes
+from chunking_docs.evaluation.ablation import (
+    evaluate_retrieval_ablation,
+    parse_ablation_modes,
+    parse_qdrant_vector_ablation_modes,
+    qdrant_vector_names_for_modes,
+)
 from chunking_docs.evaluation.retrieval import RetrievalCase, evaluate_retrieval, evaluate_search_results
 from chunking_docs.io import write_jsonl
 from chunking_docs.models import (
@@ -451,6 +456,89 @@ def test_eval_qdrant_retrieval_cli_writes_report(monkeypatch, tmp_path):
     assert payload["results"][0]["matched_asset_id"] == "asset-1"
     assert payload["results"][0]["top_sources"] == [["qdrant:text_dense"]]
     assert len(payload["results"][0]["latency_samples_ms"]) == 2
+
+
+def test_parse_qdrant_vector_ablation_modes_returns_union():
+    modes = parse_qdrant_vector_ablation_modes("text,caption,text_caption_graph")
+
+    assert [mode.name for mode in modes] == ["text", "caption", "text_caption_graph"]
+    assert modes[-1].graph_expand is True
+    assert qdrant_vector_names_for_modes(modes) == ["text_dense", "caption_dense"]
+
+
+def test_eval_qdrant_vector_ablation_cli_writes_report(monkeypatch, tmp_path):
+    output = tmp_path / "qdrant_vector_ablation.json"
+    cases_path = tmp_path / "cases.jsonl"
+    chunk = DocumentChunk(
+        chunk_id="chunk-1",
+        doc_id="doc",
+        page_start=1,
+        page_end=1,
+        kind=ChunkKind.TEXT,
+        text="visual caption evidence",
+        asset_ids=["asset-1"],
+    )
+    write_jsonl(cases_path, [RetrievalCase(query="visual evidence", expected_asset_ids=["asset-1"])])
+    calls = []
+
+    class FakeStore:
+        def count(self):
+            return 1
+
+    class FakeSearcher:
+        def search(self, **kwargs):
+            calls.append((tuple(kwargs["vector_names"]), kwargs["graph_expand"]))
+            if kwargs["vector_names"] == ["caption_dense"]:
+                return [
+                    HybridSearchHit(
+                        chunk=chunk,
+                        score=0.9,
+                        sources=["qdrant:caption_dense"],
+                    )
+                ]
+            return []
+
+    def fake_prepare(**kwargs):
+        assert kwargs["vector_names"] == "text_dense,caption_dense"
+        return {
+            "searcher": FakeSearcher(),
+            "store": FakeStore(),
+            "collection_name": "documents",
+            "selected_vectors": ["text_dense", "caption_dense"],
+            "query_encoders": {
+                "text_dense": "default_text",
+                "caption_dense": "default_text",
+            },
+            "upserted": 1,
+            "triples": [],
+        }
+
+    monkeypatch.setattr(cli_module, "prepare_qdrant_hybrid_search", fake_prepare)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "eval-qdrant-vector-ablation",
+            str(cases_path),
+            "--package-dir",
+            str(tmp_path),
+            "--modes",
+            "text,caption",
+            "--repeat",
+            "2",
+            "--output",
+            str(output),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    rows = {row["mode"]["name"]: row for row in payload["rows"]}
+    assert payload["best_by_recall"] == "caption"
+    assert rows["text"]["evaluation"]["recall_at_k"] == 0.0
+    assert rows["caption"]["evaluation"]["recall_at_k"] == 1.0
+    assert rows["caption"]["evaluation"]["metadata"]["vector_names"] == ["caption_dense"]
+    assert calls.count((("caption_dense",), False)) == 2
 
 
 def test_eval_retrieval_ablation_cli_writes_report(tmp_path):

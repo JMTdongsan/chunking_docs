@@ -14,10 +14,17 @@ from chunking_docs.chunking.page_chunker import page_level_chunks
 from chunking_docs.chunking.section_map import load_section_ranges
 from chunking_docs.embeddings.tokenizers import LexicalTokenizerConfig, TokenizerStrategy
 from chunking_docs.evaluation.audit import audit_package
+from chunking_docs.evaluation.ablation import (
+    QdrantVectorAblationRow,
+    build_qdrant_vector_ablation_report,
+    evaluate_retrieval_ablation,
+    parse_ablation_modes,
+    parse_qdrant_vector_ablation_modes,
+    qdrant_vector_names_for_modes,
+)
 from chunking_docs.evaluation.chunking_quality import evaluate_chunking_quality
 from chunking_docs.evaluation.compare import compare_chunking_reports
 from chunking_docs.evaluation.experiment import build_experiment_report
-from chunking_docs.evaluation.ablation import evaluate_retrieval_ablation, parse_ablation_modes
 from chunking_docs.evaluation.retrieval import (
     evaluate_retrieval,
     evaluate_search_results,
@@ -570,6 +577,135 @@ def eval_qdrant_retrieval_command(
         )
         return
     print(evaluation.model_dump())
+
+
+@app.command(name="eval-qdrant-vector-ablation")
+def eval_qdrant_vector_ablation_command(
+    cases: Path,
+    package_dir: Path = Path("outputs/package"),
+    output: Path | None = None,
+    modes: str = "text,caption,text_caption,text_caption_graph",
+    url: str = "http://localhost:6333",
+    collection: str = "",
+    location: str = "",
+    path: str = "",
+    top_k: int = 5,
+    repeat: int = 1,
+    collapse_hierarchical: bool = False,
+    text_backend: str = "hashing",
+    text_model: str = "BAAI/bge-m3",
+    image_query_backend: str = "none",
+    image_query_model: str = "openai/clip-vit-large-patch14",
+    device: str = "cuda",
+    hashing_dim: int = 384,
+    doc_id: str = "",
+    payload_filter: list[str] = typer.Option(
+        None,
+        "--filter",
+        help="Payload filter such as kind=map, page_no=12, page_start<=12. Repeat for multiple filters.",
+    ),
+    lexical_tokenizer: TokenizerStrategy = "mixed",
+    ngram_min: int = 2,
+    ngram_max: int = 4,
+    ngram_cjk_only: bool = True,
+):
+    """Compare Qdrant text, visual caption, image, and graph retrieval signals."""
+    try:
+        parsed_modes = parse_qdrant_vector_ablation_modes(modes)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+    selected_vectors = qdrant_vector_names_for_modes(parsed_modes)
+    prepare_start = perf_counter()
+    prepared = prepare_qdrant_hybrid_search(
+        package_dir=package_dir,
+        url=url,
+        collection=collection,
+        location=location,
+        path=path,
+        vector_names=",".join(selected_vectors),
+        text_backend=text_backend,
+        text_model=text_model,
+        image_query_backend=image_query_backend,
+        image_query_model=image_query_model,
+        device=device,
+        hashing_dim=hashing_dim,
+        lexical_tokenizer=lexical_tokenizer,
+        ngram_min=ngram_min,
+        ngram_max=ngram_max,
+        ngram_cjk_only=ngram_cjk_only,
+    )
+    index_build_ms = (perf_counter() - prepare_start) * 1000
+    retrieval_cases = load_retrieval_cases(cases)
+    filters = build_payload_filter(filter_specs=payload_filter)
+    metadata_filters = build_payload_filter(doc_id=doc_id, filter_specs=payload_filter)
+
+    rows = []
+    for mode in parsed_modes:
+        evaluation = evaluate_search_results(
+            cases=retrieval_cases,
+            search_fn=lambda case, graph_expand, mode=mode: prepared["searcher"].search(
+                query=case.query,
+                vector_names=mode.vector_names,
+                top_k=top_k,
+                graph_expand=graph_expand,
+                doc_id=doc_id or None,
+                payload_filter=filters,
+                collapse_hierarchical=collapse_hierarchical,
+            ),
+            top_k=top_k,
+            repeat=repeat,
+            index_build_ms=index_build_ms,
+            graph_expand_override=mode.graph_expand,
+            triples=prepared["triples"],
+        )
+        evaluation.metadata.update(
+            {
+                "backend": "qdrant_hybrid",
+                "mode": mode.name,
+                "collection": prepared["collection_name"],
+                "vector_names": mode.vector_names,
+                "graph_expand": mode.graph_expand,
+                "query_encoders": {
+                    name: prepared["query_encoders"].get(name, "unknown")
+                    for name in mode.vector_names
+                },
+                "upserted": prepared["upserted"],
+                "stored_count": prepared["store"].count(),
+                "filters": metadata_filters,
+            }
+        )
+        rows.append(QdrantVectorAblationRow(mode=mode, evaluation=evaluation))
+
+    report = build_qdrant_vector_ablation_report(rows)
+    if output is not None:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(report.model_dump_json(indent=2), encoding="utf-8")
+        print(
+            {
+                "output": str(output),
+                "best_by_recall": report.best_by_recall,
+                "best_by_mrr": report.best_by_mrr,
+                "fastest_by_mean_latency": report.fastest_by_mean_latency,
+                "rows": [
+                    {
+                        "mode": row.mode.name,
+                        "vector_names": row.mode.vector_names,
+                        "graph_expand": row.mode.graph_expand,
+                        "recall_at_k": row.evaluation.recall_at_k,
+                        "mrr": row.evaluation.mrr,
+                        "hit_rate": row.evaluation.hit_rate,
+                        "repeat": row.evaluation.repeat,
+                        "mean_latency_ms": row.evaluation.mean_latency_ms,
+                        "p95_latency_ms": row.evaluation.p95_latency_ms,
+                        "failed_queries": row.evaluation.failed_queries,
+                    }
+                    for row in report.rows
+                ],
+            }
+        )
+        return
+    print(report.model_dump())
 
 
 @app.command(name="embed-package")
@@ -1683,6 +1819,11 @@ def prepare_qdrant_hybrid_search(
         for name, config in collection_config.get("named_vectors", {}).items()
     }
     selected_vectors = [item.strip() for item in vector_names.split(",") if item.strip()]
+    unknown_vectors = sorted(set(selected_vectors) - set(named_vectors))
+    if unknown_vectors:
+        raise typer.BadParameter(
+            f"Unknown Qdrant named vectors for this package: {', '.join(unknown_vectors)}"
+        )
     store = QdrantChunkStore(
         url=url,
         collection_name=collection_name,

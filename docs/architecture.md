@@ -111,6 +111,7 @@ Additional processing commands may create:
 - `graph_edges.jsonl`
 - `experiment_report.json`
 - `qdrant_retrieval_eval.json`
+- `qdrant_vector_ablation.json`
 - `retrieval_ablation.json`
 - `rag_context.json`
 - `rag_context.qdrant.json`
@@ -163,6 +164,7 @@ Recommended checks:
 - `eval-chunking`: page coverage, chunk size distribution, section coverage, visual linkage, annotation coverage, retrieval recall@k, MRR, latency, failed queries, and aggregate quality score.
 - `eval-retrieval`: focused top-k retrieval benchmark cases with optional repeated latency sampling.
 - `eval-qdrant-retrieval`: the same benchmark cases against Qdrant named vectors plus BM25 and optional graph expansion.
+- `eval-qdrant-vector-ablation`: Qdrant text, visual caption, optional image, and graph-expanded vector comparison on the same cases.
 - `eval-retrieval-ablation`: dense-only, BM25-only, graph-only, hybrid, and graph-expanded hybrid comparison on the same cases, including mean and p95 latency.
 - `compare-chunking`: side-by-side strategy comparison by quality score, recall@k, MRR, latency, and failed queries.
 - `sweep-chunking`: parameter grid generation for max size, overlap, parent size, and visual context size.
