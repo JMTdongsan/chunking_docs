@@ -6,6 +6,7 @@ from typing import Literal
 from chunking_docs.chunking.hierarchical import build_hierarchical_chunks, chunk_visual_context
 from chunking_docs.chunking.semantic_splitter import semantic_subchunks
 from chunking_docs.embeddings.records import asset_text
+from chunking_docs.graph.provenance import chunk_asset_ids
 from chunking_docs.models import ChunkKind, DocumentChunk, VisualAsset
 
 ChunkStrategy = Literal["page", "semantic", "multimodal", "hierarchical"]
@@ -126,7 +127,7 @@ def visual_asset_chunks(
     chunk_by_asset_id = {
         asset_id: chunk
         for chunk in chunks
-        for asset_id in chunk.asset_ids
+        for asset_id in chunk_asset_ids(chunk)
     }
     results = []
     for asset in assets:

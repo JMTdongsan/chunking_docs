@@ -111,6 +111,35 @@ def test_multimodal_strategy_uses_structured_visual_metadata_as_context():
     assert "Objects: station marker: red circle" in chunks[1].text
 
 
+def test_multimodal_strategy_uses_source_ref_visual_asset_links():
+    chunk = DocumentChunk(
+        chunk_id="chunk-1",
+        doc_id="doc",
+        page_start=3,
+        page_end=3,
+        kind=ChunkKind.TEXT,
+        text="base text",
+        source_refs=["asset:asset-1"],
+    )
+    asset = VisualAsset(
+        asset_id="asset-1",
+        doc_id="doc",
+        page_no=3,
+        kind=AssetKind.MAP,
+        caption="corridor map",
+        vlm_summary="river corridor links station hubs",
+    )
+
+    chunks = build_strategy_chunks([chunk], [asset], strategy="multimodal")
+
+    assert len(chunks) == 2
+    assert "Visual context" in chunks[0].text
+    assert "corridor map" in chunks[0].text
+    assert chunks[1].metadata["parent_chunk_id"] == "chunk-1"
+    assert chunks[1].asset_ids == ["asset-1"]
+    assert chunks[1].source_refs == ["asset:asset-1"]
+
+
 def test_hierarchical_strategy_adds_parent_and_child_context():
     chunk = DocumentChunk(
         chunk_id="chunk-1",
@@ -157,3 +186,37 @@ def test_hierarchical_strategy_adds_parent_and_child_context():
     assert all(child.metadata["hierarchical_parent_chunk_id"] == parent.chunk_id for child in children)
     assert any("capital investment table" in child.text for child in children)
     assert all(f"parent:{parent.chunk_id}" in child.source_refs for child in children)
+
+
+def test_hierarchical_strategy_uses_source_ref_visual_context():
+    chunk = DocumentChunk(
+        chunk_id="chunk-1",
+        doc_id="doc",
+        page_start=4,
+        page_end=4,
+        kind=ChunkKind.TEXT,
+        text="Transit corridor overview " + ("station access " * 12),
+        source_refs=["asset:asset-1"],
+    )
+    asset = VisualAsset(
+        asset_id="asset-1",
+        doc_id="doc",
+        page_no=4,
+        kind=AssetKind.CHART,
+        caption="access chart",
+        vlm_summary="chart compares station access coverage",
+    )
+
+    chunks = build_strategy_chunks(
+        [chunk],
+        [asset],
+        strategy="hierarchical",
+        max_chars=120,
+        overlap_chars=20,
+        min_chars=40,
+        parent_max_chars=80,
+        visual_context_chars=160,
+    )
+
+    assert "access chart" in chunks[0].text
+    assert any("access chart" in child.text for child in chunks[1:])

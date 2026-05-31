@@ -67,8 +67,8 @@
 9. **Strategy Variants**
    - `page`: baseline page chunks with optional context prefix.
    - `semantic`: boundary-aware subchunks for long text.
-   - `multimodal`: semantic chunks with bounded linked visual context plus visual asset text chunks from captions, OCR, VLM summaries, and structured VLM metadata.
-   - `hierarchical`: coarse parent chunks plus fine child chunks that share page, section, and visual context.
+   - `multimodal`: semantic chunks with bounded linked visual context plus visual asset text chunks from captions, OCR, VLM summaries, and structured VLM metadata. Visual links can come from `asset_ids` or `asset:` source refs.
+   - `hierarchical`: coarse parent chunks plus fine child chunks that share page, section, and visual context resolved from the same asset provenance.
    - `compare-chunking` evaluates candidate files with the same benchmark cases.
    - `sweep-chunking` generates a strategy and parameter grid, writes candidate chunk files, and ranks the results.
 

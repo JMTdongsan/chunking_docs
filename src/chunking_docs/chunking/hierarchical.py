@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 
 from chunking_docs.embeddings.records import asset_text
+from chunking_docs.graph.provenance import chunk_asset_ids
 from chunking_docs.models import ChunkKind, DocumentChunk, VisualAsset
 
 
@@ -124,7 +125,7 @@ def chunk_visual_context(
     max_chars: int,
 ) -> str:
     entries = []
-    for asset_id in chunk.asset_ids:
+    for asset_id in chunk_asset_ids(chunk):
         asset = assets_by_id.get(asset_id)
         if asset is None:
             continue
