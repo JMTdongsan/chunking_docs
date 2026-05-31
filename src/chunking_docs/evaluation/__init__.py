@@ -6,6 +6,12 @@ from .ablation import (
     parse_ablation_modes,
 )
 from .audit import AuditIssue, PackageAudit, audit_package, degraded_page_ratio
+from .diagnostics import (
+    RetrievalDiagnosticRow,
+    RetrievalDiagnosticsReport,
+    analyze_retrieval_evaluation,
+    load_retrieval_evaluation,
+)
 from .experiment import ArtifactSummary, ExperimentReport, build_experiment_report
 from .retrieval import (
     RetrievalCase,
@@ -29,13 +35,17 @@ __all__ = [
     "RetrievalAblationRow",
     "RetrievalCase",
     "RetrievalCaseResult",
+    "RetrievalDiagnosticRow",
+    "RetrievalDiagnosticsReport",
     "RetrievalEvaluation",
+    "analyze_retrieval_evaluation",
     "audit_package",
     "build_experiment_report",
     "degraded_page_ratio",
     "evaluate_retrieval",
     "evaluate_retrieval_ablation",
     "evaluate_search_results",
+    "load_retrieval_evaluation",
     "load_retrieval_cases",
     "parse_ablation_modes",
     "run_chunking_sweep",

@@ -116,6 +116,7 @@ Additional processing commands may create:
 - `experiment_report.json`
 - `qdrant_retrieval_eval.json`
 - `qdrant_vector_ablation.json`
+- `retrieval_diagnostics.json`
 - `retrieval_ablation.json`
 - `rag_context.json`
 - `rag_context.qdrant.json`
@@ -167,6 +168,7 @@ Recommended checks:
 - `audit-package`: structural completeness, orphan checks, OCR/VLM gaps, Qdrant vector dimensions, required payload fields, and payload index definitions.
 - `eval-chunking`: page coverage, chunk size distribution, section coverage, visual linkage, annotation coverage, retrieval recall@k, MRR, target coverage@k, precision@k, latency, failed queries, and aggregate quality score.
 - `eval-retrieval`: focused top-k retrieval benchmark cases with optional repeated latency sampling and target-specific page, chunk, visual asset, and graph triple metrics.
+- `diagnose-retrieval`: failure and partial-coverage analysis for retrieval evaluation JSON outputs.
 - `eval-qdrant-retrieval`: the same benchmark cases against Qdrant named vectors plus BM25 and optional graph expansion.
 - `eval-qdrant-vector-ablation`: Qdrant text, visual caption, optional image, and graph-expanded vector comparison on the same cases.
 - `eval-retrieval-ablation`: dense-only, BM25-only, graph-only, hybrid, and graph-expanded hybrid comparison on the same cases, including target coverage@k plus mean and p95 latency.

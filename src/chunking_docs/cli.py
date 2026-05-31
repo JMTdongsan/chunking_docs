@@ -24,6 +24,10 @@ from chunking_docs.evaluation.ablation import (
 )
 from chunking_docs.evaluation.chunking_quality import evaluate_chunking_quality
 from chunking_docs.evaluation.compare import compare_chunking_reports
+from chunking_docs.evaluation.diagnostics import (
+    analyze_retrieval_evaluation,
+    load_retrieval_evaluation,
+)
 from chunking_docs.evaluation.experiment import build_experiment_report
 from chunking_docs.evaluation.retrieval import (
     evaluate_retrieval,
@@ -1570,6 +1574,39 @@ def eval_retrieval_ablation_command(
                 }
                 for row in report.rows
             ],
+        }
+    print(payload)
+
+
+@app.command(name="diagnose-retrieval")
+def diagnose_retrieval_command(
+    evaluation: Path,
+    output: Path | None = None,
+    precision_floor: float = 0.2,
+    include_passed: bool = False,
+):
+    """Analyze retrieval evaluation failures and partial target coverage."""
+    if precision_floor < 0.0 or precision_floor > 1.0:
+        raise typer.BadParameter("--precision-floor must be between 0.0 and 1.0")
+    parsed_evaluation = load_retrieval_evaluation(evaluation)
+    report = analyze_retrieval_evaluation(
+        parsed_evaluation,
+        precision_floor=precision_floor,
+        include_passed=include_passed,
+    )
+    payload = report.model_dump()
+    if output is not None:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(report.model_dump_json(indent=2), encoding="utf-8")
+        payload = {
+            "output": str(output),
+            "case_count": report.case_count,
+            "failed_count": report.failed_count,
+            "partial_count": report.partial_count,
+            "no_hit_count": report.no_hit_count,
+            "low_precision_count": report.low_precision_count,
+            "reason_counts": report.reason_counts,
+            "missing_target_type_counts": report.missing_target_type_counts,
         }
     print(payload)
 
