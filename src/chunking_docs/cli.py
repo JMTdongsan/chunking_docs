@@ -35,8 +35,11 @@ from chunking_docs.evaluation.retrieval import (
     load_retrieval_cases,
 )
 from chunking_docs.evaluation.sweep import run_chunking_sweep
+from chunking_docs.graph.heuristics import section_triples
+from chunking_docs.graph.quality import normalize_graph_triples
 from chunking_docs.graph.repair import remap_triples_to_available_chunks
 from chunking_docs.ingest.pdf_loader import load_source_document, render_pages
+from chunking_docs.ingest.tables import extract_pdf_tables
 from chunking_docs.io import read_jsonl, write_jsonl
 from chunking_docs.models import DocumentChunk, GraphTriple, VisualAsset
 from chunking_docs.pipeline import (
@@ -133,6 +136,7 @@ def package_pdf(
     ngram_min: int = 2,
     ngram_max: int = 4,
     ngram_cjk_only: bool = True,
+    extract_tables: bool = True,
 ):
     """Build the full local processing package for DB ingestion."""
     manifest = build_processing_package(
@@ -148,6 +152,7 @@ def package_pdf(
             ngram_max=ngram_max,
             ngram_cjk_only=ngram_cjk_only,
         ),
+        extract_tables=extract_tables,
     )
     print(
         {
@@ -156,6 +161,7 @@ def package_pdf(
             "chunks": len(manifest.chunks),
             "assets": len(manifest.assets),
             "triples": len(manifest.triples),
+            "tables": manifest.metadata.get("table_count", 0),
             "output_dir": str(output_dir),
         }
     )
@@ -967,6 +973,78 @@ def build_tile_assets_command(
             "rows": rows,
             "cols": cols,
             "overlap_ratio": overlap_ratio,
+            "rebuilt_search": bool(in_place and rebuild_search),
+        }
+    )
+
+
+@app.command(name="extract-tables")
+def extract_tables_command(
+    package_dir: Path = Path("outputs/package"),
+    pdf: Path | None = None,
+    pages: str = "",
+    section_map: Path | None = None,
+    min_rows: int = 2,
+    min_cols: int = 2,
+    zoom: float = 2.0,
+    in_place: bool = True,
+    rebuild_search: bool = True,
+):
+    """Extract PDF table assets and table chunks from a processing package."""
+    if min_rows <= 0:
+        raise typer.BadParameter("--min-rows must be positive")
+    if min_cols <= 0:
+        raise typer.BadParameter("--min-cols must be positive")
+    manifest = load_processing_package(package_dir)
+    pdf_path = pdf or manifest.doc.local_path
+    selected_pages = parse_page_numbers(pages) or None
+    table_assets, table_chunks = extract_pdf_tables(
+        pdf_path=pdf_path,
+        doc_id=manifest.doc.doc_id,
+        output_dir=package_dir / "assets",
+        section_ranges=load_section_ranges(section_map),
+        pages=selected_pages,
+        min_rows=min_rows,
+        min_cols=min_cols,
+        zoom=zoom,
+    )
+
+    existing_assets = read_jsonl(package_dir / "assets.jsonl", VisualAsset)
+    merged_assets = merge_visual_assets(existing_assets, table_assets)
+    base_chunks = [
+        chunk
+        for chunk in manifest.chunks
+        if chunk.metadata.get("source") != "pdf_table_detection"
+    ]
+    updated_chunks = sorted(
+        [*attach_assets_to_chunks(base_chunks, merged_assets), *table_chunks],
+        key=lambda chunk: (chunk.page_start, chunk.page_end, str(chunk.kind), chunk.chunk_id),
+    )
+
+    asset_output = package_dir / ("assets.jsonl" if in_place else "assets.tables.jsonl")
+    chunk_output = package_dir / ("chunks.jsonl" if in_place else "chunks.tables.jsonl")
+    triple_output = package_dir / ("triples.jsonl" if in_place else "triples.tables.jsonl")
+    triples_path = package_dir / "triples.jsonl"
+    existing_triples = read_jsonl(triples_path, GraphTriple) if triples_path.exists() else []
+    updated_triples = normalize_graph_triples(
+        [*existing_triples, *section_triples(table_chunks)]
+    )
+    write_jsonl(asset_output, merged_assets)
+    write_jsonl(chunk_output, updated_chunks)
+    write_jsonl(triple_output, updated_triples)
+    if in_place and rebuild_search:
+        rebuild_search_artifacts(package_dir, updated_chunks, assets=merged_assets)
+
+    print(
+        {
+            "table_assets": len(table_assets),
+            "table_chunks": len(table_chunks),
+            "total_assets": len(merged_assets),
+            "total_chunks": len(updated_chunks),
+            "triples": len(updated_triples),
+            "asset_output": str(asset_output),
+            "chunk_output": str(chunk_output),
+            "triple_output": str(triple_output),
             "rebuilt_search": bool(in_place and rebuild_search),
         }
     )

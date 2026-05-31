@@ -8,6 +8,7 @@
 - Creates page-level starter chunks and optional semantic subchunks.
 - Accepts an external section map so document-specific structure stays outside the library.
 - Renders visual assets for pages that need OCR, VLM summaries, or image embeddings.
+- Extracts structured PDF tables as table chunks and table visual assets.
 - Plans and runs prioritized OCR/VLM jobs for visual-heavy pages.
 - Produces dense text, dense image, caption, and BM25 lexical artifacts.
 - Supports word, character n-gram, and mixed lexical tokenization for languages where whitespace is weak.
@@ -122,6 +123,20 @@ chunking-docs summarize-visual-results \
 ```
 
 The summary groups completion counts, backend latency, output size, VLM prompt usage, parse status, and extracted triple counts by operation.
+
+## Structured Tables
+
+The package command extracts detected PDF tables by default and stores each table as both a `table` chunk and a `table` visual asset. Table text is serialized as Markdown so dense embeddings, BM25, caption vectors, and downstream RAG context can all use the same structured content.
+
+Run table extraction on an existing package:
+
+```bash
+chunking-docs extract-tables \
+  --package-dir outputs/package \
+  --pdf data/raw/document.pdf
+```
+
+Use `--no-extract-tables` on `package` when table extraction should be handled as a separate experiment.
 
 ## Graph Triple Quality
 

@@ -30,7 +30,13 @@
    - Store each rendered image in `assets.jsonl` with page, kind, path, and processing hints.
    - Link visual assets back to chunks through `asset_ids`.
 
-6. **OCR/VLM Job Planning**
+6. **Structured Tables**
+   - Detect PDF tables with the document text/layout layer when available.
+   - Store each detected table as a `table` chunk with Markdown table text.
+   - Store each detected table as a `table` visual asset with bbox, rendered clip, and caption text.
+   - Keep table extraction generic so document-specific schemas remain external data.
+
+7. **OCR/VLM Job Planning**
    - Build `visual_jobs.jsonl` from missing OCR/VLM annotations.
    - Prioritize maps, tables, charts, figures, and pages with empty text.
    - Run jobs in bounded batches and store `visual_job_results.jsonl` plus `visual_annotations.jsonl`.
@@ -39,12 +45,12 @@
    - Summarize visual job results by status, backend latency, output size, VLM prompt usage, parse status, and triple count.
    - Apply annotations back into chunks, assets, graph triples, BM25, and Qdrant records.
 
-7. **Semantic Splitting**
+8. **Semantic Splitting**
    - Split long annotated chunks into subchunks using paragraph and line boundaries.
    - Preserve original chunk IDs when a chunk does not need splitting.
    - Remap triples to available child chunks when splitting changes IDs.
 
-8. **Strategy Variants**
+9. **Strategy Variants**
    - `page`: baseline page chunks with optional context prefix.
    - `semantic`: boundary-aware subchunks for long text.
    - `multimodal`: semantic chunks plus visual asset text chunks from captions, OCR, and VLM summaries.
@@ -52,33 +58,33 @@
    - `compare-chunking` evaluates candidate files with the same benchmark cases.
    - `sweep-chunking` generates a strategy and parameter grid, writes candidate chunk files, and ranks the results.
 
-9. **Embedding Artifacts**
+10. **Embedding Artifacts**
    - `text_dense`: chunk text, OCR text, and VLM summaries.
    - `caption_dense`: asset caption, OCR, and VLM summary text.
    - `image_dense`: rendered page or visual asset image.
    - Default hashing embedders make the pipeline testable without model downloads.
    - `embed-package` regenerates artifacts with model-backed text and image embedders.
 
-10. **Lexical Search**
+11. **Lexical Search**
     - BM25 is generated from chunk text.
     - Lexical search protects exact matches for names, identifiers, dates, codes, and policy terms.
     - Tokenization is configurable as `word`, `char_ngram`, or `mixed`.
     - The default `mixed` tokenizer adds CJK character n-grams so compound terms without whitespace remain retrievable.
     - Dense and lexical results are combined with Reciprocal Rank Fusion in the local evaluator.
 
-11. **Graph Triples**
+12. **Graph Triples**
     - Section metadata creates baseline graph relationships.
     - OCR/VLM JSON or external annotations can add `subject, predicate, object` triples.
     - Triple normalization canonicalizes labels, predicate names, and stable IDs.
     - Triple audit flags duplicates, orphan chunk references, empty fields, and invalid confidence values.
     - Graph terms are used for query expansion and relationship browsing.
 
-12. **Storage**
+13. **Storage**
     - Qdrant stores named vectors and payloads.
     - PostgreSQL stores normalized document, page, chunk, asset, and triple metadata.
     - BM25 can remain as a local manifest or be replaced by a dedicated lexical search service.
 
-13. **RAG Context Assembly**
+14. **RAG Context Assembly**
     - Convert retrieval hits into a structured context bundle.
     - Support both local hybrid retrieval and Qdrant hybrid retrieval.
     - Include hit chunks, optional neighboring chunks, hierarchical evidence chunks, linked visual assets, and graph triples.

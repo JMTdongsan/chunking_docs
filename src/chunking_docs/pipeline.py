@@ -23,6 +23,7 @@ from chunking_docs.embeddings.records import (
 )
 from chunking_docs.graph.heuristics import section_triples
 from chunking_docs.ingest.pdf_loader import load_source_document
+from chunking_docs.ingest.tables import extract_pdf_tables
 from chunking_docs.io import read_jsonl, write_jsonl
 from chunking_docs.models import (
     DocumentChunk,
@@ -32,7 +33,7 @@ from chunking_docs.models import (
     SourceDocument,
     VisualAsset,
 )
-from chunking_docs.vision.assets import attach_assets_to_chunks, build_page_assets
+from chunking_docs.vision.assets import attach_assets_to_chunks, build_page_assets, merge_visual_assets
 
 
 QDRANT_RECORD_FILES = {
@@ -63,13 +64,14 @@ def build_processing_package(
     dry_run_embeddings: bool = True,
     section_ranges: list[SectionRange] | None = None,
     tokenizer_config: LexicalTokenizerConfig | None = None,
+    extract_tables: bool = True,
 ) -> ProcessingManifest:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     source = load_source_document(pdf_path, title=title, source_url=source_url)
     profiles = profile_pdf(pdf_path, source.doc_id)
-    chunks = page_level_chunks(pdf_path, source.doc_id, profiles, section_ranges=section_ranges)
-    assets = build_page_assets(
+    page_chunks = page_level_chunks(pdf_path, source.doc_id, profiles, section_ranges=section_ranges)
+    page_assets = build_page_assets(
         pdf_path=pdf_path,
         doc_id=source.doc_id,
         profiles=profiles,
@@ -77,7 +79,17 @@ def build_processing_package(
         zoom=render_zoom,
         section_ranges=section_ranges,
     )
-    chunks = attach_assets_to_chunks(chunks, assets)
+    table_assets, table_chunks = ([], [])
+    if extract_tables:
+        table_assets, table_chunks = extract_pdf_tables(
+            pdf_path=pdf_path,
+            doc_id=source.doc_id,
+            output_dir=output_dir / "assets",
+            section_ranges=section_ranges,
+            zoom=render_zoom,
+        )
+    assets = merge_visual_assets(page_assets, table_assets)
+    chunks = [*attach_assets_to_chunks(page_chunks, assets), *table_chunks]
     triples = section_triples(chunks)
 
     manifest = ProcessingManifest(
@@ -90,6 +102,7 @@ def build_processing_package(
             "profile_summary": summarize_profiles(profiles),
             "embedding_mode": "hashing_dry_run" if dry_run_embeddings else "external",
             "section_map_count": len(section_ranges or []),
+            "table_count": len(table_chunks),
         },
     )
     write_package(
