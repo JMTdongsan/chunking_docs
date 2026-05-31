@@ -2212,6 +2212,11 @@ def ingestion_readiness_command(
     min_target_ndcg_at_k: float = 0.0,
     min_precision_at_k: float = 0.0,
     max_p95_latency_ms: float | None = None,
+    min_retrieval_source_family_target_coverage: list[str] = typer.Option(
+        None,
+        "--min-retrieval-source-family-target-coverage",
+        help="Require retrieval source-family target coverage such as lexical=0.8.",
+    ),
     chunking_comparison: Path | None = None,
     require_chunking_comparison: bool = False,
     chunking_candidate: str | None = None,
@@ -2266,6 +2271,10 @@ def ingestion_readiness_command(
         min_qdrant_vector_source_family_target_coverage,
         "Qdrant vector source family target coverage",
     )
+    retrieval_source_family_thresholds = parse_named_float_thresholds(
+        min_retrieval_source_family_target_coverage,
+        "retrieval source family target coverage",
+    )
     report = build_ingestion_readiness_report(
         package_dir=package_dir,
         manifest=manifest,
@@ -2301,6 +2310,7 @@ def ingestion_readiness_command(
             "min_target_ndcg_at_k": min_target_ndcg_at_k,
             "min_precision_at_k": min_precision_at_k,
             "max_p95_latency_ms": max_p95_latency_ms,
+            "min_source_family_target_coverage": retrieval_source_family_thresholds,
         },
         chunking_comparison=parsed_chunking_comparison,
         require_chunking_comparison=require_chunking_comparison,
@@ -2731,6 +2741,11 @@ def gate_retrieval_command(
     min_precision_at_k: float = 0.0,
     max_mean_latency_ms: float | None = None,
     max_p95_latency_ms: float | None = None,
+    min_source_family_target_coverage: list[str] = typer.Option(
+        None,
+        "--min-source-family-target-coverage",
+        help="Require source-family target coverage such as lexical=0.8. Repeat for multiple families.",
+    ),
     max_recall_drop: float | None = None,
     max_target_coverage_drop: float | None = None,
     max_target_ndcg_drop: float | None = None,
@@ -2746,6 +2761,10 @@ def gate_retrieval_command(
     """Fail a retrieval run when absolute metrics or baseline regression limits are missed."""
     parsed_evaluation = load_retrieval_evaluation(evaluation)
     parsed_baseline = load_retrieval_evaluation(baseline) if baseline else None
+    source_family_thresholds = parse_named_float_thresholds(
+        min_source_family_target_coverage,
+        "source family target coverage",
+    )
     report = gate_retrieval_evaluation(
         parsed_evaluation,
         baseline=parsed_baseline,
@@ -2756,6 +2775,7 @@ def gate_retrieval_command(
         min_precision_at_k=min_precision_at_k,
         max_mean_latency_ms=max_mean_latency_ms,
         max_p95_latency_ms=max_p95_latency_ms,
+        min_source_family_target_coverage=source_family_thresholds,
         max_recall_drop=max_recall_drop,
         max_target_coverage_drop=max_target_coverage_drop,
         max_target_ndcg_drop=max_target_ndcg_drop,

@@ -22,6 +22,7 @@ class RetrievalGateCheck(BaseModel):
 class RetrievalGateReport(BaseModel):
     passed: bool
     metrics: dict[str, float]
+    source_family_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
     baseline_metrics: dict[str, float] = Field(default_factory=dict)
     failed_checks: list[str] = Field(default_factory=list)
     checks: list[RetrievalGateCheck] = Field(default_factory=list)
@@ -37,6 +38,7 @@ def gate_retrieval_evaluation(
     min_precision_at_k: float = 0.0,
     max_mean_latency_ms: float | None = None,
     max_p95_latency_ms: float | None = None,
+    min_source_family_target_coverage: dict[str, float] | None = None,
     max_recall_drop: float | None = None,
     max_target_coverage_drop: float | None = None,
     max_target_ndcg_drop: float | None = None,
@@ -46,8 +48,13 @@ def gate_retrieval_evaluation(
 ) -> RetrievalGateReport:
     """Evaluate retrieval metrics against absolute floors and baseline regression limits."""
 
-    metrics = retrieval_metrics(evaluation)
-    baseline_metrics = retrieval_metrics(baseline) if baseline is not None else {}
+    source_family_metrics = retrieval_source_family_metrics(evaluation)
+    metrics = retrieval_metrics(evaluation, source_family_metrics)
+    baseline_metrics = (
+        retrieval_metrics(baseline, retrieval_source_family_metrics(baseline))
+        if baseline is not None
+        else {}
+    )
     checks = [
         minimum_check("min_recall_at_k", "recall_at_k", metrics, min_recall_at_k),
         minimum_check(
@@ -69,6 +76,12 @@ def gate_retrieval_evaluation(
         checks.append(maximum_check("max_mean_latency_ms", "mean_latency_ms", metrics, max_mean_latency_ms))
     if max_p95_latency_ms is not None:
         checks.append(maximum_check("max_p95_latency_ms", "p95_latency_ms", metrics, max_p95_latency_ms))
+    checks.extend(
+        source_family_target_coverage_checks(
+            metrics,
+            min_source_family_target_coverage or {},
+        )
+    )
     if baseline is not None:
         checks.extend(
             baseline_drop_checks(
@@ -96,16 +109,20 @@ def gate_retrieval_evaluation(
     return RetrievalGateReport(
         passed=not failed_checks,
         metrics=metrics,
+        source_family_metrics=source_family_metrics,
         baseline_metrics=baseline_metrics,
         failed_checks=failed_checks,
         checks=checks,
     )
 
 
-def retrieval_metrics(evaluation: RetrievalEvaluation | None) -> dict[str, float]:
+def retrieval_metrics(
+    evaluation: RetrievalEvaluation | None,
+    source_family_metrics: dict[str, dict[str, float]] | None = None,
+) -> dict[str, float]:
     if evaluation is None:
         return {}
-    return {
+    metrics = {
         "hit_rate": evaluation.hit_rate,
         "recall_at_k": evaluation.recall_at_k,
         "mrr": evaluation.mrr,
@@ -115,6 +132,55 @@ def retrieval_metrics(evaluation: RetrievalEvaluation | None) -> dict[str, float
         "mean_latency_ms": evaluation.mean_latency_ms,
         "p95_latency_ms": evaluation.p95_latency_ms,
     }
+    for family, family_metrics in (source_family_metrics or {}).items():
+        for key, value in family_metrics.items():
+            metrics[source_family_metric_key(family, key)] = value
+    return metrics
+
+
+def retrieval_source_family_metrics(
+    evaluation: RetrievalEvaluation | None,
+) -> dict[str, dict[str, float]]:
+    if evaluation is None:
+        return {}
+    return {
+        family: {
+            "query_count": float(metric.query_count),
+            "relevant_query_count": float(metric.relevant_query_count),
+            "hit_count": float(metric.hit_count),
+            "relevant_hit_count": float(metric.relevant_hit_count),
+            "expected_target_count": float(metric.expected_target_count),
+            "matched_target_count": float(metric.matched_target_count),
+            "precision_at_hits": metric.precision_at_hits,
+            "target_coverage_at_k": metric.target_coverage_at_k,
+            "mean_relevant_rank": metric.mean_relevant_rank,
+        }
+        for family, metric in sorted(evaluation.source_family_metrics.items())
+    }
+
+
+def source_family_target_coverage_checks(
+    metrics: dict[str, float],
+    thresholds: dict[str, float],
+) -> list[RetrievalGateCheck]:
+    checks = []
+    for family, threshold in sorted(thresholds.items()):
+        normalized_family = family.strip().lower()
+        metric = source_family_metric_key(normalized_family, "target_coverage_at_k")
+        metrics.setdefault(metric, 0.0)
+        checks.append(
+            minimum_check(
+                f"min_source_family_target_coverage:{normalized_family}",
+                metric,
+                metrics,
+                threshold,
+            )
+        )
+    return checks
+
+
+def source_family_metric_key(family: str, metric: str) -> str:
+    return f"source_family.{family}.{metric}"
 
 
 def minimum_check(
@@ -218,5 +284,6 @@ def gate_summary_payload(report: RetrievalGateReport) -> dict[str, Any]:
         "passed": report.passed,
         "failed_checks": report.failed_checks,
         "metrics": report.metrics,
+        "source_family_metrics": report.source_family_metrics,
         "baseline_metrics": report.baseline_metrics,
     }

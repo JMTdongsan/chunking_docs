@@ -2,7 +2,7 @@ from typer.testing import CliRunner
 
 from chunking_docs.cli import app
 from chunking_docs.evaluation.gate import gate_retrieval_evaluation
-from chunking_docs.evaluation.retrieval import RetrievalEvaluation
+from chunking_docs.evaluation.retrieval import RetrievalEvaluation, RetrievalSourceMetric
 
 
 def make_evaluation(
@@ -12,6 +12,7 @@ def make_evaluation(
     precision: float = 0.7,
     mean_latency: float = 12.0,
     p95_latency: float = 20.0,
+    source_family_coverage: dict[str, float] | None = None,
 ) -> RetrievalEvaluation:
     return RetrievalEvaluation(
         case_count=10,
@@ -27,6 +28,10 @@ def make_evaluation(
         top_k=5,
         mean_latency_ms=mean_latency,
         p95_latency_ms=p95_latency,
+        source_family_metrics={
+            family: source_family_metric(coverage)
+            for family, coverage in (source_family_coverage or {}).items()
+        },
         failed_queries=[],
         results=[],
     )
@@ -46,6 +51,27 @@ def test_retrieval_gate_passes_absolute_thresholds():
     assert report.passed is True
     assert report.failed_checks == []
     assert report.metrics["recall_at_k"] == 0.9
+
+
+def test_retrieval_gate_checks_source_family_target_coverage():
+    evaluation = make_evaluation(source_family_coverage={"visual": 0.75, "lexical": 1.0})
+
+    report = gate_retrieval_evaluation(
+        evaluation,
+        min_source_family_target_coverage={"visual": 0.7, "lexical": 1.0},
+    )
+
+    assert report.passed is True
+    assert report.metrics["source_family.visual.target_coverage_at_k"] == 0.75
+    assert report.source_family_metrics["lexical"]["target_coverage_at_k"] == 1.0
+
+    failed = gate_retrieval_evaluation(
+        evaluation,
+        min_source_family_target_coverage={"visual": 0.8},
+    )
+
+    assert failed.passed is False
+    assert failed.failed_checks == ["min_source_family_target_coverage:visual"]
 
 
 def test_retrieval_gate_flags_baseline_regressions():
@@ -90,3 +116,44 @@ def test_gate_retrieval_cli_exits_nonzero_on_failed_gate(tmp_path):
 
     assert result.exit_code == 1
     assert "min_recall_at_k" in result.output
+
+
+def test_gate_retrieval_cli_checks_source_family_target_coverage(tmp_path):
+    evaluation_path = tmp_path / "retrieval_eval.json"
+    output = tmp_path / "retrieval_gate.json"
+    evaluation_path.write_text(
+        make_evaluation(source_family_coverage={"visual": 0.5}).model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "gate-retrieval",
+            str(evaluation_path),
+            "--min-source-family-target-coverage",
+            "visual=0.8",
+            "--output",
+            str(output),
+            "--no-fail",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "min_source_family_target_coverage:visual" in result.output
+    payload = output.read_text(encoding="utf-8")
+    assert "source_family.visual.target_coverage_at_k" in payload
+
+
+def source_family_metric(target_coverage: float) -> RetrievalSourceMetric:
+    return RetrievalSourceMetric(
+        query_count=10,
+        relevant_query_count=int(target_coverage * 10),
+        hit_count=50,
+        relevant_hit_count=int(target_coverage * 10),
+        expected_target_count=10,
+        matched_target_count=int(target_coverage * 10),
+        precision_at_hits=target_coverage,
+        target_coverage_at_k=target_coverage,
+        mean_relevant_rank=1.0,
+    )

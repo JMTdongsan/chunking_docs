@@ -3,7 +3,14 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 from chunking_docs.embeddings.tokenizers import LexicalTokenizerConfig
-from chunking_docs.evaluation.gate import RetrievalGateCheck, maximum_check, minimum_check
+from chunking_docs.evaluation.gate import (
+    RetrievalGateCheck,
+    maximum_check,
+    minimum_check,
+    retrieval_source_family_metrics,
+    source_family_metric_key,
+    source_family_target_coverage_checks,
+)
 from chunking_docs.evaluation.retrieval import RetrievalCase, RetrievalEvaluation, evaluate_retrieval
 from chunking_docs.models import DocumentChunk, GraphTriple
 
@@ -270,7 +277,7 @@ def gate_qdrant_vector_ablation(
     if row is None:
         raise ValueError(f"Qdrant vector ablation mode not found: {mode}")
 
-    source_family_metrics = qdrant_vector_ablation_source_family_metrics(row.evaluation)
+    source_family_metrics = retrieval_source_family_metrics(row.evaluation)
     metrics = qdrant_vector_ablation_metrics(row.evaluation, source_family_metrics)
     checks = [
         minimum_check("min_recall_at_k", "recall_at_k", metrics, min_recall_at_k),
@@ -396,49 +403,6 @@ def qdrant_vector_ablation_metrics(
         for key, value in family_metrics.items():
             metrics[source_family_metric_key(family, key)] = value
     return metrics
-
-
-def qdrant_vector_ablation_source_family_metrics(
-    evaluation: RetrievalEvaluation,
-) -> dict[str, dict[str, float]]:
-    return {
-        family: {
-            "query_count": float(metric.query_count),
-            "relevant_query_count": float(metric.relevant_query_count),
-            "hit_count": float(metric.hit_count),
-            "relevant_hit_count": float(metric.relevant_hit_count),
-            "expected_target_count": float(metric.expected_target_count),
-            "matched_target_count": float(metric.matched_target_count),
-            "precision_at_hits": metric.precision_at_hits,
-            "target_coverage_at_k": metric.target_coverage_at_k,
-            "mean_relevant_rank": metric.mean_relevant_rank,
-        }
-        for family, metric in sorted(evaluation.source_family_metrics.items())
-    }
-
-
-def source_family_target_coverage_checks(
-    metrics: dict[str, float],
-    thresholds: dict[str, float],
-) -> list[RetrievalGateCheck]:
-    checks = []
-    for family, threshold in sorted(thresholds.items()):
-        normalized_family = family.strip().lower()
-        metric = source_family_metric_key(normalized_family, "target_coverage_at_k")
-        metrics.setdefault(metric, 0.0)
-        checks.append(
-            minimum_check(
-                f"min_source_family_target_coverage:{normalized_family}",
-                metric,
-                metrics,
-                threshold,
-            )
-        )
-    return checks
-
-
-def source_family_metric_key(family: str, metric: str) -> str:
-    return f"source_family.{family}.{metric}"
 
 
 def best_mode_check(name: str, mode: str, actual_best: str | None) -> RetrievalGateCheck:

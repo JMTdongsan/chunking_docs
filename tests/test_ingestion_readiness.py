@@ -114,6 +114,25 @@ def test_ingestion_readiness_requires_qdrant_vector_ablation(tmp_path):
     assert "qdrant_vector_ablation_gate" in report.failed_components
 
 
+def test_ingestion_readiness_can_gate_retrieval_source_family(tmp_path):
+    package_dir, manifest = write_ready_package(tmp_path)
+
+    report = build_ingestion_readiness_report(
+        package_dir,
+        manifest,
+        retrieval_evaluation=qdrant_vector_ablation_report().rows[0].evaluation,
+        retrieval_gate_options={
+            "min_recall_at_k": 1.0,
+            "min_source_family_target_coverage": {"dense_text": 1.0},
+        },
+    )
+
+    assert report.passed is True
+    assert report.retrieval_gate is not None
+    assert report.retrieval_gate.source_family_metrics["dense_text"]["target_coverage_at_k"] == 1.0
+    assert report.failed_components == []
+
+
 def test_ingestion_readiness_can_gate_visual_quality_from_assets(tmp_path):
     package_dir, manifest = write_ready_package(tmp_path)
     manifest.assets[0] = manifest.assets[0].model_copy(
