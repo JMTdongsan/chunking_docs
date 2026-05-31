@@ -163,7 +163,7 @@ Recommended checks:
 
 - `audit-package`: structural completeness, orphan checks, OCR/VLM gaps, Qdrant vector dimensions, required payload fields, and payload index definitions.
 - `eval-chunking`: page coverage, chunk size distribution, section coverage, visual linkage, annotation coverage, retrieval recall@k, MRR, latency, failed queries, and aggregate quality score.
-- `eval-retrieval`: focused top-k retrieval benchmark cases with optional repeated latency sampling.
+- `eval-retrieval`: focused top-k retrieval benchmark cases with optional repeated latency sampling and target-specific page, chunk, visual asset, and graph triple metrics.
 - `eval-qdrant-retrieval`: the same benchmark cases against Qdrant named vectors plus BM25 and optional graph expansion.
 - `eval-qdrant-vector-ablation`: Qdrant text, visual caption, optional image, and graph-expanded vector comparison on the same cases.
 - `eval-retrieval-ablation`: dense-only, BM25-only, graph-only, hybrid, and graph-expanded hybrid comparison on the same cases, including mean and p95 latency.

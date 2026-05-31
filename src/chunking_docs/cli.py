@@ -599,6 +599,7 @@ def eval_qdrant_retrieval_command(
                 "mrr": evaluation.mrr,
                 "mean_latency_ms": evaluation.mean_latency_ms,
                 "p95_latency_ms": evaluation.p95_latency_ms,
+                "target_metrics": retrieval_target_metrics_payload(evaluation),
                 **evaluation.metadata,
             }
         )
@@ -733,6 +734,7 @@ def eval_qdrant_vector_ablation_command(
                         "repeat": row.evaluation.repeat,
                         "mean_latency_ms": row.evaluation.mean_latency_ms,
                         "p95_latency_ms": row.evaluation.p95_latency_ms,
+                        "target_metrics": retrieval_target_metrics_payload(row.evaluation),
                         "failed_queries": row.evaluation.failed_queries,
                     }
                     for row in report.rows
@@ -1375,6 +1377,7 @@ def eval_retrieval_command(
                 "mrr": evaluation.mrr,
                 "mean_latency_ms": evaluation.mean_latency_ms,
                 "p95_latency_ms": evaluation.p95_latency_ms,
+                "target_metrics": retrieval_target_metrics_payload(evaluation),
             }
         )
         return
@@ -1444,6 +1447,7 @@ def eval_retrieval_ablation_command(
                     "repeat": row.evaluation.repeat,
                     "mean_latency_ms": row.evaluation.mean_latency_ms,
                     "p95_latency_ms": row.evaluation.p95_latency_ms,
+                    "target_metrics": retrieval_target_metrics_payload(row.evaluation),
                     "failed_queries": row.evaluation.failed_queries,
                 }
                 for row in report.rows
@@ -1731,6 +1735,13 @@ def write_experiment_report_command(
 
 def print_json(payload: dict):
     print(json.dumps(payload, ensure_ascii=False, indent=2))
+
+
+def retrieval_target_metrics_payload(evaluation) -> dict:
+    return {
+        name: metric.model_dump()
+        for name, metric in getattr(evaluation, "target_metrics", {}).items()
+    }
 
 
 def build_text_embedder(

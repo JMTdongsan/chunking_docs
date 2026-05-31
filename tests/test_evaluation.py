@@ -166,10 +166,42 @@ def test_evaluate_retrieval_hit_rate():
     assert result.repeat == 2
     assert result.mean_latency_ms >= 0.0
     assert result.p95_latency_ms >= 0.0
+    assert result.target_metrics["page"].recall_at_k == 1.0
+    assert result.target_metrics["page"].mrr == 1.0
     assert result.results[0].passed
+    assert result.results[0].target_matches == {"page": True}
+    assert result.results[0].target_matched_ranks == {"page": 1}
     assert len(result.results[0].latency_samples_ms) == 2
     assert result.results[0].matched_rank == 1
     assert result.results[0].matched_page == 12
+
+
+def test_evaluate_retrieval_reports_target_type_metrics():
+    chunks = [
+        DocumentChunk(
+            chunk_id="a",
+            doc_id="doc",
+            page_start=1,
+            page_end=1,
+            kind=ChunkKind.TEXT,
+            text="station access corridor",
+        )
+    ]
+    cases = [
+        RetrievalCase(
+            query="station access",
+            expected_pages=[1],
+            expected_asset_ids=["missing-asset"],
+        )
+    ]
+
+    result = evaluate_retrieval(chunks, [], cases, top_k=1)
+
+    assert result.passed_count == 1
+    assert result.target_metrics["page"].recall_at_k == 1.0
+    assert result.target_metrics["asset"].recall_at_k == 0.0
+    assert result.target_metrics["asset"].failed_queries == ["station access"]
+    assert result.results[0].target_matches == {"page": True, "asset": False}
 
 
 def test_evaluate_retrieval_reports_ranked_failures():
@@ -263,6 +295,7 @@ def test_evaluate_retrieval_matches_visual_asset_id_from_evidence_chunk():
     assert result.results[0].top_chunk_ids == ["parent"]
     assert result.results[0].top_asset_ids == [["asset-map"]]
     assert result.results[0].matched_asset_id == "asset-map"
+    assert result.target_metrics["asset"].recall_at_k == 1.0
 
 
 def test_evaluate_retrieval_matches_expected_triple_id():
@@ -297,6 +330,7 @@ def test_evaluate_retrieval_matches_expected_triple_id():
     assert result.results[0].top_triple_ids == [["triple-1"]]
     assert result.results[0].matched_triple_id == "triple-1"
     assert result.results[0].top_sources == [["graph"]]
+    assert result.target_metrics["triple"].recall_at_k == 1.0
 
 
 def test_evaluate_search_results_matches_visual_asset_id_from_payload():

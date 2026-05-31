@@ -45,6 +45,17 @@ class RetrievalCaseResult(BaseModel):
     matched_triple_id: str | None = None
     matched_page: int | None = None
     reciprocal_rank: float = 0.0
+    target_matches: dict[str, bool] = Field(default_factory=dict)
+    target_matched_ranks: dict[str, int] = Field(default_factory=dict)
+    target_reciprocal_ranks: dict[str, float] = Field(default_factory=dict)
+
+
+class RetrievalTargetMetric(BaseModel):
+    expected_count: int = 0
+    passed_count: int = 0
+    recall_at_k: float = 0.0
+    mrr: float = 0.0
+    failed_queries: list[str] = Field(default_factory=list)
 
 
 class RetrievalEvaluation(BaseModel):
@@ -62,6 +73,7 @@ class RetrievalEvaluation(BaseModel):
     total_query_latency_ms: float = 0.0
     mean_latency_ms: float = 0.0
     p95_latency_ms: float = 0.0
+    target_metrics: dict[str, RetrievalTargetMetric] = Field(default_factory=dict)
     failed_queries: list[str]
     results: list[RetrievalCaseResult]
 
@@ -155,6 +167,16 @@ def evaluate_search_results(
             or case.expected_triple_ids
         )
         match = first_relevant_hit(hits_with_chunks, case, triples_by_chunk=triples_by_chunk)
+        target_hits = target_relevant_hits(
+            hits_with_chunks,
+            case,
+            triples_by_chunk=triples_by_chunk,
+        )
+        target_matched_ranks = {
+            target: target_match.rank
+            for target, target_match in target_hits.items()
+            if target_match is not None
+        }
         passed = match is not None if expected_any else bool(hits_with_chunks)
         matched_rank = match.rank if match else (1 if not expected_any and hits_with_chunks else None)
         results.append(
@@ -180,6 +202,13 @@ def evaluate_search_results(
                 matched_triple_id=match.triple_id if match else None,
                 matched_page=match.page if match else None,
                 reciprocal_rank=(1.0 / matched_rank) if matched_rank else 0.0,
+                target_matches={
+                    target: target_match is not None for target, target_match in target_hits.items()
+                },
+                target_matched_ranks=target_matched_ranks,
+                target_reciprocal_ranks={
+                    target: 1.0 / rank for target, rank in target_matched_ranks.items()
+                },
             )
         )
     passed_count = sum(1 for result in results if result.passed)
@@ -205,6 +234,7 @@ def evaluate_search_results(
         total_query_latency_ms=sum(latency_samples),
         mean_latency_ms=sum(latency_samples) / len(latency_samples) if latency_samples else 0.0,
         p95_latency_ms=percentile_latency(latency_samples, 0.95),
+        target_metrics=target_metrics(results),
         failed_queries=[result.query for result in results if not result.passed],
         results=results,
     )
@@ -251,6 +281,82 @@ def first_relevant_hit(
         matched_page = first_page_match(chunk.page_start, chunk.page_end, expected_pages)
         if matched_page is not None:
             return RelevantHit(rank=rank, chunk_id=chunk.chunk_id, page=matched_page)
+    return None
+
+
+def target_relevant_hits(
+    hits,
+    case: RetrievalCase,
+    triples_by_chunk: dict[str, list[GraphTriple]] | None = None,
+) -> dict[str, RelevantHit | None]:
+    targets: dict[str, RelevantHit | None] = {}
+    triples_by_chunk = triples_by_chunk or {}
+    if case.expected_pages:
+        targets["page"] = first_page_hit(hits, set(case.expected_pages))
+    if case.expected_chunk_ids:
+        targets["chunk"] = first_chunk_hit(hits, set(case.expected_chunk_ids))
+    if case.expected_asset_ids:
+        targets["asset"] = first_asset_hit(hits, set(case.expected_asset_ids))
+    if case.expected_triple_ids:
+        targets["triple"] = first_triple_hit(
+            hits,
+            set(case.expected_triple_ids),
+            triples_by_chunk=triples_by_chunk,
+        )
+    return targets
+
+
+def first_page_hit(hits, expected_pages: set[int]) -> RelevantHit | None:
+    for index, hit in enumerate(hits):
+        rank = index + 1
+        chunk = hit_chunk(hit)
+        if chunk is None:
+            continue
+        matched_page = first_page_match(chunk.page_start, chunk.page_end, expected_pages)
+        if matched_page is not None:
+            return RelevantHit(rank=rank, chunk_id=chunk.chunk_id, page=matched_page)
+    return None
+
+
+def first_chunk_hit(hits, expected_chunk_ids: set[str]) -> RelevantHit | None:
+    for index, hit in enumerate(hits):
+        rank = index + 1
+        chunk = hit_chunk(hit)
+        if chunk is None:
+            continue
+        if chunk.chunk_id in expected_chunk_ids:
+            return RelevantHit(rank=rank, chunk_id=chunk.chunk_id)
+        for evidence_chunk in hit_evidence_chunks(hit):
+            if evidence_chunk.chunk_id in expected_chunk_ids:
+                return RelevantHit(rank=rank, chunk_id=evidence_chunk.chunk_id)
+    return None
+
+
+def first_asset_hit(hits, expected_asset_ids: set[str]) -> RelevantHit | None:
+    for index, hit in enumerate(hits):
+        rank = index + 1
+        chunk = hit_chunk(hit)
+        if chunk is None:
+            continue
+        for asset_id in hit_asset_ids(hit):
+            if asset_id in expected_asset_ids:
+                return RelevantHit(rank=rank, chunk_id=chunk.chunk_id, asset_id=asset_id)
+    return None
+
+
+def first_triple_hit(
+    hits,
+    expected_triple_ids: set[str],
+    triples_by_chunk: dict[str, list[GraphTriple]],
+) -> RelevantHit | None:
+    for index, hit in enumerate(hits):
+        rank = index + 1
+        chunk = hit_chunk(hit)
+        if chunk is None:
+            continue
+        for triple_id in hit_triple_ids(hit, triples_by_chunk):
+            if triple_id in expected_triple_ids:
+                return RelevantHit(rank=rank, chunk_id=chunk.chunk_id, triple_id=triple_id)
     return None
 
 
@@ -316,6 +422,26 @@ def add_asset_id(asset_ids: list[str], seen: set[str], asset_id: str | None):
 
 def hit_evidence_chunks(hit) -> list[DocumentChunk]:
     return [chunk for chunk in getattr(hit, "evidence_chunks", []) if chunk is not None]
+
+
+def target_metrics(results: list[RetrievalCaseResult]) -> dict[str, RetrievalTargetMetric]:
+    metrics = {}
+    for target in ["page", "chunk", "asset", "triple"]:
+        target_results = [result for result in results if target in result.target_matches]
+        if not target_results:
+            continue
+        passed_count = sum(1 for result in target_results if result.target_matches.get(target))
+        metrics[target] = RetrievalTargetMetric(
+            expected_count=len(target_results),
+            passed_count=passed_count,
+            recall_at_k=passed_count / len(target_results),
+            mrr=sum(result.target_reciprocal_ranks.get(target, 0.0) for result in target_results)
+            / len(target_results),
+            failed_queries=[
+                result.query for result in target_results if not result.target_matches.get(target)
+            ],
+        )
+    return metrics
 
 
 def elapsed_ms(start: float) -> float:
