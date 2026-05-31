@@ -59,6 +59,7 @@ def evaluate_chunking_quality(
     tokenizer_config: LexicalTokenizerConfig | None = None,
     collapse_hierarchical: bool = False,
     retrieval_repeat: int = 1,
+    fusion_weights: dict[str, float] | None = None,
 ) -> ChunkingQualityReport:
     page_numbers = {profile.page_no for profile in profiles}
     if not page_numbers:
@@ -85,6 +86,7 @@ def evaluate_chunking_quality(
             tokenizer_config=tokenizer_config,
             collapse_hierarchical=collapse_hierarchical,
             repeat=retrieval_repeat,
+            fusion_weights=fusion_weights,
         )
 
     issues = quality_issues(

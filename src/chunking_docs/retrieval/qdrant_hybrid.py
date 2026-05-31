@@ -62,6 +62,7 @@ class QdrantHybridSearcher:
         doc_id: str | None = None,
         payload_filter: dict[str, Any] | None = None,
         collapse_hierarchical: bool = False,
+        fusion_weights: dict[str, float] | None = None,
     ) -> list[QdrantHybridSearchHit]:
         vector_names = vector_names or ["text_dense", "caption_dense"]
         expanded_query = self._expanded_query(query) if graph_expand else query
@@ -134,7 +135,7 @@ class QdrantHybridSearcher:
             result_sets.append(graph_hits)
 
         evidence_by_item = merge_evidence_maps(*evidence_maps)
-        fused = reciprocal_rank_fusion(result_sets, top_k=top_k)
+        fused = reciprocal_rank_fusion(result_sets, top_k=top_k, source_weights=fusion_weights)
         return [
             QdrantHybridSearchHit(
                 item_id=item_id,

@@ -78,6 +78,7 @@ def evaluate_retrieval(
     use_bm25: bool = True,
     use_graph: bool | None = None,
     repeat: int = 1,
+    fusion_weights: dict[str, float] | None = None,
 ) -> RetrievalEvaluation:
     repeat = max(1, repeat)
     index_start = perf_counter()
@@ -88,7 +89,7 @@ def evaluate_retrieval(
         tokenizer_config=tokenizer_config,
     )
     index_build_ms = elapsed_ms(index_start)
-    return evaluate_search_results(
+    evaluation = evaluate_search_results(
         cases=cases,
         search_fn=lambda case, graph_expand: searcher.search(
             case.query,
@@ -98,6 +99,7 @@ def evaluate_retrieval(
             use_dense=use_dense,
             use_bm25=use_bm25,
             use_graph=use_graph,
+            fusion_weights=fusion_weights,
         ),
         top_k=top_k,
         repeat=repeat,
@@ -105,6 +107,9 @@ def evaluate_retrieval(
         graph_expand_override=graph_expand_override,
         triples=triples,
     )
+    if fusion_weights:
+        evaluation.metadata["fusion_weights"] = fusion_weights
+    return evaluation
 
 
 def evaluate_search_results(

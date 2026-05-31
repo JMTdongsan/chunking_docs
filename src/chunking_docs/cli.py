@@ -327,12 +327,18 @@ def qdrant_hybrid_search(
         "--filter",
         help="Payload filter such as kind=map, page_no=12, page_start<=12. Repeat for multiple filters.",
     ),
+    fusion_weight: list[str] = typer.Option(
+        None,
+        "--fusion-weight",
+        help="RRF source weight such as bm25=1.3, graph=0.8, qdrant:caption_dense=1.5.",
+    ),
     lexical_tokenizer: TokenizerStrategy = "mixed",
     ngram_min: int = 2,
     ngram_max: int = 4,
     ngram_cjk_only: bool = True,
 ):
     """Run Qdrant named-vector + BM25 + optional graph hybrid retrieval."""
+    fusion_weights = parse_fusion_weights(fusion_weight)
     prepared = prepare_qdrant_hybrid_search(
         package_dir=package_dir,
         url=url,
@@ -359,6 +365,7 @@ def qdrant_hybrid_search(
         doc_id=doc_id or None,
         payload_filter=build_payload_filter(filter_specs=payload_filter),
         collapse_hierarchical=collapse_hierarchical,
+        fusion_weights=fusion_weights,
     )
     print(
         {
@@ -368,6 +375,7 @@ def qdrant_hybrid_search(
             "upserted": prepared["upserted"],
             "stored_count": prepared["store"].count(),
             "filters": build_payload_filter(doc_id=doc_id, filter_specs=payload_filter),
+            "fusion_weights": fusion_weights,
             "hits": [
                 {
                     "rank": index + 1,
@@ -422,12 +430,18 @@ def qdrant_rag_context_command(
         "--filter",
         help="Payload filter such as kind=map, page_no=12, page_start<=12. Repeat for multiple filters.",
     ),
+    fusion_weight: list[str] = typer.Option(
+        None,
+        "--fusion-weight",
+        help="RRF source weight such as bm25=1.3, graph=0.8, qdrant:caption_dense=1.5.",
+    ),
     lexical_tokenizer: TokenizerStrategy = "mixed",
     ngram_min: int = 2,
     ngram_max: int = 4,
     ngram_cjk_only: bool = True,
 ):
     """Build a citation-ready RAG context bundle from Qdrant hybrid search hits."""
+    fusion_weights = parse_fusion_weights(fusion_weight)
     prepared = prepare_qdrant_hybrid_search(
         package_dir=package_dir,
         url=url,
@@ -454,6 +468,7 @@ def qdrant_rag_context_command(
         doc_id=doc_id or None,
         payload_filter=build_payload_filter(filter_specs=payload_filter),
         collapse_hierarchical=collapse_hierarchical,
+        fusion_weights=fusion_weights,
     )
     bundle = build_context_bundle(
         query=query,
@@ -473,6 +488,7 @@ def qdrant_rag_context_command(
             "upserted": prepared["upserted"],
             "stored_count": prepared["store"].count(),
             "filters": build_payload_filter(doc_id=doc_id, filter_specs=payload_filter),
+            "fusion_weights": fusion_weights,
         }
     )
     if output is not None:
@@ -508,12 +524,18 @@ def eval_qdrant_retrieval_command(
         "--filter",
         help="Payload filter such as kind=map, page_no=12, page_start<=12. Repeat for multiple filters.",
     ),
+    fusion_weight: list[str] = typer.Option(
+        None,
+        "--fusion-weight",
+        help="RRF source weight such as bm25=1.3, graph=0.8, qdrant:caption_dense=1.5.",
+    ),
     lexical_tokenizer: TokenizerStrategy = "mixed",
     ngram_min: int = 2,
     ngram_max: int = 4,
     ngram_cjk_only: bool = True,
 ):
     """Evaluate Qdrant hybrid retrieval against JSONL benchmark cases."""
+    fusion_weights = parse_fusion_weights(fusion_weight)
     prepare_start = perf_counter()
     prepared = prepare_qdrant_hybrid_search(
         package_dir=package_dir,
@@ -544,6 +566,7 @@ def eval_qdrant_retrieval_command(
             doc_id=doc_id or None,
             payload_filter=build_payload_filter(filter_specs=payload_filter),
             collapse_hierarchical=collapse_hierarchical,
+            fusion_weights=fusion_weights,
         ),
         top_k=top_k,
         repeat=repeat,
@@ -559,6 +582,7 @@ def eval_qdrant_retrieval_command(
             "upserted": prepared["upserted"],
             "stored_count": prepared["store"].count(),
             "filters": build_payload_filter(doc_id=doc_id, filter_specs=payload_filter),
+            "fusion_weights": fusion_weights,
         }
     )
     if output is not None:
@@ -604,6 +628,11 @@ def eval_qdrant_vector_ablation_command(
         "--filter",
         help="Payload filter such as kind=map, page_no=12, page_start<=12. Repeat for multiple filters.",
     ),
+    fusion_weight: list[str] = typer.Option(
+        None,
+        "--fusion-weight",
+        help="RRF source weight such as bm25=1.3, graph=0.8, qdrant:caption_dense=1.5.",
+    ),
     lexical_tokenizer: TokenizerStrategy = "mixed",
     ngram_min: int = 2,
     ngram_max: int = 4,
@@ -615,6 +644,7 @@ def eval_qdrant_vector_ablation_command(
     except ValueError as exc:
         raise typer.BadParameter(str(exc)) from exc
 
+    fusion_weights = parse_fusion_weights(fusion_weight)
     selected_vectors = qdrant_vector_names_for_modes(parsed_modes)
     prepare_start = perf_counter()
     prepared = prepare_qdrant_hybrid_search(
@@ -652,6 +682,7 @@ def eval_qdrant_vector_ablation_command(
                 doc_id=doc_id or None,
                 payload_filter=filters,
                 collapse_hierarchical=collapse_hierarchical,
+                fusion_weights=fusion_weights,
             ),
             top_k=top_k,
             repeat=repeat,
@@ -673,6 +704,7 @@ def eval_qdrant_vector_ablation_command(
                 "upserted": prepared["upserted"],
                 "stored_count": prepared["store"].count(),
                 "filters": metadata_filters,
+                "fusion_weights": fusion_weights,
             }
         )
         rows.append(QdrantVectorAblationRow(mode=mode, evaluation=evaluation))
@@ -1083,6 +1115,11 @@ def search_local(
     top_k: int = 5,
     graph_expand: bool = False,
     collapse_hierarchical: bool = False,
+    fusion_weight: list[str] = typer.Option(
+        None,
+        "--fusion-weight",
+        help="RRF source weight such as dense=1.0, bm25=1.3, graph=0.8.",
+    ),
     lexical_tokenizer: TokenizerStrategy = "mixed",
     ngram_min: int = 2,
     ngram_max: int = 4,
@@ -1091,6 +1128,7 @@ def search_local(
     """Run local dry-run hybrid search over package chunks using hashing dense + BM25."""
     from chunking_docs.embeddings.interfaces import HashingTextEmbedder
 
+    fusion_weights = parse_fusion_weights(fusion_weight)
     chunks = read_jsonl(package_dir / chunks_file, DocumentChunk)
     triples_path = package_dir / "triples.jsonl"
     triples = read_jsonl(triples_path, GraphTriple) if triples_path.exists() else []
@@ -1110,6 +1148,7 @@ def search_local(
         top_k=top_k,
         graph_expand=graph_expand,
         collapse_hierarchical=collapse_hierarchical,
+        fusion_weights=fusion_weights,
     )
     print(
         [
@@ -1148,6 +1187,11 @@ def build_rag_context_command(
     include_evidence: bool = True,
     include_assets: bool = True,
     include_triples: bool = True,
+    fusion_weight: list[str] = typer.Option(
+        None,
+        "--fusion-weight",
+        help="RRF source weight such as dense=1.0, bm25=1.3, graph=0.8.",
+    ),
     lexical_tokenizer: TokenizerStrategy = "mixed",
     ngram_min: int = 2,
     ngram_max: int = 4,
@@ -1156,6 +1200,7 @@ def build_rag_context_command(
     """Build a citation-ready RAG context bundle from local hybrid search hits."""
     from chunking_docs.embeddings.interfaces import HashingTextEmbedder
 
+    fusion_weights = parse_fusion_weights(fusion_weight)
     chunks = read_jsonl(package_dir / chunks_file, DocumentChunk)
     assets_path = package_dir / "assets.jsonl"
     triples_path = package_dir / "triples.jsonl"
@@ -1177,6 +1222,7 @@ def build_rag_context_command(
         top_k=top_k,
         graph_expand=graph_expand,
         collapse_hierarchical=collapse_hierarchical,
+        fusion_weights=fusion_weights,
     )
     bundle = build_context_bundle(
         query=query,
@@ -1188,6 +1234,7 @@ def build_rag_context_command(
         include_assets=include_assets,
         include_triples=include_triples,
     )
+    bundle.metadata["fusion_weights"] = fusion_weights
     if output is not None:
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(bundle.model_dump_json(indent=2), encoding="utf-8")
@@ -1281,12 +1328,18 @@ def eval_retrieval_command(
     top_k: int = 5,
     repeat: int = 1,
     collapse_hierarchical: bool = False,
+    fusion_weight: list[str] = typer.Option(
+        None,
+        "--fusion-weight",
+        help="RRF source weight such as dense=1.0, bm25=1.3, graph=0.8.",
+    ),
     lexical_tokenizer: TokenizerStrategy = "mixed",
     ngram_min: int = 2,
     ngram_max: int = 4,
     ngram_cjk_only: bool = True,
 ):
     """Evaluate local hybrid retrieval against JSONL seed cases."""
+    fusion_weights = parse_fusion_weights(fusion_weight)
     chunks = read_jsonl(package_dir / chunks_file, DocumentChunk)
     triples_path = package_dir / "triples.jsonl"
     triples = read_jsonl(triples_path, GraphTriple) if triples_path.exists() else []
@@ -1297,6 +1350,7 @@ def eval_retrieval_command(
         top_k=top_k,
         repeat=repeat,
         collapse_hierarchical=collapse_hierarchical,
+        fusion_weights=fusion_weights,
         tokenizer_config=build_tokenizer_config(
             lexical_tokenizer,
             ngram_min=ngram_min,
@@ -1331,12 +1385,18 @@ def eval_retrieval_ablation_command(
     top_k: int = 5,
     repeat: int = 1,
     collapse_hierarchical: bool = False,
+    fusion_weight: list[str] = typer.Option(
+        None,
+        "--fusion-weight",
+        help="RRF source weight such as dense=1.0, bm25=1.3, graph=0.8.",
+    ),
     lexical_tokenizer: TokenizerStrategy = "mixed",
     ngram_min: int = 2,
     ngram_max: int = 4,
     ngram_cjk_only: bool = True,
 ):
     """Compare dense, BM25, graph, and fused retrieval on the same cases."""
+    fusion_weights = parse_fusion_weights(fusion_weight)
     chunks = read_jsonl(package_dir / chunks_file, DocumentChunk)
     triples_path = package_dir / "triples.jsonl"
     triples = read_jsonl(triples_path, GraphTriple) if triples_path.exists() else []
@@ -1352,6 +1412,7 @@ def eval_retrieval_ablation_command(
         top_k=top_k,
         repeat=repeat,
         collapse_hierarchical=collapse_hierarchical,
+        fusion_weights=fusion_weights,
         tokenizer_config=build_tokenizer_config(
             lexical_tokenizer,
             ngram_min=ngram_min,
@@ -1394,6 +1455,11 @@ def eval_chunking_command(
     min_chars: int = 120,
     max_chars: int = 1800,
     collapse_hierarchical: bool = False,
+    fusion_weight: list[str] = typer.Option(
+        None,
+        "--fusion-weight",
+        help="RRF source weight such as dense=1.0, bm25=1.3, graph=0.8.",
+    ),
     lexical_tokenizer: TokenizerStrategy = "mixed",
     ngram_min: int = 2,
     ngram_max: int = 4,
@@ -1401,6 +1467,7 @@ def eval_chunking_command(
 ):
     """Evaluate chunking quality and optional retrieval performance."""
     manifest = load_processing_package(package_dir)
+    fusion_weights = parse_fusion_weights(fusion_weight)
     retrieval_cases = load_retrieval_cases(cases) if cases is not None else None
     report = evaluate_chunking_quality(
         chunks=manifest.chunks,
@@ -1413,6 +1480,7 @@ def eval_chunking_command(
         min_chars=min_chars,
         max_chars=max_chars,
         collapse_hierarchical=collapse_hierarchical,
+        fusion_weights=fusion_weights,
         tokenizer_config=build_tokenizer_config(
             lexical_tokenizer,
             ngram_min=ngram_min,
@@ -1437,6 +1505,11 @@ def compare_chunking_command(
     min_chars: int = 120,
     max_chars: int = 1800,
     collapse_hierarchical: bool = False,
+    fusion_weight: list[str] = typer.Option(
+        None,
+        "--fusion-weight",
+        help="RRF source weight such as dense=1.0, bm25=1.3, graph=0.8.",
+    ),
     lexical_tokenizer: TokenizerStrategy = "mixed",
     ngram_min: int = 2,
     ngram_max: int = 4,
@@ -1444,6 +1517,7 @@ def compare_chunking_command(
 ):
     """Compare multiple chunk files with the same quality and retrieval metrics."""
     manifest = load_processing_package(package_dir)
+    fusion_weights = parse_fusion_weights(fusion_weight)
     retrieval_cases = load_retrieval_cases(cases) if cases is not None else None
     parsed_candidates = parse_candidates(candidates, package_dir)
     reports = {}
@@ -1460,6 +1534,7 @@ def compare_chunking_command(
             min_chars=min_chars,
             max_chars=max_chars,
             collapse_hierarchical=collapse_hierarchical,
+            fusion_weights=fusion_weights,
             tokenizer_config=build_tokenizer_config(
                 lexical_tokenizer,
                 ngram_min=ngram_min,
@@ -1502,6 +1577,11 @@ def sweep_chunking_command(
     retrieval_repeat: int = 1,
     collapse_hierarchical: bool = True,
     write_candidates: bool = True,
+    fusion_weight: list[str] = typer.Option(
+        None,
+        "--fusion-weight",
+        help="RRF source weight such as dense=1.0, bm25=1.3, graph=0.8.",
+    ),
     lexical_tokenizer: TokenizerStrategy = "mixed",
     ngram_min: int = 2,
     ngram_max: int = 4,
@@ -1509,6 +1589,7 @@ def sweep_chunking_command(
 ):
     """Generate and evaluate a grid of chunking strategy candidates."""
     manifest = load_processing_package(package_dir)
+    fusion_weights = parse_fusion_weights(fusion_weight)
     retrieval_cases = load_retrieval_cases(cases) if cases is not None else None
     tokenizer_config = build_tokenizer_config(
         lexical_tokenizer,
@@ -1531,6 +1612,7 @@ def sweep_chunking_command(
         retrieval_cases=retrieval_cases,
         top_k=top_k,
         retrieval_repeat=retrieval_repeat,
+        fusion_weights=fusion_weights,
         tokenizer_config=tokenizer_config,
         collapse_hierarchical=collapse_hierarchical,
         output_dir=candidate_output_dir,
@@ -1581,6 +1663,11 @@ def write_experiment_report_command(
     min_chars: int = 120,
     max_chars: int = 1800,
     collapse_hierarchical: bool = False,
+    fusion_weight: list[str] = typer.Option(
+        None,
+        "--fusion-weight",
+        help="RRF source weight such as dense=1.0, bm25=1.3, graph=0.8.",
+    ),
     lexical_tokenizer: TokenizerStrategy = "mixed",
     ngram_min: int = 2,
     ngram_max: int = 4,
@@ -1588,6 +1675,7 @@ def write_experiment_report_command(
 ):
     """Write a reproducible experiment report for package artifacts and chunk candidates."""
     manifest = load_processing_package(package_dir)
+    fusion_weights = parse_fusion_weights(fusion_weight)
     retrieval_cases = load_retrieval_cases(cases) if cases is not None else None
     tokenizer_config = build_tokenizer_config(
         lexical_tokenizer,
@@ -1607,6 +1695,7 @@ def write_experiment_report_command(
         max_chars=max_chars,
         tokenizer_config=tokenizer_config,
         collapse_hierarchical=collapse_hierarchical,
+        fusion_weights=fusion_weights,
         config={
             "top_k": top_k,
             "retrieval_repeat": retrieval_repeat,
@@ -1615,6 +1704,7 @@ def write_experiment_report_command(
             "collapse_hierarchical": collapse_hierarchical,
             "retrieval_cases": str(cases) if cases else None,
             "lexical_tokenizer": tokenizer_config.model_dump(),
+            "fusion_weights": fusion_weights,
         },
     )
     output_path = output or package_dir / "experiment_report.json"
@@ -1761,6 +1851,25 @@ def build_payload_filter(
         range_filter[operator] = value
         filters[key] = range_filter
     return filters
+
+
+def parse_fusion_weights(specs: list[str] | None = None) -> dict[str, float]:
+    weights: dict[str, float] = {}
+    for spec in specs or []:
+        if "=" not in spec:
+            raise typer.BadParameter("fusion weights must use source=weight")
+        source, raw_weight = spec.split("=", 1)
+        source = source.strip()
+        if not source:
+            raise typer.BadParameter("fusion weight source must not be empty")
+        try:
+            weight = float(raw_weight.strip())
+        except ValueError as exc:
+            raise typer.BadParameter(f"fusion weight for {source} must be numeric") from exc
+        if weight < 0:
+            raise typer.BadParameter(f"fusion weight for {source} must be non-negative")
+        weights[source] = weight
+    return weights
 
 
 def parse_payload_filter(spec: str) -> tuple[str, str, object]:

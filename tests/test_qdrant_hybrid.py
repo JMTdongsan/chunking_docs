@@ -1,7 +1,7 @@
 import pytest
 import typer
 
-from chunking_docs.cli import build_payload_filter, build_qdrant_query_embedders
+from chunking_docs.cli import build_payload_filter, build_qdrant_query_embedders, parse_fusion_weights
 from chunking_docs.embeddings.interfaces import HashingTextEmbedder
 from chunking_docs.models import AssetKind, ChunkKind, DocumentChunk, GraphTriple, VisualAsset
 from chunking_docs.retrieval.qdrant_hybrid import QdrantHybridSearcher
@@ -138,6 +138,40 @@ def test_qdrant_hybrid_maps_asset_hits_to_parent_chunk():
     assert hits[0].payloads[0]["asset_id"] == "asset-1"
 
 
+def test_qdrant_hybrid_respects_fusion_weights():
+    chunk = DocumentChunk(
+        chunk_id="chunk-1",
+        doc_id="doc",
+        page_start=5,
+        page_end=5,
+        kind=ChunkKind.TEXT,
+        text="base text",
+        asset_ids=["asset-1"],
+    )
+    asset = VisualAsset(
+        asset_id="asset-1",
+        doc_id="doc",
+        page_no=5,
+        kind=AssetKind.FIGURE,
+        caption="river corridor diagram",
+    )
+
+    searcher = QdrantHybridSearcher(
+        store=FakeQdrantStore(),
+        chunks=[chunk],
+        assets=[asset],
+        embedder=HashingTextEmbedder(embedding_dim=8),
+    )
+    hits = searcher.search(
+        "river corridor",
+        vector_names=["caption_dense"],
+        top_k=1,
+        fusion_weights={"qdrant": 0.0},
+    )
+
+    assert hits == []
+
+
 def test_qdrant_hybrid_uses_per_vector_query_embedders():
     chunk = DocumentChunk(
         chunk_id="chunk-1",
@@ -199,6 +233,12 @@ def test_build_payload_filter_parses_exact_and_range_filters():
         "page_start": {"lte": 12},
         "page_end": {"gte": 12},
     }
+
+
+def test_parse_fusion_weights():
+    weights = parse_fusion_weights(["bm25=1.3", "qdrant:caption_dense=1.5"])
+
+    assert weights == {"bm25": 1.3, "qdrant:caption_dense": 1.5}
 
 
 def test_qdrant_hybrid_can_include_graph_hits():

@@ -155,6 +155,8 @@ chunking-docs qdrant-hybrid-search "policy corridor" \
   --location ':memory:' \
   --vector-names text_dense,caption_dense \
   --filter kind=text \
+  --fusion-weight bm25=1.2 \
+  --fusion-weight qdrant:caption_dense=1.4 \
   --graph-expand
 ```
 
@@ -240,6 +242,8 @@ chunking-docs eval-retrieval-ablation examples/retrieval_cases.jsonl \
 `audit-package` checks structural completeness, orphan triples, remaining OCR/VLM work, Qdrant vector dimensions, required payload fields, and payload index definitions. `eval-chunking` reports page coverage, chunk size distribution, section coverage, visual asset linkage, visual annotation coverage, retrieval recall@k, MRR, failed queries, and an aggregate quality score. `eval-retrieval` also records per-query latency samples plus mean and p95 latency when `--repeat` is greater than one. `eval-qdrant-retrieval` runs the same benchmark cases through Qdrant named vectors, BM25, and optional graph expansion so the production retrieval path can be validated. `eval-qdrant-vector-ablation` compares Qdrant text, visual caption, optional image, and graph-expanded modes on the same cases. `eval-retrieval-ablation` compares dense-only, BM25-only, graph-only, hybrid, and graph-expanded hybrid retrieval so the effect and runtime cost of each retrieval signal is visible. Retrieval cases are JSONL:
 
 Qdrant vector ablation modes include `text`, `caption`, `image`, `text_caption`, `text_image`, `caption_image`, `all`, `text_caption_graph`, and `all_graph`. Image modes require an `image_dense` record file and a compatible image-query encoder.
+
+Hybrid retrieval commands accept repeatable `--fusion-weight source=weight` values. Sources can be exact names such as `qdrant:caption_dense` or families such as `qdrant`, `bm25`, `dense`, and `graph`.
 
 ```jsonl
 {"query":"policy corridor near river","expected_pages":[12],"graph_expand":true}

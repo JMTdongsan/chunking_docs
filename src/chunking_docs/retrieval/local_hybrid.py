@@ -44,6 +44,7 @@ class LocalHybridSearcher:
         use_dense: bool = True,
         use_bm25: bool = True,
         use_graph: bool | None = None,
+        fusion_weights: dict[str, float] | None = None,
     ) -> list[HybridSearchHit]:
         use_graph = graph_expand if use_graph is None else use_graph
         expanded_query = self._expanded_query(query) if graph_expand else query
@@ -79,7 +80,7 @@ class LocalHybridSearcher:
             )
             evidence_by_item = merge_evidence_maps(evidence_by_item, graph_evidence)
             result_sets.append(graph_hits)
-        fused = reciprocal_rank_fusion(result_sets, top_k=top_k)
+        fused = reciprocal_rank_fusion(result_sets, top_k=top_k, source_weights=fusion_weights)
         return [
             HybridSearchHit(
                 chunk=self.chunk_by_id[item_id],

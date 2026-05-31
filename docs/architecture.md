@@ -176,6 +176,8 @@ Benchmark cases should be maintained per document family. A useful case specifie
 
 Tokenizer settings are part of the retrieval experiment. Strategy comparisons should keep the tokenizer fixed unless the experiment is explicitly measuring lexical tokenization.
 
+Fusion weights are also part of the retrieval experiment. Use `--fusion-weight` to tune source families such as `dense`, `bm25`, `graph`, and `qdrant`, or exact sources such as `qdrant:caption_dense`.
+
 Use repeated retrieval evaluation when comparing strategies whose recall is similar. The latency fields are intended to show whether higher recall comes with an acceptable retrieval cost.
 
 For hierarchical candidates, enable parent collapse during `eval-retrieval`, `compare-chunking`, or `write-experiment-report` when the benchmark expects page-level or parent-level citation behavior.

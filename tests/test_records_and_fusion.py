@@ -89,3 +89,16 @@ def test_reciprocal_rank_fusion_combines_sources():
 
     assert fused[0][0] == "a"
     assert fused[0][2] == ["bm25", "dense"]
+
+
+def test_reciprocal_rank_fusion_applies_source_weights():
+    fused = reciprocal_rank_fusion(
+        [
+            [RankedHit(item_id="a", rank=1, score=0.9, source="bm25")],
+            [RankedHit(item_id="b", rank=1, score=0.9, source="qdrant:caption_dense")],
+        ],
+        source_weights={"bm25": 0.1, "qdrant": 2.0},
+    )
+
+    assert fused[0][0] == "b"
+    assert fused[0][2] == ["qdrant:caption_dense"]

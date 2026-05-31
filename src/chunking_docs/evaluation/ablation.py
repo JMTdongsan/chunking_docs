@@ -107,6 +107,7 @@ def evaluate_retrieval_ablation(
     tokenizer_config: LexicalTokenizerConfig | None = None,
     collapse_hierarchical: bool = False,
     repeat: int = 1,
+    fusion_weights: dict[str, float] | None = None,
 ) -> RetrievalAblationReport:
     rows = [
         RetrievalAblationRow(
@@ -123,6 +124,7 @@ def evaluate_retrieval_ablation(
                 use_bm25=mode.use_bm25,
                 use_graph=mode.use_graph,
                 repeat=repeat,
+                fusion_weights=fusion_weights,
             ),
         )
         for mode in (modes or list(DEFAULT_ABLATION_MODES.values()))

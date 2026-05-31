@@ -72,6 +72,7 @@ def build_experiment_report(
     tokenizer_config: LexicalTokenizerConfig | None = None,
     collapse_hierarchical: bool = False,
     retrieval_repeat: int = 1,
+    fusion_weights: dict[str, float] | None = None,
     config: dict[str, Any] | None = None,
 ) -> ExperimentReport:
     comparison = None
@@ -91,6 +92,7 @@ def build_experiment_report(
                 tokenizer_config=tokenizer_config,
                 collapse_hierarchical=collapse_hierarchical,
                 retrieval_repeat=retrieval_repeat,
+                fusion_weights=fusion_weights,
             )
         comparison = compare_chunking_reports(reports)
 
