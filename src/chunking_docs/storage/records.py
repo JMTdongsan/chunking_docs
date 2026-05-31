@@ -18,3 +18,12 @@ class UpsertResult(BaseModel):
     collection: str
     count: int
     detail: dict[str, Any] = Field(default_factory=dict)
+
+
+class VectorSearchHit(BaseModel):
+    point_id: str
+    score: float
+    vector_name: str
+    chunk_id: str | None = None
+    doc_id: str | None = None
+    payload: dict[str, Any] = Field(default_factory=dict)

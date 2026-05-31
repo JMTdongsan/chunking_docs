@@ -120,6 +120,15 @@ Without Docker, validate the upsert path with qdrant-client local mode:
 chunking-docs qdrant-upsert-package --package-dir outputs/package --location ':memory:'
 ```
 
+Validate named-vector retrieval with the same local mode:
+
+```bash
+chunking-docs qdrant-search-package "policy corridor" \
+  --package-dir outputs/package \
+  --location ':memory:' \
+  --vector-name text_dense
+```
+
 ## PostgreSQL
 
 PostgreSQL is intended for source metadata, page profiles, chunks, assets, and graph triples. Vector search is handled by Qdrant by default.

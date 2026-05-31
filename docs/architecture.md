@@ -108,6 +108,8 @@ Named vectors:
 
 Payload fields include document ID, chunk ID, asset ID, page range, asset kind, section metadata, source references, and text fields needed for answer citation.
 
+The Qdrant adapter supports both ingestion and named-vector querying. `qdrant-search-package` can upsert a package into qdrant-client local mode and immediately query `text_dense` or `caption_dense`, which keeps retrieval checks reproducible without requiring a running server.
+
 ## PostgreSQL Design
 
 PostgreSQL is used for provenance and relational queries, not as the default vector store.

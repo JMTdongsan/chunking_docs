@@ -202,6 +202,81 @@ def qdrant_upsert_package(
     )
 
 
+@app.command(name="qdrant-search-package")
+def qdrant_search_package(
+    query: str,
+    package_dir: Path = Path("outputs/package"),
+    url: str = "http://localhost:6333",
+    collection: str = "",
+    location: str = "",
+    path: str = "",
+    vector_name: str = "text_dense",
+    top_k: int = 5,
+    text_backend: str = "hashing",
+    text_model: str = "BAAI/bge-m3",
+    device: str = "cuda",
+    hashing_dim: int = 384,
+    doc_id: str = "",
+):
+    """Upsert package records and run a Qdrant named-vector text query."""
+    from chunking_docs.storage.qdrant_store import QdrantChunkStore
+
+    collection_config = json.loads((package_dir / "qdrant_collection.json").read_text(encoding="utf-8"))
+    collection_name = collection or collection_config["collection"]
+    named_vectors = {
+        name: int(config["size"])
+        for name, config in collection_config.get("named_vectors", {}).items()
+    }
+    store = QdrantChunkStore(
+        url=url,
+        collection_name=collection_name,
+        location=location or None,
+        path=path or None,
+    )
+    store.ensure_collection(named_vectors)
+    upserted = upsert_package_records(store, package_dir)
+
+    embedder, _ = build_text_embedder(
+        backend=text_backend,
+        model_name=text_model,
+        device=device,
+        hashing_dim=hashing_dim,
+        vector_name=vector_name,
+    )
+    if embedder is None:
+        raise typer.BadParameter("text backend must not be none for qdrant-search-package")
+    vector = embedder.embed_texts([query])[0]
+    filters = {"doc_id": doc_id} if doc_id else None
+    hits = store.query_vector(
+        vector=vector,
+        vector_name=vector_name,
+        top_k=top_k,
+        must_payload=filters,
+    )
+    print(
+        {
+            "collection": collection_name,
+            "vector_name": vector_name,
+            "upserted": upserted,
+            "stored_count": store.count(),
+            "hits": [
+                {
+                    "rank": index + 1,
+                    "score": hit.score,
+                    "point_id": hit.point_id,
+                    "chunk_id": hit.chunk_id,
+                    "doc_id": hit.doc_id,
+                    "page": hit.payload.get("page_no")
+                    or [hit.payload.get("page_start"), hit.payload.get("page_end")],
+                    "kind": hit.payload.get("kind"),
+                    "preview": str(hit.payload.get("text") or hit.payload.get("caption") or "")[:180],
+                }
+                for index, hit in enumerate(hits)
+            ],
+        }
+    )
+
+
 @app.command(name="embed-package")
 def embed_package_command(
     package_dir: Path = Path("outputs/package"),
@@ -913,6 +988,15 @@ def parse_candidates(values: list[str] | None, package_dir: Path) -> dict[str, P
             raise typer.BadParameter("--candidate name must not be empty")
         parsed[name] = Path(path)
     return parsed
+
+
+def upsert_package_records(store, package_dir: Path) -> int:
+    total = 0
+    for record_file in sorted(package_dir.glob("qdrant_*_records.jsonl")):
+        records = read_jsonl(record_file, EmbeddingRecord)
+        result = store.upsert(records)
+        total += result.count
+    return total
 
 
 def build_tokenizer_config(

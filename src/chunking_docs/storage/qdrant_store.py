@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from typing import Any
 from typing import Iterable
 
-from chunking_docs.storage.records import EmbeddingRecord, UpsertResult
+from chunking_docs.storage.records import EmbeddingRecord, UpsertResult, VectorSearchHit
 
 
 class QdrantChunkStore:
@@ -18,7 +19,7 @@ class QdrantChunkStore:
     ):
         try:
             from qdrant_client import QdrantClient
-            from qdrant_client.models import Distance, PointStruct, VectorParams
+            from qdrant_client.models import Distance, FieldCondition, Filter, MatchValue, PointStruct, VectorParams
         except ImportError as exc:
             raise RuntimeError("Install chunking-docs[qdrant] to use QdrantChunkStore") from exc
 
@@ -32,6 +33,9 @@ class QdrantChunkStore:
         self._point_struct = PointStruct
         self._distance = Distance
         self._vector_params = VectorParams
+        self._filter = Filter
+        self._field_condition = FieldCondition
+        self._match_value = MatchValue
 
     def ensure_collection(self, named_vectors: dict[str, int]) -> None:
         collections = self.client.get_collections().collections
@@ -71,3 +75,42 @@ class QdrantChunkStore:
 
     def count(self) -> int:
         return int(self.client.count(collection_name=self.collection_name, exact=True).count)
+
+    def query_vector(
+        self,
+        vector: list[float],
+        vector_name: str = "text_dense",
+        top_k: int = 10,
+        must_payload: dict[str, Any] | None = None,
+        score_threshold: float | None = None,
+    ) -> list[VectorSearchHit]:
+        response = self.client.query_points(
+            collection_name=self.collection_name,
+            query=vector,
+            using=vector_name,
+            limit=top_k,
+            with_payload=True,
+            score_threshold=score_threshold,
+            query_filter=self._payload_filter(must_payload or {}),
+        )
+        return [
+            VectorSearchHit(
+                point_id=str(point.id),
+                score=float(point.score),
+                vector_name=vector_name,
+                chunk_id=(point.payload or {}).get("chunk_id"),
+                doc_id=(point.payload or {}).get("doc_id"),
+                payload=point.payload or {},
+            )
+            for point in response.points
+        ]
+
+    def _payload_filter(self, must_payload: dict[str, Any]):
+        if not must_payload:
+            return None
+        return self._filter(
+            must=[
+                self._field_condition(key=key, match=self._match_value(value=value))
+                for key, value in must_payload.items()
+            ]
+        )
