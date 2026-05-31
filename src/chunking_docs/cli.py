@@ -8,10 +8,12 @@ import typer
 from rich import print
 
 from chunking_docs.analysis.pdf_profile import profile_pdf, summarize_profiles, write_profile_outputs
-from chunking_docs.chunking.section_map import load_section_ranges
+from chunking_docs.chunking.multimodal import ChunkStrategy, build_strategy_chunks
 from chunking_docs.chunking.page_chunker import page_level_chunks
+from chunking_docs.chunking.section_map import load_section_ranges
 from chunking_docs.evaluation.audit import audit_package
 from chunking_docs.evaluation.chunking_quality import evaluate_chunking_quality
+from chunking_docs.evaluation.compare import compare_chunking_reports
 from chunking_docs.evaluation.retrieval import evaluate_retrieval, load_retrieval_cases
 from chunking_docs.graph.repair import remap_triples_to_available_chunks
 from chunking_docs.ingest.pdf_loader import load_source_document, render_pages
@@ -502,6 +504,40 @@ def split_chunks_command(
     )
 
 
+@app.command(name="build-chunk-strategy")
+def build_chunk_strategy_command(
+    package_dir: Path = Path("outputs/package"),
+    strategy: ChunkStrategy = "multimodal",
+    output: Path | None = None,
+    max_chars: int = 1600,
+    overlap_chars: int = 180,
+    min_chars: int = 180,
+    context_prefix: bool = True,
+):
+    """Build an alternate chunk file for a named chunking strategy."""
+    chunks = read_jsonl(package_dir / "chunks.jsonl", DocumentChunk)
+    assets = read_jsonl(package_dir / "assets.jsonl", VisualAsset)
+    strategy_chunks = build_strategy_chunks(
+        chunks,
+        assets,
+        strategy=strategy,
+        max_chars=max_chars,
+        overlap_chars=overlap_chars,
+        min_chars=min_chars,
+        include_context_prefix=context_prefix,
+    )
+    output_path = output or package_dir / f"chunks.{strategy}.jsonl"
+    write_jsonl(output_path, strategy_chunks)
+    print(
+        {
+            "strategy": strategy,
+            "source_chunks": len(chunks),
+            "strategy_chunks": len(strategy_chunks),
+            "output": str(output_path),
+        }
+    )
+
+
 @app.command(name="search-local")
 def search_local(
     query: str,
@@ -651,6 +687,39 @@ def eval_chunking_command(
     print(report.model_dump())
 
 
+@app.command(name="compare-chunking")
+def compare_chunking_command(
+    package_dir: Path = Path("outputs/package"),
+    candidates: list[str] = typer.Option(
+        None,
+        "--candidate",
+        help="Candidate in name=path form. Repeat for multiple chunk files.",
+    ),
+    cases: Path | None = None,
+    top_k: int = 5,
+    min_chars: int = 120,
+    max_chars: int = 1800,
+):
+    """Compare multiple chunk files with the same quality and retrieval metrics."""
+    manifest = load_processing_package(package_dir)
+    retrieval_cases = load_retrieval_cases(cases) if cases is not None else None
+    parsed_candidates = parse_candidates(candidates, package_dir)
+    reports = {}
+    for name, path in parsed_candidates.items():
+        chunks = read_jsonl(path, DocumentChunk)
+        reports[name] = evaluate_chunking_quality(
+            chunks=chunks,
+            profiles=manifest.profiles,
+            assets=manifest.assets,
+            triples=manifest.triples,
+            retrieval_cases=retrieval_cases,
+            top_k=top_k,
+            min_chars=min_chars,
+            max_chars=max_chars,
+        )
+    print(compare_chunking_reports(reports).model_dump())
+
+
 def print_json(payload: dict):
     print(json.dumps(payload, ensure_ascii=False, indent=2))
 
@@ -774,3 +843,18 @@ def kind_counts(jobs: list[VisualAnnotationJob]) -> dict[str, int]:
         kind = str(job.kind)
         counts[kind] = counts.get(kind, 0) + 1
     return counts
+
+
+def parse_candidates(values: list[str] | None, package_dir: Path) -> dict[str, Path]:
+    if not values:
+        return {"current": package_dir / "chunks.jsonl"}
+    parsed = {}
+    for value in values:
+        if "=" not in value:
+            raise typer.BadParameter("--candidate must be in name=path form")
+        name, path = value.split("=", 1)
+        name = name.strip()
+        if not name:
+            raise typer.BadParameter("--candidate name must not be empty")
+        parsed[name] = Path(path)
+    return parsed

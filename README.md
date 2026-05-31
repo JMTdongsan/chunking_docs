@@ -148,6 +148,35 @@ chunking-docs eval-retrieval examples/retrieval_cases.jsonl --package-dir output
 
 For portfolio or production use, maintain benchmark cases for each document family and compare chunking strategies before changing defaults.
 
+## Chunking Strategy Experiments
+
+Generate alternate chunk files without overwriting the package baseline:
+
+```bash
+chunking-docs build-chunk-strategy \
+  --package-dir outputs/package \
+  --strategy semantic \
+  --output outputs/package/chunks.semantic.jsonl
+
+chunking-docs build-chunk-strategy \
+  --package-dir outputs/package \
+  --strategy multimodal \
+  --output outputs/package/chunks.multimodal.jsonl
+```
+
+Compare candidates with the same retrieval cases:
+
+```bash
+chunking-docs compare-chunking \
+  --package-dir outputs/package \
+  --candidate baseline=outputs/package/chunks.jsonl \
+  --candidate semantic=outputs/package/chunks.semantic.jsonl \
+  --candidate multimodal=outputs/package/chunks.multimodal.jsonl \
+  --cases examples/retrieval_cases.jsonl
+```
+
+The `multimodal` strategy keeps semantic text chunks and adds visual asset text chunks from captions, OCR, and VLM summaries. This makes maps, tables, charts, and figures retrievable even when the PDF text layer is weak.
+
 ## Development Checks
 
 ```bash

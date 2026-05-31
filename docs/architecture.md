@@ -40,24 +40,30 @@
    - Preserve original chunk IDs when a chunk does not need splitting.
    - Remap triples to available child chunks when splitting changes IDs.
 
-8. **Embedding Artifacts**
+8. **Strategy Variants**
+   - `page`: baseline page chunks with optional context prefix.
+   - `semantic`: boundary-aware subchunks for long text.
+   - `multimodal`: semantic chunks plus visual asset text chunks from captions, OCR, and VLM summaries.
+   - `compare-chunking` evaluates candidate files with the same benchmark cases.
+
+9. **Embedding Artifacts**
    - `text_dense`: chunk text, OCR text, and VLM summaries.
    - `caption_dense`: asset caption, OCR, and VLM summary text.
    - `image_dense`: rendered page or visual asset image.
    - Default hashing embedders make the pipeline testable without model downloads.
    - `embed-package` regenerates artifacts with model-backed text and image embedders.
 
-9. **Lexical Search**
+10. **Lexical Search**
    - BM25 is generated from chunk text.
    - Lexical search protects exact matches for names, identifiers, dates, codes, and policy terms.
    - Dense and lexical results are combined with Reciprocal Rank Fusion in the local evaluator.
 
-10. **Graph Triples**
+11. **Graph Triples**
     - Section metadata creates baseline graph relationships.
     - OCR/VLM or external annotations can add `subject, predicate, object` triples.
     - Graph terms are used for query expansion and relationship browsing.
 
-11. **Storage**
+12. **Storage**
     - Qdrant stores named vectors and payloads.
     - PostgreSQL stores normalized document, page, chunk, asset, and triple metadata.
     - BM25 can remain as a local manifest or be replaced by a dedicated lexical search service.
@@ -83,6 +89,8 @@ Additional processing commands may create:
 - `visual_job_results.jsonl`
 - `visual_annotations.jsonl`
 - `chunks.split.jsonl`
+- `chunks.semantic.jsonl`
+- `chunks.multimodal.jsonl`
 - `graph_nodes.jsonl`
 - `graph_edges.jsonl`
 
@@ -121,6 +129,7 @@ Recommended checks:
 - `audit-package`: structural completeness and orphan checks.
 - `eval-chunking`: page coverage, chunk size distribution, section coverage, visual linkage, annotation coverage, retrieval hit rate, and aggregate quality score.
 - `eval-retrieval`: focused top-k retrieval benchmark cases.
+- `compare-chunking`: side-by-side strategy comparison by quality score and retrieval hit rate.
 - Qdrant local mode upsert: validates named vector records and payloads.
 
 Benchmark cases should be maintained per document family. A useful case specifies the query, expected page or chunk, and whether graph expansion should be enabled.
