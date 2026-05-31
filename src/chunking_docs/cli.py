@@ -294,6 +294,60 @@ def qdrant_upsert_package(
     )
 
 
+@app.command(name="qdrant-check-collection")
+def qdrant_check_collection(
+    package_dir: Path = Path("outputs/package"),
+    url: str = "http://localhost:6333",
+    collection: str = "",
+    location: str = "",
+    path: str = "",
+    output: Path | None = None,
+    allow_missing: bool = False,
+    fail: bool = typer.Option(
+        True,
+        "--fail/--no-fail",
+        help="Exit with status 1 when the existing Qdrant collection does not match the package contract.",
+    ),
+):
+    """Validate an existing Qdrant collection against package named vectors and payload indexes."""
+    from chunking_docs.storage.qdrant_store import QdrantChunkStore
+
+    collection_config = json.loads((package_dir / "qdrant_collection.json").read_text(encoding="utf-8"))
+    collection_name = collection or collection_config["collection"]
+    named_vectors = {
+        name: int(config["size"])
+        for name, config in collection_config.get("named_vectors", {}).items()
+    }
+    store = QdrantChunkStore(
+        url=url,
+        collection_name=collection_name,
+        location=location or None,
+        path=path or None,
+    )
+    report = store.check_collection_contract(
+        named_vectors,
+        payload_indexes=collection_config.get("payload_indexes", []),
+        allow_missing=allow_missing,
+    )
+    payload = report.model_dump()
+    if output is not None:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(report.model_dump_json(indent=2), encoding="utf-8")
+        payload = {
+            "output": str(output),
+            "passed": report.passed,
+            "exists": report.exists,
+            "collection": report.collection,
+            "failed_checks": report.failed_checks,
+            "missing_vectors": report.missing_vectors,
+            "mismatched_vectors": report.mismatched_vectors,
+            "missing_payload_indexes": report.missing_payload_indexes,
+        }
+    print(payload)
+    if fail and not report.passed:
+        raise typer.Exit(1)
+
+
 @app.command(name="qdrant-search-package")
 def qdrant_search_package(
     query: str,

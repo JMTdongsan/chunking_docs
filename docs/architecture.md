@@ -150,6 +150,7 @@ Additional processing commands may create:
 - `document_characteristics.json`
 - `ingestion_readiness.json`
 - `package_delta.json`
+- `qdrant_collection_contract.json`
 - `qdrant_retrieval_eval.json`
 - `qdrant_vector_ablation.json`
 - `retrieval_case_audit.json`
@@ -173,6 +174,8 @@ Named vectors:
 Payload fields include document ID, chunk ID, asset ID, page range, asset kind, section metadata, source references, and text fields needed for answer citation.
 
 The package writes payload index definitions with field schemas. Qdrant ingestion and package query commands apply those definitions so metadata filters such as document ID, asset ID, page, and section remain efficient on server-backed collections.
+
+`qdrant-check-collection` compares a live or local Qdrant collection against `qdrant_collection.json` before upsert. It detects missing named vectors, vector dimension mismatches, and missing payload indexes, which is especially important when embedding models or vector dimensions change between experiments.
 
 Qdrant search commands accept repeatable payload filters using exact and range forms such as `kind=map`, `page_no=12`, `page_start<=12`, and `page_end>=12`.
 
@@ -206,6 +209,7 @@ Chunking changes should be judged by retrieval behavior, not only by successful 
 Recommended checks:
 
 - `audit-package`: structural completeness, orphan checks, OCR/VLM gaps, Qdrant vector dimensions, required payload fields, and payload index definitions.
+- `qdrant-check-collection`: live Qdrant collection contract validation for named-vector dimensions and payload indexes.
 - `eval-chunking`: page coverage, chunk size distribution, section coverage, visual linkage, annotation coverage, retrieval recall@k, MRR, target coverage@k, target nDCG@k, precision@k, latency, failed queries, and aggregate quality score.
 - `audit-retrieval-cases`: benchmark case validation for empty or TODO queries, unknown page/chunk/asset/triple targets, duplicate queries, graph-expansion hints, and target-family coverage.
 - `eval-retrieval`: focused top-k retrieval benchmark cases with optional repeated latency sampling, target-specific page/chunk/asset/triple metrics, and source-family contribution metrics.

@@ -4,7 +4,33 @@ import warnings
 from typing import Any
 from typing import Iterable
 
+from pydantic import BaseModel, Field
+
 from chunking_docs.storage.records import EmbeddingRecord, UpsertResult, VectorSearchHit
+
+
+class QdrantCollectionContractCheck(BaseModel):
+    name: str
+    passed: bool
+    severity: str = "error"
+    message: str
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class QdrantCollectionContractReport(BaseModel):
+    collection: str
+    exists: bool
+    passed: bool
+    expected_vectors: dict[str, int] = Field(default_factory=dict)
+    actual_vectors: dict[str, int] = Field(default_factory=dict)
+    missing_vectors: list[str] = Field(default_factory=list)
+    extra_vectors: list[str] = Field(default_factory=list)
+    mismatched_vectors: dict[str, dict[str, int | None]] = Field(default_factory=dict)
+    expected_payload_indexes: list[str] = Field(default_factory=list)
+    actual_payload_indexes: list[str] = Field(default_factory=list)
+    missing_payload_indexes: list[str] = Field(default_factory=list)
+    checks: list[QdrantCollectionContractCheck] = Field(default_factory=list)
+    failed_checks: list[str] = Field(default_factory=list)
 
 
 class QdrantChunkStore:
@@ -67,6 +93,90 @@ class QdrantChunkStore:
                 },
             )
         self.ensure_payload_indexes(payload_indexes or [])
+
+    def check_collection_contract(
+        self,
+        named_vectors: dict[str, int],
+        payload_indexes: list[str | dict[str, str]] | None = None,
+        allow_missing: bool = False,
+    ) -> QdrantCollectionContractReport:
+        exists = self.collection_exists()
+        expected_payload_indexes = sorted(
+            field_name
+            for field_name, _ in [self._normalize_payload_index(index) for index in payload_indexes or []]
+            if field_name
+        )
+        if not exists:
+            checks = [
+                QdrantCollectionContractCheck(
+                    name="collection_exists",
+                    passed=allow_missing,
+                    message="Qdrant collection exists or missing collection is explicitly allowed.",
+                    metadata={"allow_missing": allow_missing},
+                )
+            ]
+            failed_checks = [check.name for check in checks if not check.passed]
+            return QdrantCollectionContractReport(
+                collection=self.collection_name,
+                exists=False,
+                passed=not failed_checks,
+                expected_vectors=dict(sorted(named_vectors.items())),
+                expected_payload_indexes=expected_payload_indexes,
+                checks=checks,
+                failed_checks=failed_checks,
+            )
+
+        info = self.client.get_collection(collection_name=self.collection_name)
+        actual_vectors = collection_vector_sizes(info)
+        actual_payload_indexes = sorted(collection_payload_indexes(info))
+        missing_vectors = sorted(set(named_vectors) - set(actual_vectors))
+        extra_vectors = sorted(set(actual_vectors) - set(named_vectors))
+        mismatched_vectors = {
+            name: {"expected": expected_size, "actual": actual_vectors.get(name)}
+            for name, expected_size in sorted(named_vectors.items())
+            if name in actual_vectors and actual_vectors.get(name) != expected_size
+        }
+        missing_payload_indexes = sorted(set(expected_payload_indexes) - set(actual_payload_indexes))
+        checks = [
+            QdrantCollectionContractCheck(
+                name="missing_vectors",
+                passed=not missing_vectors,
+                message="All expected named vectors exist in the Qdrant collection.",
+                metadata={"vectors": missing_vectors},
+            ),
+            QdrantCollectionContractCheck(
+                name="vector_size_mismatch",
+                passed=not mismatched_vectors,
+                message="Qdrant named vector sizes match the package contract.",
+                metadata={"vectors": mismatched_vectors},
+            ),
+            QdrantCollectionContractCheck(
+                name="missing_payload_indexes",
+                passed=not missing_payload_indexes,
+                message="All expected payload indexes exist in the Qdrant collection.",
+                metadata={"fields": missing_payload_indexes},
+            ),
+        ]
+        failed_checks = [check.name for check in checks if not check.passed and check.severity == "error"]
+        return QdrantCollectionContractReport(
+            collection=self.collection_name,
+            exists=True,
+            passed=not failed_checks,
+            expected_vectors=dict(sorted(named_vectors.items())),
+            actual_vectors=dict(sorted(actual_vectors.items())),
+            missing_vectors=missing_vectors,
+            extra_vectors=extra_vectors,
+            mismatched_vectors=mismatched_vectors,
+            expected_payload_indexes=expected_payload_indexes,
+            actual_payload_indexes=actual_payload_indexes,
+            missing_payload_indexes=missing_payload_indexes,
+            checks=checks,
+            failed_checks=failed_checks,
+        )
+
+    def collection_exists(self) -> bool:
+        collections = self.client.get_collections().collections
+        return any(collection.name == self.collection_name for collection in collections)
 
     def ensure_payload_indexes(self, payload_indexes: list[str | dict[str, str]]) -> list[str]:
         created = []
@@ -187,3 +297,34 @@ def default_payload_schema(field_name: str) -> str:
     if field_name in {"page_no", "page_start", "page_end"}:
         return "integer"
     return "keyword"
+
+
+def collection_vector_sizes(info) -> dict[str, int]:
+    vectors = nested_get(info, "config", "params", "vectors")
+    if isinstance(vectors, dict):
+        return {
+            str(name): int(size)
+            for name, config in vectors.items()
+            if (size := nested_get(config, "size")) is not None
+        }
+    size = nested_get(vectors, "size")
+    return {"default": int(size)} if size is not None else {}
+
+
+def collection_payload_indexes(info) -> set[str]:
+    payload_schema = nested_get(info, "payload_schema") or {}
+    if isinstance(payload_schema, dict):
+        return {str(key) for key in payload_schema}
+    return set()
+
+
+def nested_get(value, *keys):
+    current = value
+    for key in keys:
+        if current is None:
+            return None
+        if isinstance(current, dict):
+            current = current.get(key)
+            continue
+        current = getattr(current, key, None)
+    return current

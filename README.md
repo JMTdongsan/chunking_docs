@@ -241,10 +241,14 @@ This regenerates Qdrant text, caption, and image records using the selected mode
 
 ```bash
 docker compose -f docker-compose.qdrant.yml up -d
+chunking-docs qdrant-check-collection \
+  --package-dir outputs/package \
+  --output outputs/package/qdrant_collection_contract.json \
+  --allow-missing
 chunking-docs qdrant-upsert-package --package-dir outputs/package
 ```
 
-The package collection config includes payload index definitions for document IDs, chunk IDs, asset IDs, page fields, and section fields. `qdrant-upsert-package`, `qdrant-search-package`, and Qdrant hybrid evaluation create those indexes when the target Qdrant server supports them.
+The package collection config includes payload index definitions for document IDs, chunk IDs, asset IDs, page fields, and section fields. `qdrant-check-collection` validates an existing Qdrant collection against the package named-vector dimensions and payload indexes before upsert. `qdrant-upsert-package`, `qdrant-search-package`, and Qdrant hybrid evaluation create those indexes when the target Qdrant server supports them.
 
 Without Docker, validate the upsert path with qdrant-client local mode:
 
