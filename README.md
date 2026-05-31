@@ -269,7 +269,7 @@ chunking-docs embed-package \
   --device cuda
 ```
 
-This regenerates Qdrant text, caption, and image records using the selected model dimensions. It also writes `embedding_manifest.json` so vector files, record counts, dimensions, and checksums can be compared across embedding runs.
+This regenerates Qdrant text, caption, and image records using the selected model dimensions. It also writes `embedding_manifest.json` so vector files, record counts, dimensions, checksums, backend names, model IDs, devices, and batch sizes can be compared across embedding runs.
 
 ## Qdrant
 
@@ -372,7 +372,7 @@ Qdrant search, evaluation, ablation, and RAG context outputs include `query_enco
 
 ## PostgreSQL
 
-PostgreSQL is intended for source metadata, page profiles, chunks, assets, graph triples, and embedding artifact provenance. Vector search is handled by Qdrant by default, while PostgreSQL stores vector file names, dimensions, counts, checksums, and collection names so embedding runs remain auditable.
+PostgreSQL is intended for source metadata, page profiles, chunks, assets, graph triples, and embedding artifact provenance. Vector search is handled by Qdrant by default, while PostgreSQL stores vector file names, dimensions, counts, checksums, backend/model metadata, and collection names so embedding runs remain auditable.
 
 ```bash
 chunking-docs postgres-schema --output outputs/package/postgres_schema.sql

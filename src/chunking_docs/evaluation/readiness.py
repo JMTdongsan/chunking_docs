@@ -535,6 +535,7 @@ def embedding_vectors_component(
             "collection_dimension": collection_dimension,
             "distance": manifest_vector.get("distance"),
             "note": manifest_vector.get("note"),
+            "embedding": manifest_vector.get("embedding", {}),
             "bytes": manifest_vector.get("bytes"),
             "sha256": manifest_vector.get("sha256"),
         }

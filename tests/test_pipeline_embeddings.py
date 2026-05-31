@@ -49,6 +49,18 @@ def test_write_embedding_artifacts_writes_selected_vectors_and_config(tmp_path):
         caption_embedder=FakeTextEmbedder(4),
         image_embedder=None,
         vector_notes={"text_dense": "text model", "caption_dense": "caption model"},
+        vector_metadata={
+            "text_dense": {
+                "backend": "fake-text",
+                "model": "fake-text-model",
+                "device": "cpu",
+            },
+            "caption_dense": {
+                "backend": "fake-caption",
+                "model": "fake-caption-model",
+                "device": "cpu",
+            },
+        },
     )
 
     assert result["records"] == {"text_dense": 1, "caption_dense": 1}
@@ -79,9 +91,17 @@ def test_write_embedding_artifacts_writes_selected_vectors_and_config(tmp_path):
     assert manifest["vectors"]["text_dense"]["record_count"] == 1
     assert manifest["vectors"]["text_dense"]["dimension"] == 3
     assert manifest["vectors"]["text_dense"]["note"] == "text model"
+    assert manifest["vectors"]["text_dense"]["embedding"] == {
+        "backend": "fake-text",
+        "model": "fake-text-model",
+        "device": "cpu",
+        "batch_size": 32,
+    }
     assert manifest["vectors"]["text_dense"]["exists"] is True
     assert len(manifest["vectors"]["text_dense"]["sha256"]) == 64
     assert manifest["vectors"]["caption_dense"]["dimension"] == 4
+    assert manifest["vectors"]["caption_dense"]["embedding"]["backend"] == "fake-caption"
+    assert manifest["vectors"]["caption_dense"]["embedding"]["batch_size"] == 32
     assert "image_dense" not in manifest["vectors"]
 
 
@@ -172,3 +192,4 @@ def test_rebuild_search_artifacts_can_rebuild_hashing_embeddings(tmp_path):
     manifest = json.loads((tmp_path / "embedding_manifest.json").read_text(encoding="utf-8"))
     assert config["collection"] == "custom_documents"
     assert manifest["collection"] == "custom_documents"
+    assert manifest["vectors"]["text_dense"]["embedding"]["backend"] == "hashing"

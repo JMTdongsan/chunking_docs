@@ -1108,6 +1108,23 @@ def embed_package_command(
         notes["caption_dense"] = caption_note
     if image_note:
         notes["image_dense"] = image_note
+    vector_metadata = embedding_vector_metadata(
+        text_backend=text_backend,
+        caption_backend=caption_backend,
+        image_backend=image_backend,
+        text_model=text_model,
+        caption_model=caption_model or text_model,
+        image_model=image_model,
+        text_device=text_device or device,
+        image_device=image_device or device,
+        text_batch_size=text_batch_size,
+        caption_batch_size=caption_batch_size,
+        image_batch_size=image_batch_size,
+        hashing_dim=hashing_dim,
+        include_text=text_embedder is not None,
+        include_caption=caption_embedder is not None,
+        include_image=image_embedder is not None,
+    )
 
     result = write_embedding_artifacts(
         output_dir=package_dir,
@@ -1121,6 +1138,7 @@ def embed_package_command(
         caption_batch_size=caption_batch_size,
         image_batch_size=image_batch_size,
         vector_notes=notes,
+        vector_metadata=vector_metadata,
     )
     print(
         {
@@ -3656,6 +3674,95 @@ def build_image_embedder(
             f"TransformersImageEmbedder model={model_name} device={device}.",
         )
     raise typer.BadParameter("image backend must be one of: none, hashing, clip")
+
+
+def embedding_vector_metadata(
+    text_backend: str,
+    caption_backend: str,
+    image_backend: str,
+    text_model: str,
+    caption_model: str,
+    image_model: str,
+    text_device: str,
+    image_device: str,
+    text_batch_size: int,
+    caption_batch_size: int,
+    image_batch_size: int,
+    hashing_dim: int,
+    include_text: bool,
+    include_caption: bool,
+    include_image: bool,
+) -> dict[str, dict]:
+    metadata: dict[str, dict] = {}
+    normalized_text_backend = normalize_backend(text_backend)
+    normalized_caption_backend = normalize_backend(caption_backend)
+    normalized_image_backend = normalize_backend(image_backend)
+    if include_text:
+        metadata["text_dense"] = embedding_backend_metadata(
+            backend=normalized_text_backend,
+            model_name=text_model,
+            device=text_device,
+            batch_size=text_batch_size,
+            hashing_dim=hashing_dim,
+        )
+    if include_caption:
+        if normalized_caption_backend in {"same-as-text", "same_as_text", "same"}:
+            metadata["caption_dense"] = {
+                **embedding_backend_metadata(
+                    backend=normalized_text_backend,
+                    model_name=text_model,
+                    device=text_device,
+                    batch_size=caption_batch_size,
+                    hashing_dim=hashing_dim,
+                ),
+                "same_as": "text_dense",
+            }
+        else:
+            metadata["caption_dense"] = embedding_backend_metadata(
+                backend=normalized_caption_backend,
+                model_name=caption_model,
+                device=text_device,
+                batch_size=caption_batch_size,
+                hashing_dim=hashing_dim,
+            )
+    if include_image:
+        metadata["image_dense"] = embedding_backend_metadata(
+            backend=normalized_image_backend,
+            model_name=image_model,
+            device=image_device,
+            batch_size=image_batch_size,
+            hashing_dim=hashing_dim,
+        )
+    return metadata
+
+
+def embedding_backend_metadata(
+    backend: str,
+    model_name: str,
+    device: str,
+    batch_size: int,
+    hashing_dim: int,
+) -> dict:
+    metadata = {
+        "backend": backend,
+        "batch_size": batch_size,
+    }
+    if backend == "hashing":
+        metadata.update(
+            {
+                "model": "HashingEmbedder",
+                "dimension": hashing_dim,
+                "deterministic": True,
+            }
+        )
+    elif backend != "none":
+        metadata.update(
+            {
+                "model": model_name,
+                "device": device or "auto",
+            }
+        )
+    return metadata
 
 
 def build_qdrant_query_embedders(

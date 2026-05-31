@@ -148,6 +148,7 @@ def write_package(
             image_embedder=image_embedder,
             caption_embedder=embedder,
             vector_notes=hashing_vector_notes(include_visual=True),
+            vector_metadata=hashing_vector_metadata(include_visual=True, embedding_dim=embedder.embedding_dim),
         )
 
 
@@ -180,6 +181,10 @@ def rebuild_search_artifacts(
         caption_embedder=embedder if assets is not None else None,
         collection=existing_collection_name(output_dir),
         vector_notes=hashing_vector_notes(include_visual=assets is not None),
+        vector_metadata=hashing_vector_metadata(
+            include_visual=assets is not None,
+            embedding_dim=embedder.embedding_dim,
+        ),
     )
 
 
@@ -201,6 +206,7 @@ def write_embedding_artifacts(
     image_batch_size: int = 16,
     caption_batch_size: int = 32,
     vector_notes: dict[str, str] | None = None,
+    vector_metadata: dict[str, dict[str, Any]] | None = None,
     clear_existing: bool = True,
 ) -> dict[str, Any]:
     """Write Qdrant record files from concrete embedders.
@@ -218,6 +224,10 @@ def write_embedding_artifacts(
                 path.unlink()
 
     notes = vector_notes or {}
+    metadata = {
+        name: dict(value)
+        for name, value in (vector_metadata or {}).items()
+    }
     named_vectors: dict[str, dict[str, Any]] = {}
     counts: dict[str, int] = {}
 
@@ -230,6 +240,7 @@ def write_embedding_artifacts(
         write_jsonl(output_dir / QDRANT_RECORD_FILES["text_dense"], text_records)
         named_vectors["text_dense"] = vector_config(text_embedder.embedding_dim, notes.get("text_dense"))
         counts["text_dense"] = len(text_records)
+        metadata.setdefault("text_dense", {}).setdefault("batch_size", text_batch_size)
 
     if image_embedder is not None:
         image_records = make_image_embedding_records(
@@ -243,6 +254,7 @@ def write_embedding_artifacts(
             notes.get("image_dense"),
         )
         counts["image_dense"] = len(image_records)
+        metadata.setdefault("image_dense", {}).setdefault("batch_size", image_batch_size)
 
     if caption_embedder is not None:
         caption_records = make_caption_embedding_records(
@@ -256,6 +268,7 @@ def write_embedding_artifacts(
             notes.get("caption_dense"),
         )
         counts["caption_dense"] = len(caption_records)
+        metadata.setdefault("caption_dense", {}).setdefault("batch_size", caption_batch_size)
 
     write_qdrant_collection_config(output_dir, collection, named_vectors)
     write_embedding_manifest(
@@ -264,6 +277,7 @@ def write_embedding_artifacts(
         named_vectors=named_vectors,
         record_counts=counts,
         vector_notes=notes,
+        vector_metadata=metadata,
     )
     return {
         "collection": collection,
@@ -285,6 +299,36 @@ def hashing_vector_notes(include_visual: bool = True) -> dict[str, str]:
             }
         )
     return notes
+
+
+def hashing_vector_metadata(include_visual: bool = True, embedding_dim: int = 384) -> dict[str, dict[str, Any]]:
+    metadata = {
+        "text_dense": {
+            "backend": "hashing",
+            "model": "HashingTextEmbedder",
+            "dimension": embedding_dim,
+            "deterministic": True,
+        }
+    }
+    if include_visual:
+        metadata.update(
+            {
+                "image_dense": {
+                    "backend": "hashing",
+                    "model": "HashingImageEmbedder",
+                    "dimension": embedding_dim,
+                    "deterministic": True,
+                },
+                "caption_dense": {
+                    "backend": "hashing",
+                    "model": "HashingTextEmbedder",
+                    "dimension": embedding_dim,
+                    "deterministic": True,
+                    "same_as": "text_dense",
+                },
+            }
+        )
+    return metadata
 
 
 def existing_collection_name(output_dir: Path, default: str = "document_chunks") -> str:
@@ -331,18 +375,28 @@ def write_embedding_manifest(
     named_vectors: dict[str, dict[str, Any]],
     record_counts: dict[str, int],
     vector_notes: dict[str, str],
+    vector_metadata: dict[str, dict[str, Any]] | None = None,
 ) -> None:
+    metadata = {
+        name: dict(value)
+        for name, value in (vector_metadata or {}).items()
+    }
     vectors = {}
     for vector_name, config in sorted(named_vectors.items()):
         filename = QDRANT_RECORD_FILES[vector_name]
         path = output_dir / filename
-        vectors[vector_name] = {
+        vector_payload: dict[str, Any] = {
             "file": filename,
             "record_count": record_counts.get(vector_name, 0),
             "dimension": int(config["size"]),
             "distance": config.get("distance", "Cosine"),
             "note": vector_notes.get(vector_name) or config.get("note"),
             **file_summary(path),
+        }
+        if metadata.get(vector_name):
+            vector_payload["embedding"] = metadata[vector_name]
+        vectors[vector_name] = {
+            **vector_payload,
         }
     (output_dir / "embedding_manifest.json").write_text(
         json.dumps(

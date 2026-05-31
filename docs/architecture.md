@@ -78,7 +78,7 @@
    - `image_dense`: rendered page or visual asset image.
    - Default hashing embedders make the pipeline testable without model downloads.
    - `embed-package` regenerates artifacts with model-backed text and image embedders.
-   - `embedding_manifest.json` records vector files, dimensions, counts, and checksums.
+   - `embedding_manifest.json` records vector files, dimensions, counts, checksums, backend names, model IDs, devices, and batch sizes.
 
 11. **Lexical Search**
     - BM25 is generated from chunk text plus linked visual asset captions, OCR text, and VLM summaries.
@@ -208,7 +208,7 @@ Tables:
 - `triples`
 - `embedding_artifacts`
 
-The writer upserts in dependency order: documents, pages, chunks, assets, triples, embedding artifacts. The `embedding_artifacts` table stores vector file names, dimensions, counts, checksums, Qdrant collection names, and payload index metadata from `embedding_manifest.json`; vector values remain in Qdrant record files and Qdrant itself.
+The writer upserts in dependency order: documents, pages, chunks, assets, triples, embedding artifacts. The `embedding_artifacts` table stores vector file names, dimensions, counts, checksums, Qdrant collection names, backend/model metadata, and payload index metadata from `embedding_manifest.json`; vector values remain in Qdrant record files and Qdrant itself.
 
 `postgres-schema` exports the SQL contract for review or migration tooling without requiring a live database. `postgres-check-schema` validates the live PostgreSQL schema before upsert. It checks required tables, columns, column types, relational/search indexes, and the pgvector extension so metadata ingestion failures and slow-path schema drift are caught before batch writes.
 
