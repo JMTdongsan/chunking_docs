@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from chunking_docs.graph.provenance import chunk_asset_ids
 from chunking_docs.models import DocumentChunk, GraphTriple, PageProfile, SourceDocument, VisualAsset
 
 
@@ -39,7 +40,7 @@ def chunk_row(chunk: DocumentChunk) -> dict[str, Any]:
         "text": chunk.text,
         "metadata": {
             **chunk.metadata,
-            "asset_ids": chunk.asset_ids,
+            "asset_ids": chunk_asset_ids(chunk),
             "source_refs": chunk.source_refs,
         },
     }

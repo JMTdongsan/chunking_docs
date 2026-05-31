@@ -372,7 +372,7 @@ Qdrant search, evaluation, ablation, and RAG context outputs include `query_enco
 
 ## PostgreSQL
 
-PostgreSQL is intended for source metadata, page profiles, chunks, assets, graph triples, and embedding artifact provenance. Vector search is handled by Qdrant by default, while PostgreSQL stores vector file names, dimensions, counts, checksums, backend/model metadata, and collection names so embedding runs remain auditable.
+PostgreSQL is intended for source metadata, page profiles, chunks, visual asset links, assets, graph triples, and embedding artifact provenance. Vector search is handled by Qdrant by default, while PostgreSQL stores vector file names, dimensions, counts, checksums, backend/model metadata, and collection names so embedding runs remain auditable.
 
 ```bash
 chunking-docs postgres-schema --output outputs/package/postgres_schema.sql

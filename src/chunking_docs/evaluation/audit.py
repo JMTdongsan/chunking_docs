@@ -9,6 +9,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from chunking_docs.embeddings.records import asset_text
+from chunking_docs.graph.provenance import chunk_asset_ids
 from chunking_docs.io import read_jsonl
 from chunking_docs.models import DocumentChunk, GraphTriple, PageProfile, TextQuality, VisualAsset
 from chunking_docs.storage.records import EmbeddingRecord
@@ -111,7 +112,7 @@ def audit_package(
     text_quality_counts = Counter(profile.text_quality for profile in profiles)
     asset_kind_counts = Counter(asset.kind for asset in assets)
     annotated_asset_count = sum(1 for asset in assets if asset.ocr_text or asset.vlm_summary)
-    chunks_with_assets = sum(1 for chunk in chunks if chunk.asset_ids)
+    chunks_with_assets = sum(1 for chunk in chunks if chunk_asset_ids(chunk))
     chunks_with_visual_annotations = sum(
         1 for chunk in chunks if chunk.metadata.get("has_visual_annotations")
     )

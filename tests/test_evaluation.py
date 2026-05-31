@@ -166,6 +166,28 @@ def test_audit_package_does_not_require_empty_completed_ocr_retry():
     assert audit.pages_requiring_ocr == []
 
 
+def test_audit_package_counts_source_ref_visual_asset_links():
+    chunk = DocumentChunk(
+        chunk_id="chunk",
+        doc_id="doc",
+        page_start=1,
+        page_end=1,
+        kind=ChunkKind.TEXT,
+        text="visual context",
+        source_refs=["asset:asset"],
+    )
+    asset = VisualAsset(
+        asset_id="asset",
+        doc_id="doc",
+        page_no=1,
+        kind=AssetKind.MAP,
+    )
+
+    audit = audit_package([], [chunk], [asset], [])
+
+    assert audit.chunks_with_assets == 1
+
+
 def test_audit_package_requires_vlm_retry_when_parse_status_is_missing():
     profiles = [
         PageProfile(

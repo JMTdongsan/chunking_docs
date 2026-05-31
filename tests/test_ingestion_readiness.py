@@ -15,7 +15,7 @@ from chunking_docs.evaluation.ablation import (
     RetrievalAblationRow,
 )
 from chunking_docs.evaluation.compare import ChunkingComparison, ChunkingComparisonRow
-from chunking_docs.evaluation.readiness import build_ingestion_readiness_report
+from chunking_docs.evaluation.readiness import build_ingestion_readiness_report, chunks_with_linked_asset_text
 from chunking_docs.evaluation.retrieval import RetrievalCase, evaluate_search_results
 from chunking_docs.io import read_jsonl, write_jsonl
 from chunking_docs.models import (
@@ -48,6 +48,34 @@ def test_ingestion_readiness_passes_ready_package(tmp_path):
     assert bm25_component.metadata["chunks_with_linked_asset_text"] == 1
     assert bm25_component.metadata["indexed_linked_asset_text_chunk_count"] == 1
     assert report.failed_components == []
+
+
+def test_chunks_with_linked_asset_text_counts_source_refs():
+    manifest = ProcessingManifest(
+        doc=SourceDocument(doc_id="doc", title="title", local_path=Path("/tmp/doc.pdf")),
+        chunks=[
+            DocumentChunk(
+                chunk_id="chunk-1",
+                doc_id="doc",
+                page_start=1,
+                page_end=1,
+                kind=ChunkKind.TEXT,
+                text="visual context",
+                source_refs=["asset:asset-1"],
+            )
+        ],
+        assets=[
+            VisualAsset(
+                asset_id="asset-1",
+                doc_id="doc",
+                page_no=1,
+                kind=AssetKind.MAP,
+                caption="visual caption",
+            )
+        ],
+    )
+
+    assert chunks_with_linked_asset_text(manifest) == ["chunk-1"]
 
 
 def test_ingestion_readiness_can_require_embedding_vectors(tmp_path):

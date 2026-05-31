@@ -26,6 +26,7 @@ from chunking_docs.evaluation.gate import RetrievalGateReport, gate_retrieval_ev
 from chunking_docs.evaluation.retrieval import RetrievalCase, RetrievalEvaluation
 from chunking_docs.embeddings.bm25 import asset_text_parts, chunk_lexical_texts
 from chunking_docs.embeddings.tokenizers import LexicalTokenizer, LexicalTokenizerConfig
+from chunking_docs.graph.provenance import chunk_asset_ids
 from chunking_docs.models import ProcessingManifest
 from chunking_docs.storage.postgres_store import manifest_rows
 from chunking_docs.vision.compare import VisualRunComparison
@@ -836,7 +837,7 @@ def chunks_with_linked_asset_text(manifest: ProcessingManifest) -> list[str]:
     asset_by_id = {asset.asset_id: asset for asset in manifest.assets}
     chunk_ids: list[str] = []
     for chunk in manifest.chunks:
-        for asset_id in chunk.asset_ids:
+        for asset_id in chunk_asset_ids(chunk):
             asset = asset_by_id.get(asset_id)
             if asset is not None and asset_text_parts(asset):
                 chunk_ids.append(chunk.chunk_id)

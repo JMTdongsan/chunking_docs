@@ -3,7 +3,7 @@ from pathlib import Path
 
 from typer.testing import CliRunner
 
-from chunking_docs.analysis.characterize import characterize_package
+from chunking_docs.analysis.characterize import characterize_package, chunk_characteristics
 from chunking_docs.cli import app
 from chunking_docs.io import write_jsonl
 from chunking_docs.models import (
@@ -68,6 +68,24 @@ def test_characterize_package_cli_writes_json(tmp_path):
     assert payload["visual"]["asset_kind_counts"]["map"] == 1
     assert any(item["code"] == "visual_retrieval_required" for item in payload["observations"])
     assert any(item["code"] == "evaluate_visual_vectors" for item in payload["recommendations"])
+
+
+def test_chunk_characteristics_counts_source_ref_visual_links():
+    chunks = [
+        DocumentChunk(
+            chunk_id="chunk-1",
+            doc_id="doc",
+            page_start=1,
+            page_end=1,
+            kind=ChunkKind.TEXT,
+            text="visual context",
+            source_refs=["asset:asset-1"],
+        )
+    ]
+
+    report = chunk_characteristics(chunks)
+
+    assert report.chunks_with_assets == 1
 
 
 def make_characteristic_package(tmp_path: Path):

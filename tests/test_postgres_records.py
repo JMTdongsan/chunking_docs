@@ -53,6 +53,7 @@ def test_postgres_row_transforms_are_json_ready():
         kind=ChunkKind.TEXT,
         text="hello",
         asset_ids=["asset"],
+        source_refs=["asset:source-asset"],
     )
     asset = VisualAsset(
         asset_id="asset",
@@ -73,7 +74,8 @@ def test_postgres_row_transforms_are_json_ready():
 
     assert document_row(document)["doc_id"] == "doc"
     assert page_row(page)["profile"]["text_quality"] == "degraded"
-    assert chunk_row(chunk)["metadata"]["asset_ids"] == ["asset"]
+    assert chunk_row(chunk)["metadata"]["asset_ids"] == ["asset", "source-asset"]
+    assert chunk_row(chunk)["metadata"]["source_refs"] == ["asset:source-asset"]
     assert asset_row(asset, base_dir=Path("/tmp"))["path"] == "assets/page.png"
     assert triple_row(triple)["object"] == "c"
     assert embedding_artifact_rows("doc") == []

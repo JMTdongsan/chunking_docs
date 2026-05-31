@@ -7,6 +7,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from chunking_docs.graph.provenance import chunk_asset_ids
 from chunking_docs.models import DocumentChunk, GraphTriple, PageProfile, TextQuality, VisualAsset
 
 
@@ -166,7 +167,7 @@ def chunk_characteristics(chunks: list[DocumentChunk]) -> ChunkCharacteristics:
     return ChunkCharacteristics(
         chunk_count=len(chunks),
         chunk_kind_counts=dict(sorted(kind_counts.items())),
-        chunks_with_assets=sum(1 for chunk in chunks if chunk.asset_ids),
+        chunks_with_assets=sum(1 for chunk in chunks if chunk_asset_ids(chunk)),
         chunks_with_visual_annotations=sum(1 for chunk in chunks if chunk.metadata.get("has_visual_annotations")),
         table_chunk_count=kind_counts.get("table", 0),
     )

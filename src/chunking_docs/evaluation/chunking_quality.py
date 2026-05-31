@@ -12,6 +12,7 @@ from chunking_docs.evaluation.retrieval import (
     RetrievalEvaluation,
     evaluate_retrieval,
 )
+from chunking_docs.graph.provenance import chunk_asset_ids
 from chunking_docs.models import DocumentChunk, GraphTriple, PageProfile, VisualAsset
 
 
@@ -78,7 +79,7 @@ def evaluate_chunking_quality(
         sum(1 for chunk in chunks if chunk.section.label() or chunk.metadata.get("section_label")),
         len(chunks),
     )
-    chunks_with_assets = sum(1 for chunk in chunks if chunk.asset_ids)
+    chunks_with_assets = sum(1 for chunk in chunks if chunk_asset_ids(chunk))
     visual_linkage = ratio(chunks_with_assets, len(chunks))
     visual_annotation = ratio(sum(1 for asset in assets if asset.ocr_text or asset.vlm_summary), len(assets))
     visual_text_coverage = visual_text_coverage_stats(chunks, assets)
@@ -307,14 +308,9 @@ def visual_text_coverage_stats(
             assets_with_text[asset.asset_id] = parts
     chunk_texts_by_asset: dict[str, list[str]] = {asset_id: [] for asset_id in assets_with_text}
     for chunk in chunks:
-        for asset_id in chunk.asset_ids:
+        for asset_id in chunk_asset_ids(chunk):
             if asset_id in chunk_texts_by_asset:
                 chunk_texts_by_asset[asset_id].append(chunk.text)
-        for ref in chunk.source_refs:
-            if ref.startswith("asset:"):
-                asset_id = ref.removeprefix("asset:")
-                if asset_id in chunk_texts_by_asset:
-                    chunk_texts_by_asset[asset_id].append(chunk.text)
 
     covered_asset_ids = []
     missing_asset_ids = []
