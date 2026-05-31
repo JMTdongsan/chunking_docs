@@ -83,6 +83,34 @@ def test_visual_context_can_be_disabled_for_multimodal_text_chunks():
     assert add_visual_context_to_chunks([chunk], [asset], max_chars=0) == [chunk]
 
 
+def test_multimodal_strategy_uses_structured_visual_metadata_as_context():
+    chunk = DocumentChunk(
+        chunk_id="chunk-1",
+        doc_id="doc",
+        page_start=3,
+        page_end=3,
+        kind=ChunkKind.TEXT,
+        text="base text",
+        asset_ids=["asset-1"],
+    )
+    asset = VisualAsset(
+        asset_id="asset-1",
+        doc_id="doc",
+        page_no=3,
+        kind=AssetKind.MAP,
+        metadata={
+            "entities": ["transfer hub"],
+            "objects": [{"label": "station marker", "attributes": ["red circle"]}],
+        },
+    )
+
+    chunks = build_strategy_chunks([chunk], [asset], strategy="multimodal")
+
+    assert len(chunks) == 2
+    assert "Entities: transfer hub" in chunks[0].text
+    assert "Objects: station marker: red circle" in chunks[1].text
+
+
 def test_hierarchical_strategy_adds_parent_and_child_context():
     chunk = DocumentChunk(
         chunk_id="chunk-1",

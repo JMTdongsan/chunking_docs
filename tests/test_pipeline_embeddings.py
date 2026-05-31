@@ -135,6 +135,35 @@ def test_write_embedding_artifacts_supports_image_vectors(tmp_path):
     assert len(image_records[0].vector) == 5
 
 
+def test_caption_embedding_records_include_structured_visual_metadata(tmp_path):
+    asset = VisualAsset(
+        asset_id="asset-1",
+        doc_id="doc",
+        page_no=2,
+        kind=AssetKind.FIGURE,
+        metadata={
+            "visual_elements": ["route legend"],
+            "objects": [{"label": "station marker", "attributes": ["red circle"]}],
+        },
+    )
+
+    result = write_embedding_artifacts(
+        output_dir=tmp_path,
+        chunks=[],
+        assets=[asset],
+        caption_embedder=FakeTextEmbedder(4),
+    )
+
+    assert result["records"] == {"caption_dense": 1}
+    caption_records = [
+        EmbeddingRecord.model_validate_json(line)
+        for line in (tmp_path / "qdrant_caption_records.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert caption_records[0].payload["text"] == (
+        "Visual elements: route legend\nObjects: station marker: red circle"
+    )
+
+
 def test_rebuild_search_artifacts_refreshes_bm25_without_overwriting_embeddings(tmp_path):
     (tmp_path / "qdrant_collection.json").write_text(
         json.dumps(

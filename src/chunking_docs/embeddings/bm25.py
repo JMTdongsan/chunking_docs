@@ -6,6 +6,7 @@ from pathlib import Path
 
 from rank_bm25 import BM25Okapi
 
+from chunking_docs.embeddings.records import asset_text_parts
 from chunking_docs.embeddings.tokenizers import LexicalTokenizer, LexicalTokenizerConfig
 from chunking_docs.models import DocumentChunk, VisualAsset
 
@@ -76,14 +77,6 @@ def chunk_lexical_text(
             continue
         parts.extend(asset_text_parts(asset))
     return "\n".join(deduplicate_text_parts(parts))
-
-
-def asset_text_parts(asset: VisualAsset) -> list[str]:
-    return [
-        value.strip()
-        for value in [asset.caption, asset.ocr_text, asset.vlm_summary]
-        if value and value.strip()
-    ]
 
 
 def deduplicate_text_parts(parts: list[str]) -> list[str]:

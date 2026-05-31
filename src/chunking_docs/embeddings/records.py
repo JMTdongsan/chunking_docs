@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 from chunking_docs.embeddings.interfaces import DenseTextEmbedder
 from chunking_docs.embeddings.interfaces import DenseImageEmbedder
@@ -115,8 +116,142 @@ def make_caption_embedding_records(
 
 
 def asset_text(asset: VisualAsset) -> str:
-    return "\n".join(
-        part
-        for part in [asset.caption or "", asset.ocr_text or "", asset.vlm_summary or ""]
-        if part.strip()
+    return "\n".join(asset_text_parts(asset))
+
+
+def asset_text_parts(asset: VisualAsset) -> list[str]:
+    return deduplicate_text_parts(
+        [
+            asset.caption or "",
+            asset.ocr_text or "",
+            asset.vlm_summary or "",
+            *asset_metadata_text_parts(asset.metadata),
+        ]
     )
+
+
+def asset_metadata_text_parts(metadata: dict[str, Any]) -> list[str]:
+    parts: list[str] = []
+    page_type = metadata_text_value(metadata.get("page_type"))
+    if page_type:
+        parts.append(f"Page type: {page_type}")
+    for key, label, limit in [
+        ("key_points", "Key points", 6),
+        ("entities", "Entities", 8),
+        ("visual_elements", "Visual elements", 8),
+    ]:
+        values = metadata_text_items(metadata.get(key), limit=limit)
+        if values:
+            parts.append(f"{label}: {'; '.join(values)}")
+    objects = dedupe_metadata_values(
+        [
+            object_text
+            for key in ["objects", "detected_objects", "visual_objects"]
+            for object_text in metadata_object_items(metadata.get(key), limit=8)
+        ],
+        limit=8,
+    )
+    if objects:
+        parts.append(f"Objects: {'; '.join(objects)}")
+    return parts
+
+
+def metadata_text_items(value: Any, limit: int) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        values = [value]
+    elif isinstance(value, list):
+        values = []
+        for item in value:
+            if isinstance(item, dict):
+                label = metadata_first_string(item, ["label", "name", "title", "entity", "object", "type"])
+                description = metadata_first_string(item, ["description", "summary", "text"])
+                if label and description and description != label:
+                    values.append(f"{label}: {description}")
+                elif label:
+                    values.append(label)
+                elif description:
+                    values.append(description)
+            else:
+                values.append(str(item))
+    else:
+        values = [str(value)]
+    return dedupe_metadata_values(values, limit=limit)
+
+
+def metadata_object_items(value: Any, limit: int) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        candidates = [value]
+    elif isinstance(value, list):
+        candidates = value
+    else:
+        candidates = [value]
+
+    objects: list[str] = []
+    for item in candidates:
+        if isinstance(item, dict):
+            label = metadata_first_string(item, ["label", "name", "title", "object", "type", "category"])
+            if not label:
+                continue
+            attributes = metadata_text_items(
+                item.get("attributes") or item.get("features") or item.get("descriptors"),
+                limit=6,
+            )
+            description = metadata_first_string(item, ["description", "summary", "text"])
+            if description and description not in attributes:
+                attributes.append(description)
+            if attributes:
+                objects.append(f"{label}: {', '.join(attributes[:6])}")
+            else:
+                objects.append(label)
+        else:
+            value_text = metadata_text_value(item)
+            if value_text:
+                objects.append(value_text)
+    return dedupe_metadata_values(objects, limit=limit)
+
+
+def metadata_first_string(payload: dict[str, Any], keys: list[str]) -> str:
+    for key in keys:
+        value = metadata_text_value(payload.get(key))
+        if value:
+            return value
+    return ""
+
+
+def metadata_text_value(value: Any) -> str:
+    if value is None:
+        return ""
+    text = " ".join(str(value).split())
+    return text.strip()
+
+
+def dedupe_metadata_values(values: list[str], limit: int) -> list[str]:
+    selected = []
+    seen = set()
+    for value in values:
+        normalized = metadata_text_value(value)
+        key = normalized.casefold()
+        if not normalized or key in seen:
+            continue
+        selected.append(normalized)
+        seen.add(key)
+        if len(selected) >= limit:
+            break
+    return selected
+
+
+def deduplicate_text_parts(parts: list[str]) -> list[str]:
+    selected = []
+    seen = set()
+    for part in parts:
+        normalized = metadata_text_value(part)
+        key = normalized.casefold()
+        if not normalized or key in seen:
+            continue
+        selected.append(part.strip())
+        seen.add(key)
+    return selected

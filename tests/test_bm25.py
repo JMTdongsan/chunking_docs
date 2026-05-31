@@ -1,4 +1,5 @@
 from chunking_docs.embeddings.bm25 import BM25LexicalIndex, chunk_lexical_texts
+from chunking_docs.embeddings.records import asset_text
 from chunking_docs.embeddings.tokenizers import LexicalTokenizerConfig
 from chunking_docs.models import AssetKind, ChunkKind, DocumentChunk, VisualAsset
 
@@ -110,6 +111,46 @@ def test_bm25_can_index_linked_visual_asset_text():
 
     assert results[0][0].chunk_id == "a"
     assert "north river corridor diagram" in chunk_lexical_texts(chunks, assets)[0]
+
+
+def test_bm25_indexes_structured_visual_metadata_text():
+    chunks = [
+        DocumentChunk(
+            chunk_id="a",
+            doc_id="doc",
+            page_start=1,
+            page_end=1,
+            kind=ChunkKind.TEXT,
+            text="base text",
+            asset_ids=["asset-1"],
+        )
+    ]
+    assets = [
+        VisualAsset(
+            asset_id="asset-1",
+            doc_id="doc",
+            page_no=1,
+            kind=AssetKind.MAP,
+            metadata={
+                "entities": ["transfer hub"],
+                "visual_elements": ["blue route arrow"],
+                "objects": [
+                    {
+                        "label": "station marker",
+                        "attributes": ["red circle", "north edge"],
+                    }
+                ],
+            },
+        )
+    ]
+
+    indexed_text = chunk_lexical_texts(chunks, assets)[0]
+    results = BM25LexicalIndex(chunks, texts=[indexed_text]).search("station marker", top_k=1)
+
+    assert results[0][0].chunk_id == "a"
+    assert "Entities: transfer hub" in indexed_text
+    assert "Visual elements: blue route arrow" in indexed_text
+    assert "Objects: station marker: red circle, north edge" in asset_text(assets[0])
 
 
 def test_bm25_manifest_records_tokenizer_config(tmp_path):
