@@ -565,6 +565,9 @@ chunking-docs gate-chunking-comparison outputs/package/chunking_comparison.json 
   --min-target-coverage-at-k 0.75 \
   --min-target-ndcg-at-k 0.7 \
   --min-precision-at-k 0.4 \
+  --min-target-type-coverage asset=0.9 \
+  --min-target-type-coverage triple=0.9 \
+  --min-source-family-target-coverage lexical=0.75 \
   --max-failed-queries 0 \
   --max-recall-drop 0.05 \
   --max-target-coverage-drop 0.05 \
@@ -573,7 +576,7 @@ chunking-docs gate-chunking-comparison outputs/package/chunking_comparison.json 
   --output outputs/package/chunking_comparison_gate.json
 ```
 
-The `multimodal` strategy keeps semantic text chunks, appends bounded visual context from linked captions, OCR, and VLM summaries, and adds separate visual asset text chunks. The `hierarchical` strategy emits coarse parent chunks plus fine child chunks with shared visual context, which supports experiments where broad queries should find a page or section while precise queries should retrieve a smaller evidence span. `--collapse-hierarchical` reports the parent as the final hit while preserving matched child chunks as evidence. Comparison output includes recall@k, MRR, target coverage@k, target nDCG@k, precision@k, latency, failed queries, chunk size issues, and the best candidate by quality and retrieval behavior.
+The `multimodal` strategy keeps semantic text chunks, appends bounded visual context from linked captions, OCR, and VLM summaries, and adds separate visual asset text chunks. The `hierarchical` strategy emits coarse parent chunks plus fine child chunks with shared visual context, which supports experiments where broad queries should find a page or section while precise queries should retrieve a smaller evidence span. `--collapse-hierarchical` reports the parent as the final hit while preserving matched child chunks as evidence. Comparison output includes recall@k, MRR, target coverage@k, target nDCG@k, precision@k, target-type coverage, source-family target coverage, latency, failed queries, chunk size issues, and the best candidate by quality and retrieval behavior.
 
 Run a parameter sweep when choosing defaults:
 
@@ -595,7 +598,7 @@ chunking-docs sweep-chunking \
   --output outputs/package/chunking_sweep.json
 ```
 
-The sweep writes candidate chunk files under `outputs/package/chunking_sweep/` and ranks them with the same quality, recall@k, MRR, target coverage@k, target nDCG@k, precision@k, latency, and failed-query metrics used by `compare-chunking`.
+The sweep writes candidate chunk files under `outputs/package/chunking_sweep/` and ranks them with the same quality, recall@k, MRR, target coverage@k, target nDCG@k, precision@k, target-type coverage, source-family target coverage, latency, and failed-query metrics used by `compare-chunking`.
 
 Write a reproducible experiment report for a package:
 

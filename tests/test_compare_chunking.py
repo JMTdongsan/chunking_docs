@@ -23,9 +23,16 @@ def test_compare_chunking_reports_ranks_by_retrieval_then_quality():
             page_end=1,
             kind=ChunkKind.TEXT,
             text="river corridor station hub",
+            asset_ids=["asset-1"],
         )
     ]
-    cases = [RetrievalCase(query="river corridor", expected_pages=[1])]
+    cases = [
+        RetrievalCase(
+            query="river corridor",
+            expected_pages=[1],
+            expected_asset_ids=["asset-1"],
+        )
+    ]
     reports = {
         "weak": evaluate_chunking_quality(weak_chunks, [], [], [], retrieval_cases=cases),
         "strong": evaluate_chunking_quality(strong_chunks, [], [], [], retrieval_cases=cases),
@@ -41,4 +48,6 @@ def test_compare_chunking_reports_ranks_by_retrieval_then_quality():
     assert comparison.rows[0].retrieval_mean_target_ndcg_at_k == 1.0
     assert comparison.rows[0].retrieval_mean_precision_at_k is not None
     assert comparison.rows[0].retrieval_mean_latency_ms is not None
+    assert comparison.rows[0].target_metrics["asset"]["coverage_at_k"] == 1.0
+    assert comparison.rows[0].source_family_metrics["lexical"]["target_coverage_at_k"] == 1.0
     assert comparison.rows[-1].failed_queries == ["river corridor"]

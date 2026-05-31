@@ -23,6 +23,8 @@ def test_gate_chunking_comparison_passes_selected_candidate_against_baseline():
         min_target_coverage_at_k=0.8,
         min_target_ndcg_at_k=0.75,
         min_precision_at_k=0.5,
+        min_target_type_coverage={"asset": 0.8},
+        min_source_family_target_coverage={"lexical": 0.8},
         max_failed_queries=0,
         max_recall_drop=0.05,
         max_mean_latency_ratio=2.0,
@@ -33,6 +35,8 @@ def test_gate_chunking_comparison_passes_selected_candidate_against_baseline():
     assert report.baseline_candidate == "weak"
     assert report.failed_checks == []
     assert report.metrics["retrieval_recall_at_k"] == 0.9
+    assert report.metrics["target_type.asset.coverage_at_k"] == 0.85
+    assert report.metrics["source_family.lexical.target_coverage_at_k"] == 0.9
 
 
 def test_gate_chunking_comparison_flags_retrieval_regressions():
@@ -45,6 +49,8 @@ def test_gate_chunking_comparison_flags_retrieval_regressions():
         require_retrieval=True,
         min_recall_at_k=0.8,
         min_target_coverage_at_k=0.75,
+        min_target_type_coverage={"asset": 0.8},
+        min_source_family_target_coverage={"lexical": 0.8},
         max_failed_queries=0,
         max_recall_drop=0.1,
         max_mean_latency_ratio=1.5,
@@ -53,6 +59,8 @@ def test_gate_chunking_comparison_flags_retrieval_regressions():
     assert report.passed is False
     assert "min_recall_at_k" in report.failed_checks
     assert "min_target_coverage_at_k" in report.failed_checks
+    assert "min_target_type_coverage:asset" in report.failed_checks
+    assert "min_source_family_target_coverage:lexical" in report.failed_checks
     assert "max_failed_queries" in report.failed_checks
     assert "max_recall_at_k_drop" in report.failed_checks
     assert "max_mean_latency_ms_ratio" in report.failed_checks
@@ -85,6 +93,10 @@ def test_gate_chunking_comparison_cli_writes_json_and_fails(tmp_path):
             "--require-retrieval",
             "--min-recall-at-k",
             "0.8",
+            "--min-target-type-coverage",
+            "asset=0.8",
+            "--min-source-family-target-coverage",
+            "lexical=0.8",
             "--max-recall-drop",
             "0.1",
             "--output",
@@ -96,6 +108,8 @@ def test_gate_chunking_comparison_cli_writes_json_and_fails(tmp_path):
     payload = json.loads(output_path.read_text(encoding="utf-8"))
     assert payload["candidate"] == "weak"
     assert "min_recall_at_k" in payload["failed_checks"]
+    assert "min_target_type_coverage:asset" in payload["failed_checks"]
+    assert "min_source_family_target_coverage:lexical" in payload["failed_checks"]
     assert "max_recall_at_k_drop" in payload["failed_checks"]
 
 
@@ -112,6 +126,8 @@ def comparison_report() -> ChunkingComparison:
                 mean_latency=12.0,
                 p95_latency=20.0,
                 failed_queries=[],
+                target_metrics={"asset": {"coverage_at_k": 0.85}},
+                source_family_metrics={"lexical": {"target_coverage_at_k": 0.9}},
             ),
             row(
                 name="weak",
@@ -123,6 +139,8 @@ def comparison_report() -> ChunkingComparison:
                 mean_latency=30.0,
                 p95_latency=55.0,
                 failed_queries=["missing target"],
+                target_metrics={"asset": {"coverage_at_k": 0.2}},
+                source_family_metrics={"lexical": {"target_coverage_at_k": 0.1}},
             ),
         ],
         best_by_quality="strong",
@@ -141,6 +159,8 @@ def row(
     mean_latency: float,
     p95_latency: float,
     failed_queries: list[str],
+    target_metrics: dict[str, dict[str, float]] | None = None,
+    source_family_metrics: dict[str, dict[str, float]] | None = None,
 ) -> ChunkingComparisonRow:
     return ChunkingComparisonRow(
         name=name,
@@ -154,6 +174,8 @@ def row(
         retrieval_mean_precision_at_k=precision,
         retrieval_mean_latency_ms=mean_latency,
         retrieval_p95_latency_ms=p95_latency,
+        target_metrics=target_metrics or {},
+        source_family_metrics=source_family_metrics or {},
         failed_queries=failed_queries,
         page_coverage_ratio=1.0,
         visual_annotation_ratio=0.5,

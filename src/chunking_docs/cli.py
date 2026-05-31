@@ -2970,6 +2970,16 @@ def gate_chunking_comparison_command(
     max_failed_queries: int | None = 0,
     max_chunks_under_min_chars: int | None = None,
     max_chunks_over_max_chars: int | None = None,
+    min_target_type_coverage: list[str] = typer.Option(
+        None,
+        "--min-target-type-coverage",
+        help="Require target-type coverage such as asset=0.9 or triple=0.9. Repeat for multiple types.",
+    ),
+    min_source_family_target_coverage: list[str] = typer.Option(
+        None,
+        "--min-source-family-target-coverage",
+        help="Require source-family target coverage such as lexical=0.8. Repeat for multiple families.",
+    ),
     max_quality_drop: float | None = None,
     max_recall_drop: float | None = None,
     max_target_coverage_drop: float | None = None,
@@ -2985,6 +2995,14 @@ def gate_chunking_comparison_command(
 ):
     """Fail a chunking strategy comparison when quality, retrieval, or latency checks are missed."""
     parsed_comparison = load_chunking_comparison(comparison)
+    target_type_thresholds = parse_named_float_thresholds(
+        min_target_type_coverage,
+        "target type coverage",
+    )
+    source_family_thresholds = parse_named_float_thresholds(
+        min_source_family_target_coverage,
+        "source family target coverage",
+    )
     report = gate_chunking_comparison(
         parsed_comparison,
         candidate=candidate,
@@ -3003,6 +3021,8 @@ def gate_chunking_comparison_command(
         max_failed_queries=max_failed_queries,
         max_chunks_under_min_chars=max_chunks_under_min_chars,
         max_chunks_over_max_chars=max_chunks_over_max_chars,
+        min_target_type_coverage=target_type_thresholds,
+        min_source_family_target_coverage=source_family_thresholds,
         max_quality_drop=max_quality_drop,
         max_recall_drop=max_recall_drop,
         max_target_coverage_drop=max_target_coverage_drop,

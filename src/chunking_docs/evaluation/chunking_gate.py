@@ -6,6 +6,7 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 
 from chunking_docs.evaluation.compare import ChunkingComparison, ChunkingComparisonRow
+from chunking_docs.evaluation.gate import source_family_metric_key, target_type_metric_key
 
 
 class ChunkingComparisonGateCheck(BaseModel):
@@ -59,6 +60,8 @@ def gate_chunking_comparison(
     max_failed_queries: int | None = 0,
     max_chunks_under_min_chars: int | None = None,
     max_chunks_over_max_chars: int | None = None,
+    min_target_type_coverage: dict[str, float] | None = None,
+    min_source_family_target_coverage: dict[str, float] | None = None,
     max_quality_drop: float | None = None,
     max_recall_drop: float | None = None,
     max_target_coverage_drop: float | None = None,
@@ -166,6 +169,14 @@ def gate_chunking_comparison(
         ]
         if check is not None
     )
+    checks.extend(target_type_coverage_checks(selected_name, metrics, min_target_type_coverage or {}))
+    checks.extend(
+        source_family_target_coverage_checks(
+            selected_name,
+            metrics,
+            min_source_family_target_coverage or {},
+        )
+    )
 
     if baseline_candidate is not None:
         baseline_row = find_row(comparison, baseline_candidate)
@@ -238,7 +249,7 @@ def find_row(comparison: ChunkingComparison, candidate: str) -> ChunkingComparis
 
 
 def row_metrics(row: ChunkingComparisonRow) -> dict[str, float | None]:
-    return {
+    metrics = {
         "chunk_count": float(row.chunk_count),
         "quality_score": row.quality_score,
         "retrieval_hit_rate": row.retrieval_hit_rate,
@@ -255,6 +266,57 @@ def row_metrics(row: ChunkingComparisonRow) -> dict[str, float | None]:
         "chunks_under_min_chars": float(row.chunks_under_min_chars),
         "chunks_over_max_chars": float(row.chunks_over_max_chars),
     }
+    for target_type, target_type_metrics in row.target_metrics.items():
+        for key, value in target_type_metrics.items():
+            metrics[target_type_metric_key(target_type, key)] = value
+    for family, family_metrics in row.source_family_metrics.items():
+        for key, value in family_metrics.items():
+            metrics[source_family_metric_key(family, key)] = value
+    return metrics
+
+
+def target_type_coverage_checks(
+    candidate: str,
+    metrics: dict[str, float | None],
+    thresholds: dict[str, float],
+) -> list[ChunkingComparisonGateCheck]:
+    checks = []
+    for target_type, threshold in sorted(thresholds.items()):
+        normalized_target_type = target_type.strip().lower()
+        metric = target_type_metric_key(normalized_target_type, "coverage_at_k")
+        metrics.setdefault(metric, 0.0)
+        checks.append(
+            minimum_check(
+                f"min_target_type_coverage:{normalized_target_type}",
+                candidate,
+                metric,
+                metrics,
+                threshold,
+            )
+        )
+    return checks
+
+
+def source_family_target_coverage_checks(
+    candidate: str,
+    metrics: dict[str, float | None],
+    thresholds: dict[str, float],
+) -> list[ChunkingComparisonGateCheck]:
+    checks = []
+    for family, threshold in sorted(thresholds.items()):
+        normalized_family = family.strip().lower()
+        metric = source_family_metric_key(normalized_family, "target_coverage_at_k")
+        metrics.setdefault(metric, 0.0)
+        checks.append(
+            minimum_check(
+                f"min_source_family_target_coverage:{normalized_family}",
+                candidate,
+                metric,
+                metrics,
+                threshold,
+            )
+        )
+    return checks
 
 
 def optional_minimum_check(
