@@ -31,6 +31,7 @@ from chunking_docs.pipeline import (
     write_split_chunks,
 )
 from chunking_docs.retrieval.local_hybrid import LocalHybridSearcher
+from chunking_docs.retrieval.context import build_context_bundle
 from chunking_docs.storage.records import EmbeddingRecord
 from chunking_docs.vision.annotate import annotate_assets, merge_asset_annotations_into_chunks
 from chunking_docs.vision.interfaces import OCRBackend, VLMBackend
@@ -835,6 +836,67 @@ def search_local(
             for index, hit in enumerate(hits)
         ]
     )
+
+
+@app.command(name="build-rag-context")
+def build_rag_context_command(
+    query: str,
+    package_dir: Path = Path("outputs/package"),
+    chunks_file: str = "chunks.jsonl",
+    output: Path | None = None,
+    top_k: int = 5,
+    graph_expand: bool = False,
+    collapse_hierarchical: bool = False,
+    max_chars_per_chunk: int = 1400,
+    include_evidence: bool = True,
+    include_assets: bool = True,
+    include_triples: bool = True,
+    lexical_tokenizer: TokenizerStrategy = "mixed",
+    ngram_min: int = 2,
+    ngram_max: int = 4,
+    ngram_cjk_only: bool = True,
+):
+    """Build a citation-ready RAG context bundle from local hybrid search hits."""
+    from chunking_docs.embeddings.interfaces import HashingTextEmbedder
+
+    chunks = read_jsonl(package_dir / chunks_file, DocumentChunk)
+    assets_path = package_dir / "assets.jsonl"
+    triples_path = package_dir / "triples.jsonl"
+    assets = read_jsonl(assets_path, VisualAsset) if assets_path.exists() else []
+    triples = read_jsonl(triples_path, GraphTriple) if triples_path.exists() else []
+    searcher = LocalHybridSearcher(
+        chunks,
+        HashingTextEmbedder(),
+        triples=triples,
+        tokenizer_config=build_tokenizer_config(
+            lexical_tokenizer,
+            ngram_min=ngram_min,
+            ngram_max=ngram_max,
+            ngram_cjk_only=ngram_cjk_only,
+        ),
+    )
+    hits = searcher.search(
+        query,
+        top_k=top_k,
+        graph_expand=graph_expand,
+        collapse_hierarchical=collapse_hierarchical,
+    )
+    bundle = build_context_bundle(
+        query=query,
+        hits=hits,
+        assets=assets,
+        triples=triples,
+        max_chars_per_chunk=max_chars_per_chunk,
+        include_evidence=include_evidence,
+        include_assets=include_assets,
+        include_triples=include_triples,
+    )
+    if output is not None:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(bundle.model_dump_json(indent=2), encoding="utf-8")
+        print({"output": str(output), **bundle.metadata})
+        return
+    print(bundle.model_dump())
 
 
 @app.command(name="export-graph")

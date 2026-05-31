@@ -161,6 +161,20 @@ chunking-docs qdrant-hybrid-search "map showing station access" \
   --image-query-model openai/clip-vit-large-patch14
 ```
 
+## RAG Context
+
+Build a citation-ready context bundle from local hybrid retrieval:
+
+```bash
+chunking-docs build-rag-context "station access corridor" \
+  --package-dir outputs/package \
+  --top-k 5 \
+  --graph-expand \
+  --output outputs/package/rag_context.json
+```
+
+The bundle contains retrieved chunks, hierarchical evidence chunks, linked visual assets, and graph triples so downstream RAG services can pass structured context to an answer generator.
+
 ## PostgreSQL
 
 PostgreSQL is intended for source metadata, page profiles, chunks, assets, and graph triples. Vector search is handled by Qdrant by default.

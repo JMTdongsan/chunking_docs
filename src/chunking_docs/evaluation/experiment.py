@@ -54,6 +54,7 @@ DEFAULT_ARTIFACTS = [
     "visual_job_summary.json",
     "chunking_sweep.json",
     "retrieval_ablation.json",
+    "rag_context.json",
 ]
 
 

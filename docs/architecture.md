@@ -74,6 +74,11 @@
     - PostgreSQL stores normalized document, page, chunk, asset, and triple metadata.
     - BM25 can remain as a local manifest or be replaced by a dedicated lexical search service.
 
+13. **RAG Context Assembly**
+    - Convert retrieval hits into a structured context bundle.
+    - Include hit chunks, hierarchical evidence chunks, linked visual assets, and graph triples.
+    - Keep page ranges, section labels, source refs, scores, and retrieval sources available for citation.
+
 ## Package Files
 
 `chunking-docs package` writes a local processing package:
@@ -105,6 +110,7 @@ Additional processing commands may create:
 - `graph_edges.jsonl`
 - `experiment_report.json`
 - `retrieval_ablation.json`
+- `rag_context.json`
 
 ## Qdrant Design
 
