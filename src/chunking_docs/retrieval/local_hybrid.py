@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 from chunking_docs.embeddings.bm25 import BM25LexicalIndex
 from chunking_docs.embeddings.interfaces import DenseTextEmbedder
+from chunking_docs.embeddings.tokenizers import LexicalTokenizerConfig
 from chunking_docs.graph.export import related_terms
 from chunking_docs.models import DocumentChunk, GraphTriple
 from chunking_docs.retrieval.fusion import RankedHit, reciprocal_rank_fusion
@@ -23,10 +24,11 @@ class LocalHybridSearcher:
         chunks: list[DocumentChunk],
         embedder: DenseTextEmbedder,
         triples: list[GraphTriple] | None = None,
+        tokenizer_config: LexicalTokenizerConfig | None = None,
     ):
         self.chunks = chunks
         self.embedder = embedder
-        self.bm25 = BM25LexicalIndex(chunks)
+        self.bm25 = BM25LexicalIndex(chunks, tokenizer_config=tokenizer_config)
         self.chunk_vectors = embedder.embed_texts([chunk.text for chunk in chunks])
         self.triples = triples or []
 

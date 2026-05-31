@@ -9,6 +9,7 @@ from chunking_docs.chunking.page_chunker import page_level_chunks
 from chunking_docs.chunking.section_map import SectionRange
 from chunking_docs.chunking.semantic_splitter import semantic_subchunks
 from chunking_docs.embeddings.bm25 import BM25LexicalIndex
+from chunking_docs.embeddings.tokenizers import LexicalTokenizerConfig
 from chunking_docs.embeddings.interfaces import (
     DenseImageEmbedder,
     DenseTextEmbedder,
@@ -61,6 +62,7 @@ def build_processing_package(
     render_zoom: float = 1.5,
     dry_run_embeddings: bool = True,
     section_ranges: list[SectionRange] | None = None,
+    tokenizer_config: LexicalTokenizerConfig | None = None,
 ) -> ProcessingManifest:
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -90,7 +92,12 @@ def build_processing_package(
             "section_map_count": len(section_ranges or []),
         },
     )
-    write_package(output_dir, manifest, dry_run_embeddings=dry_run_embeddings)
+    write_package(
+        output_dir,
+        manifest,
+        dry_run_embeddings=dry_run_embeddings,
+        tokenizer_config=tokenizer_config,
+    )
     return manifest
 
 
@@ -98,6 +105,7 @@ def write_package(
     output_dir: Path,
     manifest: ProcessingManifest,
     dry_run_embeddings: bool = True,
+    tokenizer_config: LexicalTokenizerConfig | None = None,
 ) -> None:
     write_jsonl(output_dir / "pages.jsonl", manifest.profiles)
     write_jsonl(output_dir / "chunks.jsonl", manifest.chunks)
@@ -108,7 +116,7 @@ def write_package(
         encoding="utf-8",
     )
 
-    bm25 = BM25LexicalIndex(manifest.chunks)
+    bm25 = BM25LexicalIndex(manifest.chunks, tokenizer_config=tokenizer_config)
     bm25.dump_manifest(output_dir / "bm25_tokens.json")
 
     if dry_run_embeddings:
@@ -129,8 +137,13 @@ def write_package(
         )
 
 
-def rebuild_search_artifacts(output_dir: Path, chunks, assets=None) -> None:
-    bm25 = BM25LexicalIndex(chunks)
+def rebuild_search_artifacts(
+    output_dir: Path,
+    chunks,
+    assets=None,
+    tokenizer_config: LexicalTokenizerConfig | None = None,
+) -> None:
+    bm25 = BM25LexicalIndex(chunks, tokenizer_config=tokenizer_config)
     bm25.dump_manifest(output_dir / "bm25_tokens.json")
 
     embedder = HashingTextEmbedder()

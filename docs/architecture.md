@@ -54,9 +54,11 @@
    - `embed-package` regenerates artifacts with model-backed text and image embedders.
 
 10. **Lexical Search**
-   - BM25 is generated from chunk text.
-   - Lexical search protects exact matches for names, identifiers, dates, codes, and policy terms.
-   - Dense and lexical results are combined with Reciprocal Rank Fusion in the local evaluator.
+    - BM25 is generated from chunk text.
+    - Lexical search protects exact matches for names, identifiers, dates, codes, and policy terms.
+    - Tokenization is configurable as `word`, `char_ngram`, or `mixed`.
+    - The default `mixed` tokenizer adds CJK character n-grams so compound terms without whitespace remain retrievable.
+    - Dense and lexical results are combined with Reciprocal Rank Fusion in the local evaluator.
 
 11. **Graph Triples**
     - Section metadata creates baseline graph relationships.
@@ -133,6 +135,8 @@ Recommended checks:
 - Qdrant local mode upsert: validates named vector records and payloads.
 
 Benchmark cases should be maintained per document family. A useful case specifies the query, expected page or chunk, and whether graph expansion should be enabled.
+
+Tokenizer settings are part of the retrieval experiment. Strategy comparisons should keep the tokenizer fixed unless the experiment is explicitly measuring lexical tokenization.
 
 ## Model Strategy
 

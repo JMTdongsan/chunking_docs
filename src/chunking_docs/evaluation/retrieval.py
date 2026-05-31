@@ -5,6 +5,7 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 
 from chunking_docs.embeddings.interfaces import HashingTextEmbedder
+from chunking_docs.embeddings.tokenizers import LexicalTokenizerConfig
 from chunking_docs.io import read_jsonl
 from chunking_docs.models import DocumentChunk, GraphTriple
 from chunking_docs.retrieval.local_hybrid import LocalHybridSearcher
@@ -50,8 +51,14 @@ def evaluate_retrieval(
     triples: list[GraphTriple],
     cases: list[RetrievalCase],
     top_k: int = 5,
+    tokenizer_config: LexicalTokenizerConfig | None = None,
 ) -> RetrievalEvaluation:
-    searcher = LocalHybridSearcher(chunks, HashingTextEmbedder(), triples=triples)
+    searcher = LocalHybridSearcher(
+        chunks,
+        HashingTextEmbedder(),
+        triples=triples,
+        tokenizer_config=tokenizer_config,
+    )
     results: list[RetrievalCaseResult] = []
     for case in cases:
         hits = searcher.search(case.query, top_k=top_k, graph_expand=case.graph_expand)

@@ -10,6 +10,7 @@
 - Renders visual assets for pages that need OCR, VLM summaries, or image embeddings.
 - Plans and runs prioritized OCR/VLM jobs for visual-heavy pages.
 - Produces dense text, dense image, caption, and BM25 lexical artifacts.
+- Supports word, character n-gram, and mixed lexical tokenization for languages where whitespace is weak.
 - Builds graph triple candidates from section metadata and visual annotations.
 - Exports Qdrant upsert records and PostgreSQL-ready normalized rows.
 - Evaluates chunking quality and retrieval hit rate with reusable benchmark cases.
@@ -147,6 +148,24 @@ chunking-docs eval-retrieval examples/retrieval_cases.jsonl --package-dir output
 ```
 
 For portfolio or production use, maintain benchmark cases for each document family and compare chunking strategies before changing defaults.
+
+## Lexical Tokenization
+
+BM25 uses the `mixed` tokenizer by default. It combines word tokens with CJK character n-grams, which helps retrieve compound terms that may appear without whitespace in PDF text or OCR output.
+
+```bash
+chunking-docs search-local "urban renewal plan" \
+  --package-dir outputs/package \
+  --lexical-tokenizer mixed \
+  --ngram-min 2 \
+  --ngram-max 4
+```
+
+Available tokenizer strategies:
+
+- `word`: regex word tokens
+- `char_ngram`: character n-grams
+- `mixed`: word tokens plus character n-grams
 
 ## Chunking Strategy Experiments
 

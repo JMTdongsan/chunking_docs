@@ -5,6 +5,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from chunking_docs.embeddings.tokenizers import LexicalTokenizerConfig
 from chunking_docs.evaluation.retrieval import (
     RetrievalCase,
     RetrievalEvaluation,
@@ -55,6 +56,7 @@ def evaluate_chunking_quality(
     top_k: int = 5,
     min_chars: int = 120,
     max_chars: int = 1800,
+    tokenizer_config: LexicalTokenizerConfig | None = None,
 ) -> ChunkingQualityReport:
     page_numbers = {profile.page_no for profile in profiles}
     if not page_numbers:
@@ -71,11 +73,15 @@ def evaluate_chunking_quality(
     chunks_with_assets = sum(1 for chunk in chunks if chunk.asset_ids)
     visual_linkage = ratio(chunks_with_assets, len(chunks))
     visual_annotation = ratio(sum(1 for asset in assets if asset.ocr_text or asset.vlm_summary), len(assets))
-    retrieval = (
-        evaluate_retrieval(chunks=chunks, triples=triples, cases=retrieval_cases, top_k=top_k)
-        if retrieval_cases
-        else None
-    )
+    retrieval = None
+    if retrieval_cases:
+        retrieval = evaluate_retrieval(
+            chunks=chunks,
+            triples=triples,
+            cases=retrieval_cases,
+            top_k=top_k,
+            tokenizer_config=tokenizer_config,
+        )
 
     issues = quality_issues(
         page_coverage_ratio=ratio(len(covered_pages & page_numbers), len(page_numbers)),

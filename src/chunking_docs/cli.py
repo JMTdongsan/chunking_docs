@@ -11,6 +11,7 @@ from chunking_docs.analysis.pdf_profile import profile_pdf, summarize_profiles, 
 from chunking_docs.chunking.multimodal import ChunkStrategy, build_strategy_chunks
 from chunking_docs.chunking.page_chunker import page_level_chunks
 from chunking_docs.chunking.section_map import load_section_ranges
+from chunking_docs.embeddings.tokenizers import LexicalTokenizerConfig, TokenizerStrategy
 from chunking_docs.evaluation.audit import audit_package
 from chunking_docs.evaluation.chunking_quality import evaluate_chunking_quality
 from chunking_docs.evaluation.compare import compare_chunking_reports
@@ -97,6 +98,10 @@ def package_pdf(
     title: str = "",
     render_zoom: float = 1.5,
     section_map: Path | None = None,
+    lexical_tokenizer: TokenizerStrategy = "mixed",
+    ngram_min: int = 2,
+    ngram_max: int = 4,
+    ngram_cjk_only: bool = True,
 ):
     """Build the full local processing package for DB ingestion."""
     manifest = build_processing_package(
@@ -106,6 +111,12 @@ def package_pdf(
         title=title or None,
         render_zoom=render_zoom,
         section_ranges=load_section_ranges(section_map),
+        tokenizer_config=build_tokenizer_config(
+            lexical_tokenizer,
+            ngram_min=ngram_min,
+            ngram_max=ngram_max,
+            ngram_cjk_only=ngram_cjk_only,
+        ),
     )
     print(
         {
@@ -545,6 +556,10 @@ def search_local(
     chunks_file: str = "chunks.jsonl",
     top_k: int = 5,
     graph_expand: bool = False,
+    lexical_tokenizer: TokenizerStrategy = "mixed",
+    ngram_min: int = 2,
+    ngram_max: int = 4,
+    ngram_cjk_only: bool = True,
 ):
     """Run local dry-run hybrid search over package chunks using hashing dense + BM25."""
     from chunking_docs.embeddings.interfaces import HashingTextEmbedder
@@ -552,7 +567,17 @@ def search_local(
     chunks = read_jsonl(package_dir / chunks_file, DocumentChunk)
     triples_path = package_dir / "triples.jsonl"
     triples = read_jsonl(triples_path, GraphTriple) if triples_path.exists() else []
-    searcher = LocalHybridSearcher(chunks, HashingTextEmbedder(), triples=triples)
+    searcher = LocalHybridSearcher(
+        chunks,
+        HashingTextEmbedder(),
+        triples=triples,
+        tokenizer_config=build_tokenizer_config(
+            lexical_tokenizer,
+            ngram_min=ngram_min,
+            ngram_max=ngram_max,
+            ngram_cjk_only=ngram_cjk_only,
+        ),
+    )
     hits = searcher.search(query, top_k=top_k, graph_expand=graph_expand)
     print(
         [
@@ -649,6 +674,10 @@ def eval_retrieval_command(
     package_dir: Path = Path("outputs/package"),
     chunks_file: str = "chunks.jsonl",
     top_k: int = 5,
+    lexical_tokenizer: TokenizerStrategy = "mixed",
+    ngram_min: int = 2,
+    ngram_max: int = 4,
+    ngram_cjk_only: bool = True,
 ):
     """Evaluate local hybrid retrieval against JSONL seed cases."""
     chunks = read_jsonl(package_dir / chunks_file, DocumentChunk)
@@ -659,6 +688,12 @@ def eval_retrieval_command(
         triples=triples,
         cases=load_retrieval_cases(cases),
         top_k=top_k,
+        tokenizer_config=build_tokenizer_config(
+            lexical_tokenizer,
+            ngram_min=ngram_min,
+            ngram_max=ngram_max,
+            ngram_cjk_only=ngram_cjk_only,
+        ),
     )
     print(evaluation.model_dump())
 
@@ -670,6 +705,10 @@ def eval_chunking_command(
     top_k: int = 5,
     min_chars: int = 120,
     max_chars: int = 1800,
+    lexical_tokenizer: TokenizerStrategy = "mixed",
+    ngram_min: int = 2,
+    ngram_max: int = 4,
+    ngram_cjk_only: bool = True,
 ):
     """Evaluate chunking quality and optional retrieval performance."""
     manifest = load_processing_package(package_dir)
@@ -683,6 +722,12 @@ def eval_chunking_command(
         top_k=top_k,
         min_chars=min_chars,
         max_chars=max_chars,
+        tokenizer_config=build_tokenizer_config(
+            lexical_tokenizer,
+            ngram_min=ngram_min,
+            ngram_max=ngram_max,
+            ngram_cjk_only=ngram_cjk_only,
+        ),
     )
     print(report.model_dump())
 
@@ -699,6 +744,10 @@ def compare_chunking_command(
     top_k: int = 5,
     min_chars: int = 120,
     max_chars: int = 1800,
+    lexical_tokenizer: TokenizerStrategy = "mixed",
+    ngram_min: int = 2,
+    ngram_max: int = 4,
+    ngram_cjk_only: bool = True,
 ):
     """Compare multiple chunk files with the same quality and retrieval metrics."""
     manifest = load_processing_package(package_dir)
@@ -716,6 +765,12 @@ def compare_chunking_command(
             top_k=top_k,
             min_chars=min_chars,
             max_chars=max_chars,
+            tokenizer_config=build_tokenizer_config(
+                lexical_tokenizer,
+                ngram_min=ngram_min,
+                ngram_max=ngram_max,
+                ngram_cjk_only=ngram_cjk_only,
+            ),
         )
     print(compare_chunking_reports(reports).model_dump())
 
@@ -858,3 +913,17 @@ def parse_candidates(values: list[str] | None, package_dir: Path) -> dict[str, P
             raise typer.BadParameter("--candidate name must not be empty")
         parsed[name] = Path(path)
     return parsed
+
+
+def build_tokenizer_config(
+    strategy: TokenizerStrategy,
+    ngram_min: int,
+    ngram_max: int,
+    ngram_cjk_only: bool,
+) -> LexicalTokenizerConfig:
+    return LexicalTokenizerConfig(
+        strategy=strategy,
+        min_n=ngram_min,
+        max_n=ngram_max,
+        ngram_cjk_only=ngram_cjk_only,
+    )
