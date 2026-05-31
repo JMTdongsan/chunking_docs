@@ -95,7 +95,7 @@ def audit_package(
         asset.page_no for asset in assets if asset.metadata.get("requires_ocr") and not asset.ocr_text
     )
     pages_requiring_vlm = sorted(
-        asset.page_no for asset in assets if asset.metadata.get("requires_vlm") and not asset.vlm_summary
+        asset.page_no for asset in assets if asset.metadata.get("requires_vlm") and asset_requires_vlm(asset)
     )
     if require_annotations_for_visual_pages and pages_requiring_vlm:
         issues.append(
@@ -138,6 +138,13 @@ def audit_package(
         qdrant_vector_sizes=qdrant_vector_sizes,
         issues=issues,
     )
+
+
+def asset_requires_vlm(asset: VisualAsset) -> bool:
+    if not asset.vlm_summary:
+        return True
+    parse_status = str(asset.metadata.get("vlm_parse_status", "")).strip()
+    return parse_status in {"raw_text", "json_scalar"}
 
 
 def audit_qdrant_artifacts(

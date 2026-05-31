@@ -108,6 +108,85 @@ def test_plan_visual_jobs_filters_by_asset_kind(tmp_path):
     assert [job.asset_id for job in jobs] == ["map"]
 
 
+def test_plan_visual_jobs_prioritizes_visually_complex_page_images(tmp_path):
+    blank_path = tmp_path / "blank.png"
+    diagram_path = tmp_path / "diagram.png"
+    blank_path.write_bytes(b"blank")
+    diagram_path.write_bytes(b"diagram")
+    assets = [
+        VisualAsset(
+            asset_id="blank",
+            doc_id="doc",
+            page_no=1,
+            kind=AssetKind.PAGE_IMAGE,
+            path=blank_path,
+            metadata={
+                "requires_ocr": True,
+                "requires_vlm": True,
+                "text_quality": "empty",
+                "drawing_count": 0,
+            },
+        ),
+        VisualAsset(
+            asset_id="diagram",
+            doc_id="doc",
+            page_no=2,
+            kind=AssetKind.PAGE_IMAGE,
+            path=diagram_path,
+            metadata={
+                "requires_ocr": True,
+                "requires_vlm": True,
+                "text_quality": "degraded",
+                "drawing_count": 16,
+            },
+        ),
+    ]
+
+    jobs = plan_visual_jobs(assets)
+
+    assert [job.asset_id for job in jobs] == ["diagram", "blank"]
+
+
+def test_plan_visual_jobs_retries_unstructured_vlm_summary(tmp_path):
+    image_path = tmp_path / "page.png"
+    image_path.write_bytes(b"page")
+    assets = [
+        VisualAsset(
+            asset_id="raw",
+            doc_id="doc",
+            page_no=1,
+            kind=AssetKind.PAGE_IMAGE,
+            path=image_path,
+            ocr_text="recognized text",
+            vlm_summary="plain text fallback",
+            metadata={
+                "requires_ocr": True,
+                "requires_vlm": True,
+                "vlm_parse_status": "raw_text",
+            },
+        ),
+        VisualAsset(
+            asset_id="structured",
+            doc_id="doc",
+            page_no=2,
+            kind=AssetKind.PAGE_IMAGE,
+            path=image_path,
+            ocr_text="recognized text",
+            vlm_summary="structured summary",
+            metadata={
+                "requires_ocr": True,
+                "requires_vlm": True,
+                "vlm_parse_status": "json_object",
+            },
+        ),
+    ]
+
+    jobs = plan_visual_jobs(assets)
+
+    assert [job.asset_id for job in jobs] == ["raw"]
+    assert jobs[0].operations == ["vlm"]
+
+
 def test_run_visual_jobs_returns_asset_annotations(tmp_path):
     image_path = tmp_path / "map.png"
     image_path.write_bytes(b"map")

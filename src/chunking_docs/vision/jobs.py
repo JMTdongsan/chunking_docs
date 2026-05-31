@@ -82,9 +82,9 @@ def visual_job_for_asset(
     if include_ocr and asset.metadata.get("requires_ocr", True) and not asset.ocr_text:
         operations.append("ocr")
         reasons.append("missing OCR")
-    if include_vlm and asset.metadata.get("requires_vlm", True) and not asset.vlm_summary:
+    if include_vlm and asset.metadata.get("requires_vlm", True) and asset_needs_vlm(asset):
         operations.append("vlm")
-        reasons.append("missing VLM summary")
+        reasons.append("missing or unstructured VLM summary")
     if not operations:
         return None
 
@@ -264,11 +264,34 @@ def visual_job_priority(asset: VisualAsset, operations: list[VisualOperation]) -
         priority += 200
     if "ocr" in operations:
         priority += 100
+    priority += visual_complexity_bonus(asset)
     if str(asset.metadata.get("text_quality", "")) == "empty":
         priority += 50
     if asset.metadata.get("section_label"):
         priority += 20
     return priority
+
+
+def visual_complexity_bonus(asset: VisualAsset) -> int:
+    image_blocks = metadata_int(asset, "image_block_count")
+    embedded_images = metadata_int(asset, "embedded_image_count")
+    drawings = metadata_int(asset, "drawing_count")
+    return min(image_blocks, 5) * 40 + min(embedded_images, 5) * 40 + min(drawings, 20) * 5
+
+
+def asset_needs_vlm(asset: VisualAsset) -> bool:
+    if not asset.vlm_summary:
+        return True
+    parse_status = str(asset.metadata.get("vlm_parse_status", "")).strip()
+    return parse_status in {"raw_text", "json_scalar"}
+
+
+def metadata_int(asset: VisualAsset, key: str) -> int:
+    value = asset.metadata.get(key, 0)
+    try:
+        return max(0, int(value))
+    except (TypeError, ValueError):
+        return 0
 
 
 def make_visual_job_id(asset_id: str, operations: list[VisualOperation]) -> str:
