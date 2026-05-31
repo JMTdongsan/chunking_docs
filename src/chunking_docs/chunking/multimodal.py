@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 from typing import Literal
 
-from chunking_docs.chunking.hierarchical import build_hierarchical_chunks
+from chunking_docs.chunking.hierarchical import build_hierarchical_chunks, chunk_visual_context
 from chunking_docs.chunking.semantic_splitter import semantic_subchunks
 from chunking_docs.embeddings.records import asset_text
 from chunking_docs.models import ChunkKind, DocumentChunk, VisualAsset
@@ -33,8 +33,14 @@ def build_strategy_chunks(
         )
         return split
     if strategy == "multimodal":
+        contextualized = contextualize_chunks(chunks, include_context_prefix=include_context_prefix)
+        visual_contextualized = add_visual_context_to_chunks(
+            contextualized,
+            assets,
+            max_chars=visual_context_chars,
+        )
         base = semantic_subchunks(
-            contextualize_chunks(chunks, include_context_prefix=include_context_prefix),
+            visual_contextualized,
             max_chars=max_chars,
             overlap_chars=overlap_chars,
             min_chars=min_chars,
@@ -73,6 +79,38 @@ def contextualize_chunks(
                     "metadata": {
                         **chunk.metadata,
                         "context_prefix_added": True,
+                    },
+                }
+            )
+        )
+    return updated
+
+
+def add_visual_context_to_chunks(
+    chunks: list[DocumentChunk],
+    assets: list[VisualAsset],
+    max_chars: int = 700,
+) -> list[DocumentChunk]:
+    if max_chars <= 0 or not assets:
+        return list(chunks)
+    assets_by_id = {asset.asset_id: asset for asset in assets}
+    updated = []
+    for chunk in chunks:
+        visual_context = chunk_visual_context(chunk, assets_by_id, max_chars=max_chars)
+        if not visual_context:
+            updated.append(chunk)
+            continue
+        block = f"Visual context:\n{visual_context}"
+        if block in chunk.text:
+            updated.append(chunk)
+            continue
+        updated.append(
+            chunk.model_copy(
+                update={
+                    "text": "\n\n".join([chunk.text.rstrip(), block]).strip(),
+                    "metadata": {
+                        **chunk.metadata,
+                        "visual_context_added": True,
                     },
                 }
             )

@@ -44,6 +44,26 @@ def test_run_chunking_sweep_writes_candidates_and_comparison(tmp_path):
     assert any(output_dir.glob("chunks.hierarchical-*.jsonl"))
 
 
+def test_multimodal_sweep_varies_visual_context_chars(tmp_path):
+    manifest = make_manifest(tmp_path)
+
+    report = run_chunking_sweep(
+        chunks=manifest.chunks,
+        assets=manifest.assets,
+        profiles=manifest.profiles,
+        triples=manifest.triples,
+        strategies=["multimodal"],
+        max_chars_values=[200],
+        overlap_chars_values=[20],
+        min_chars=40,
+        visual_context_chars_values=[0, 120],
+    )
+
+    assert len(report.candidates) == 2
+    assert {candidate.config["visual_context_chars"] for candidate in report.candidates} == {0, 120}
+    assert any("visual120" in candidate.name for candidate in report.candidates)
+
+
 def test_sweep_chunking_cli_writes_report(tmp_path):
     package_dir = write_package(tmp_path)
     cases_path = tmp_path / "cases.jsonl"

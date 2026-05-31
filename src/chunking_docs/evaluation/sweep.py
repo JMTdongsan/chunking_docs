@@ -149,6 +149,17 @@ def sweep_configs(
                     "overlap_chars": overlap_chars,
                     "min_chars": min_chars,
                 }
+                if strategy == "multimodal":
+                    for visual_context_chars in visual_context_chars_values:
+                        add_unique_config(
+                            configs,
+                            seen,
+                            {
+                                **base,
+                                "visual_context_chars": visual_context_chars,
+                            },
+                        )
+                    continue
                 if strategy != "hierarchical":
                     add_unique_config(configs, seen, base)
                     continue
@@ -189,6 +200,8 @@ def candidate_name(config: dict[str, Any]) -> str:
                 f"visual{config.get('visual_context_chars')}",
             ]
         )
+    elif strategy == "multimodal" and "visual_context_chars" in config:
+        parts.append(f"visual{config.get('visual_context_chars')}")
     return safe_name("-".join(parts))
 
 

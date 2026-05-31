@@ -2078,7 +2078,7 @@ def sweep_chunking_command(
     visual_context_chars: list[int] = typer.Option(
         None,
         "--visual-context-chars",
-        help="Repeat to evaluate hierarchical visual context sizes.",
+        help="Repeat to evaluate multimodal and hierarchical visual context sizes.",
     ),
     cases: Path | None = None,
     top_k: int = 5,

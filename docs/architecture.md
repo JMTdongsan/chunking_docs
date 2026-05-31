@@ -53,7 +53,7 @@
 9. **Strategy Variants**
    - `page`: baseline page chunks with optional context prefix.
    - `semantic`: boundary-aware subchunks for long text.
-   - `multimodal`: semantic chunks plus visual asset text chunks from captions, OCR, and VLM summaries.
+   - `multimodal`: semantic chunks with bounded linked visual context plus visual asset text chunks from captions, OCR, and VLM summaries.
    - `hierarchical`: coarse parent chunks plus fine child chunks that share page, section, and visual context.
    - `compare-chunking` evaluates candidate files with the same benchmark cases.
    - `sweep-chunking` generates a strategy and parameter grid, writes candidate chunk files, and ranks the results.
@@ -188,7 +188,7 @@ Recommended checks:
 - `eval-retrieval-ablation`: dense-only, BM25-only, graph-only, hybrid, and graph-expanded hybrid comparison on the same cases, including target coverage@k, target nDCG@k, and latency.
 - `gate-retrieval`: pass/fail checks for absolute metric floors and baseline regression limits such as recall drop, target coverage drop, target nDCG drop, precision drop, and latency ratio.
 - `compare-chunking`: side-by-side strategy comparison by quality score, recall@k, MRR, target coverage@k, target nDCG@k, precision@k, latency, and failed queries.
-- `sweep-chunking`: parameter grid generation for max size, overlap, parent size, and visual context size.
+- `sweep-chunking`: parameter grid generation for max size, overlap, parent size, and multimodal or hierarchical visual context size.
 - `write-experiment-report`: reproducible package report with artifact checksums, record counts, tokenizer settings, Qdrant configuration, and candidate comparison metrics.
 - Qdrant local mode upsert: validates named vector records and payloads.
 
