@@ -2271,6 +2271,7 @@ def eval_retrieval_command(
 def generate_retrieval_cases_command(
     package_dir: Path = Path("outputs/package"),
     output: Path | None = None,
+    chunks: Path | None = None,
     page_limit: int = 20,
     asset_limit: int = 20,
     triple_limit: int = 20,
@@ -2279,22 +2280,36 @@ def generate_retrieval_cases_command(
     include_triples: bool = True,
     include_todo: bool = False,
     query_max_chars: int = 120,
+    query_mode: str = "snippet",
+    selection_strategy: str = "document_order",
+    min_query_terms: int = 3,
+    max_query_terms: int = 8,
+    dedupe_queries: bool = True,
 ):
-    """Generate a retrieval benchmark JSONL skeleton from package chunks, assets, and triples."""
+    """Generate retrieval benchmark JSONL drafts from package chunks, assets, and triples."""
     manifest = load_processing_package(package_dir)
-    cases = generate_retrieval_case_skeleton(
-        chunks=manifest.chunks,
-        assets=manifest.assets,
-        triples=manifest.triples,
-        page_limit=page_limit,
-        asset_limit=asset_limit,
-        triple_limit=triple_limit,
-        include_pages=include_pages,
-        include_assets=include_assets,
-        include_triples=include_triples,
-        include_todo=include_todo,
-        query_max_chars=query_max_chars,
-    )
+    case_chunks = read_jsonl(chunks, DocumentChunk) if chunks is not None else manifest.chunks
+    try:
+        cases = generate_retrieval_case_skeleton(
+            chunks=case_chunks,
+            assets=manifest.assets,
+            triples=manifest.triples,
+            page_limit=page_limit,
+            asset_limit=asset_limit,
+            triple_limit=triple_limit,
+            include_pages=include_pages,
+            include_assets=include_assets,
+            include_triples=include_triples,
+            include_todo=include_todo,
+            query_max_chars=query_max_chars,
+            query_mode=query_mode,
+            selection_strategy=selection_strategy,
+            min_query_terms=min_query_terms,
+            max_query_terms=max_query_terms,
+            dedupe_queries=dedupe_queries,
+        )
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
     output_path = output or package_dir / "retrieval_cases.skeleton.jsonl"
     write_jsonl(output_path, cases)
     print(
@@ -2305,6 +2320,10 @@ def generate_retrieval_cases_command(
             "asset_limit": asset_limit,
             "triple_limit": triple_limit,
             "include_todo": include_todo,
+            "query_mode": query_mode,
+            "selection_strategy": selection_strategy,
+            "chunks": str(chunks) if chunks is not None else str(package_dir / "chunks.jsonl"),
+            "dedupe_queries": dedupe_queries,
         }
     )
 

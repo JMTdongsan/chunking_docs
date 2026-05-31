@@ -218,7 +218,7 @@ Recommended checks:
 - `eval-chunking`: page coverage, chunk size distribution, section coverage, visual linkage, annotation coverage, retrieval recall@k, MRR, target coverage@k, target nDCG@k, precision@k, latency, failed queries, and aggregate quality score.
 - `audit-retrieval-cases`: benchmark case validation for empty or TODO queries, unknown page/chunk/asset/triple targets, duplicate queries, graph-expansion hints, and target-family coverage.
 - `eval-retrieval`: focused top-k retrieval benchmark cases with optional repeated latency sampling, target-specific page/chunk/asset/triple metrics, and source-family contribution metrics.
-- `generate-retrieval-cases`: benchmark skeleton generation from package pages, chunks, visual assets, and graph triples.
+- `generate-retrieval-cases`: benchmark draft generation from package pages, candidate chunk files, visual assets, and graph triples, with snippet or document-frequency-weighted salient-term query modes.
 - `diagnose-retrieval`: failure, partial-coverage, low-ranking, and low-precision analysis for retrieval evaluation JSON outputs.
 - `eval-qdrant-retrieval`: the same benchmark cases against Qdrant named vectors plus BM25 and optional graph expansion.
 - `eval-qdrant-vector-ablation`: Qdrant text, visual caption, optional image, and graph-expanded vector comparison on the same cases.

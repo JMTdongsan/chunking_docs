@@ -428,9 +428,14 @@ Generate a benchmark skeleton from existing package targets, then edit the queri
 ```bash
 chunking-docs generate-retrieval-cases \
   --package-dir outputs/package \
+  --chunks outputs/package/chunks.multimodal.jsonl \
+  --query-mode salient_terms \
+  --selection-strategy salience \
   --include-todo \
   --output outputs/package/retrieval_cases.skeleton.jsonl
 ```
+
+`--chunks` can point at a candidate chunk file so the same benchmark drafting logic can be run against semantic, multimodal, or hierarchical candidates. `--query-mode snippet` drafts queries from source text snippets. `--query-mode salient_terms` drafts harder keyword-style queries from document-frequency-weighted terms, and `--selection-strategy salience` prioritizes targets with more distinctive text. Duplicate query strings are removed by default; use `--no-dedupe-queries` only when auditing duplicate behavior. Treat generated cases as reviewable drafts before using them as a benchmark gate.
 
 ```jsonl
 {"query":"policy corridor near river","expected_pages":[12],"graph_expand":true}
