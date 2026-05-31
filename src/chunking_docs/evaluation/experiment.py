@@ -58,6 +58,7 @@ DEFAULT_ARTIFACTS = [
     "visual_run_comparison.json",
     "visual_quality.json",
     "document_characteristics.json",
+    "ingestion_readiness.json",
     "chunking_comparison.json",
     "chunking_comparison_gate.json",
     "chunking_sweep.json",
@@ -68,6 +69,16 @@ DEFAULT_ARTIFACTS = [
     "retrieval_ablation.json",
     "rag_context.json",
     "rag_context.qdrant.json",
+]
+
+DEFAULT_ARTIFACT_GLOBS = [
+    "ingestion_readiness*.json",
+    "chunking_comparison*.json",
+    "chunking_gate*.json",
+    "retrieval_gate*.json",
+    "qdrant_retrieval_eval*.json",
+    "qdrant_vector_ablation*.json",
+    "qdrant_vector_ablation_gate*.json",
 ]
 
 
@@ -127,11 +138,24 @@ def build_experiment_report(
 
 
 def package_artifact_summaries(package_dir: Path, candidates: dict[str, Path]) -> list[ArtifactSummary]:
-    paths = [package_dir / name for name in DEFAULT_ARTIFACTS]
+    paths: list[Path] = []
+    seen: set[Path] = set()
+    for name in DEFAULT_ARTIFACTS:
+        append_unique_path(paths, seen, package_dir / name)
+    for pattern in DEFAULT_ARTIFACT_GLOBS:
+        for path in sorted(package_dir.glob(pattern)):
+            append_unique_path(paths, seen, path)
     for path in candidates.values():
-        if path not in paths:
-            paths.append(path)
+        append_unique_path(paths, seen, path)
     return [artifact_summary(path, root=package_dir) for path in paths]
+
+
+def append_unique_path(paths: list[Path], seen: set[Path], path: Path) -> None:
+    normalized = path.resolve() if path.exists() else path
+    if normalized in seen:
+        return
+    seen.add(normalized)
+    paths.append(path)
 
 
 def artifact_summary(path: Path, root: Path | None = None) -> ArtifactSummary:

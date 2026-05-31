@@ -233,7 +233,7 @@ Recommended checks:
 - `compare-chunking`: side-by-side strategy comparison by quality score, recall@k, MRR, target coverage@k, target nDCG@k, precision@k, target-type coverage, source-family target coverage, latency, and failed queries.
 - `gate-chunking-comparison`: pass/fail checks for selected chunking candidates using quality, page coverage, retrieval floors, target-type coverage, source-family target coverage, failed-query limits, and baseline regression limits.
 - `sweep-chunking`: parameter grid generation for max size, overlap, parent size, and multimodal or hierarchical visual context size.
-- `write-experiment-report`: reproducible package report with artifact checksums, record counts, tokenizer settings, Qdrant configuration, and candidate comparison metrics.
+- `write-experiment-report`: reproducible package report with artifact checksums, record counts, tokenizer settings, Qdrant configuration, readiness and gate artifact variants, and candidate comparison metrics.
 - Qdrant local mode upsert: validates named vector records and payloads.
 
 Benchmark cases should be maintained per document family. A useful case specifies the query, expected page, chunk, visual asset, graph triple, and whether graph expansion should be enabled.

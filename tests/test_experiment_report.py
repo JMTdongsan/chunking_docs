@@ -34,6 +34,8 @@ def test_build_experiment_report_summarizes_artifacts_and_candidates(tmp_path):
     assert report.package_counts == {"pages": 1, "chunks": 1, "assets": 1, "triples": 0}
     assert artifacts["chunks.jsonl"].record_count == 1
     assert artifacts["chunks.jsonl"].sha256 is not None
+    assert artifacts["ingestion_readiness.final.json"].exists is True
+    assert artifacts["retrieval_gate.final.json"].exists is True
     assert report.qdrant_collection["collection"] == "document_chunks"
     assert report.bm25_tokenizer["strategy"] == "mixed"
     assert report.candidate_files == {"current": str(package_dir / "chunks.jsonl")}
@@ -125,6 +127,14 @@ def write_minimal_package(tmp_path):
     write_jsonl(package_dir / "triples.jsonl", [])
     (package_dir / "bm25_tokens.json").write_text(
         json.dumps({"tokenizer": {"strategy": "mixed"}}, indent=2),
+        encoding="utf-8",
+    )
+    (package_dir / "ingestion_readiness.final.json").write_text(
+        json.dumps({"passed": True}, indent=2),
+        encoding="utf-8",
+    )
+    (package_dir / "retrieval_gate.final.json").write_text(
+        json.dumps({"passed": True}, indent=2),
         encoding="utf-8",
     )
     (package_dir / "qdrant_collection.json").write_text(
