@@ -224,7 +224,7 @@ Recommended checks:
 - `eval-qdrant-retrieval`: the same benchmark cases against Qdrant named vectors plus BM25 and optional graph expansion.
 - `eval-qdrant-vector-ablation`: Qdrant text, visual caption, optional image, and graph-expanded vector comparison on the same cases.
 - `gate-qdrant-vector-ablation`: pass/fail checks for a selected Qdrant vector mode using recall, target coverage, target nDCG, precision, failed-query count, latency, target-type coverage, source-family target coverage, and optional best-mode requirements.
-- `ingestion-readiness`: final pre-ingestion gate that can combine package audit results, storage artifacts, PostgreSQL row conversion, visual quality, retrieval gates, chunking comparison gates, and selected Qdrant vector ablation gates.
+- `ingestion-readiness`: final pre-ingestion gate that can combine package audit results, storage artifacts, PostgreSQL row conversion, visual quality, retrieval gates, chunking comparison gates with target-type and source-family coverage, and selected Qdrant vector ablation gates.
 - `compare-visual-runs`: OCR/VLM run comparison by coverage, structured parse rate, graph triple density, and latency.
 - `plan-vlm-experiments`: reproducible profile-by-profile command recipes for running the same visual job set through multiple VLMs.
 - `eval-retrieval-ablation`: dense-only, BM25-only, graph-only, hybrid, and graph-expanded hybrid comparison on the same cases, including target coverage@k, target nDCG@k, and latency.

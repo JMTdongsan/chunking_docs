@@ -59,6 +59,8 @@ def test_ingestion_readiness_includes_retrieval_cases_and_chunking_gate(tmp_path
             "baseline_candidate": "baseline",
             "min_quality_score": 0.8,
             "min_recall_at_k": 0.8,
+            "min_target_type_coverage": {"asset": 0.8, "triple": 0.8},
+            "min_source_family_target_coverage": {"lexical": 0.8},
             "max_recall_drop": 0.05,
         },
     )
@@ -68,6 +70,9 @@ def test_ingestion_readiness_includes_retrieval_cases_and_chunking_gate(tmp_path
     assert report.retrieval_case_audit.target_counts["asset"] == 1
     assert report.chunking_comparison_gate is not None
     assert report.chunking_comparison_gate.candidate == "candidate"
+    assert report.chunking_comparison_gate.metrics["target_type.asset.coverage_at_k"] == 0.9
+    assert report.chunking_comparison_gate.metrics["target_type.triple.coverage_at_k"] == 0.9
+    assert report.chunking_comparison_gate.metrics["source_family.lexical.target_coverage_at_k"] == 0.9
     assert report.failed_components == []
 
 
@@ -334,6 +339,54 @@ def test_ingestion_readiness_cli_can_gate_qdrant_vector_ablation(tmp_path):
     assert component["metadata"]["source_family_metrics"]["dense_text"]["target_coverage_at_k"] == 1.0
 
 
+def test_ingestion_readiness_cli_can_gate_chunking_target_coverage(tmp_path):
+    package_dir, _ = write_ready_package(tmp_path)
+    comparison_path = tmp_path / "chunking_comparison.json"
+    output = tmp_path / "readiness.json"
+    comparison_path.write_text(
+        chunking_comparison().model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "ingestion-readiness",
+            "--package-dir",
+            str(package_dir),
+            "--chunking-comparison",
+            str(comparison_path),
+            "--chunking-candidate",
+            "candidate",
+            "--baseline-chunking-candidate",
+            "baseline",
+            "--min-chunking-recall-at-k",
+            "0.8",
+            "--min-chunking-target-type-coverage",
+            "asset=0.8",
+            "--min-chunking-target-type-coverage",
+            "triple=0.8",
+            "--min-chunking-source-family-target-coverage",
+            "lexical=0.8",
+            "--output",
+            str(output),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["passed"] is True
+    component = next(
+        component
+        for component in payload["components"]
+        if component["name"] == "chunking_comparison_gate"
+    )
+    assert component["metadata"]["candidate"] == "candidate"
+    assert component["metadata"]["metrics"]["target_type.asset.coverage_at_k"] == 0.9
+    assert component["metadata"]["metrics"]["target_type.triple.coverage_at_k"] == 0.9
+    assert component["metadata"]["metrics"]["source_family.lexical.target_coverage_at_k"] == 0.9
+
+
 def write_ready_package(tmp_path: Path):
     package_dir = tmp_path / "package"
     package_dir.mkdir()
@@ -473,6 +526,11 @@ def chunking_row(name: str, quality_score: float, recall: float):
         retrieval_mean_precision_at_k=recall,
         retrieval_mean_latency_ms=5.0,
         retrieval_p95_latency_ms=7.0,
+        target_metrics={
+            "asset": {"coverage_at_k": recall},
+            "triple": {"coverage_at_k": recall},
+        },
+        source_family_metrics={"lexical": {"target_coverage_at_k": recall}},
         failed_queries=[],
         page_coverage_ratio=1.0,
         visual_annotation_ratio=1.0,

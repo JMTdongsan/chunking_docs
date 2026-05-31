@@ -2244,6 +2244,16 @@ def ingestion_readiness_command(
     max_chunking_failed_queries: int | None = 0,
     max_chunking_recall_drop: float | None = None,
     max_chunking_mean_latency_ratio: float | None = None,
+    min_chunking_target_type_coverage: list[str] = typer.Option(
+        None,
+        "--min-chunking-target-type-coverage",
+        help="Require selected chunking candidate target-type coverage such as asset=1.0.",
+    ),
+    min_chunking_source_family_target_coverage: list[str] = typer.Option(
+        None,
+        "--min-chunking-source-family-target-coverage",
+        help="Require selected chunking candidate source-family target coverage such as lexical=0.8.",
+    ),
     qdrant_vector_ablation: Path | None = None,
     require_qdrant_vector_ablation: bool = False,
     qdrant_vector_mode: str | None = None,
@@ -2304,6 +2314,14 @@ def ingestion_readiness_command(
         min_retrieval_target_type_coverage,
         "retrieval target type coverage",
     )
+    chunking_source_family_thresholds = parse_named_float_thresholds(
+        min_chunking_source_family_target_coverage,
+        "chunking source family target coverage",
+    )
+    chunking_target_type_thresholds = parse_named_float_thresholds(
+        min_chunking_target_type_coverage,
+        "chunking target type coverage",
+    )
     report = build_ingestion_readiness_report(
         package_dir=package_dir,
         manifest=manifest,
@@ -2354,6 +2372,8 @@ def ingestion_readiness_command(
             "max_failed_queries": max_chunking_failed_queries,
             "max_recall_drop": max_chunking_recall_drop,
             "max_mean_latency_ratio": max_chunking_mean_latency_ratio,
+            "min_target_type_coverage": chunking_target_type_thresholds,
+            "min_source_family_target_coverage": chunking_source_family_thresholds,
         },
         qdrant_vector_ablation=parsed_qdrant_vector_ablation,
         require_qdrant_vector_ablation=require_qdrant_vector_ablation,
