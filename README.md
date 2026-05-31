@@ -179,10 +179,11 @@ chunking-docs build-rag-context "station access corridor" \
   --package-dir outputs/package \
   --top-k 5 \
   --graph-expand \
+  --neighbor-window 1 \
   --output outputs/package/rag_context.json
 ```
 
-The bundle contains retrieved chunks, hierarchical evidence chunks, linked visual assets, and graph triples so downstream RAG services can pass structured context to an answer generator.
+The bundle contains retrieved chunks, optional neighboring chunks, hierarchical evidence chunks, linked visual assets, and graph triples so downstream RAG services can pass structured context to an answer generator.
 
 Use the Qdrant path when validating production retrieval:
 
@@ -192,6 +193,7 @@ chunking-docs qdrant-rag-context "station access corridor" \
   --location ':memory:' \
   --vector-names text_dense,caption_dense \
   --top-k 5 \
+  --neighbor-window 1 \
   --output outputs/package/rag_context.qdrant.json
 ```
 

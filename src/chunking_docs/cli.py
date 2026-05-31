@@ -416,6 +416,7 @@ def qdrant_rag_context_command(
     collapse_hierarchical: bool = False,
     max_chars_per_chunk: int = 1400,
     include_evidence: bool = True,
+    neighbor_window: int = 0,
     include_assets: bool = True,
     include_triples: bool = True,
     text_backend: str = "hashing",
@@ -473,10 +474,12 @@ def qdrant_rag_context_command(
     bundle = build_context_bundle(
         query=query,
         hits=hits,
+        chunks=prepared["chunks"],
         assets=prepared["assets"],
         triples=prepared["triples"],
         max_chars_per_chunk=max_chars_per_chunk,
         include_evidence=include_evidence,
+        neighbor_window=neighbor_window,
         include_assets=include_assets,
         include_triples=include_triples,
     )
@@ -1185,6 +1188,7 @@ def build_rag_context_command(
     collapse_hierarchical: bool = False,
     max_chars_per_chunk: int = 1400,
     include_evidence: bool = True,
+    neighbor_window: int = 0,
     include_assets: bool = True,
     include_triples: bool = True,
     fusion_weight: list[str] = typer.Option(
@@ -1227,10 +1231,12 @@ def build_rag_context_command(
     bundle = build_context_bundle(
         query=query,
         hits=hits,
+        chunks=chunks,
         assets=assets,
         triples=triples,
         max_chars_per_chunk=max_chars_per_chunk,
         include_evidence=include_evidence,
+        neighbor_window=neighbor_window,
         include_assets=include_assets,
         include_triples=include_triples,
     )

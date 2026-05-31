@@ -55,10 +55,12 @@ class RAGContextBundle(BaseModel):
 def build_context_bundle(
     query: str,
     hits,
+    chunks: list[DocumentChunk] | None = None,
     assets: list[VisualAsset] | None = None,
     triples: list[GraphTriple] | None = None,
     max_chars_per_chunk: int = 1400,
     include_evidence: bool = True,
+    neighbor_window: int = 0,
     include_assets: bool = True,
     include_triples: bool = True,
 ) -> RAGContextBundle:
@@ -103,13 +105,24 @@ def build_context_bundle(
             )
             seen_chunks.add(evidence_chunk.chunk_id)
 
+    if chunks and neighbor_window > 0:
+        add_neighbor_chunks(
+            context_chunks,
+            seen_chunks=seen_chunks,
+            source_chunk_ids=hit_chunk_ids,
+            chunks=chunks,
+            neighbor_window=neighbor_window,
+            max_chars_per_chunk=max_chars_per_chunk,
+        )
+
+    selected_chunk_ids = {chunk.chunk_id for chunk in context_chunks}
     selected_assets = []
     if include_assets and assets:
         selected_assets = context_assets(assets, context_chunks)
 
     selected_triples = []
     if include_triples and triples:
-        selected_triples = context_triples(triples, hit_chunk_ids)
+        selected_triples = context_triples(triples, selected_chunk_ids)
 
     return RAGContextBundle(
         query=query,
@@ -121,6 +134,7 @@ def build_context_bundle(
             "asset_count": len(selected_assets),
             "triple_count": len(selected_triples),
             "max_chars_per_chunk": max_chars_per_chunk,
+            "neighbor_window": max(0, neighbor_window),
         },
     )
 
@@ -155,6 +169,65 @@ def context_chunk(
         role=role,
         metadata=metadata,
     )
+
+
+def add_neighbor_chunks(
+    context_chunks: list[RAGContextChunk],
+    seen_chunks: set[str],
+    source_chunk_ids: set[str],
+    chunks: list[DocumentChunk],
+    neighbor_window: int,
+    max_chars_per_chunk: int,
+):
+    ordered = sorted(chunks, key=chunk_order_key)
+    positions = {chunk.chunk_id: index for index, chunk in enumerate(ordered)}
+    for source_chunk_id in sorted(source_chunk_ids, key=lambda chunk_id: positions.get(chunk_id, -1)):
+        position = positions.get(source_chunk_id)
+        if position is None:
+            continue
+        for offset in range(-neighbor_window, neighbor_window + 1):
+            if offset == 0:
+                continue
+            neighbor_index = position + offset
+            if neighbor_index < 0 or neighbor_index >= len(ordered):
+                continue
+            neighbor = ordered[neighbor_index]
+            source = ordered[position]
+            if neighbor.doc_id != source.doc_id or neighbor.chunk_id in seen_chunks:
+                continue
+            context_chunks.append(
+                context_chunk(
+                    neighbor,
+                    role="neighbor",
+                    max_chars=max_chars_per_chunk,
+                    score=None,
+                    sources=["neighbor"],
+                    rank=0,
+                    parent_chunk_id=source_chunk_id,
+                )
+            )
+            context_chunks[-1].metadata.pop("retrieved_parent_chunk_id", None)
+            context_chunks[-1].metadata["neighbor_source_chunk_id"] = source_chunk_id
+            context_chunks[-1].metadata["neighbor_offset"] = offset
+            seen_chunks.add(neighbor.chunk_id)
+
+
+def chunk_order_key(chunk: DocumentChunk):
+    return (
+        chunk.doc_id,
+        chunk.page_start,
+        chunk.page_end,
+        str(chunk.kind),
+        safe_int(chunk.metadata.get("subchunk_index", 0)),
+        chunk.chunk_id,
+    )
+
+
+def safe_int(value) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
 
 
 def context_assets(assets: list[VisualAsset], chunks: list[RAGContextChunk]) -> list[RAGContextAsset]:

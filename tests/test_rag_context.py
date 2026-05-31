@@ -60,6 +60,59 @@ def test_build_context_bundle_includes_evidence_assets_and_triples(tmp_path):
     assert bundle.metadata["asset_count"] == 1
 
 
+def test_build_context_bundle_adds_neighbor_chunks():
+    chunks = [
+        DocumentChunk(
+            chunk_id="prev",
+            doc_id="doc",
+            page_start=1,
+            page_end=1,
+            kind=ChunkKind.TEXT,
+            text="previous page context",
+        ),
+        DocumentChunk(
+            chunk_id="hit",
+            doc_id="doc",
+            page_start=2,
+            page_end=2,
+            kind=ChunkKind.TEXT,
+            text="station access evidence",
+        ),
+        DocumentChunk(
+            chunk_id="next",
+            doc_id="doc",
+            page_start=3,
+            page_end=3,
+            kind=ChunkKind.TEXT,
+            text="next page context",
+        ),
+    ]
+    triple = GraphTriple(
+        triple_id="neighbor-triple",
+        doc_id="doc",
+        chunk_id="next",
+        subject="next context",
+        predicate="supports",
+        object="answer",
+    )
+    hit = HybridSearchHit(chunk=chunks[1], score=0.5, sources=["bm25"])
+
+    bundle = build_context_bundle(
+        query="station access",
+        hits=[hit],
+        chunks=chunks,
+        triples=[triple],
+        neighbor_window=1,
+    )
+
+    assert [chunk.chunk_id for chunk in bundle.chunks] == ["hit", "prev", "next"]
+    assert [chunk.role for chunk in bundle.chunks] == ["hit", "neighbor", "neighbor"]
+    assert bundle.chunks[1].metadata["neighbor_source_chunk_id"] == "hit"
+    assert bundle.chunks[1].metadata["neighbor_offset"] == -1
+    assert bundle.triples[0].triple_id == "neighbor-triple"
+    assert bundle.metadata["neighbor_window"] == 1
+
+
 def test_build_rag_context_cli_writes_bundle(tmp_path):
     package_dir = tmp_path / "package"
     package_dir.mkdir()
@@ -105,6 +158,8 @@ def test_build_rag_context_cli_writes_bundle(tmp_path):
             "station access",
             "--package-dir",
             str(package_dir),
+            "--neighbor-window",
+            "0",
             "--output",
             str(output),
         ],
@@ -162,6 +217,7 @@ def test_qdrant_rag_context_cli_writes_bundle(monkeypatch, tmp_path):
             "selected_vectors": ["text_dense"],
             "query_encoders": {"text_dense": "default_text"},
             "upserted": 1,
+            "chunks": [chunk],
             "assets": [asset],
             "triples": [triple],
         }
