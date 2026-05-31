@@ -217,28 +217,68 @@ def count_records(path: Path) -> int | None:
 def validation_artifact_summaries(package_dir: Path, paths: list[Path]) -> list[ValidationSummary]:
     summaries = []
     for path in paths:
-        summary = validation_artifact_summary(path, root=package_dir)
-        if summary is not None:
-            summaries.append(summary)
+        summaries.extend(validation_artifact_summaries_for_path(path, root=package_dir))
     return summaries
 
 
-def validation_artifact_summary(path: Path, root: Path | None = None) -> ValidationSummary | None:
+def validation_artifact_summaries_for_path(
+    path: Path,
+    root: Path | None = None,
+) -> list[ValidationSummary]:
     if not path.exists() or path.suffix != ".json":
-        return None
+        return []
     payload = read_json(path)
+    summaries = []
     if not is_validation_payload(payload):
-        return None
-    return ValidationSummary(
-        path=str(path.relative_to(root)) if root and path.is_relative_to(root) else str(path),
-        kind=validation_kind(path),
-        passed=payload.get("passed") if isinstance(payload.get("passed"), bool) else None,
-        failed_checks=string_list(payload.get("failed_checks")),
-        failed_components=string_list(payload.get("failed_components")),
-        candidate=payload.get("candidate") if isinstance(payload.get("candidate"), str) else None,
-        mode=payload.get("mode") if isinstance(payload.get("mode"), str) else None,
-        metrics=summary_metrics(payload.get("metrics")),
+        return component_validation_summaries(path, payload, root=root)
+    display_path = display_artifact_path(path, root)
+    summaries.append(
+        ValidationSummary(
+            path=display_path,
+            kind=validation_kind(path),
+            passed=payload.get("passed") if isinstance(payload.get("passed"), bool) else None,
+            failed_checks=string_list(payload.get("failed_checks")),
+            failed_components=string_list(payload.get("failed_components")),
+            candidate=payload.get("candidate") if isinstance(payload.get("candidate"), str) else None,
+            mode=payload.get("mode") if isinstance(payload.get("mode"), str) else None,
+            metrics=summary_metrics(payload.get("metrics")),
+        )
     )
+    summaries.extend(component_validation_summaries(path, payload, root=root))
+    return summaries
+
+
+def component_validation_summaries(
+    path: Path,
+    payload: dict[str, Any],
+    root: Path | None = None,
+) -> list[ValidationSummary]:
+    components = payload.get("components")
+    if not isinstance(components, list):
+        return []
+    display_path = display_artifact_path(path, root)
+    summaries = []
+    for component in components:
+        if not isinstance(component, dict):
+            continue
+        name = component.get("name")
+        if not isinstance(name, str) or not name:
+            continue
+        metadata = component.get("metadata")
+        metadata = metadata if isinstance(metadata, dict) else {}
+        summaries.append(
+            ValidationSummary(
+                path=f"{display_path}#{name}",
+                kind=name,
+                passed=component.get("passed") if isinstance(component.get("passed"), bool) else None,
+                failed_checks=string_list(metadata.get("failed_checks")),
+                failed_components=string_list(metadata.get("failed_components")),
+                candidate=metadata.get("candidate") if isinstance(metadata.get("candidate"), str) else None,
+                mode=metadata.get("mode") if isinstance(metadata.get("mode"), str) else None,
+                metrics=summary_metrics(metadata.get("metrics")),
+            )
+        )
+    return summaries
 
 
 def is_validation_payload(payload: dict[str, Any]) -> bool:
@@ -258,6 +298,10 @@ def validation_kind(path: Path) -> str:
         if name.startswith(prefix):
             return prefix
     return path.stem.split(".", 1)[0]
+
+
+def display_artifact_path(path: Path, root: Path | None = None) -> str:
+    return str(path.relative_to(root)) if root and path.is_relative_to(root) else str(path)
 
 
 def string_list(value: Any) -> list[str]:

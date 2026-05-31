@@ -38,6 +38,7 @@ def test_build_experiment_report_summarizes_artifacts_and_candidates(tmp_path):
     assert artifacts["retrieval_gate.final.json"].exists is True
     validations = {validation.path: validation for validation in report.validation_summaries}
     assert validations["ingestion_readiness.final.json"].passed is True
+    assert validations["ingestion_readiness.final.json#retrieval_gate"].metrics["recall_at_k"] == 1.0
     assert validations["retrieval_gate.final.json"].metrics["recall_at_k"] == 1.0
     assert report.qdrant_collection["collection"] == "document_chunks"
     assert report.bm25_tokenizer["strategy"] == "mixed"
@@ -69,6 +70,11 @@ def test_write_experiment_report_cli_writes_json(tmp_path):
     payload = json.loads(output_path.read_text(encoding="utf-8"))
     assert payload["comparison"]["best_by_retrieval"] == "current"
     assert payload["validation_summaries"][0]["passed"] is True
+    assert any(
+        summary["path"] == "ingestion_readiness.final.json#retrieval_gate"
+        and summary["metrics"]["recall_at_k"] == 1.0
+        for summary in payload["validation_summaries"]
+    )
     assert payload["artifacts"][0]["sha256"]
 
 
@@ -134,7 +140,26 @@ def write_minimal_package(tmp_path):
         encoding="utf-8",
     )
     (package_dir / "ingestion_readiness.final.json").write_text(
-        json.dumps({"passed": True}, indent=2),
+        json.dumps(
+            {
+                "passed": True,
+                "failed_components": [],
+                "components": [
+                    {
+                        "name": "retrieval_gate",
+                        "passed": True,
+                        "metadata": {
+                            "failed_checks": [],
+                            "metrics": {
+                                "recall_at_k": 1.0,
+                                "target_type.asset.coverage_at_k": 1.0,
+                            },
+                        },
+                    }
+                ],
+            },
+            indent=2,
+        ),
         encoding="utf-8",
     )
     (package_dir / "retrieval_gate.final.json").write_text(
