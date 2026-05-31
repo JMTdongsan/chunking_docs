@@ -7,7 +7,7 @@ from chunking_docs.chunking.hierarchical import build_hierarchical_chunks, chunk
 from chunking_docs.chunking.semantic_splitter import semantic_subchunks
 from chunking_docs.embeddings.records import asset_text
 from chunking_docs.graph.provenance import chunk_asset_ids
-from chunking_docs.models import ChunkKind, DocumentChunk, VisualAsset
+from chunking_docs.models import ChunkKind, DocumentChunk, SectionPath, VisualAsset
 
 ChunkStrategy = Literal["page", "semantic", "multimodal", "hierarchical"]
 
@@ -48,7 +48,7 @@ def build_strategy_chunks(
         )
         return base + visual_asset_chunks(chunks, assets, include_context_prefix=include_context_prefix)
     if strategy == "hierarchical":
-        return build_hierarchical_chunks(
+        hierarchical_chunks = build_hierarchical_chunks(
             contextualize_chunks(chunks, include_context_prefix=include_context_prefix),
             assets,
             split_fn=semantic_subchunks,
@@ -57,6 +57,12 @@ def build_strategy_chunks(
             min_chars=min_chars,
             parent_max_chars=parent_max_chars,
             visual_context_chars=visual_context_chars,
+        )
+        return hierarchical_chunks + visual_asset_chunks(
+            chunks,
+            assets,
+            include_context_prefix=include_context_prefix,
+            include_linked=False,
         )
     raise ValueError(f"Unsupported chunk strategy: {strategy}")
 
@@ -123,21 +129,24 @@ def visual_asset_chunks(
     chunks: list[DocumentChunk],
     assets: list[VisualAsset],
     include_context_prefix: bool = True,
+    include_linked: bool = True,
+    include_unlinked: bool = True,
 ) -> list[DocumentChunk]:
-    chunk_by_asset_id = {
-        asset_id: chunk
-        for chunk in chunks
-        for asset_id in chunk_asset_ids(chunk)
-    }
+    chunk_by_asset_id: dict[str, DocumentChunk] = {}
+    for chunk in chunks:
+        for asset_id in chunk_asset_ids(chunk):
+            chunk_by_asset_id.setdefault(asset_id, chunk)
     results = []
     for asset in assets:
         text = asset_text(asset)
         if not text:
             continue
         parent = chunk_by_asset_id.get(asset.asset_id)
-        if parent is None:
+        if parent is None and not include_unlinked:
             continue
-        prefix = context_prefix(parent) if include_context_prefix else ""
+        if parent is not None and not include_linked:
+            continue
+        prefix = visual_asset_context_prefix(asset, parent) if include_context_prefix else ""
         body = "\n".join(
             part
             for part in [
@@ -148,28 +157,50 @@ def visual_asset_chunks(
             ]
             if part
         )
-        metadata = {
-            **parent.metadata,
-            "parent_chunk_id": parent.chunk_id,
-            "asset_id": asset.asset_id,
-            "asset_kind": str(asset.kind),
-            "chunking_strategy": "visual_asset_text",
-        }
+        metadata = visual_asset_chunk_metadata(asset, parent)
         results.append(
             DocumentChunk(
-                chunk_id=visual_chunk_id(parent.chunk_id, asset.asset_id),
-                doc_id=parent.doc_id,
+                chunk_id=visual_chunk_id(parent.chunk_id if parent is not None else "unlinked", asset.asset_id),
+                doc_id=parent.doc_id if parent is not None else asset.doc_id,
                 page_start=asset.page_no,
                 page_end=asset.page_no,
                 kind=asset_chunk_kind(asset),
                 text=body,
-                section=parent.section,
+                section=parent.section if parent is not None else SectionPath(),
                 asset_ids=[asset.asset_id],
                 source_refs=[f"asset:{asset.asset_id}"],
                 metadata=metadata,
             )
         )
     return results
+
+
+def visual_asset_context_prefix(asset: VisualAsset, parent: DocumentChunk | None) -> str:
+    if parent is not None:
+        return context_prefix(parent)
+    parts = []
+    section_label = asset.metadata.get("section_label")
+    if isinstance(section_label, str) and section_label:
+        parts.append(f"Section: {section_label}")
+    parts.append(f"Page range: {asset.page_no}-{asset.page_no}")
+    return "\n".join(parts)
+
+
+def visual_asset_chunk_metadata(asset: VisualAsset, parent: DocumentChunk | None) -> dict:
+    metadata = {
+        **(parent.metadata if parent is not None else {}),
+        "asset_id": asset.asset_id,
+        "asset_kind": str(asset.kind),
+        "chunking_strategy": "visual_asset_text",
+    }
+    if parent is not None:
+        metadata["parent_chunk_id"] = parent.chunk_id
+    else:
+        metadata["visual_asset_unlinked"] = True
+        section_label = asset.metadata.get("section_label")
+        if isinstance(section_label, str) and section_label:
+            metadata["section_label"] = section_label
+    return metadata
 
 
 def context_prefix(chunk: DocumentChunk) -> str:

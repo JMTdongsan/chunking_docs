@@ -140,6 +140,38 @@ def test_multimodal_strategy_uses_source_ref_visual_asset_links():
     assert chunks[1].source_refs == ["asset:asset-1"]
 
 
+def test_multimodal_strategy_keeps_unlinked_visual_assets_searchable():
+    chunk = DocumentChunk(
+        chunk_id="chunk-1",
+        doc_id="doc",
+        page_start=3,
+        page_end=3,
+        kind=ChunkKind.TEXT,
+        text="base text",
+    )
+    asset = VisualAsset(
+        asset_id="asset-1",
+        doc_id="doc",
+        page_no=3,
+        kind=AssetKind.MAP,
+        caption="standalone corridor map",
+        vlm_summary="shows access coverage with station markers",
+        metadata={"section_label": "Strategy > Access"},
+    )
+
+    chunks = build_strategy_chunks([chunk], [asset], strategy="multimodal")
+
+    assert len(chunks) == 2
+    visual_chunk = chunks[1]
+    assert visual_chunk.metadata["visual_asset_unlinked"] is True
+    assert visual_chunk.metadata["chunking_strategy"] == "visual_asset_text"
+    assert visual_chunk.metadata["section_label"] == "Strategy > Access"
+    assert visual_chunk.asset_ids == ["asset-1"]
+    assert visual_chunk.source_refs == ["asset:asset-1"]
+    assert "standalone corridor map" in visual_chunk.text
+    assert "Page range: 3-3" in visual_chunk.text
+
+
 def test_hierarchical_strategy_adds_parent_and_child_context():
     chunk = DocumentChunk(
         chunk_id="chunk-1",
@@ -220,3 +252,51 @@ def test_hierarchical_strategy_uses_source_ref_visual_context():
 
     assert "access chart" in chunks[0].text
     assert any("access chart" in child.text for child in chunks[1:])
+
+
+def test_hierarchical_strategy_keeps_unlinked_visual_assets_searchable():
+    chunk = DocumentChunk(
+        chunk_id="chunk-1",
+        doc_id="doc",
+        page_start=4,
+        page_end=4,
+        kind=ChunkKind.TEXT,
+        text="Transit corridor overview " + ("station access " * 12),
+    )
+    linked_asset = VisualAsset(
+        asset_id="asset-1",
+        doc_id="doc",
+        page_no=4,
+        kind=AssetKind.CHART,
+        caption="linked access chart",
+    )
+    unlinked_asset = VisualAsset(
+        asset_id="asset-2",
+        doc_id="doc",
+        page_no=4,
+        kind=AssetKind.FIGURE,
+        caption="standalone station diagram",
+        vlm_summary="shows station entrances and transfer paths",
+    )
+    chunk = chunk.model_copy(update={"source_refs": ["asset:asset-1"]})
+
+    chunks = build_strategy_chunks(
+        [chunk],
+        [linked_asset, unlinked_asset],
+        strategy="hierarchical",
+        max_chars=120,
+        overlap_chars=20,
+        min_chars=40,
+        parent_max_chars=80,
+        visual_context_chars=160,
+    )
+
+    standalone_chunks = [
+        candidate
+        for candidate in chunks
+        if candidate.metadata.get("chunking_strategy") == "visual_asset_text"
+    ]
+    assert len(standalone_chunks) == 1
+    assert standalone_chunks[0].asset_ids == ["asset-2"]
+    assert "standalone station diagram" in standalone_chunks[0].text
+    assert all("asset-1" not in candidate.asset_ids for candidate in standalone_chunks)
