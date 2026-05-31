@@ -92,6 +92,8 @@ The command writes `visual_annotations.jsonl` and `visual_job_results.jsonl`. Wi
 
 VLM responses may be plain text or JSON. When JSON includes `title`, `summary`, `key_points`, `visual_elements`, or `triples`, the runner converts those fields into captions, searchable VLM summaries, and graph triple candidates.
 
+Visual job results include OCR language, backend configuration, VLM prompt name, prompt SHA-256, prompt length, latency, output size, parse status, and triple count. This keeps OCR/VLM experiments reproducible without storing document-specific assumptions in the library.
+
 Summarize visual job runs when comparing OCR/VLM backends:
 
 ```bash
@@ -100,7 +102,7 @@ chunking-docs summarize-visual-results \
   --output outputs/package/visual_job_summary.json
 ```
 
-The summary groups completion counts, backend latency, output size, parse status, and extracted triple counts by operation.
+The summary groups completion counts, backend latency, output size, VLM prompt usage, parse status, and extracted triple counts by operation.
 
 ## Embeddings
 

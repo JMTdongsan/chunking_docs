@@ -34,7 +34,8 @@
    - Prioritize maps, tables, charts, figures, and pages with empty text.
    - Run jobs in bounded batches and store `visual_job_results.jsonl` plus `visual_annotations.jsonl`.
    - Parse structured VLM JSON into captions, summaries, metadata, and triple candidates.
-   - Summarize visual job results by status, backend latency, output size, parse status, and triple count.
+   - Record OCR language, backend configuration, VLM prompt name, prompt hash, latency, output size, parse status, and triple count.
+   - Summarize visual job results by status, backend latency, output size, VLM prompt usage, parse status, and triple count.
    - Apply annotations back into chunks, assets, graph triples, BM25, and Qdrant records.
 
 7. **Semantic Splitting**
@@ -188,4 +189,4 @@ The library exposes interfaces instead of locking in one model:
 - Text dense: `SentenceTransformerTextEmbedder`.
 - Image dense: `TransformersImageEmbedder`.
 
-Local GPUs can be used for VLM summaries and image embedding batches. Failed jobs remain visible in job result files so experiments can be retried safely.
+Local GPUs can be used for VLM summaries and image embedding batches. Failed jobs remain visible in job result files so experiments can be retried safely. Prompt hashes and backend configuration fields make model comparisons reproducible without embedding document-specific rules in source code.

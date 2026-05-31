@@ -31,6 +31,7 @@ class VisualRunSummary(BaseModel):
     operation_counts: dict[str, int] = Field(default_factory=dict)
     annotation_count: int
     triple_count: int
+    vlm_prompt_counts: dict[str, int] = Field(default_factory=dict)
     parse_status_counts: dict[str, int] = Field(default_factory=dict)
     operation_summaries: list[VisualOperationSummary] = Field(default_factory=list)
 
@@ -39,6 +40,7 @@ def summarize_visual_results(results: list[VisualJobRunResult]) -> VisualRunSumm
     status_counts = Counter(result.status for result in results)
     operation_counts: Counter[str] = Counter()
     parse_status_counts: Counter[str] = Counter()
+    vlm_prompt_counts: Counter[str] = Counter()
     durations_by_operation: dict[tuple[str, str], list[float]] = defaultdict(list)
     output_chars_by_operation: Counter[tuple[str, str]] = Counter()
     status_by_operation: dict[tuple[str, str], Counter[str]] = defaultdict(Counter)
@@ -63,6 +65,9 @@ def summarize_visual_results(results: list[VisualJobRunResult]) -> VisualRunSumm
         if result.annotation is None:
             continue
         triple_count += len(result.annotation.triples)
+        prompt_key = vlm_prompt_key(result.annotation.metadata)
+        if prompt_key:
+            vlm_prompt_counts[prompt_key] += 1
         parse_status = result.annotation.metadata.get("vlm_parse_status")
         if parse_status:
             parse_status_counts[str(parse_status)] += 1
@@ -84,6 +89,7 @@ def summarize_visual_results(results: list[VisualJobRunResult]) -> VisualRunSumm
         operation_counts=dict(operation_counts),
         annotation_count=sum(1 for result in results if result.annotation is not None),
         triple_count=triple_count,
+        vlm_prompt_counts=dict(vlm_prompt_counts),
         parse_status_counts=dict(parse_status_counts),
         operation_summaries=operation_summaries,
     )
@@ -100,6 +106,16 @@ def operation_output_key(operation: str) -> str:
     if operation == "vlm":
         return "vlm_output_chars"
     return f"{operation}_output_chars"
+
+
+def vlm_prompt_key(metadata: dict[str, Any]) -> str:
+    name = metadata.get("vlm_prompt_name")
+    digest = metadata.get("vlm_prompt_sha256")
+    if not name and not digest:
+        return ""
+    if name and digest:
+        return f"{name}:{str(digest)[:12]}"
+    return str(name or digest)
 
 
 def numeric_metadata(metadata: dict[str, Any], key: str) -> float | None:

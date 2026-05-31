@@ -9,7 +9,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from chunking_docs.models import AssetKind, VisualAsset
-from chunking_docs.vision.annotate import prompt_for_asset
+from chunking_docs.vision.annotate import prompt_for_asset, prompt_name_for_asset
 from chunking_docs.vision.interfaces import OCRBackend, VLMBackend
 from chunking_docs.vision.manual_annotations import AssetAnnotation
 from chunking_docs.vision.vlm_output import parse_vlm_output
@@ -115,6 +115,8 @@ def run_visual_jobs(
     vlm_backend_name: str = "",
 ) -> list[VisualJobRunResult]:
     assets_by_id = {asset.asset_id: asset for asset in assets}
+    ocr_backend_config = backend_config(ocr_backend)
+    vlm_backend_config = backend_config(vlm_backend)
     results = []
     processed = 0
     for job in jobs:
@@ -145,6 +147,8 @@ def run_visual_jobs(
                 ocr_language=ocr_language,
                 ocr_backend_name=ocr_backend_name,
                 vlm_backend_name=vlm_backend_name,
+                ocr_backend_config=ocr_backend_config,
+                vlm_backend_config=vlm_backend_config,
             )
         except Exception as exc:  # pragma: no cover - exercised with real model failures.
             results.append(failed_result(job, str(exc)))
@@ -162,6 +166,12 @@ def run_visual_jobs(
                     "operations": job.operations,
                     "ocr_backend": ocr_backend_name,
                     "vlm_backend": vlm_backend_name,
+                    "ocr_language": annotation.metadata.get("ocr_language"),
+                    "ocr_backend_config": annotation.metadata.get("ocr_backend_config", {}),
+                    "vlm_backend_config": annotation.metadata.get("vlm_backend_config", {}),
+                    "vlm_prompt_name": annotation.metadata.get("vlm_prompt_name"),
+                    "vlm_prompt_sha256": annotation.metadata.get("vlm_prompt_sha256"),
+                    "vlm_prompt_chars": annotation.metadata.get("vlm_prompt_chars"),
                     "ocr_duration_ms": annotation.metadata.get("ocr_duration_ms"),
                     "vlm_duration_ms": annotation.metadata.get("vlm_duration_ms"),
                     "total_duration_ms": annotation.metadata.get("total_duration_ms"),
@@ -183,6 +193,8 @@ def run_one_visual_job(
     ocr_language: str,
     ocr_backend_name: str = "",
     vlm_backend_name: str = "",
+    ocr_backend_config: dict[str, Any] | None = None,
+    vlm_backend_config: dict[str, Any] | None = None,
 ) -> AssetAnnotation:
     ocr_text = None
     vlm_summary = None
@@ -194,11 +206,16 @@ def run_one_visual_job(
     if "ocr" in job.operations and ocr_backend is not None:
         ocr_started_at = time.perf_counter()
         ocr_text = ocr_backend.recognize(job.asset_path, language=ocr_language)
+        run_metadata["ocr_language"] = ocr_language
+        run_metadata["ocr_backend_config"] = ocr_backend_config or {}
         run_metadata["ocr_duration_ms"] = elapsed_ms(ocr_started_at)
         run_metadata["ocr_text_chars"] = len(ocr_text or "")
     if "vlm" in job.operations and vlm_backend is not None:
+        prompt = prompt_for_asset(asset)
+        run_metadata.update(vlm_prompt_metadata(asset, prompt))
+        run_metadata["vlm_backend_config"] = vlm_backend_config or {}
         vlm_started_at = time.perf_counter()
-        raw_vlm_output = vlm_backend.summarize(job.asset_path, prompt=prompt_for_asset(asset))
+        raw_vlm_output = vlm_backend.summarize(job.asset_path, prompt=prompt)
         run_metadata["vlm_duration_ms"] = elapsed_ms(vlm_started_at)
         run_metadata["vlm_output_chars"] = len(raw_vlm_output or "")
         parsed = parse_vlm_output(raw_vlm_output)
@@ -252,6 +269,42 @@ def visual_job_priority(asset: VisualAsset, operations: list[VisualOperation]) -
 def make_visual_job_id(asset_id: str, operations: list[VisualOperation]) -> str:
     raw = f"{asset_id}:{','.join(operations)}".encode("utf-8")
     return hashlib.sha256(raw).hexdigest()[:24]
+
+
+def vlm_prompt_metadata(asset: VisualAsset, prompt: str | None = None) -> dict[str, Any]:
+    prompt = prompt if prompt is not None else prompt_for_asset(asset)
+    return {
+        "vlm_prompt_name": prompt_name_for_asset(asset),
+        "vlm_prompt_sha256": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
+        "vlm_prompt_chars": len(prompt),
+    }
+
+
+def backend_config(backend: object | None) -> dict[str, Any]:
+    if backend is None:
+        return {}
+    metadata = getattr(backend, "metadata", None)
+    if callable(metadata):
+        value = metadata()
+    elif isinstance(metadata, dict):
+        value = metadata
+    else:
+        value = {}
+    if not isinstance(value, dict):
+        return {"value": json_safe_value(value)}
+    return {str(key): json_safe_value(item) for key, item in value.items()}
+
+
+def json_safe_value(value: Any):
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, dict):
+        return {str(key): json_safe_value(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [json_safe_value(item) for item in value]
+    return str(value)
 
 
 def completed_annotations(results: list[VisualJobRunResult]) -> list[AssetAnnotation]:

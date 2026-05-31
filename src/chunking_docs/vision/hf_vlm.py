@@ -21,6 +21,11 @@ class HuggingFaceVLMBackend:
         except ImportError as exc:
             raise RuntimeError("Install chunking-docs[vision] to use HuggingFaceVLMBackend") from exc
 
+        self.model_name = model_name
+        self.device_map = device_map
+        self.torch_dtype = torch_dtype
+        self.max_new_tokens = max_new_tokens
+
         dtype = torch_dtype
         if torch_dtype == "bfloat16":
             dtype = torch.bfloat16
@@ -36,7 +41,15 @@ class HuggingFaceVLMBackend:
             torch_dtype=dtype,
             trust_remote_code=True,
         )
-        self.max_new_tokens = max_new_tokens
+
+    def metadata(self) -> dict:
+        return {
+            "provider": "huggingface",
+            "model_name": self.model_name,
+            "device_map": self.device_map,
+            "torch_dtype": self.torch_dtype,
+            "max_new_tokens": self.max_new_tokens,
+        }
 
     def summarize(self, image_path: Path, prompt: str) -> str:
         image = Image.open(image_path).convert("RGB")

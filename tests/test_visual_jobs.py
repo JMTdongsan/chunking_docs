@@ -18,10 +18,16 @@ class FakeOCR:
     def recognize(self, image_path: Path, language: str = "kor+eng"):
         return f"ocr:{image_path.name}:{language}"
 
+    def metadata(self):
+        return {"name": "fake-ocr", "languages": ["kor", "eng"]}
+
 
 class FakeVLM:
     def summarize(self, image_path: Path, prompt: str):
         return f"vlm:{image_path.name}:{prompt[:4]}"
+
+    def metadata(self):
+        return {"name": "fake-vlm", "max_new_tokens": 64}
 
 
 class JsonVLM:
@@ -89,9 +95,17 @@ def test_run_visual_jobs_returns_asset_annotations(tmp_path):
     assert results[0].metadata["ocr_duration_ms"] >= 0
     assert results[0].metadata["vlm_duration_ms"] >= 0
     assert results[0].metadata["total_duration_ms"] >= 0
+    assert results[0].metadata["ocr_language"] == "kor+eng"
+    assert results[0].metadata["ocr_backend_config"]["name"] == "fake-ocr"
+    assert results[0].metadata["vlm_backend_config"]["name"] == "fake-vlm"
+    assert results[0].metadata["vlm_prompt_name"] == "map_summary_ko"
+    assert len(results[0].metadata["vlm_prompt_sha256"]) == 64
+    assert results[0].metadata["vlm_prompt_chars"] > 0
     assert annotations[0].asset_id == "map"
     assert annotations[0].ocr_text.startswith("ocr:")
     assert annotations[0].vlm_summary.startswith("vlm:")
+    assert annotations[0].metadata["vlm_prompt_name"] == "map_summary_ko"
+    assert annotations[0].metadata["vlm_backend_config"]["max_new_tokens"] == 64
 
 
 def test_run_visual_jobs_parses_json_vlm_triples(tmp_path):
@@ -145,6 +159,7 @@ def test_summarize_visual_results_reports_backend_metrics(tmp_path):
     assert summary.status_counts == {"completed": 1}
     assert summary.operation_counts == {"ocr": 1, "vlm": 1}
     assert summary.triple_count == 1
+    assert next(iter(summary.vlm_prompt_counts)).startswith("map_summary_ko:")
     summaries = {(item.operation, item.backend): item for item in summary.operation_summaries}
     assert summaries[("ocr", "fake-ocr")].duration.count == 1
     assert summaries[("vlm", "json-vlm")].output_chars > 0

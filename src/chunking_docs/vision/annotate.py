@@ -46,6 +46,12 @@ def prompt_for_asset(asset: VisualAsset) -> str:
     return PAGE_SUMMARY_PROMPT_KO
 
 
+def prompt_name_for_asset(asset: VisualAsset) -> str:
+    if asset.kind == AssetKind.MAP:
+        return "map_summary_ko"
+    return "page_summary_ko"
+
+
 def merge_asset_annotations_into_chunks(
     chunks: list[DocumentChunk],
     assets: list[VisualAsset],

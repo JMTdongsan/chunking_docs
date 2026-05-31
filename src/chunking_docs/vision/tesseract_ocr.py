@@ -11,6 +11,9 @@ class TesseractOCRBackend:
         if shutil.which(executable) is None:
             raise RuntimeError(f"{executable} is not installed or not on PATH")
 
+    def metadata(self) -> dict:
+        return {"provider": "tesseract", "executable": self.executable}
+
     def recognize(self, image_path: Path, language: str = "kor+eng") -> str:
         result = subprocess.run(
             [self.executable, str(image_path), "stdout", "-l", language],
