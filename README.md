@@ -421,7 +421,7 @@ chunking-docs compare-packages outputs/package.baseline outputs/package \
 
 Qdrant vector ablation modes include `text`, `caption`, `image`, `text_caption`, `text_image`, `caption_image`, `all`, `text_caption_graph`, and `all_graph`. Image modes require an `image_dense` record file and a compatible image-query encoder.
 
-Hybrid retrieval commands accept repeatable `--fusion-weight source=weight` values. Sources can be exact names such as `qdrant:caption_dense` or families such as `qdrant`, `bm25`, `dense`, and `graph`. Use `--reranker lexical` for dependency-free overlap reranking, or `--reranker cross-encoder --reranker-model <model>` when the embeddings extra is installed.
+Hybrid retrieval commands accept repeatable `--fusion-weight source=weight` values. Sources can be exact names such as `qdrant:caption_dense` or families such as `qdrant`, `bm25`, `dense`, and `graph`. Graph hits score exact subject, predicate, and object phrase matches above loose token overlap, which helps graph-style benchmark queries find the intended evidence chunk. Use `--reranker lexical` for dependency-free overlap reranking, or `--reranker cross-encoder --reranker-model <model>` when the embeddings extra is installed.
 
 Generate a benchmark skeleton from existing package targets, then edit the queries for the document family:
 
@@ -435,7 +435,7 @@ chunking-docs generate-retrieval-cases \
   --output outputs/package/retrieval_cases.skeleton.jsonl
 ```
 
-`--chunks` can point at a candidate chunk file so the same benchmark drafting logic can be run against semantic, multimodal, or hierarchical candidates. `--query-mode snippet` drafts queries from source text snippets. `--query-mode salient_terms` drafts harder keyword-style queries from document-frequency-weighted terms, and `--selection-strategy salience` prioritizes targets with more distinctive text. Duplicate query strings are removed by default; use `--no-dedupe-queries` only when auditing duplicate behavior. Treat generated cases as reviewable drafts before using them as a benchmark gate.
+`--chunks` can point at a candidate chunk file so the same benchmark drafting logic can be run against semantic, multimodal, or hierarchical candidates. `--query-mode snippet` drafts queries from source text snippets. `--query-mode salient_terms` drafts harder keyword-style queries from document-frequency-weighted terms, and `--selection-strategy salience` prioritizes targets with more distinctive text. Duplicate query strings are merged by default so repeated tables, section labels, or graph triples become one case with multiple acceptable targets; use `--no-dedupe-queries` only when auditing duplicate behavior. Treat generated cases as reviewable drafts before using them as a benchmark gate.
 
 ```jsonl
 {"query":"policy corridor near river","expected_pages":[12],"graph_expand":true}

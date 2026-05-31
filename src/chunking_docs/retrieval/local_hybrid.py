@@ -126,11 +126,10 @@ class LocalHybridSearcher:
         ]
 
     def _graph_hits(self, query: str, top_k: int) -> list[RankedHit]:
-        query_lower = query.lower()
-        scored: dict[str, int] = {}
+        query_normalized = normalize_graph_match_text(query)
+        scored: dict[str, float] = {}
         for triple in self.triples:
-            haystack = " ".join([triple.subject, triple.predicate, triple.object]).lower()
-            score = sum(1 for token in query_lower.split() if token in haystack)
+            score = graph_match_score(query_normalized, triple)
             if score:
                 chunk_id = self.chunk_id_by_alias.get(triple.chunk_id, triple.chunk_id)
                 if chunk_id in self.chunk_by_id:
@@ -166,3 +165,37 @@ def chunk_id_alias_map(chunks: list[DocumentChunk]) -> dict[str, str]:
             if isinstance(value, str):
                 aliases.setdefault(value, chunk.chunk_id)
     return aliases
+
+
+def graph_match_score(query_normalized: str, triple: GraphTriple) -> float:
+    components = [
+        normalize_graph_match_text(triple.subject),
+        normalize_graph_match_text(triple.predicate),
+        normalize_graph_match_text(triple.object),
+    ]
+    haystack = " ".join(component for component in components if component)
+    if not query_normalized or not haystack:
+        return 0.0
+
+    score = 0.0
+    if query_normalized in haystack:
+        score += 8.0
+
+    query_tokens = set(query_normalized.split())
+    haystack_tokens = set(haystack.split())
+    score += len(query_tokens & haystack_tokens)
+
+    for component in components:
+        if not component:
+            continue
+        component_tokens = set(component.split())
+        if component in query_normalized:
+            score += 4.0
+        elif component_tokens and component_tokens <= query_tokens:
+            score += 2.0
+
+    return score
+
+
+def normalize_graph_match_text(value: str) -> str:
+    return " ".join(value.lower().replace("_", " ").split())

@@ -239,7 +239,7 @@ def asset_cases(
                 order=(asset_priority(asset), asset.page_no, asset.asset_id),
             )
         )
-    return select_candidates(candidates, limit, selection_strategy)
+    return select_candidates(merge_case_candidates_by_query(candidates), limit, selection_strategy)
 
 
 def triple_cases(
@@ -285,7 +285,7 @@ def triple_cases(
                 order=(triple.chunk_id, triple.triple_id),
             )
         )
-    return select_candidates(candidates, limit, selection_strategy)
+    return select_candidates(merge_case_candidates_by_query(candidates), limit, selection_strategy)
 
 
 def query_from_text(
@@ -478,6 +478,58 @@ def select_candidates(
     return [candidate.case for candidate in ordered[:limit]]
 
 
+def merge_case_candidates_by_query(candidates: list[CaseCandidate]) -> list[CaseCandidate]:
+    merged: dict[str, CaseCandidate] = {}
+    counts: dict[str, int] = {}
+    for candidate in candidates:
+        key = normalize_query_text(candidate.case.query).lower()
+        existing = merged.get(key)
+        if existing is None:
+            merged[key] = candidate
+            counts[key] = 1
+            continue
+        counts[key] += 1
+        merged_case = merge_retrieval_cases(existing.case, candidate.case, counts[key])
+        merged[key] = CaseCandidate(
+            case=merged_case,
+            score=max(existing.score, candidate.score),
+            order=min(existing.order, candidate.order),
+        )
+    return list(merged.values())
+
+
+def merge_retrieval_cases(
+    left: RetrievalCase,
+    right: RetrievalCase,
+    merged_count: int,
+) -> RetrievalCase:
+    metadata = {
+        **left.metadata,
+        "merged_case_count": merged_count,
+    }
+    return left.model_copy(
+        update={
+            "expected_pages": merge_stable_values(left.expected_pages, right.expected_pages),
+            "expected_chunk_ids": merge_stable_values(left.expected_chunk_ids, right.expected_chunk_ids),
+            "expected_asset_ids": merge_stable_values(left.expected_asset_ids, right.expected_asset_ids),
+            "expected_triple_ids": merge_stable_values(left.expected_triple_ids, right.expected_triple_ids),
+            "graph_expand": left.graph_expand or right.graph_expand,
+            "metadata": metadata,
+        }
+    )
+
+
+def merge_stable_values(left: list, right: list) -> list:
+    seen = set()
+    merged = []
+    for value in [*left, *right]:
+        if value in seen:
+            continue
+        seen.add(value)
+        merged.append(value)
+    return merged
+
+
 def dedupe_page_candidates(
     candidates: list[CaseCandidate],
     strategy: SelectionStrategy,
@@ -516,15 +568,18 @@ def with_case_metadata(
 
 
 def dedupe_cases_by_query(cases: list[RetrievalCase]) -> list[RetrievalCase]:
-    seen_queries = set()
-    selected = []
+    selected_by_query: dict[str, RetrievalCase] = {}
+    counts: dict[str, int] = {}
     for case in cases:
         key = normalize_query_text(case.query).lower()
-        if key in seen_queries:
+        existing = selected_by_query.get(key)
+        if existing is None:
+            selected_by_query[key] = case
+            counts[key] = 1
             continue
-        seen_queries.add(key)
-        selected.append(case)
-    return selected
+        counts[key] += 1
+        selected_by_query[key] = merge_retrieval_cases(existing, case, counts[key])
+    return list(selected_by_query.values())
 
 
 def validate_casegen_options(

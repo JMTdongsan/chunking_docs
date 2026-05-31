@@ -7,7 +7,7 @@ STRUCTURED_VISUAL_JSON_CONTRACT_KO = """
 {
   "page_type": "text | table | chart | map | section_title | appendix | mixed | unknown",
   "title": "이미지에서 읽히는 가장 중요한 제목 또는 빈 문자열",
-  "summary": "이미지가 전달하는 핵심 내용을 1~3문장으로 요약",
+  "summary": "이미지가 전달하는 핵심 내용을 1~2문장으로 요약",
   "key_points": ["검색에 도움이 되는 핵심 주장, 수치, 라벨"],
   "visual_elements": ["표, 그래프, 지도, 범례, 축, 캡션, 색상/기호 의미"],
   "entities": ["장소, 조직, 정책명, 지표, 연도, 시설명 등 명명된 항목"],
@@ -24,7 +24,9 @@ STRUCTURED_VISUAL_JSON_CONTRACT_KO = """
 규칙:
 - 이미지에서 직접 읽히거나 명확히 보이는 정보만 추출하세요.
 - 불확실한 정보는 만들지 말고 배열을 비워 두세요.
-- triples는 검색과 그래프 확장에 쓸 수 있는 관계 후보만 넣으세요.
+- key_points는 최대 5개, visual_elements는 최대 6개, entities는 최대 8개로 제한하세요.
+- triples는 검색과 그래프 확장에 쓸 수 있는 관계 후보만 최대 3개 넣으세요.
+- evidence는 30자 안팎의 짧은 근거 문구로 쓰세요.
 - confidence는 0.0 이상 1.0 이하 숫자로 쓰세요.
 - 모든 문자열은 한국어로 쓰되, 이미지에 영어 고유명이 있으면 원문을 유지하세요.
 """.strip()

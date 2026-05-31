@@ -137,6 +137,56 @@ def test_local_hybrid_graph_hits_resolve_source_chunk_alias():
     assert hits[0].sources == ["graph"]
 
 
+def test_local_hybrid_graph_hits_prioritize_exact_triple_components():
+    chunks = [
+        DocumentChunk(
+            chunk_id="generic",
+            doc_id="doc",
+            page_start=1,
+            page_end=1,
+            kind=ChunkKind.TEXT,
+            text="generic center system note",
+        ),
+        DocumentChunk(
+            chunk_id="target",
+            doc_id="doc",
+            page_start=2,
+            page_end=2,
+            kind=ChunkKind.TEXT,
+            text="specific center system evidence",
+        ),
+    ]
+    triples = [
+        GraphTriple(
+            triple_id="generic-triple",
+            doc_id="doc",
+            chunk_id="generic",
+            subject="center system",
+            predicate="core",
+            object="generic hub",
+        ),
+        GraphTriple(
+            triple_id="target-triple",
+            doc_id="doc",
+            chunk_id="target",
+            subject="center system",
+            predicate="core",
+            object="specific hub",
+        ),
+    ]
+
+    searcher = LocalHybridSearcher(chunks, HashingTextEmbedder(embedding_dim=64), triples=triples)
+    hits = searcher.search(
+        "center system core specific hub",
+        top_k=1,
+        graph_expand=True,
+        use_dense=False,
+        use_bm25=False,
+    )
+
+    assert hits[0].chunk.chunk_id == "target"
+
+
 def test_local_hybrid_can_collapse_hierarchical_child_to_parent():
     parent = DocumentChunk(
         chunk_id="parent",

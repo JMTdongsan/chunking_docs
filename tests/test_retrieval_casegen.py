@@ -56,6 +56,58 @@ def test_generate_retrieval_case_skeleton_targets_pages_assets_and_triples():
     assert cases[2].graph_expand is True
 
 
+def test_generate_retrieval_case_skeleton_merges_duplicate_triple_queries():
+    chunks = [
+        DocumentChunk(
+            chunk_id="chunk-1",
+            doc_id="doc",
+            page_start=1,
+            page_end=1,
+            kind=ChunkKind.TEXT,
+            text="first page",
+        ),
+        DocumentChunk(
+            chunk_id="chunk-2",
+            doc_id="doc",
+            page_start=2,
+            page_end=2,
+            kind=ChunkKind.TEXT,
+            text="second page",
+        ),
+    ]
+    triples = [
+        GraphTriple(
+            triple_id="triple-1",
+            doc_id="doc",
+            chunk_id="chunk-1",
+            subject="shared section",
+            predicate="includes_issue",
+            object="common topic",
+        ),
+        GraphTriple(
+            triple_id="triple-2",
+            doc_id="doc",
+            chunk_id="chunk-2",
+            subject="shared section",
+            predicate="includes_issue",
+            object="common topic",
+        ),
+    ]
+
+    cases = generate_retrieval_case_skeleton(
+        chunks,
+        [],
+        triples,
+        page_limit=0,
+        triple_limit=1,
+    )
+
+    assert len(cases) == 1
+    assert cases[0].expected_chunk_ids == ["chunk-1", "chunk-2"]
+    assert cases[0].expected_triple_ids == ["triple-1", "triple-2"]
+    assert cases[0].metadata["merged_case_count"] == 2
+
+
 def test_generate_retrieval_case_skeleton_can_emit_todo_cases():
     chunk = DocumentChunk(
         chunk_id="chunk-1",
@@ -198,7 +250,7 @@ def test_generate_retrieval_case_skeleton_dedupes_queries_by_default():
     cases = generate_retrieval_case_skeleton(chunks, [], [], page_limit=2)
 
     assert len(cases) == 1
-    assert cases[0].expected_chunk_ids == ["chunk-1"]
+    assert cases[0].expected_chunk_ids == ["chunk-1", "chunk-2"]
 
 
 def test_generate_retrieval_cases_cli_writes_jsonl(tmp_path):

@@ -172,6 +172,7 @@ def test_map_prompt_requires_single_json_object():
     assert "JSON 객체 하나만" in MAP_SUMMARY_PROMPT_KO
     assert '"triples"' in MAP_SUMMARY_PROMPT_KO
     assert "마크다운 코드블록" in MAP_SUMMARY_PROMPT_KO
+    assert "최대 3개" in MAP_SUMMARY_PROMPT_KO
 
 
 def test_summarize_visual_results_reports_backend_metrics(tmp_path):
