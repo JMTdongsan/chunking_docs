@@ -84,6 +84,10 @@ def test_write_embedding_artifacts_writes_selected_vectors_and_config(tmp_path):
     assert config["named_vectors"]["caption_dense"]["size"] == 4
     assert {"field": "doc_id", "schema": "keyword"} in config["payload_indexes"]
     assert {"field": "page_no", "schema": "integer"} in config["payload_indexes"]
+    assert {"field": "chunking_strategy", "schema": "keyword"} in config["payload_indexes"]
+    assert {"field": "retrieval_role", "schema": "keyword"} in config["payload_indexes"]
+    assert {"field": "hierarchical_parent_chunk_id", "schema": "keyword"} in config["payload_indexes"]
+    assert {"field": "visual_asset_unlinked", "schema": "bool"} in config["payload_indexes"]
     assert "image_dense" not in config["named_vectors"]
     manifest = json.loads((tmp_path / "embedding_manifest.json").read_text(encoding="utf-8"))
     assert manifest["collection"] == "document_chunks"

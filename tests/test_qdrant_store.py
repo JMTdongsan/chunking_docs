@@ -70,7 +70,7 @@ def test_qdrant_ensure_collection_creates_payload_indexes():
     store.client = FakeQdrantClient()
     store._vector_params = lambda size, distance: {"size": size, "distance": distance}
     store._distance = SimpleNamespace(COSINE="cosine")
-    store._payload_schema_type = SimpleNamespace(KEYWORD="keyword", INTEGER="integer")
+    store._payload_schema_type = SimpleNamespace(KEYWORD="keyword", INTEGER="integer", BOOL="bool")
 
     store.ensure_collection(
         {"text_dense": 3},
@@ -78,6 +78,7 @@ def test_qdrant_ensure_collection_creates_payload_indexes():
             {"field": "doc_id", "schema": "keyword"},
             {"field": "page_no", "schema": "integer"},
             "asset_id",
+            "visual_asset_unlinked",
         ],
     )
 
@@ -92,6 +93,7 @@ def test_qdrant_ensure_collection_creates_payload_indexes():
         ("doc_id", "keyword"),
         ("page_no", "integer"),
         ("asset_id", "keyword"),
+        ("visual_asset_unlinked", "bool"),
     ]
 
 
@@ -103,7 +105,7 @@ def test_qdrant_ensure_collection_skips_existing_payload_index():
     store.client.payload_schema = {"doc_id": "keyword"}
     store._vector_params = lambda size, distance: {"size": size, "distance": distance}
     store._distance = SimpleNamespace(COSINE="cosine")
-    store._payload_schema_type = SimpleNamespace(KEYWORD="keyword", INTEGER="integer")
+    store._payload_schema_type = SimpleNamespace(KEYWORD="keyword", INTEGER="integer", BOOL="bool")
 
     store.ensure_collection(
         {"text_dense": 3},
@@ -130,7 +132,7 @@ def test_qdrant_collection_contract_passes_matching_collection():
         "caption_dense": SimpleNamespace(size=4),
     }
     store.client.payload_schema = {"doc_id": "keyword", "page_no": "integer"}
-    store._payload_schema_type = SimpleNamespace(KEYWORD="keyword", INTEGER="integer")
+    store._payload_schema_type = SimpleNamespace(KEYWORD="keyword", INTEGER="integer", BOOL="bool")
 
     report = store.check_collection_contract(
         {"text_dense": 3, "caption_dense": 4},
@@ -153,7 +155,7 @@ def test_qdrant_collection_contract_flags_mismatch_and_missing_indexes():
     store.client.collections = ["collection"]
     store.client.vector_config = {"text_dense": SimpleNamespace(size=2)}
     store.client.payload_schema = {"doc_id": "keyword"}
-    store._payload_schema_type = SimpleNamespace(KEYWORD="keyword", INTEGER="integer")
+    store._payload_schema_type = SimpleNamespace(KEYWORD="keyword", INTEGER="integer", BOOL="bool")
 
     report = store.check_collection_contract(
         {"text_dense": 3, "caption_dense": 4},
@@ -178,7 +180,7 @@ def test_qdrant_collection_contract_allows_missing_collection():
     store = object.__new__(QdrantChunkStore)
     store.collection_name = "collection"
     store.client = FakeQdrantClient()
-    store._payload_schema_type = SimpleNamespace(KEYWORD="keyword", INTEGER="integer")
+    store._payload_schema_type = SimpleNamespace(KEYWORD="keyword", INTEGER="integer", BOOL="bool")
 
     report = store.check_collection_contract({"text_dense": 3}, allow_missing=True)
 
@@ -243,7 +245,7 @@ def fake_store(named_vectors, payload_indexes):
         (index["field"] if isinstance(index, dict) else index): "keyword"
         for index in payload_indexes or []
     }
-    store._payload_schema_type = SimpleNamespace(KEYWORD="keyword", INTEGER="integer")
+    store._payload_schema_type = SimpleNamespace(KEYWORD="keyword", INTEGER="integer", BOOL="bool")
     return store
 
 

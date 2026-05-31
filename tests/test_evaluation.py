@@ -7,7 +7,12 @@ from typer.testing import CliRunner
 
 import chunking_docs.cli as cli_module
 from chunking_docs.cli import app
-from chunking_docs.evaluation.audit import audit_package, degraded_page_ratio
+from chunking_docs.evaluation.audit import (
+    audit_package,
+    degraded_page_ratio,
+    normalize_payload_indexes,
+    required_payload_indexes,
+)
 from chunking_docs.evaluation.ablation import (
     QdrantVectorAblationMode,
     QdrantVectorAblationReport,
@@ -75,6 +80,22 @@ def test_audit_package_detects_missing_vlm_annotations():
     assert not audit.passed
     assert audit.pages_requiring_vlm == [1]
     assert degraded_page_ratio(profiles) == 1.0
+
+
+def test_required_payload_indexes_include_chunk_strategy_fields():
+    fields = required_payload_indexes()
+
+    assert normalize_payload_indexes([]) == set()
+    assert {
+        "chunking_strategy",
+        "retrieval_role",
+        "parent_chunk_id",
+        "source_chunk_id",
+        "hierarchical_parent_chunk_id",
+        "visual_asset_unlinked",
+        "section.chapter",
+        "section.issue",
+    }.issubset(fields)
 
 
 def test_audit_package_treats_unstructured_vlm_as_requiring_retry():

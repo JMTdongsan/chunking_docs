@@ -34,26 +34,8 @@ from chunking_docs.models import (
     SourceDocument,
     VisualAsset,
 )
+from chunking_docs.storage.qdrant_config import QDRANT_PAYLOAD_INDEXES, QDRANT_RECORD_FILES
 from chunking_docs.vision.assets import attach_assets_to_chunks, build_page_assets, merge_visual_assets
-
-
-QDRANT_RECORD_FILES = {
-    "text_dense": "qdrant_text_records.jsonl",
-    "image_dense": "qdrant_image_records.jsonl",
-    "caption_dense": "qdrant_caption_records.jsonl",
-}
-
-QDRANT_PAYLOAD_INDEXES = [
-    {"field": "doc_id", "schema": "keyword"},
-    {"field": "chunk_id", "schema": "keyword"},
-    {"field": "asset_id", "schema": "keyword"},
-    {"field": "kind", "schema": "keyword"},
-    {"field": "page_no", "schema": "integer"},
-    {"field": "page_start", "schema": "integer"},
-    {"field": "page_end", "schema": "integer"},
-    {"field": "section.chapter", "schema": "keyword"},
-    {"field": "section.issue", "schema": "keyword"},
-]
 
 
 def build_processing_package(

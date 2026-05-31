@@ -296,6 +296,8 @@ class QdrantChunkStore:
 def default_payload_schema(field_name: str) -> str:
     if field_name in {"page_no", "page_start", "page_end"}:
         return "integer"
+    if field_name == "visual_asset_unlinked":
+        return "bool"
     return "keyword"
 
 

@@ -17,6 +17,7 @@ from chunking_docs.graph.provenance import (
 )
 from chunking_docs.io import read_jsonl
 from chunking_docs.models import DocumentChunk, GraphTriple, PageProfile, TextQuality, VisualAsset
+from chunking_docs.storage.qdrant_config import qdrant_payload_index_fields
 from chunking_docs.storage.records import EmbeddingRecord
 
 
@@ -607,19 +608,11 @@ def validate_target_record_ids(
 
 
 def normalize_payload_indexes(payload_indexes: list[str | dict[str, Any]]) -> set[str]:
-    fields: set[str] = set()
-    for index in payload_indexes:
-        if isinstance(index, str):
-            fields.add(index)
-        else:
-            field = index.get("field") or index.get("field_name")
-            if field:
-                fields.add(str(field))
-    return fields
+    return qdrant_payload_index_fields(payload_indexes)
 
 
 def required_payload_indexes() -> set[str]:
-    return {"doc_id", "chunk_id", "asset_id", "kind", "page_no", "page_start", "page_end"}
+    return qdrant_payload_index_fields()
 
 
 def qdrant_record_filename(vector_name: str) -> str:

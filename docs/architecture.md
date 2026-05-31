@@ -179,9 +179,9 @@ Named vectors:
 - `image_dense`
 - `caption_dense`
 
-Payload fields include document ID, chunk ID, asset ID, page range, asset kind, section metadata, source references, and text fields needed for answer citation.
+Payload fields include document ID, chunk ID, asset ID, page range, asset kind, chunking strategy, retrieval role, parent and source chunk links, section metadata, source references, standalone visual chunk flags, and text fields needed for answer citation.
 
-The package writes payload index definitions with field schemas. Qdrant ingestion and package query commands apply those definitions so metadata filters such as document ID, asset ID, page, and section remain efficient on server-backed collections.
+The package writes payload index definitions with field schemas. Qdrant ingestion and package query commands apply those definitions so metadata filters such as document ID, asset ID, page, section, chunking strategy, hierarchy role, and standalone visual assets remain efficient on server-backed collections.
 
 `qdrant-check-collection` compares a live or local Qdrant collection against `qdrant_collection.json` before upsert. It detects missing named vectors, vector dimension mismatches, and missing payload indexes, which is especially important when embedding models or vector dimensions change between experiments.
 
