@@ -175,6 +175,8 @@ chunking-docs qdrant-hybrid-search "policy corridor" \
   --filter kind=text \
   --fusion-weight bm25=1.2 \
   --fusion-weight qdrant:caption_dense=1.4 \
+  --reranker lexical \
+  --rerank-top-k 20 \
   --graph-expand
 ```
 
@@ -237,6 +239,7 @@ chunking-docs eval-retrieval examples/retrieval_cases.jsonl \
   --package-dir outputs/package \
   --top-k 5 \
   --repeat 3 \
+  --reranker lexical \
   --output outputs/package/retrieval_eval.json
 chunking-docs diagnose-retrieval outputs/package/retrieval_eval.json \
   --output outputs/package/retrieval_diagnostics.json
@@ -265,7 +268,7 @@ chunking-docs eval-retrieval-ablation examples/retrieval_cases.jsonl \
 
 Qdrant vector ablation modes include `text`, `caption`, `image`, `text_caption`, `text_image`, `caption_image`, `all`, `text_caption_graph`, and `all_graph`. Image modes require an `image_dense` record file and a compatible image-query encoder.
 
-Hybrid retrieval commands accept repeatable `--fusion-weight source=weight` values. Sources can be exact names such as `qdrant:caption_dense` or families such as `qdrant`, `bm25`, `dense`, and `graph`.
+Hybrid retrieval commands accept repeatable `--fusion-weight source=weight` values. Sources can be exact names such as `qdrant:caption_dense` or families such as `qdrant`, `bm25`, `dense`, and `graph`. Use `--reranker lexical` for dependency-free overlap reranking, or `--reranker cross-encoder --reranker-model <model>` when the embeddings extra is installed.
 
 ```jsonl
 {"query":"policy corridor near river","expected_pages":[12],"graph_expand":true}

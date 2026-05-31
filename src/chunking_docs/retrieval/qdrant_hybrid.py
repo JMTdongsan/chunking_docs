@@ -14,6 +14,7 @@ from chunking_docs.retrieval.hierarchy import (
     collapse_ranked_hits,
     merge_evidence_maps,
 )
+from chunking_docs.retrieval.rerank import Reranker, rerank_hits
 from chunking_docs.storage.qdrant_store import QdrantChunkStore
 from chunking_docs.storage.records import VectorSearchHit
 
@@ -63,6 +64,8 @@ class QdrantHybridSearcher:
         payload_filter: dict[str, Any] | None = None,
         collapse_hierarchical: bool = False,
         fusion_weights: dict[str, float] | None = None,
+        reranker: Reranker | None = None,
+        rerank_top_k: int | None = None,
     ) -> list[QdrantHybridSearchHit]:
         vector_names = vector_names or ["text_dense", "caption_dense"]
         expanded_query = self._expanded_query(query) if graph_expand else query
@@ -74,12 +77,13 @@ class QdrantHybridSearcher:
         qdrant_hits_by_item: dict[str, list[VectorSearchHit]] = {}
         evidence_maps = []
         result_sets = []
+        candidate_k = max(rerank_top_k or top_k, top_k)
         for vector_name in vector_names:
             query_vector = self._query_vector(expanded_query, vector_name)
             hits = self.store.query_vector(
                 vector=query_vector,
                 vector_name=vector_name,
-                top_k=max(top_k * 3, 20),
+                top_k=max(candidate_k * 3, 20),
                 must_payload=filters,
             )
             ranked_hits = []
@@ -114,7 +118,7 @@ class QdrantHybridSearcher:
 
         bm25_hits, bm25_evidence = collapse_ranked_hits(
             self._filter_ranked_hits(
-                self._bm25_hits(expanded_query, top_k=max(top_k * 3, 20)),
+                self._bm25_hits(expanded_query, top_k=max(candidate_k * 3, 20)),
                 allowed_chunk_ids,
             ),
             self.chunk_by_id,
@@ -125,7 +129,7 @@ class QdrantHybridSearcher:
         if graph_expand:
             graph_hits, graph_evidence = collapse_ranked_hits(
                 self._filter_ranked_hits(
-                    self._graph_hits(query, top_k=max(top_k * 3, 20)),
+                    self._graph_hits(query, top_k=max(candidate_k * 3, 20)),
                     allowed_chunk_ids,
                 ),
                 self.chunk_by_id,
@@ -135,8 +139,8 @@ class QdrantHybridSearcher:
             result_sets.append(graph_hits)
 
         evidence_by_item = merge_evidence_maps(*evidence_maps)
-        fused = reciprocal_rank_fusion(result_sets, top_k=top_k, source_weights=fusion_weights)
-        return [
+        fused = reciprocal_rank_fusion(result_sets, top_k=candidate_k, source_weights=fusion_weights)
+        hits = [
             QdrantHybridSearchHit(
                 item_id=item_id,
                 score=score,
@@ -151,6 +155,7 @@ class QdrantHybridSearcher:
             )
             for item_id, score, sources in fused
         ]
+        return rerank_hits(query, hits, reranker, top_k=top_k)
 
     def _asset_canonical_item_id(self, hit: VectorSearchHit) -> str | None:
         asset_id = hit.payload.get("asset_id")

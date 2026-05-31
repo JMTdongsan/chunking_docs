@@ -48,6 +48,10 @@ from chunking_docs.pipeline import (
 )
 from chunking_docs.retrieval.local_hybrid import LocalHybridSearcher
 from chunking_docs.retrieval.context import build_context_bundle
+from chunking_docs.retrieval.rerank import (
+    LexicalOverlapReranker,
+    SentenceTransformerCrossEncoderReranker,
+)
 from chunking_docs.storage.records import EmbeddingRecord
 from chunking_docs.vision.annotate import annotate_assets, merge_asset_annotations_into_chunks
 from chunking_docs.vision.assets import (
@@ -341,6 +345,11 @@ def qdrant_hybrid_search(
         "--fusion-weight",
         help="RRF source weight such as bm25=1.3, graph=0.8, qdrant:caption_dense=1.5.",
     ),
+    reranker: str = "none",
+    reranker_model: str = "BAAI/bge-reranker-v2-m3",
+    reranker_device: str = "cuda",
+    reranker_max_length: int = 0,
+    rerank_top_k: int = 20,
     lexical_tokenizer: TokenizerStrategy = "mixed",
     ngram_min: int = 2,
     ngram_max: int = 4,
@@ -348,6 +357,19 @@ def qdrant_hybrid_search(
 ):
     """Run Qdrant named-vector + BM25 + optional graph hybrid retrieval."""
     fusion_weights = parse_fusion_weights(fusion_weight)
+    tokenizer_config = build_tokenizer_config(
+        lexical_tokenizer,
+        ngram_min=ngram_min,
+        ngram_max=ngram_max,
+        ngram_cjk_only=ngram_cjk_only,
+    )
+    parsed_reranker = build_reranker(
+        reranker,
+        model_name=reranker_model,
+        device=reranker_device,
+        max_length=reranker_max_length,
+        tokenizer_config=tokenizer_config,
+    )
     prepared = prepare_qdrant_hybrid_search(
         package_dir=package_dir,
         url=url,
@@ -375,6 +397,8 @@ def qdrant_hybrid_search(
         payload_filter=build_payload_filter(filter_specs=payload_filter),
         collapse_hierarchical=collapse_hierarchical,
         fusion_weights=fusion_weights,
+        reranker=parsed_reranker,
+        rerank_top_k=rerank_top_k,
     )
     print(
         {
@@ -385,6 +409,8 @@ def qdrant_hybrid_search(
             "stored_count": prepared["store"].count(),
             "filters": build_payload_filter(doc_id=doc_id, filter_specs=payload_filter),
             "fusion_weights": fusion_weights,
+            "reranker": parsed_reranker.source if parsed_reranker else None,
+            "rerank_top_k": rerank_top_k if parsed_reranker else None,
             "hits": [
                 {
                     "rank": index + 1,
@@ -445,6 +471,11 @@ def qdrant_rag_context_command(
         "--fusion-weight",
         help="RRF source weight such as bm25=1.3, graph=0.8, qdrant:caption_dense=1.5.",
     ),
+    reranker: str = "none",
+    reranker_model: str = "BAAI/bge-reranker-v2-m3",
+    reranker_device: str = "cuda",
+    reranker_max_length: int = 0,
+    rerank_top_k: int = 20,
     lexical_tokenizer: TokenizerStrategy = "mixed",
     ngram_min: int = 2,
     ngram_max: int = 4,
@@ -452,6 +483,19 @@ def qdrant_rag_context_command(
 ):
     """Build a citation-ready RAG context bundle from Qdrant hybrid search hits."""
     fusion_weights = parse_fusion_weights(fusion_weight)
+    tokenizer_config = build_tokenizer_config(
+        lexical_tokenizer,
+        ngram_min=ngram_min,
+        ngram_max=ngram_max,
+        ngram_cjk_only=ngram_cjk_only,
+    )
+    parsed_reranker = build_reranker(
+        reranker,
+        model_name=reranker_model,
+        device=reranker_device,
+        max_length=reranker_max_length,
+        tokenizer_config=tokenizer_config,
+    )
     prepared = prepare_qdrant_hybrid_search(
         package_dir=package_dir,
         url=url,
@@ -479,6 +523,8 @@ def qdrant_rag_context_command(
         payload_filter=build_payload_filter(filter_specs=payload_filter),
         collapse_hierarchical=collapse_hierarchical,
         fusion_weights=fusion_weights,
+        reranker=parsed_reranker,
+        rerank_top_k=rerank_top_k,
     )
     bundle = build_context_bundle(
         query=query,
@@ -501,6 +547,8 @@ def qdrant_rag_context_command(
             "stored_count": prepared["store"].count(),
             "filters": build_payload_filter(doc_id=doc_id, filter_specs=payload_filter),
             "fusion_weights": fusion_weights,
+            "reranker": parsed_reranker.source if parsed_reranker else None,
+            "rerank_top_k": rerank_top_k if parsed_reranker else None,
         }
     )
     if output is not None:
@@ -541,6 +589,11 @@ def eval_qdrant_retrieval_command(
         "--fusion-weight",
         help="RRF source weight such as bm25=1.3, graph=0.8, qdrant:caption_dense=1.5.",
     ),
+    reranker: str = "none",
+    reranker_model: str = "BAAI/bge-reranker-v2-m3",
+    reranker_device: str = "cuda",
+    reranker_max_length: int = 0,
+    rerank_top_k: int = 20,
     lexical_tokenizer: TokenizerStrategy = "mixed",
     ngram_min: int = 2,
     ngram_max: int = 4,
@@ -548,6 +601,19 @@ def eval_qdrant_retrieval_command(
 ):
     """Evaluate Qdrant hybrid retrieval against JSONL benchmark cases."""
     fusion_weights = parse_fusion_weights(fusion_weight)
+    tokenizer_config = build_tokenizer_config(
+        lexical_tokenizer,
+        ngram_min=ngram_min,
+        ngram_max=ngram_max,
+        ngram_cjk_only=ngram_cjk_only,
+    )
+    parsed_reranker = build_reranker(
+        reranker,
+        model_name=reranker_model,
+        device=reranker_device,
+        max_length=reranker_max_length,
+        tokenizer_config=tokenizer_config,
+    )
     prepare_start = perf_counter()
     prepared = prepare_qdrant_hybrid_search(
         package_dir=package_dir,
@@ -579,6 +645,8 @@ def eval_qdrant_retrieval_command(
             payload_filter=build_payload_filter(filter_specs=payload_filter),
             collapse_hierarchical=collapse_hierarchical,
             fusion_weights=fusion_weights,
+            reranker=parsed_reranker,
+            rerank_top_k=rerank_top_k,
         ),
         top_k=top_k,
         repeat=repeat,
@@ -595,6 +663,8 @@ def eval_qdrant_retrieval_command(
             "stored_count": prepared["store"].count(),
             "filters": build_payload_filter(doc_id=doc_id, filter_specs=payload_filter),
             "fusion_weights": fusion_weights,
+            "reranker": parsed_reranker.source if parsed_reranker else None,
+            "rerank_top_k": rerank_top_k if parsed_reranker else None,
         }
     )
     if output is not None:
@@ -1242,6 +1312,11 @@ def search_local(
         "--fusion-weight",
         help="RRF source weight such as dense=1.0, bm25=1.3, graph=0.8.",
     ),
+    reranker: str = "none",
+    reranker_model: str = "BAAI/bge-reranker-v2-m3",
+    reranker_device: str = "cuda",
+    reranker_max_length: int = 0,
+    rerank_top_k: int = 20,
     lexical_tokenizer: TokenizerStrategy = "mixed",
     ngram_min: int = 2,
     ngram_max: int = 4,
@@ -1251,6 +1326,19 @@ def search_local(
     from chunking_docs.embeddings.interfaces import HashingTextEmbedder
 
     fusion_weights = parse_fusion_weights(fusion_weight)
+    tokenizer_config = build_tokenizer_config(
+        lexical_tokenizer,
+        ngram_min=ngram_min,
+        ngram_max=ngram_max,
+        ngram_cjk_only=ngram_cjk_only,
+    )
+    parsed_reranker = build_reranker(
+        reranker,
+        model_name=reranker_model,
+        device=reranker_device,
+        max_length=reranker_max_length,
+        tokenizer_config=tokenizer_config,
+    )
     chunks = read_jsonl(package_dir / chunks_file, DocumentChunk)
     triples_path = package_dir / "triples.jsonl"
     triples = read_jsonl(triples_path, GraphTriple) if triples_path.exists() else []
@@ -1258,12 +1346,7 @@ def search_local(
         chunks,
         HashingTextEmbedder(),
         triples=triples,
-        tokenizer_config=build_tokenizer_config(
-            lexical_tokenizer,
-            ngram_min=ngram_min,
-            ngram_max=ngram_max,
-            ngram_cjk_only=ngram_cjk_only,
-        ),
+        tokenizer_config=tokenizer_config,
     )
     hits = searcher.search(
         query,
@@ -1271,6 +1354,8 @@ def search_local(
         graph_expand=graph_expand,
         collapse_hierarchical=collapse_hierarchical,
         fusion_weights=fusion_weights,
+        reranker=parsed_reranker,
+        rerank_top_k=rerank_top_k,
     )
     print(
         [
@@ -1315,6 +1400,11 @@ def build_rag_context_command(
         "--fusion-weight",
         help="RRF source weight such as dense=1.0, bm25=1.3, graph=0.8.",
     ),
+    reranker: str = "none",
+    reranker_model: str = "BAAI/bge-reranker-v2-m3",
+    reranker_device: str = "cuda",
+    reranker_max_length: int = 0,
+    rerank_top_k: int = 20,
     lexical_tokenizer: TokenizerStrategy = "mixed",
     ngram_min: int = 2,
     ngram_max: int = 4,
@@ -1324,6 +1414,19 @@ def build_rag_context_command(
     from chunking_docs.embeddings.interfaces import HashingTextEmbedder
 
     fusion_weights = parse_fusion_weights(fusion_weight)
+    tokenizer_config = build_tokenizer_config(
+        lexical_tokenizer,
+        ngram_min=ngram_min,
+        ngram_max=ngram_max,
+        ngram_cjk_only=ngram_cjk_only,
+    )
+    parsed_reranker = build_reranker(
+        reranker,
+        model_name=reranker_model,
+        device=reranker_device,
+        max_length=reranker_max_length,
+        tokenizer_config=tokenizer_config,
+    )
     chunks = read_jsonl(package_dir / chunks_file, DocumentChunk)
     assets_path = package_dir / "assets.jsonl"
     triples_path = package_dir / "triples.jsonl"
@@ -1333,12 +1436,7 @@ def build_rag_context_command(
         chunks,
         HashingTextEmbedder(),
         triples=triples,
-        tokenizer_config=build_tokenizer_config(
-            lexical_tokenizer,
-            ngram_min=ngram_min,
-            ngram_max=ngram_max,
-            ngram_cjk_only=ngram_cjk_only,
-        ),
+        tokenizer_config=tokenizer_config,
     )
     hits = searcher.search(
         query,
@@ -1346,6 +1444,8 @@ def build_rag_context_command(
         graph_expand=graph_expand,
         collapse_hierarchical=collapse_hierarchical,
         fusion_weights=fusion_weights,
+        reranker=parsed_reranker,
+        rerank_top_k=rerank_top_k,
     )
     bundle = build_context_bundle(
         query=query,
@@ -1360,6 +1460,9 @@ def build_rag_context_command(
         include_triples=include_triples,
     )
     bundle.metadata["fusion_weights"] = fusion_weights
+    if parsed_reranker is not None:
+        bundle.metadata["reranker"] = parsed_reranker.source
+        bundle.metadata["rerank_top_k"] = rerank_top_k
     if output is not None:
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(bundle.model_dump_json(indent=2), encoding="utf-8")
@@ -1458,6 +1561,11 @@ def eval_retrieval_command(
         "--fusion-weight",
         help="RRF source weight such as dense=1.0, bm25=1.3, graph=0.8.",
     ),
+    reranker: str = "none",
+    reranker_model: str = "BAAI/bge-reranker-v2-m3",
+    reranker_device: str = "cuda",
+    reranker_max_length: int = 0,
+    rerank_top_k: int = 20,
     lexical_tokenizer: TokenizerStrategy = "mixed",
     ngram_min: int = 2,
     ngram_max: int = 4,
@@ -1465,6 +1573,19 @@ def eval_retrieval_command(
 ):
     """Evaluate local hybrid retrieval against JSONL seed cases."""
     fusion_weights = parse_fusion_weights(fusion_weight)
+    tokenizer_config = build_tokenizer_config(
+        lexical_tokenizer,
+        ngram_min=ngram_min,
+        ngram_max=ngram_max,
+        ngram_cjk_only=ngram_cjk_only,
+    )
+    parsed_reranker = build_reranker(
+        reranker,
+        model_name=reranker_model,
+        device=reranker_device,
+        max_length=reranker_max_length,
+        tokenizer_config=tokenizer_config,
+    )
     chunks = read_jsonl(package_dir / chunks_file, DocumentChunk)
     triples_path = package_dir / "triples.jsonl"
     triples = read_jsonl(triples_path, GraphTriple) if triples_path.exists() else []
@@ -1476,12 +1597,9 @@ def eval_retrieval_command(
         repeat=repeat,
         collapse_hierarchical=collapse_hierarchical,
         fusion_weights=fusion_weights,
-        tokenizer_config=build_tokenizer_config(
-            lexical_tokenizer,
-            ngram_min=ngram_min,
-            ngram_max=ngram_max,
-            ngram_cjk_only=ngram_cjk_only,
-        ),
+        reranker=parsed_reranker,
+        rerank_top_k=rerank_top_k,
+        tokenizer_config=tokenizer_config,
     )
     if output is not None:
         output.parent.mkdir(parents=True, exist_ok=True)
@@ -2096,6 +2214,27 @@ def parse_fusion_weights(specs: list[str] | None = None) -> dict[str, float]:
             raise typer.BadParameter(f"fusion weight for {source} must be non-negative")
         weights[source] = weight
     return weights
+
+
+def build_reranker(
+    backend: str,
+    model_name: str = "BAAI/bge-reranker-v2-m3",
+    device: str = "cuda",
+    max_length: int = 0,
+    tokenizer_config: LexicalTokenizerConfig | None = None,
+):
+    normalized = normalize_backend(backend)
+    if normalized == "none":
+        return None
+    if normalized == "lexical":
+        return LexicalOverlapReranker(tokenizer_config=tokenizer_config)
+    if normalized in {"cross-encoder", "cross_encoder", "sentence-transformers"}:
+        return SentenceTransformerCrossEncoderReranker(
+            model_name=model_name,
+            device=device,
+            max_length=max_length or None,
+        )
+    raise typer.BadParameter("reranker must be one of: none, lexical, cross-encoder")
 
 
 def parse_payload_filter(spec: str) -> tuple[str, str, object]:

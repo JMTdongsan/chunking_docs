@@ -12,6 +12,7 @@ from chunking_docs.embeddings.tokenizers import LexicalTokenizerConfig
 from chunking_docs.io import read_jsonl
 from chunking_docs.models import DocumentChunk, GraphTriple
 from chunking_docs.retrieval.local_hybrid import LocalHybridSearcher
+from chunking_docs.retrieval.rerank import Reranker
 
 
 class RetrievalCase(BaseModel):
@@ -102,6 +103,8 @@ def evaluate_retrieval(
     use_graph: bool | None = None,
     repeat: int = 1,
     fusion_weights: dict[str, float] | None = None,
+    reranker: Reranker | None = None,
+    rerank_top_k: int | None = None,
 ) -> RetrievalEvaluation:
     repeat = max(1, repeat)
     index_start = perf_counter()
@@ -123,6 +126,8 @@ def evaluate_retrieval(
             use_bm25=use_bm25,
             use_graph=use_graph,
             fusion_weights=fusion_weights,
+            reranker=reranker,
+            rerank_top_k=rerank_top_k,
         ),
         top_k=top_k,
         repeat=repeat,
@@ -132,6 +137,9 @@ def evaluate_retrieval(
     )
     if fusion_weights:
         evaluation.metadata["fusion_weights"] = fusion_weights
+    if reranker is not None:
+        evaluation.metadata["reranker"] = reranker.source
+        evaluation.metadata["rerank_top_k"] = rerank_top_k or top_k
     return evaluation
 
 

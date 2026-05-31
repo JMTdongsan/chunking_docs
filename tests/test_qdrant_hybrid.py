@@ -1,10 +1,16 @@
 import pytest
 import typer
 
-from chunking_docs.cli import build_payload_filter, build_qdrant_query_embedders, parse_fusion_weights
+from chunking_docs.cli import (
+    build_payload_filter,
+    build_qdrant_query_embedders,
+    build_reranker,
+    parse_fusion_weights,
+)
 from chunking_docs.embeddings.interfaces import HashingTextEmbedder
 from chunking_docs.models import AssetKind, ChunkKind, DocumentChunk, GraphTriple, VisualAsset
 from chunking_docs.retrieval.qdrant_hybrid import QdrantHybridSearcher
+from chunking_docs.retrieval.rerank import LexicalOverlapReranker
 from chunking_docs.storage.records import VectorSearchHit
 
 
@@ -105,6 +111,28 @@ class FilteringQdrantStore:
         ]
 
 
+class RerankQdrantStore:
+    def query_vector(self, vector, vector_name, top_k, must_payload=None, score_threshold=None):
+        return [
+            VectorSearchHit(
+                point_id="weak-point",
+                score=0.95,
+                vector_name=vector_name,
+                chunk_id="weak",
+                doc_id="doc",
+                payload={"chunk_id": "weak", "doc_id": "doc", "page_start": 1, "page_end": 1},
+            ),
+            VectorSearchHit(
+                point_id="strong-point",
+                score=0.7,
+                vector_name=vector_name,
+                chunk_id="strong",
+                doc_id="doc",
+                payload={"chunk_id": "strong", "doc_id": "doc", "page_start": 2, "page_end": 2},
+            ),
+        ]
+
+
 def test_qdrant_hybrid_maps_asset_hits_to_parent_chunk():
     chunk = DocumentChunk(
         chunk_id="chunk-1",
@@ -136,6 +164,42 @@ def test_qdrant_hybrid_maps_asset_hits_to_parent_chunk():
     assert hits[0].chunk == chunk
     assert "qdrant:caption_dense" in hits[0].sources
     assert hits[0].payloads[0]["asset_id"] == "asset-1"
+
+
+def test_qdrant_hybrid_can_rerank_fused_candidates():
+    weak = DocumentChunk(
+        chunk_id="weak",
+        doc_id="doc",
+        page_start=1,
+        page_end=1,
+        kind=ChunkKind.TEXT,
+        text="unrelated",
+    )
+    strong = DocumentChunk(
+        chunk_id="strong",
+        doc_id="doc",
+        page_start=2,
+        page_end=2,
+        kind=ChunkKind.TEXT,
+        text="river station corridor",
+    )
+
+    searcher = QdrantHybridSearcher(
+        store=RerankQdrantStore(),
+        chunks=[weak, strong],
+        assets=[],
+        embedder=HashingTextEmbedder(embedding_dim=8),
+    )
+    hits = searcher.search(
+        "river station",
+        vector_names=["text_dense"],
+        top_k=2,
+        reranker=LexicalOverlapReranker(),
+        rerank_top_k=2,
+    )
+
+    assert [hit.item_id for hit in hits] == ["strong", "weak"]
+    assert "rerank:lexical" in hits[0].sources
 
 
 def test_qdrant_hybrid_respects_fusion_weights():
@@ -239,6 +303,12 @@ def test_parse_fusion_weights():
     weights = parse_fusion_weights(["bm25=1.3", "qdrant:caption_dense=1.5"])
 
     assert weights == {"bm25": 1.3, "qdrant:caption_dense": 1.5}
+
+
+def test_build_reranker_supports_lexical_backend():
+    built = build_reranker("lexical")
+
+    assert isinstance(built, LexicalOverlapReranker)
 
 
 def test_qdrant_hybrid_can_include_graph_hits():

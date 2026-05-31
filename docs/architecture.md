@@ -139,7 +139,7 @@ Qdrant search commands accept repeatable payload filters using exact and range f
 
 The Qdrant adapter supports both ingestion and named-vector querying. `qdrant-search-package` can upsert a package into qdrant-client local mode and immediately query `text_dense` or `caption_dense`, which keeps retrieval checks reproducible without requiring a running server.
 
-`qdrant-hybrid-search` queries Qdrant named vectors, BM25, and optional graph expansion, then fuses results with Reciprocal Rank Fusion. Caption vector hits from visual assets are mapped back to their parent chunks so text and visual evidence can be ranked together.
+`qdrant-hybrid-search` queries Qdrant named vectors, BM25, and optional graph expansion, then fuses results with Reciprocal Rank Fusion. Caption vector hits from visual assets are mapped back to their parent chunks so text and visual evidence can be ranked together. Optional reranking can reorder fused candidates with lexical overlap or a sentence-transformers CrossEncoder.
 
 Image vectors may use a different embedding space from text vectors. When querying `image_dense`, the searcher can use a per-vector query encoder, such as CLIP text features for CLIP image embeddings, while continuing to use the document text embedder for `text_dense` and `caption_dense`.
 
@@ -182,6 +182,8 @@ Benchmark cases should be maintained per document family. A useful case specifie
 Tokenizer settings are part of the retrieval experiment. Strategy comparisons should keep the tokenizer fixed unless the experiment is explicitly measuring lexical tokenization.
 
 Fusion weights are also part of the retrieval experiment. Use `--fusion-weight` to tune source families such as `dense`, `bm25`, `graph`, and `qdrant`, or exact sources such as `qdrant:caption_dense`.
+
+Reranking is a separate experiment knob. Keep `--reranker`, `--rerank-top-k`, and the reranker model fixed when comparing chunking strategies unless the experiment is explicitly measuring reranking.
 
 Use repeated retrieval evaluation when comparing strategies whose recall is similar. The latency fields are intended to show whether higher recall comes with an acceptable retrieval cost.
 

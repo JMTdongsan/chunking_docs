@@ -10,6 +10,7 @@ from chunking_docs.graph.export import related_terms
 from chunking_docs.models import DocumentChunk, GraphTriple
 from chunking_docs.retrieval.fusion import RankedHit, reciprocal_rank_fusion
 from chunking_docs.retrieval.hierarchy import collapse_ranked_hits, merge_evidence_maps
+from chunking_docs.retrieval.rerank import Reranker, rerank_hits
 
 
 @dataclass(frozen=True)
@@ -45,14 +46,17 @@ class LocalHybridSearcher:
         use_bm25: bool = True,
         use_graph: bool | None = None,
         fusion_weights: dict[str, float] | None = None,
+        reranker: Reranker | None = None,
+        rerank_top_k: int | None = None,
     ) -> list[HybridSearchHit]:
         use_graph = graph_expand if use_graph is None else use_graph
         expanded_query = self._expanded_query(query) if graph_expand else query
         result_sets = []
         evidence_by_item = {}
+        candidate_k = max(rerank_top_k or top_k, top_k)
 
         if use_dense:
-            dense_hits = self._dense_hits(expanded_query, top_k=max(top_k * 3, 20))
+            dense_hits = self._dense_hits(expanded_query, top_k=max(candidate_k * 3, 20))
             dense_hits, dense_evidence = collapse_ranked_hits(
                 dense_hits,
                 self.chunk_by_id,
@@ -62,7 +66,7 @@ class LocalHybridSearcher:
             evidence_by_item = merge_evidence_maps(evidence_by_item, dense_evidence)
 
         if use_bm25:
-            bm25_hits = self._bm25_hits(expanded_query, top_k=max(top_k * 3, 20))
+            bm25_hits = self._bm25_hits(expanded_query, top_k=max(candidate_k * 3, 20))
             bm25_hits, bm25_evidence = collapse_ranked_hits(
                 bm25_hits,
                 self.chunk_by_id,
@@ -72,7 +76,7 @@ class LocalHybridSearcher:
             evidence_by_item = merge_evidence_maps(evidence_by_item, bm25_evidence)
 
         if use_graph:
-            graph_hits = self._graph_hits(query, top_k=max(top_k * 3, 20))
+            graph_hits = self._graph_hits(query, top_k=max(candidate_k * 3, 20))
             graph_hits, graph_evidence = collapse_ranked_hits(
                 graph_hits,
                 self.chunk_by_id,
@@ -80,8 +84,8 @@ class LocalHybridSearcher:
             )
             evidence_by_item = merge_evidence_maps(evidence_by_item, graph_evidence)
             result_sets.append(graph_hits)
-        fused = reciprocal_rank_fusion(result_sets, top_k=top_k, source_weights=fusion_weights)
-        return [
+        fused = reciprocal_rank_fusion(result_sets, top_k=candidate_k, source_weights=fusion_weights)
+        hits = [
             HybridSearchHit(
                 chunk=self.chunk_by_id[item_id],
                 score=score,
@@ -95,6 +99,7 @@ class LocalHybridSearcher:
             for item_id, score, sources in fused
             if item_id in self.chunk_by_id
         ]
+        return rerank_hits(query, hits, reranker, top_k=top_k)
 
     def _dense_hits(self, query: str, top_k: int) -> list[RankedHit]:
         query_vector = self.embedder.embed_texts([query])[0]
