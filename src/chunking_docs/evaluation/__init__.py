@@ -13,6 +13,7 @@ from .diagnostics import (
     load_retrieval_evaluation,
 )
 from .experiment import ArtifactSummary, ExperimentReport, build_experiment_report
+from .gate import RetrievalGateCheck, RetrievalGateReport, gate_retrieval_evaluation
 from .retrieval import (
     RetrievalCase,
     RetrievalCaseResult,
@@ -38,6 +39,8 @@ __all__ = [
     "RetrievalDiagnosticRow",
     "RetrievalDiagnosticsReport",
     "RetrievalEvaluation",
+    "RetrievalGateCheck",
+    "RetrievalGateReport",
     "analyze_retrieval_evaluation",
     "audit_package",
     "build_experiment_report",
@@ -45,6 +48,7 @@ __all__ = [
     "evaluate_retrieval",
     "evaluate_retrieval_ablation",
     "evaluate_search_results",
+    "gate_retrieval_evaluation",
     "load_retrieval_evaluation",
     "load_retrieval_cases",
     "parse_ablation_modes",

@@ -277,6 +277,12 @@ chunking-docs eval-retrieval examples/retrieval_cases.jsonl \
   --output outputs/package/retrieval_eval.json
 chunking-docs diagnose-retrieval outputs/package/retrieval_eval.json \
   --output outputs/package/retrieval_diagnostics.json
+chunking-docs gate-retrieval outputs/package/retrieval_eval.json \
+  --min-recall-at-k 0.8 \
+  --min-target-coverage-at-k 0.75 \
+  --min-target-ndcg-at-k 0.7 \
+  --max-p95-latency-ms 100 \
+  --output outputs/package/retrieval_gate.json
 chunking-docs eval-qdrant-retrieval examples/retrieval_cases.jsonl \
   --package-dir outputs/package \
   --location ':memory:' \
@@ -298,7 +304,7 @@ chunking-docs eval-retrieval-ablation examples/retrieval_cases.jsonl \
   --output outputs/package/retrieval_ablation.json
 ```
 
-`audit-package` checks structural completeness, orphan triples, remaining OCR/VLM work, Qdrant vector dimensions, required payload fields, and payload index definitions. `eval-chunking` reports page coverage, chunk size distribution, section coverage, visual asset linkage, visual annotation coverage, retrieval recall@k, MRR, target coverage@k, target nDCG@k, precision@k, failed queries, and an aggregate quality score. `eval-retrieval` also records per-query latency samples plus mean and p95 latency when `--repeat` is greater than one. `diagnose-retrieval` groups failed or partially covered queries by reasons such as no hits, missing target type, low target nDCG@k, or low precision@k. Retrieval reports include target-specific recall, MRR, target nDCG@k, source-family contribution metrics, and coverage for page, chunk, visual asset, and graph triple expectations. `eval-qdrant-retrieval` runs the same benchmark cases through Qdrant named vectors, BM25, and optional graph expansion so the production retrieval path can be validated. `eval-qdrant-vector-ablation` compares Qdrant text, visual caption, optional image, and graph-expanded modes on the same cases. `eval-retrieval-ablation` compares dense-only, BM25-only, graph-only, hybrid, and graph-expanded hybrid retrieval so the effect and runtime cost of each retrieval signal is visible. Retrieval cases are JSONL:
+`audit-package` checks structural completeness, orphan triples, remaining OCR/VLM work, Qdrant vector dimensions, required payload fields, and payload index definitions. `eval-chunking` reports page coverage, chunk size distribution, section coverage, visual asset linkage, visual annotation coverage, retrieval recall@k, MRR, target coverage@k, target nDCG@k, precision@k, failed queries, and an aggregate quality score. `eval-retrieval` also records per-query latency samples plus mean and p95 latency when `--repeat` is greater than one. `diagnose-retrieval` groups failed or partially covered queries by reasons such as no hits, missing target type, low target nDCG@k, or low precision@k. `gate-retrieval` turns retrieval metrics into pass/fail checks for absolute floors and optional baseline regression limits such as recall drop or latency ratio. Retrieval reports include target-specific recall, MRR, target nDCG@k, source-family contribution metrics, and coverage for page, chunk, visual asset, and graph triple expectations. `eval-qdrant-retrieval` runs the same benchmark cases through Qdrant named vectors, BM25, and optional graph expansion so the production retrieval path can be validated. `eval-qdrant-vector-ablation` compares Qdrant text, visual caption, optional image, and graph-expanded modes on the same cases. `eval-retrieval-ablation` compares dense-only, BM25-only, graph-only, hybrid, and graph-expanded hybrid retrieval so the effect and runtime cost of each retrieval signal is visible. Retrieval cases are JSONL:
 
 Qdrant vector ablation modes include `text`, `caption`, `image`, `text_caption`, `text_image`, `caption_image`, `all`, `text_caption_graph`, and `all_graph`. Image modes require an `image_dense` record file and a compatible image-query encoder.
 
@@ -312,6 +318,17 @@ Hybrid retrieval commands accept repeatable `--fusion-weight source=weight` valu
 ```
 
 For portfolio or production use, maintain benchmark cases for each document family and compare chunking strategies before changing defaults.
+
+Compare a new retrieval run against a saved baseline with regression limits:
+
+```bash
+chunking-docs gate-retrieval outputs/package/retrieval_eval.json \
+  --baseline outputs/package/retrieval_eval.baseline.json \
+  --max-recall-drop 0.05 \
+  --max-target-coverage-drop 0.05 \
+  --max-target-ndcg-drop 0.05 \
+  --max-mean-latency-ratio 1.5
+```
 
 ## Lexical Tokenization
 

@@ -129,6 +129,7 @@ Additional processing commands may create:
 - `qdrant_retrieval_eval.json`
 - `qdrant_vector_ablation.json`
 - `retrieval_diagnostics.json`
+- `retrieval_gate.json`
 - `retrieval_ablation.json`
 - `rag_context.json`
 - `rag_context.qdrant.json`
@@ -185,6 +186,7 @@ Recommended checks:
 - `eval-qdrant-retrieval`: the same benchmark cases against Qdrant named vectors plus BM25 and optional graph expansion.
 - `eval-qdrant-vector-ablation`: Qdrant text, visual caption, optional image, and graph-expanded vector comparison on the same cases.
 - `eval-retrieval-ablation`: dense-only, BM25-only, graph-only, hybrid, and graph-expanded hybrid comparison on the same cases, including target coverage@k, target nDCG@k, and latency.
+- `gate-retrieval`: pass/fail checks for absolute metric floors and baseline regression limits such as recall drop, target coverage drop, target nDCG drop, precision drop, and latency ratio.
 - `compare-chunking`: side-by-side strategy comparison by quality score, recall@k, MRR, target coverage@k, target nDCG@k, precision@k, latency, and failed queries.
 - `sweep-chunking`: parameter grid generation for max size, overlap, parent size, and visual context size.
 - `write-experiment-report`: reproducible package report with artifact checksums, record counts, tokenizer settings, Qdrant configuration, and candidate comparison metrics.

@@ -56,6 +56,7 @@ DEFAULT_ARTIFACTS = [
     "chunking_sweep.json",
     "qdrant_retrieval_eval.json",
     "qdrant_vector_ablation.json",
+    "retrieval_gate.json",
     "retrieval_ablation.json",
     "rag_context.json",
     "rag_context.qdrant.json",

@@ -29,6 +29,7 @@ from chunking_docs.evaluation.diagnostics import (
     load_retrieval_evaluation,
 )
 from chunking_docs.evaluation.experiment import build_experiment_report
+from chunking_docs.evaluation.gate import gate_retrieval_evaluation, gate_summary_payload
 from chunking_docs.evaluation.retrieval import (
     evaluate_retrieval,
     evaluate_search_results,
@@ -1893,6 +1894,64 @@ def diagnose_retrieval_command(
             "missing_target_type_counts": report.missing_target_type_counts,
         }
     print(payload)
+
+
+@app.command(name="gate-retrieval")
+def gate_retrieval_command(
+    evaluation: Path,
+    baseline: Path | None = typer.Option(
+        None,
+        "--baseline",
+        help="Optional baseline retrieval evaluation JSON for regression checks.",
+    ),
+    output: Path | None = None,
+    min_recall_at_k: float = 0.0,
+    min_target_coverage_at_k: float = 0.0,
+    min_target_ndcg_at_k: float = 0.0,
+    min_mrr: float = 0.0,
+    min_precision_at_k: float = 0.0,
+    max_mean_latency_ms: float | None = None,
+    max_p95_latency_ms: float | None = None,
+    max_recall_drop: float | None = None,
+    max_target_coverage_drop: float | None = None,
+    max_target_ndcg_drop: float | None = None,
+    max_precision_drop: float | None = None,
+    max_mean_latency_ratio: float | None = None,
+    max_p95_latency_ratio: float | None = None,
+    fail: bool = typer.Option(
+        True,
+        "--fail/--no-fail",
+        help="Exit with status 1 when any gate check fails.",
+    ),
+):
+    """Fail a retrieval run when absolute metrics or baseline regression limits are missed."""
+    parsed_evaluation = load_retrieval_evaluation(evaluation)
+    parsed_baseline = load_retrieval_evaluation(baseline) if baseline else None
+    report = gate_retrieval_evaluation(
+        parsed_evaluation,
+        baseline=parsed_baseline,
+        min_recall_at_k=min_recall_at_k,
+        min_target_coverage_at_k=min_target_coverage_at_k,
+        min_target_ndcg_at_k=min_target_ndcg_at_k,
+        min_mrr=min_mrr,
+        min_precision_at_k=min_precision_at_k,
+        max_mean_latency_ms=max_mean_latency_ms,
+        max_p95_latency_ms=max_p95_latency_ms,
+        max_recall_drop=max_recall_drop,
+        max_target_coverage_drop=max_target_coverage_drop,
+        max_target_ndcg_drop=max_target_ndcg_drop,
+        max_precision_drop=max_precision_drop,
+        max_mean_latency_ratio=max_mean_latency_ratio,
+        max_p95_latency_ratio=max_p95_latency_ratio,
+    )
+    payload = report.model_dump()
+    if output is not None:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(report.model_dump_json(indent=2), encoding="utf-8")
+        payload = {"output": str(output), **gate_summary_payload(report)}
+    print(payload)
+    if fail and not report.passed:
+        raise typer.Exit(1)
 
 
 @app.command(name="eval-chunking")
