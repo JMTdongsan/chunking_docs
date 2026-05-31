@@ -2212,6 +2212,11 @@ def ingestion_readiness_command(
     min_target_ndcg_at_k: float = 0.0,
     min_precision_at_k: float = 0.0,
     max_p95_latency_ms: float | None = None,
+    min_retrieval_target_type_coverage: list[str] = typer.Option(
+        None,
+        "--min-retrieval-target-type-coverage",
+        help="Require retrieval target-type coverage such as asset=1.0 or triple=1.0.",
+    ),
     min_retrieval_source_family_target_coverage: list[str] = typer.Option(
         None,
         "--min-retrieval-source-family-target-coverage",
@@ -2275,6 +2280,10 @@ def ingestion_readiness_command(
         min_retrieval_source_family_target_coverage,
         "retrieval source family target coverage",
     )
+    retrieval_target_type_thresholds = parse_named_float_thresholds(
+        min_retrieval_target_type_coverage,
+        "retrieval target type coverage",
+    )
     report = build_ingestion_readiness_report(
         package_dir=package_dir,
         manifest=manifest,
@@ -2310,6 +2319,7 @@ def ingestion_readiness_command(
             "min_target_ndcg_at_k": min_target_ndcg_at_k,
             "min_precision_at_k": min_precision_at_k,
             "max_p95_latency_ms": max_p95_latency_ms,
+            "min_target_type_coverage": retrieval_target_type_thresholds,
             "min_source_family_target_coverage": retrieval_source_family_thresholds,
         },
         chunking_comparison=parsed_chunking_comparison,
@@ -2741,6 +2751,11 @@ def gate_retrieval_command(
     min_precision_at_k: float = 0.0,
     max_mean_latency_ms: float | None = None,
     max_p95_latency_ms: float | None = None,
+    min_target_type_coverage: list[str] = typer.Option(
+        None,
+        "--min-target-type-coverage",
+        help="Require target-type coverage such as asset=1.0 or triple=1.0. Repeat for multiple types.",
+    ),
     min_source_family_target_coverage: list[str] = typer.Option(
         None,
         "--min-source-family-target-coverage",
@@ -2765,6 +2780,10 @@ def gate_retrieval_command(
         min_source_family_target_coverage,
         "source family target coverage",
     )
+    target_type_thresholds = parse_named_float_thresholds(
+        min_target_type_coverage,
+        "target type coverage",
+    )
     report = gate_retrieval_evaluation(
         parsed_evaluation,
         baseline=parsed_baseline,
@@ -2775,6 +2794,7 @@ def gate_retrieval_command(
         min_precision_at_k=min_precision_at_k,
         max_mean_latency_ms=max_mean_latency_ms,
         max_p95_latency_ms=max_p95_latency_ms,
+        min_target_type_coverage=target_type_thresholds,
         min_source_family_target_coverage=source_family_thresholds,
         max_recall_drop=max_recall_drop,
         max_target_coverage_drop=max_target_coverage_drop,

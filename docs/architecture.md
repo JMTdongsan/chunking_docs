@@ -228,7 +228,7 @@ Recommended checks:
 - `compare-visual-runs`: OCR/VLM run comparison by coverage, structured parse rate, graph triple density, and latency.
 - `plan-vlm-experiments`: reproducible profile-by-profile command recipes for running the same visual job set through multiple VLMs.
 - `eval-retrieval-ablation`: dense-only, BM25-only, graph-only, hybrid, and graph-expanded hybrid comparison on the same cases, including target coverage@k, target nDCG@k, and latency.
-- `gate-retrieval`: pass/fail checks for absolute metric floors, source-family target coverage, and baseline regression limits such as recall drop, target coverage drop, target nDCG drop, precision drop, and latency ratio.
+- `gate-retrieval`: pass/fail checks for absolute metric floors, target-type coverage, source-family target coverage, and baseline regression limits such as recall drop, target coverage drop, target nDCG drop, precision drop, and latency ratio.
 - `compare-packages`: before/after package comparison for count deltas, changed chunk/asset/triple IDs, Qdrant record count deltas, and annotation-related observations.
 - `compare-chunking`: side-by-side strategy comparison by quality score, recall@k, MRR, target coverage@k, target nDCG@k, precision@k, latency, and failed queries.
 - `gate-chunking-comparison`: pass/fail checks for selected chunking candidates using quality, page coverage, retrieval floors, failed-query limits, and baseline regression limits.
