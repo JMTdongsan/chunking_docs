@@ -99,7 +99,7 @@
 
 14. **Ingestion Readiness**
     - Combine package audit, required artifact checks, Qdrant record validation, and PostgreSQL row conversion.
-    - Optionally include visual quality gates and retrieval quality gates before a package is loaded into serving systems.
+    - Optionally include retrieval case audit, visual quality gates, chunking comparison gates, and retrieval quality gates before a package is loaded into serving systems.
     - Emit a single pass/fail report for CI, portfolio review, or deployment handoff.
 
 15. **RAG Context Assembly**

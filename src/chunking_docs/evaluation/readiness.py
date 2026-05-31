@@ -6,8 +6,14 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from chunking_docs.evaluation.audit import PackageAudit, audit_package
+from chunking_docs.evaluation.case_audit import RetrievalCaseAuditReport, audit_retrieval_cases
+from chunking_docs.evaluation.chunking_gate import (
+    ChunkingComparisonGateReport,
+    gate_chunking_comparison,
+)
+from chunking_docs.evaluation.compare import ChunkingComparison
 from chunking_docs.evaluation.gate import RetrievalGateReport, gate_retrieval_evaluation
-from chunking_docs.evaluation.retrieval import RetrievalEvaluation
+from chunking_docs.evaluation.retrieval import RetrievalCase, RetrievalEvaluation
 from chunking_docs.models import ProcessingManifest
 from chunking_docs.storage.postgres_store import manifest_rows
 from chunking_docs.vision.jobs import VisualJobRunResult
@@ -30,7 +36,9 @@ class IngestionReadinessReport(BaseModel):
     postgres_row_counts: dict[str, int] = Field(default_factory=dict)
     audit: PackageAudit
     visual_quality: VisualQualityReport | None = None
+    retrieval_case_audit: RetrievalCaseAuditReport | None = None
     retrieval_gate: RetrievalGateReport | None = None
+    chunking_comparison_gate: ChunkingComparisonGateReport | None = None
     components: list[ReadinessComponent] = Field(default_factory=list)
     failed_components: list[str] = Field(default_factory=list)
 
@@ -46,9 +54,15 @@ def build_ingestion_readiness_report(
     visual_results: list[VisualJobRunResult] | None = None,
     require_visual_quality: bool = False,
     visual_quality_options: dict[str, Any] | None = None,
+    retrieval_cases: list[RetrievalCase] | None = None,
+    require_retrieval_cases: bool = False,
+    retrieval_case_options: dict[str, Any] | None = None,
     retrieval_evaluation: RetrievalEvaluation | None = None,
     require_retrieval_evaluation: bool = False,
     retrieval_gate_options: dict[str, Any] | None = None,
+    chunking_comparison: ChunkingComparison | None = None,
+    require_chunking_comparison: bool = False,
+    chunking_gate_options: dict[str, Any] | None = None,
 ) -> IngestionReadinessReport:
     artifact_presence = package_artifact_presence(package_dir)
     audit = audit_package(
@@ -113,6 +127,37 @@ def build_ingestion_readiness_report(
             )
         )
 
+    retrieval_case_audit = None
+    if retrieval_cases is not None:
+        retrieval_case_audit = audit_retrieval_cases(
+            retrieval_cases,
+            profiles=manifest.profiles,
+            chunks=manifest.chunks,
+            assets=manifest.assets,
+            triples=manifest.triples,
+            **(retrieval_case_options or {}),
+        )
+        components.append(
+            ReadinessComponent(
+                name="retrieval_case_audit",
+                passed=retrieval_case_audit.passed,
+                message="Retrieval benchmark cases are valid for the package and configured target coverage.",
+                metadata={
+                    "failed_checks": retrieval_case_audit.failed_checks,
+                    "target_counts": retrieval_case_audit.target_counts,
+                    "missing_target_counts": retrieval_case_audit.missing_target_counts,
+                },
+            )
+        )
+    elif require_retrieval_cases:
+        components.append(
+            ReadinessComponent(
+                name="retrieval_case_audit",
+                passed=False,
+                message="Retrieval benchmark cases are required but were not supplied.",
+            )
+        )
+
     retrieval_gate = None
     if retrieval_evaluation is not None:
         retrieval_gate = gate_retrieval_evaluation(
@@ -139,6 +184,34 @@ def build_ingestion_readiness_report(
             )
         )
 
+    chunking_comparison_gate = None
+    if chunking_comparison is not None:
+        chunking_comparison_gate = gate_chunking_comparison(
+            chunking_comparison,
+            **(chunking_gate_options or {}),
+        )
+        components.append(
+            ReadinessComponent(
+                name="chunking_comparison_gate",
+                passed=chunking_comparison_gate.passed,
+                message="Selected chunking candidate meets configured quality, retrieval, and latency thresholds.",
+                metadata={
+                    "candidate": chunking_comparison_gate.candidate,
+                    "baseline_candidate": chunking_comparison_gate.baseline_candidate,
+                    "failed_checks": chunking_comparison_gate.failed_checks,
+                    "metrics": chunking_comparison_gate.metrics,
+                },
+            )
+        )
+    elif require_chunking_comparison:
+        components.append(
+            ReadinessComponent(
+                name="chunking_comparison_gate",
+                passed=False,
+                message="Chunking comparison gate is required but no comparison was supplied.",
+            )
+        )
+
     failed_components = [
         component.name
         for component in components
@@ -157,7 +230,9 @@ def build_ingestion_readiness_report(
         postgres_row_counts=postgres_row_counts,
         audit=audit,
         visual_quality=visual_quality,
+        retrieval_case_audit=retrieval_case_audit,
         retrieval_gate=retrieval_gate,
+        chunking_comparison_gate=chunking_comparison_gate,
         components=components,
         failed_components=failed_components,
     )

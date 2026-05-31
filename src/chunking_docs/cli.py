@@ -1866,6 +1866,14 @@ def ingestion_readiness_command(
     min_vlm_summary_coverage: float = 0.0,
     min_vlm_json_parse_rate: float = 0.0,
     max_visual_failed_count: int | None = None,
+    retrieval_cases: Path | None = None,
+    require_retrieval_cases: bool = False,
+    min_case_count: int = 1,
+    min_page_cases: int = 0,
+    min_chunk_cases: int = 0,
+    min_asset_cases: int = 0,
+    min_triple_cases: int = 0,
+    max_duplicate_queries: int = 0,
     retrieval_evaluation: Path | None = None,
     require_retrieval_evaluation: bool = False,
     min_recall_at_k: float = 0.0,
@@ -1873,6 +1881,17 @@ def ingestion_readiness_command(
     min_target_ndcg_at_k: float = 0.0,
     min_precision_at_k: float = 0.0,
     max_p95_latency_ms: float | None = None,
+    chunking_comparison: Path | None = None,
+    require_chunking_comparison: bool = False,
+    chunking_candidate: str | None = None,
+    baseline_chunking_candidate: str | None = None,
+    min_chunking_quality_score: float = 0.0,
+    min_chunking_recall_at_k: float | None = None,
+    min_chunking_target_coverage_at_k: float | None = None,
+    min_chunking_target_ndcg_at_k: float | None = None,
+    max_chunking_failed_queries: int | None = 0,
+    max_chunking_recall_drop: float | None = None,
+    max_chunking_mean_latency_ratio: float | None = None,
     fail: bool = typer.Option(
         True,
         "--fail/--no-fail",
@@ -1882,7 +1901,9 @@ def ingestion_readiness_command(
     """Check whether a package is ready for Qdrant/PostgreSQL ingestion and RAG evaluation."""
     manifest = load_processing_package(package_dir)
     parsed_visual_results = read_jsonl(visual_results, VisualJobRunResult) if visual_results else None
+    parsed_retrieval_cases = load_retrieval_cases(retrieval_cases) if retrieval_cases else None
     parsed_retrieval = load_retrieval_evaluation(retrieval_evaluation) if retrieval_evaluation else None
+    parsed_chunking_comparison = load_chunking_comparison(chunking_comparison) if chunking_comparison else None
     report = build_ingestion_readiness_report(
         package_dir=package_dir,
         manifest=manifest,
@@ -1900,6 +1921,16 @@ def ingestion_readiness_command(
             "min_vlm_json_parse_rate": min_vlm_json_parse_rate,
             "max_failed_count": max_visual_failed_count,
         },
+        retrieval_cases=parsed_retrieval_cases,
+        require_retrieval_cases=require_retrieval_cases,
+        retrieval_case_options={
+            "min_case_count": min_case_count,
+            "min_page_cases": min_page_cases,
+            "min_chunk_cases": min_chunk_cases,
+            "min_asset_cases": min_asset_cases,
+            "min_triple_cases": min_triple_cases,
+            "max_duplicate_queries": max_duplicate_queries,
+        },
         retrieval_evaluation=parsed_retrieval,
         require_retrieval_evaluation=require_retrieval_evaluation,
         retrieval_gate_options={
@@ -1908,6 +1939,19 @@ def ingestion_readiness_command(
             "min_target_ndcg_at_k": min_target_ndcg_at_k,
             "min_precision_at_k": min_precision_at_k,
             "max_p95_latency_ms": max_p95_latency_ms,
+        },
+        chunking_comparison=parsed_chunking_comparison,
+        require_chunking_comparison=require_chunking_comparison,
+        chunking_gate_options={
+            "candidate": chunking_candidate,
+            "baseline_candidate": baseline_chunking_candidate,
+            "min_quality_score": min_chunking_quality_score,
+            "min_recall_at_k": min_chunking_recall_at_k,
+            "min_target_coverage_at_k": min_chunking_target_coverage_at_k,
+            "min_target_ndcg_at_k": min_chunking_target_ndcg_at_k,
+            "max_failed_queries": max_chunking_failed_queries,
+            "max_recall_drop": max_chunking_recall_drop,
+            "max_mean_latency_ratio": max_chunking_mean_latency_ratio,
         },
     )
     payload = report.model_dump()

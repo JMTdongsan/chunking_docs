@@ -4,7 +4,9 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 from chunking_docs.cli import app
+from chunking_docs.evaluation.compare import ChunkingComparison, ChunkingComparisonRow
 from chunking_docs.evaluation.readiness import build_ingestion_readiness_report
+from chunking_docs.evaluation.retrieval import RetrievalCase
 from chunking_docs.io import write_jsonl
 from chunking_docs.models import (
     AssetKind,
@@ -31,6 +33,37 @@ def test_ingestion_readiness_passes_ready_package(tmp_path):
     assert report.failed_components == []
 
 
+def test_ingestion_readiness_includes_retrieval_cases_and_chunking_gate(tmp_path):
+    package_dir, manifest = write_ready_package(tmp_path)
+    cases = [
+        RetrievalCase(query="reference evidence", expected_pages=[1]),
+        RetrievalCase(query="visual evidence", expected_asset_ids=["asset-1"]),
+    ]
+    comparison = chunking_comparison()
+
+    report = build_ingestion_readiness_report(
+        package_dir,
+        manifest,
+        retrieval_cases=cases,
+        retrieval_case_options={"min_case_count": 2, "min_page_cases": 1, "min_asset_cases": 1},
+        chunking_comparison=comparison,
+        chunking_gate_options={
+            "candidate": "candidate",
+            "baseline_candidate": "baseline",
+            "min_quality_score": 0.8,
+            "min_recall_at_k": 0.8,
+            "max_recall_drop": 0.05,
+        },
+    )
+
+    assert report.passed is True
+    assert report.retrieval_case_audit is not None
+    assert report.retrieval_case_audit.target_counts["asset"] == 1
+    assert report.chunking_comparison_gate is not None
+    assert report.chunking_comparison_gate.candidate == "candidate"
+    assert report.failed_components == []
+
+
 def test_ingestion_readiness_cli_reports_missing_required_artifact(tmp_path):
     package_dir, _ = write_ready_package(tmp_path)
     (package_dir / "bm25_tokens.json").unlink()
@@ -52,6 +85,29 @@ def test_ingestion_readiness_cli_reports_missing_required_artifact(tmp_path):
     payload = json.loads(output.read_text(encoding="utf-8"))
     assert payload["passed"] is False
     assert "bm25_tokens" in payload["failed_components"]
+
+
+def test_ingestion_readiness_cli_requires_retrieval_cases(tmp_path):
+    package_dir, _ = write_ready_package(tmp_path)
+    output = tmp_path / "readiness.json"
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "ingestion-readiness",
+            "--package-dir",
+            str(package_dir),
+            "--require-retrieval-cases",
+            "--output",
+            str(output),
+            "--no-fail",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["passed"] is False
+    assert "retrieval_case_audit" in payload["failed_components"]
 
 
 def write_ready_package(tmp_path: Path):
@@ -165,3 +221,37 @@ def write_ready_package(tmp_path: Path):
         encoding="utf-8",
     )
     return package_dir, manifest
+
+
+def chunking_comparison():
+    return ChunkingComparison(
+        rows=[
+            chunking_row("candidate", quality_score=0.9, recall=0.9),
+            chunking_row("baseline", quality_score=0.85, recall=0.88),
+        ],
+        best_by_quality="candidate",
+        best_by_retrieval="candidate",
+        fastest_by_mean_latency="candidate",
+    )
+
+
+def chunking_row(name: str, quality_score: float, recall: float):
+    return ChunkingComparisonRow(
+        name=name,
+        chunk_count=1,
+        quality_score=quality_score,
+        retrieval_hit_rate=recall,
+        retrieval_recall_at_k=recall,
+        retrieval_mrr=recall,
+        retrieval_target_coverage_at_k=recall,
+        retrieval_mean_target_ndcg_at_k=recall,
+        retrieval_mean_precision_at_k=recall,
+        retrieval_mean_latency_ms=5.0,
+        retrieval_p95_latency_ms=7.0,
+        failed_queries=[],
+        page_coverage_ratio=1.0,
+        visual_annotation_ratio=1.0,
+        chunks_under_min_chars=0,
+        chunks_over_max_chars=0,
+        issue_codes=[],
+    )
