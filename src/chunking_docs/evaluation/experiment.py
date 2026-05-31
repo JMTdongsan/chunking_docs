@@ -24,6 +24,17 @@ class ArtifactSummary(BaseModel):
     record_count: int | None = None
 
 
+class ValidationSummary(BaseModel):
+    path: str
+    kind: str
+    passed: bool | None = None
+    failed_checks: list[str] = Field(default_factory=list)
+    failed_components: list[str] = Field(default_factory=list)
+    candidate: str | None = None
+    mode: str | None = None
+    metrics: dict[str, float] = Field(default_factory=dict)
+
+
 class ExperimentReport(BaseModel):
     generated_at: str
     package_dir: str
@@ -35,6 +46,7 @@ class ExperimentReport(BaseModel):
     qdrant_collection: dict[str, Any] = Field(default_factory=dict)
     bm25_tokenizer: dict[str, Any] = Field(default_factory=dict)
     artifacts: list[ArtifactSummary] = Field(default_factory=list)
+    validation_summaries: list[ValidationSummary] = Field(default_factory=list)
     comparison: ChunkingComparison | None = None
 
 
@@ -81,6 +93,23 @@ DEFAULT_ARTIFACT_GLOBS = [
     "qdrant_vector_ablation_gate*.json",
 ]
 
+SUMMARY_METRIC_KEYS = {
+    "recall_at_k",
+    "retrieval_recall_at_k",
+    "target_coverage_at_k",
+    "retrieval_target_coverage_at_k",
+    "mean_target_ndcg_at_k",
+    "retrieval_mean_target_ndcg_at_k",
+    "mean_precision_at_k",
+    "retrieval_mean_precision_at_k",
+    "failed_query_count",
+    "target_type.asset.coverage_at_k",
+    "target_type.triple.coverage_at_k",
+    "source_family.lexical.target_coverage_at_k",
+    "source_family.visual.target_coverage_at_k",
+    "source_family.graph.target_coverage_at_k",
+}
+
 
 def build_experiment_report(
     package_dir: Path,
@@ -97,6 +126,7 @@ def build_experiment_report(
     config: dict[str, Any] | None = None,
 ) -> ExperimentReport:
     comparison = None
+    artifact_paths = package_artifact_paths(package_dir, candidates or {})
     if candidates:
         reports = {}
         for name, path in candidates.items():
@@ -132,12 +162,13 @@ def build_experiment_report(
         profile_summary=manifest.metadata.get("profile_summary", {}),
         qdrant_collection=read_json(package_dir / "qdrant_collection.json"),
         bm25_tokenizer=read_json(package_dir / "bm25_tokens.json").get("tokenizer", {}),
-        artifacts=package_artifact_summaries(package_dir, candidates or {}),
+        artifacts=[artifact_summary(path, root=package_dir) for path in artifact_paths],
+        validation_summaries=validation_artifact_summaries(package_dir, artifact_paths),
         comparison=comparison,
     )
 
 
-def package_artifact_summaries(package_dir: Path, candidates: dict[str, Path]) -> list[ArtifactSummary]:
+def package_artifact_paths(package_dir: Path, candidates: dict[str, Path]) -> list[Path]:
     paths: list[Path] = []
     seen: set[Path] = set()
     for name in DEFAULT_ARTIFACTS:
@@ -147,6 +178,11 @@ def package_artifact_summaries(package_dir: Path, candidates: dict[str, Path]) -
             append_unique_path(paths, seen, path)
     for path in candidates.values():
         append_unique_path(paths, seen, path)
+    return paths
+
+
+def package_artifact_summaries(package_dir: Path, candidates: dict[str, Path]) -> list[ArtifactSummary]:
+    paths = package_artifact_paths(package_dir, candidates)
     return [artifact_summary(path, root=package_dir) for path in paths]
 
 
@@ -176,6 +212,68 @@ def count_records(path: Path) -> int | None:
     if path.suffix == ".jsonl":
         return sum(1 for line in path.read_text(encoding="utf-8").splitlines() if line.strip())
     return None
+
+
+def validation_artifact_summaries(package_dir: Path, paths: list[Path]) -> list[ValidationSummary]:
+    summaries = []
+    for path in paths:
+        summary = validation_artifact_summary(path, root=package_dir)
+        if summary is not None:
+            summaries.append(summary)
+    return summaries
+
+
+def validation_artifact_summary(path: Path, root: Path | None = None) -> ValidationSummary | None:
+    if not path.exists() or path.suffix != ".json":
+        return None
+    payload = read_json(path)
+    if not is_validation_payload(payload):
+        return None
+    return ValidationSummary(
+        path=str(path.relative_to(root)) if root and path.is_relative_to(root) else str(path),
+        kind=validation_kind(path),
+        passed=payload.get("passed") if isinstance(payload.get("passed"), bool) else None,
+        failed_checks=string_list(payload.get("failed_checks")),
+        failed_components=string_list(payload.get("failed_components")),
+        candidate=payload.get("candidate") if isinstance(payload.get("candidate"), str) else None,
+        mode=payload.get("mode") if isinstance(payload.get("mode"), str) else None,
+        metrics=summary_metrics(payload.get("metrics")),
+    )
+
+
+def is_validation_payload(payload: dict[str, Any]) -> bool:
+    return any(key in payload for key in ("passed", "failed_checks", "failed_components", "metrics"))
+
+
+def validation_kind(path: Path) -> str:
+    name = path.name
+    for prefix in (
+        "ingestion_readiness",
+        "chunking_gate",
+        "retrieval_gate",
+        "qdrant_vector_ablation_gate",
+        "visual_gate",
+        "visual_quality",
+    ):
+        if name.startswith(prefix):
+            return prefix
+    return path.stem.split(".", 1)[0]
+
+
+def string_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, str)]
+
+
+def summary_metrics(value: Any) -> dict[str, float]:
+    if not isinstance(value, dict):
+        return {}
+    return {
+        key: float(metric)
+        for key, metric in value.items()
+        if key in SUMMARY_METRIC_KEYS and isinstance(metric, int | float)
+    }
 
 
 def read_json(path: Path) -> dict[str, Any]:
