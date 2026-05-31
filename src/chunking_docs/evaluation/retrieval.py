@@ -39,6 +39,8 @@ class RetrievalCaseResult(BaseModel):
     top_triple_ids: list[list[str]] = Field(default_factory=list)
     top_evidence_chunk_ids: list[list[str]] = Field(default_factory=list)
     top_sources: list[list[str]] = Field(default_factory=list)
+    top_chunking_strategies: list[list[str]] = Field(default_factory=list)
+    top_retrieval_roles: list[list[str]] = Field(default_factory=list)
     top_matched_targets: list[list[str]] = Field(default_factory=list)
     expected_pages: list[int]
     expected_chunk_ids: list[str]
@@ -107,6 +109,8 @@ class RetrievalEvaluation(BaseModel):
     target_metrics: dict[str, RetrievalTargetMetric] = Field(default_factory=dict)
     source_metrics: dict[str, RetrievalSourceMetric] = Field(default_factory=dict)
     source_family_metrics: dict[str, RetrievalSourceMetric] = Field(default_factory=dict)
+    chunk_strategy_metrics: dict[str, RetrievalSourceMetric] = Field(default_factory=dict)
+    retrieval_role_metrics: dict[str, RetrievalSourceMetric] = Field(default_factory=dict)
     failed_queries: list[str]
     results: list[RetrievalCaseResult]
 
@@ -207,6 +211,8 @@ def evaluate_search_results(
             [chunk.chunk_id for chunk in hit_evidence_chunks(hit)] for hit in hits_with_chunks
         ]
         top_sources = [hit_sources(hit) for hit in hits_with_chunks]
+        top_chunking_strategies = [hit_chunking_strategies(hit) for hit in hits_with_chunks]
+        top_retrieval_roles = [hit_retrieval_roles(hit) for hit in hits_with_chunks]
         expected_targets = expected_target_keys(case)
         seen_targets: set[str] = set()
         top_matched_targets: list[list[str]] = []
@@ -262,6 +268,8 @@ def evaluate_search_results(
                 top_triple_ids=top_triple_ids,
                 top_evidence_chunk_ids=top_evidence_chunk_ids,
                 top_sources=top_sources,
+                top_chunking_strategies=top_chunking_strategies,
+                top_retrieval_roles=top_retrieval_roles,
                 top_matched_targets=top_matched_targets,
                 expected_pages=case.expected_pages,
                 expected_chunk_ids=case.expected_chunk_ids,
@@ -329,6 +337,8 @@ def evaluate_search_results(
         target_metrics=target_metrics(results),
         source_metrics=source_metrics(results),
         source_family_metrics=source_metrics(results, family=True),
+        chunk_strategy_metrics=hit_group_metrics(results, "top_chunking_strategies"),
+        retrieval_role_metrics=hit_group_metrics(results, "top_retrieval_roles"),
         failed_queries=[result.query for result in results if not result.passed],
         results=results,
     )
@@ -525,6 +535,40 @@ def hit_chunk(hit):
 
 def hit_sources(hit) -> list[str]:
     return list(getattr(hit, "sources", []))
+
+
+def hit_chunking_strategies(hit) -> list[str]:
+    return hit_chunk_metadata_labels(hit, "chunking_strategy")
+
+
+def hit_retrieval_roles(hit) -> list[str]:
+    return hit_chunk_metadata_labels(hit, "retrieval_role")
+
+
+def hit_chunk_metadata_labels(hit, metadata_key: str) -> list[str]:
+    labels: list[str] = []
+    seen: set[str] = set()
+    for chunk in [hit_chunk(hit), *hit_evidence_chunks(hit)]:
+        if chunk is None:
+            continue
+        label = normalized_metric_label(chunk.metadata.get(metadata_key))
+        if label:
+            add_metric_label(labels, seen, label)
+    return labels
+
+
+def normalized_metric_label(value: Any) -> str:
+    if value is None:
+        return "unspecified"
+    label = str(value).strip().lower()
+    return label or "unspecified"
+
+
+def add_metric_label(labels: list[str], seen: set[str], label: str) -> None:
+    if label in seen:
+        return
+    seen.add(label)
+    labels.append(label)
 
 
 def hit_asset_ids(hit) -> list[str]:
@@ -724,6 +768,75 @@ def source_metrics(
             else 0.0,
         )
         for source, values in sorted(accumulators.items())
+    }
+
+
+def hit_group_metrics(
+    results: list[RetrievalCaseResult],
+    group_attr: str,
+) -> dict[str, RetrievalSourceMetric]:
+    total_expected_targets = sum(result.expected_target_count for result in results)
+    accumulators: dict[str, dict[str, Any]] = {}
+
+    for result in results:
+        groups_by_hit = getattr(result, group_attr, [])
+        groups_seen_in_query: set[str] = set()
+        relevant_groups_seen_in_query: set[str] = set()
+        best_rank_by_group: dict[str, int] = {}
+        matched_targets_by_group: dict[str, set[str]] = {}
+
+        for index, groups in enumerate(groups_by_hit):
+            rank = index + 1
+            matched_targets = set(result.top_matched_targets[index]) if index < len(result.top_matched_targets) else set()
+            for group in groups:
+                accumulator = accumulators.setdefault(
+                    group,
+                    {
+                        "query_count": 0,
+                        "relevant_query_count": 0,
+                        "hit_count": 0,
+                        "relevant_hit_count": 0,
+                        "matched_target_count": 0,
+                        "rank_sum": 0,
+                        "rank_count": 0,
+                    },
+                )
+                groups_seen_in_query.add(group)
+                accumulator["hit_count"] += 1
+                if matched_targets:
+                    accumulator["relevant_hit_count"] += 1
+                    relevant_groups_seen_in_query.add(group)
+                    best_rank_by_group[group] = min(best_rank_by_group.get(group, rank), rank)
+                    matched_targets_by_group.setdefault(group, set()).update(matched_targets)
+
+        for group in groups_seen_in_query:
+            accumulators[group]["query_count"] += 1
+        for group in relevant_groups_seen_in_query:
+            accumulators[group]["relevant_query_count"] += 1
+            accumulators[group]["rank_sum"] += best_rank_by_group[group]
+            accumulators[group]["rank_count"] += 1
+        for group, matched_targets in matched_targets_by_group.items():
+            accumulators[group]["matched_target_count"] += len(matched_targets)
+
+    return {
+        group: RetrievalSourceMetric(
+            query_count=values["query_count"],
+            relevant_query_count=values["relevant_query_count"],
+            hit_count=values["hit_count"],
+            relevant_hit_count=values["relevant_hit_count"],
+            expected_target_count=total_expected_targets,
+            matched_target_count=values["matched_target_count"],
+            precision_at_hits=values["relevant_hit_count"] / values["hit_count"]
+            if values["hit_count"]
+            else 0.0,
+            target_coverage_at_k=values["matched_target_count"] / total_expected_targets
+            if total_expected_targets
+            else 0.0,
+            mean_relevant_rank=values["rank_sum"] / values["rank_count"]
+            if values["rank_count"]
+            else 0.0,
+        )
+        for group, values in sorted(accumulators.items())
     }
 
 

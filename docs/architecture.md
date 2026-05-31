@@ -228,7 +228,7 @@ Recommended checks:
 - `postgres-check-schema`: live PostgreSQL schema contract validation for required extensions, tables, columns, column types, and indexes.
 - `eval-chunking`: page coverage, chunk size distribution, section coverage, visual linkage, annotation coverage, retrieval recall@k, MRR, target coverage@k, target nDCG@k, precision@k, latency, failed queries, and aggregate quality score.
 - `audit-retrieval-cases`: benchmark case validation for empty or TODO queries, unknown page/chunk/asset/triple targets, duplicate queries, graph-expansion hints, and target-family coverage.
-- `eval-retrieval`: focused top-k retrieval benchmark cases with optional repeated latency sampling, target-specific page/chunk/asset/triple metrics, visual asset provenance matching for triple targets, and source-family contribution metrics.
+- `eval-retrieval`: focused top-k retrieval benchmark cases with optional repeated latency sampling, target-specific page/chunk/asset/triple metrics, visual asset provenance matching for triple targets, source-family contribution metrics, and chunking-strategy or retrieval-role contribution metrics.
 - `generate-retrieval-cases`: benchmark draft generation from package pages, candidate chunk files, visual assets, graph triples, and optional visual lexical probes, with snippet or document-frequency-weighted salient-term query modes and visual asset targets for asset-provenance triples.
 - `diagnose-retrieval`: failure, partial-coverage, low-ranking, and low-precision analysis for retrieval evaluation JSON outputs.
 - `eval-qdrant-retrieval`: the same benchmark cases against Qdrant named vectors plus BM25 and optional graph expansion.
@@ -239,7 +239,7 @@ Recommended checks:
 - `plan-vlm-experiments`: reproducible profile-by-profile command recipes for running the same visual job set through multiple VLMs.
 - `eval-retrieval-ablation`: dense-only, BM25-only, graph-only, hybrid, graph-expanded hybrid, and text-only versus visual-asset-enriched lexical comparison on the same cases, including target coverage@k, target nDCG@k, and latency.
 - `gate-retrieval-ablation`: pass/fail checks for a selected retrieval ablation mode using absolute thresholds, baseline lift, target-type coverage, source-family coverage, best-mode requirements, and latency limits.
-- `gate-retrieval`: pass/fail checks for absolute metric floors, target-type coverage, source-family target coverage, and baseline regression limits such as recall drop, target coverage drop, target nDCG drop, precision drop, and latency ratio.
+- `gate-retrieval`: pass/fail checks for absolute metric floors, target-type coverage, source-family target coverage, chunking-strategy coverage, retrieval-role coverage, and baseline regression limits such as recall drop, target coverage drop, target nDCG drop, precision drop, and latency ratio.
 - `compare-packages`: before/after package comparison for count deltas, changed chunk/asset/triple IDs, Qdrant record count deltas, and annotation-related observations.
 - `compare-chunking`: side-by-side strategy comparison by quality score, recall@k, MRR, target coverage@k, target nDCG@k, precision@k, target-type coverage, source-family target coverage, linked visual text coverage, latency, and failed queries.
 - `gate-chunking-comparison`: pass/fail checks for selected chunking candidates using quality, page coverage, retrieval floors, target-type coverage, source-family target coverage, failed-query limits, and baseline regression limits.

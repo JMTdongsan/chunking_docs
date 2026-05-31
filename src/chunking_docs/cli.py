@@ -807,6 +807,8 @@ def eval_qdrant_retrieval_command(
                 "p95_latency_ms": evaluation.p95_latency_ms,
                 "target_metrics": retrieval_target_metrics_payload(evaluation),
                 "source_family_metrics": retrieval_source_family_metrics_payload(evaluation),
+                "chunk_strategy_metrics": retrieval_chunk_strategy_metrics_payload(evaluation),
+                "retrieval_role_metrics": retrieval_role_metrics_payload(evaluation),
                 **evaluation.metadata,
             }
         )
@@ -954,6 +956,10 @@ def eval_qdrant_vector_ablation_command(
                         "source_family_metrics": retrieval_source_family_metrics_payload(
                             row.evaluation
                         ),
+                        "chunk_strategy_metrics": retrieval_chunk_strategy_metrics_payload(
+                            row.evaluation
+                        ),
+                        "retrieval_role_metrics": retrieval_role_metrics_payload(row.evaluation),
                         "failed_queries": row.evaluation.failed_queries,
                     }
                     for row in report.rows
@@ -2727,6 +2733,8 @@ def eval_retrieval_command(
                 "p95_latency_ms": evaluation.p95_latency_ms,
                 "target_metrics": retrieval_target_metrics_payload(evaluation),
                 "source_family_metrics": retrieval_source_family_metrics_payload(evaluation),
+                "chunk_strategy_metrics": retrieval_chunk_strategy_metrics_payload(evaluation),
+                "retrieval_role_metrics": retrieval_role_metrics_payload(evaluation),
             }
         )
         return
@@ -2920,6 +2928,10 @@ def eval_retrieval_ablation_command(
                     "p95_latency_ms": row.evaluation.p95_latency_ms,
                     "target_metrics": retrieval_target_metrics_payload(row.evaluation),
                     "source_family_metrics": retrieval_source_family_metrics_payload(row.evaluation),
+                    "chunk_strategy_metrics": retrieval_chunk_strategy_metrics_payload(
+                        row.evaluation
+                    ),
+                    "retrieval_role_metrics": retrieval_role_metrics_payload(row.evaluation),
                     "failed_queries": row.evaluation.failed_queries,
                 }
                 for row in report.rows
@@ -3099,6 +3111,16 @@ def gate_retrieval_command(
         "--min-source-family-target-coverage",
         help="Require source-family target coverage such as lexical=0.8. Repeat for multiple families.",
     ),
+    min_chunk_strategy_target_coverage: list[str] = typer.Option(
+        None,
+        "--min-chunk-strategy-target-coverage",
+        help="Require chunking-strategy target coverage such as hierarchical_child=0.8.",
+    ),
+    min_retrieval_role_target_coverage: list[str] = typer.Option(
+        None,
+        "--min-retrieval-role-target-coverage",
+        help="Require retrieval-role target coverage such as child=0.8.",
+    ),
     max_recall_drop: float | None = None,
     max_target_coverage_drop: float | None = None,
     max_target_ndcg_drop: float | None = None,
@@ -3122,6 +3144,14 @@ def gate_retrieval_command(
         min_target_type_coverage,
         "target type coverage",
     )
+    chunk_strategy_thresholds = parse_named_float_thresholds(
+        min_chunk_strategy_target_coverage,
+        "chunk strategy target coverage",
+    )
+    retrieval_role_thresholds = parse_named_float_thresholds(
+        min_retrieval_role_target_coverage,
+        "retrieval role target coverage",
+    )
     report = gate_retrieval_evaluation(
         parsed_evaluation,
         baseline=parsed_baseline,
@@ -3134,6 +3164,8 @@ def gate_retrieval_command(
         max_p95_latency_ms=max_p95_latency_ms,
         min_target_type_coverage=target_type_thresholds,
         min_source_family_target_coverage=source_family_thresholds,
+        min_chunk_strategy_target_coverage=chunk_strategy_thresholds,
+        min_retrieval_role_target_coverage=retrieval_role_thresholds,
         max_recall_drop=max_recall_drop,
         max_target_coverage_drop=max_target_coverage_drop,
         max_target_ndcg_drop=max_target_ndcg_drop,
@@ -3610,6 +3642,20 @@ def retrieval_source_family_metrics_payload(evaluation) -> dict:
     return {
         name: metric.model_dump()
         for name, metric in getattr(evaluation, "source_family_metrics", {}).items()
+    }
+
+
+def retrieval_chunk_strategy_metrics_payload(evaluation) -> dict:
+    return {
+        name: metric.model_dump()
+        for name, metric in getattr(evaluation, "chunk_strategy_metrics", {}).items()
+    }
+
+
+def retrieval_role_metrics_payload(evaluation) -> dict:
+    return {
+        name: metric.model_dump()
+        for name, metric in getattr(evaluation, "retrieval_role_metrics", {}).items()
     }
 
 

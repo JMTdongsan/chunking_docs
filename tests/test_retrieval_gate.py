@@ -18,6 +18,8 @@ def make_evaluation(
     p95_latency: float = 20.0,
     target_type_coverage: dict[str, float] | None = None,
     source_family_coverage: dict[str, float] | None = None,
+    chunk_strategy_coverage: dict[str, float] | None = None,
+    retrieval_role_coverage: dict[str, float] | None = None,
 ) -> RetrievalEvaluation:
     return RetrievalEvaluation(
         case_count=10,
@@ -40,6 +42,14 @@ def make_evaluation(
         source_family_metrics={
             family: source_family_metric(coverage)
             for family, coverage in (source_family_coverage or {}).items()
+        },
+        chunk_strategy_metrics={
+            strategy: source_family_metric(coverage)
+            for strategy, coverage in (chunk_strategy_coverage or {}).items()
+        },
+        retrieval_role_metrics={
+            role: source_family_metric(coverage)
+            for role, coverage in (retrieval_role_coverage or {}).items()
         },
         failed_queries=[],
         results=[],
@@ -102,6 +112,36 @@ def test_retrieval_gate_checks_source_family_target_coverage():
 
     assert failed.passed is False
     assert failed.failed_checks == ["min_source_family_target_coverage:visual"]
+
+
+def test_retrieval_gate_checks_chunk_strategy_and_role_coverage():
+    evaluation = make_evaluation(
+        chunk_strategy_coverage={"visual_asset_text": 1.0, "hierarchical_child": 0.75},
+        retrieval_role_coverage={"child": 0.75},
+    )
+
+    report = gate_retrieval_evaluation(
+        evaluation,
+        min_chunk_strategy_target_coverage={"visual_asset_text": 1.0},
+        min_retrieval_role_target_coverage={"child": 0.7},
+    )
+
+    assert report.passed is True
+    assert report.metrics["chunk_strategy.visual_asset_text.target_coverage_at_k"] == 1.0
+    assert report.metrics["retrieval_role.child.target_coverage_at_k"] == 0.75
+    assert report.chunk_strategy_metrics["hierarchical_child"]["target_coverage_at_k"] == 0.75
+
+    failed = gate_retrieval_evaluation(
+        evaluation,
+        min_chunk_strategy_target_coverage={"hierarchical_child": 0.8},
+        min_retrieval_role_target_coverage={"child": 0.8},
+    )
+
+    assert failed.passed is False
+    assert failed.failed_checks == [
+        "min_chunk_strategy_target_coverage:hierarchical_child",
+        "min_retrieval_role_target_coverage:child",
+    ]
 
 
 def test_retrieval_gate_flags_baseline_regressions():
@@ -173,6 +213,33 @@ def test_gate_retrieval_cli_checks_source_family_target_coverage(tmp_path):
     assert "min_source_family_target_coverage:visual" in result.output
     payload = output.read_text(encoding="utf-8")
     assert "source_family.visual.target_coverage_at_k" in payload
+
+
+def test_gate_retrieval_cli_checks_chunk_strategy_target_coverage(tmp_path):
+    evaluation_path = tmp_path / "retrieval_eval.json"
+    output = tmp_path / "retrieval_gate.json"
+    evaluation_path.write_text(
+        make_evaluation(chunk_strategy_coverage={"visual_asset_text": 0.5}).model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "gate-retrieval",
+            str(evaluation_path),
+            "--min-chunk-strategy-target-coverage",
+            "visual_asset_text=0.8",
+            "--output",
+            str(output),
+            "--no-fail",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "min_chunk_strategy_target_coverage:visual_asset_text" in result.output
+    payload = output.read_text(encoding="utf-8")
+    assert "chunk_strategy.visual_asset_text.target_coverage_at_k" in payload
 
 
 def test_gate_retrieval_cli_checks_target_type_coverage(tmp_path):

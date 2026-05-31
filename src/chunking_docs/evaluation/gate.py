@@ -24,6 +24,8 @@ class RetrievalGateReport(BaseModel):
     metrics: dict[str, float]
     target_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
     source_family_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
+    chunk_strategy_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
+    retrieval_role_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
     baseline_metrics: dict[str, float] = Field(default_factory=dict)
     failed_checks: list[str] = Field(default_factory=list)
     checks: list[RetrievalGateCheck] = Field(default_factory=list)
@@ -41,6 +43,8 @@ def gate_retrieval_evaluation(
     max_p95_latency_ms: float | None = None,
     min_target_type_coverage: dict[str, float] | None = None,
     min_source_family_target_coverage: dict[str, float] | None = None,
+    min_chunk_strategy_target_coverage: dict[str, float] | None = None,
+    min_retrieval_role_target_coverage: dict[str, float] | None = None,
     max_recall_drop: float | None = None,
     max_target_coverage_drop: float | None = None,
     max_target_ndcg_drop: float | None = None,
@@ -52,12 +56,22 @@ def gate_retrieval_evaluation(
 
     source_family_metrics = retrieval_source_family_metrics(evaluation)
     target_metrics = retrieval_target_metrics(evaluation)
-    metrics = retrieval_metrics(evaluation, source_family_metrics, target_metrics)
+    chunk_strategy_metrics = retrieval_chunk_strategy_metrics(evaluation)
+    retrieval_role_metrics = retrieval_role_metrics_payload(evaluation)
+    metrics = retrieval_metrics(
+        evaluation,
+        source_family_metrics,
+        target_metrics,
+        chunk_strategy_metrics,
+        retrieval_role_metrics,
+    )
     baseline_metrics = (
         retrieval_metrics(
             baseline,
             retrieval_source_family_metrics(baseline),
             retrieval_target_metrics(baseline),
+            retrieval_chunk_strategy_metrics(baseline),
+            retrieval_role_metrics_payload(baseline),
         )
         if baseline is not None
         else {}
@@ -95,6 +109,22 @@ def gate_retrieval_evaluation(
             min_source_family_target_coverage or {},
         )
     )
+    checks.extend(
+        grouped_target_coverage_checks(
+            metrics,
+            min_chunk_strategy_target_coverage or {},
+            metric_key_fn=chunk_strategy_metric_key,
+            check_prefix="min_chunk_strategy_target_coverage",
+        )
+    )
+    checks.extend(
+        grouped_target_coverage_checks(
+            metrics,
+            min_retrieval_role_target_coverage or {},
+            metric_key_fn=retrieval_role_metric_key,
+            check_prefix="min_retrieval_role_target_coverage",
+        )
+    )
     if baseline is not None:
         checks.extend(
             baseline_drop_checks(
@@ -124,6 +154,8 @@ def gate_retrieval_evaluation(
         metrics=metrics,
         target_metrics=target_metrics,
         source_family_metrics=source_family_metrics,
+        chunk_strategy_metrics=chunk_strategy_metrics,
+        retrieval_role_metrics=retrieval_role_metrics,
         baseline_metrics=baseline_metrics,
         failed_checks=failed_checks,
         checks=checks,
@@ -134,6 +166,8 @@ def retrieval_metrics(
     evaluation: RetrievalEvaluation | None,
     source_family_metrics: dict[str, dict[str, float]] | None = None,
     target_metrics: dict[str, dict[str, float]] | None = None,
+    chunk_strategy_metrics: dict[str, dict[str, float]] | None = None,
+    retrieval_role_metrics: dict[str, dict[str, float]] | None = None,
 ) -> dict[str, float]:
     if evaluation is None:
         return {}
@@ -153,6 +187,12 @@ def retrieval_metrics(
     for family, family_metrics in (source_family_metrics or {}).items():
         for key, value in family_metrics.items():
             metrics[source_family_metric_key(family, key)] = value
+    for strategy, strategy_metrics in (chunk_strategy_metrics or {}).items():
+        for key, value in strategy_metrics.items():
+            metrics[chunk_strategy_metric_key(strategy, key)] = value
+    for role, role_metrics in (retrieval_role_metrics or {}).items():
+        for key, value in role_metrics.items():
+            metrics[retrieval_role_metric_key(role, key)] = value
     return metrics
 
 
@@ -194,6 +234,39 @@ def retrieval_source_family_metrics(
             "mean_relevant_rank": metric.mean_relevant_rank,
         }
         for family, metric in sorted(evaluation.source_family_metrics.items())
+    }
+
+
+def retrieval_chunk_strategy_metrics(
+    evaluation: RetrievalEvaluation | None,
+) -> dict[str, dict[str, float]]:
+    if evaluation is None:
+        return {}
+    return retrieval_group_metrics(evaluation.chunk_strategy_metrics)
+
+
+def retrieval_role_metrics_payload(
+    evaluation: RetrievalEvaluation | None,
+) -> dict[str, dict[str, float]]:
+    if evaluation is None:
+        return {}
+    return retrieval_group_metrics(evaluation.retrieval_role_metrics)
+
+
+def retrieval_group_metrics(metrics_by_group) -> dict[str, dict[str, float]]:
+    return {
+        group: {
+            "query_count": float(metric.query_count),
+            "relevant_query_count": float(metric.relevant_query_count),
+            "hit_count": float(metric.hit_count),
+            "relevant_hit_count": float(metric.relevant_hit_count),
+            "expected_target_count": float(metric.expected_target_count),
+            "matched_target_count": float(metric.matched_target_count),
+            "precision_at_hits": metric.precision_at_hits,
+            "target_coverage_at_k": metric.target_coverage_at_k,
+            "mean_relevant_rank": metric.mean_relevant_rank,
+        }
+        for group, metric in sorted(metrics_by_group.items())
     }
 
 
@@ -243,6 +316,36 @@ def source_family_target_coverage_checks(
 
 def source_family_metric_key(family: str, metric: str) -> str:
     return f"source_family.{family}.{metric}"
+
+
+def grouped_target_coverage_checks(
+    metrics: dict[str, float],
+    thresholds: dict[str, float],
+    metric_key_fn,
+    check_prefix: str,
+) -> list[RetrievalGateCheck]:
+    checks = []
+    for group, threshold in sorted(thresholds.items()):
+        normalized_group = group.strip().lower()
+        metric = metric_key_fn(normalized_group, "target_coverage_at_k")
+        metrics.setdefault(metric, 0.0)
+        checks.append(
+            minimum_check(
+                f"{check_prefix}:{normalized_group}",
+                metric,
+                metrics,
+                threshold,
+            )
+        )
+    return checks
+
+
+def chunk_strategy_metric_key(strategy: str, metric: str) -> str:
+    return f"chunk_strategy.{strategy}.{metric}"
+
+
+def retrieval_role_metric_key(role: str, metric: str) -> str:
+    return f"retrieval_role.{role}.{metric}"
 
 
 def minimum_check(
@@ -348,5 +451,7 @@ def gate_summary_payload(report: RetrievalGateReport) -> dict[str, Any]:
         "metrics": report.metrics,
         "target_metrics": report.target_metrics,
         "source_family_metrics": report.source_family_metrics,
+        "chunk_strategy_metrics": report.chunk_strategy_metrics,
+        "retrieval_role_metrics": report.retrieval_role_metrics,
         "baseline_metrics": report.baseline_metrics,
     }

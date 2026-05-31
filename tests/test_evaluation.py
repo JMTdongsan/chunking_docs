@@ -1072,6 +1072,39 @@ def test_evaluate_search_results_matches_visual_asset_id_from_payload():
     assert result.source_family_metrics["visual"].mean_relevant_rank == 1.0
 
 
+def test_evaluate_search_results_reports_chunk_strategy_metrics():
+    chunk = DocumentChunk(
+        chunk_id="visual-chunk",
+        doc_id="doc",
+        page_start=6,
+        page_end=6,
+        kind=ChunkKind.FIGURE,
+        text="station access map",
+        asset_ids=["asset-map"],
+        metadata={
+            "chunking_strategy": "visual_asset_text",
+            "retrieval_role": "child",
+        },
+    )
+
+    class PayloadHit:
+        def __init__(self):
+            self.chunk = chunk
+            self.sources = ["qdrant:text_dense"]
+            self.evidence_chunks = []
+            self.payloads = []
+
+    result = evaluate_search_results(
+        cases=[RetrievalCase(query="station access map", expected_asset_ids=["asset-map"])],
+        search_fn=lambda case, graph_expand: [PayloadHit()],
+    )
+
+    assert result.results[0].top_chunking_strategies == [["visual_asset_text"]]
+    assert result.results[0].top_retrieval_roles == [["child"]]
+    assert result.chunk_strategy_metrics["visual_asset_text"].target_coverage_at_k == 1.0
+    assert result.retrieval_role_metrics["child"].target_coverage_at_k == 1.0
+
+
 def test_evaluate_search_results_matches_visual_asset_ids_from_payload_list():
     chunk = DocumentChunk(
         chunk_id="parent",
