@@ -18,6 +18,7 @@ class RetrievalCase(BaseModel):
     query: str
     expected_pages: list[int] = Field(default_factory=list)
     expected_chunk_ids: list[str] = Field(default_factory=list)
+    expected_asset_ids: list[str] = Field(default_factory=list)
     graph_expand: bool = False
 
 
@@ -29,12 +30,15 @@ class RetrievalCaseResult(BaseModel):
     top_pages: list[int]
     top_page_ranges: list[tuple[int, int]] = Field(default_factory=list)
     top_chunk_ids: list[str]
+    top_asset_ids: list[list[str]] = Field(default_factory=list)
     top_evidence_chunk_ids: list[list[str]] = Field(default_factory=list)
     top_sources: list[list[str]] = Field(default_factory=list)
     expected_pages: list[int]
     expected_chunk_ids: list[str]
+    expected_asset_ids: list[str] = Field(default_factory=list)
     matched_rank: int | None = None
     matched_chunk_id: str | None = None
+    matched_asset_id: str | None = None
     matched_page: int | None = None
     reciprocal_rank: float = 0.0
 
@@ -126,11 +130,12 @@ def evaluate_search_results(
             (hit_chunk(hit).page_start, hit_chunk(hit).page_end) for hit in hits_with_chunks
         ]
         top_chunk_ids = [hit_chunk(hit).chunk_id for hit in hits_with_chunks]
+        top_asset_ids = [hit_asset_ids(hit) for hit in hits_with_chunks]
         top_evidence_chunk_ids = [
             [chunk.chunk_id for chunk in hit_evidence_chunks(hit)] for hit in hits_with_chunks
         ]
         top_sources = [hit_sources(hit) for hit in hits_with_chunks]
-        expected_any = bool(case.expected_pages or case.expected_chunk_ids)
+        expected_any = bool(case.expected_pages or case.expected_chunk_ids or case.expected_asset_ids)
         match = first_relevant_hit(hits_with_chunks, case)
         passed = match is not None if expected_any else bool(hits_with_chunks)
         matched_rank = match.rank if match else (1 if not expected_any and hits_with_chunks else None)
@@ -143,19 +148,24 @@ def evaluate_search_results(
                 top_pages=top_pages,
                 top_page_ranges=top_page_ranges,
                 top_chunk_ids=top_chunk_ids,
+                top_asset_ids=top_asset_ids,
                 top_evidence_chunk_ids=top_evidence_chunk_ids,
                 top_sources=top_sources,
                 expected_pages=case.expected_pages,
                 expected_chunk_ids=case.expected_chunk_ids,
+                expected_asset_ids=case.expected_asset_ids,
                 matched_rank=matched_rank,
                 matched_chunk_id=match.chunk_id if match else None,
+                matched_asset_id=match.asset_id if match else None,
                 matched_page=match.page if match else None,
                 reciprocal_rank=(1.0 / matched_rank) if matched_rank else 0.0,
             )
         )
     passed_count = sum(1 for result in results if result.passed)
     expected_results = [
-        result for result, case in zip(results, cases) if case.expected_pages or case.expected_chunk_ids
+        result
+        for result, case in zip(results, cases)
+        if case.expected_pages or case.expected_chunk_ids or case.expected_asset_ids
     ]
     expected_passed = sum(1 for result in expected_results if result.passed)
     return RetrievalEvaluation(
@@ -186,11 +196,13 @@ def load_retrieval_cases(path: Path) -> list[RetrievalCase]:
 class RelevantHit(BaseModel):
     rank: int
     chunk_id: str
+    asset_id: str | None = None
     page: int | None = None
 
 
 def first_relevant_hit(hits, case: RetrievalCase) -> RelevantHit | None:
     expected_chunk_ids = set(case.expected_chunk_ids)
+    expected_asset_ids = set(case.expected_asset_ids)
     expected_pages = set(case.expected_pages)
     for index, hit in enumerate(hits):
         rank = index + 1
@@ -202,6 +214,9 @@ def first_relevant_hit(hits, case: RetrievalCase) -> RelevantHit | None:
         for evidence_chunk in hit_evidence_chunks(hit):
             if evidence_chunk.chunk_id in expected_chunk_ids:
                 return RelevantHit(rank=rank, chunk_id=evidence_chunk.chunk_id)
+        for asset_id in hit_asset_ids(hit):
+            if asset_id in expected_asset_ids:
+                return RelevantHit(rank=rank, chunk_id=chunk.chunk_id, asset_id=asset_id)
         matched_page = first_page_match(chunk.page_start, chunk.page_end, expected_pages)
         if matched_page is not None:
             return RelevantHit(rank=rank, chunk_id=chunk.chunk_id, page=matched_page)
@@ -221,6 +236,26 @@ def hit_chunk(hit):
 
 def hit_sources(hit) -> list[str]:
     return list(getattr(hit, "sources", []))
+
+
+def hit_asset_ids(hit) -> list[str]:
+    seen: set[str] = set()
+    asset_ids: list[str] = []
+    for asset_id in getattr(hit_chunk(hit), "asset_ids", []):
+        add_asset_id(asset_ids, seen, asset_id)
+    for evidence_chunk in hit_evidence_chunks(hit):
+        for asset_id in evidence_chunk.asset_ids:
+            add_asset_id(asset_ids, seen, asset_id)
+    for payload in getattr(hit, "payloads", []):
+        if isinstance(payload, dict):
+            add_asset_id(asset_ids, seen, payload.get("asset_id"))
+    return asset_ids
+
+
+def add_asset_id(asset_ids: list[str], seen: set[str], asset_id: str | None):
+    if asset_id and asset_id not in seen:
+        seen.add(asset_id)
+        asset_ids.append(asset_id)
 
 
 def hit_evidence_chunks(hit) -> list[DocumentChunk]:

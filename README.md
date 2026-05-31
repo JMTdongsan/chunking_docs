@@ -227,6 +227,7 @@ chunking-docs eval-retrieval-ablation examples/retrieval_cases.jsonl \
 ```jsonl
 {"query":"policy corridor near river","expected_pages":[12],"graph_expand":true}
 {"query":"capital investment table","expected_chunk_ids":["chunk-id"]}
+{"query":"map legend for station access","expected_asset_ids":["asset-id"]}
 ```
 
 For portfolio or production use, maintain benchmark cases for each document family and compare chunking strategies before changing defaults.

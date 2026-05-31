@@ -6,7 +6,7 @@ import chunking_docs.cli as cli_module
 from chunking_docs.cli import app
 from chunking_docs.evaluation.audit import audit_package, degraded_page_ratio
 from chunking_docs.evaluation.ablation import evaluate_retrieval_ablation, parse_ablation_modes
-from chunking_docs.evaluation.retrieval import RetrievalCase, evaluate_retrieval
+from chunking_docs.evaluation.retrieval import RetrievalCase, evaluate_retrieval, evaluate_search_results
 from chunking_docs.io import write_jsonl
 from chunking_docs.models import (
     AssetKind,
@@ -163,6 +163,63 @@ def test_evaluate_retrieval_matches_collapsed_hierarchical_evidence_chunk():
     assert result.results[0].matched_chunk_id == "child"
 
 
+def test_evaluate_retrieval_matches_visual_asset_id_from_evidence_chunk():
+    parent = DocumentChunk(
+        chunk_id="parent",
+        doc_id="doc",
+        page_start=6,
+        page_end=6,
+        kind=ChunkKind.PAGE_SUMMARY,
+        text="summary",
+    )
+    child = DocumentChunk(
+        chunk_id="child",
+        doc_id="doc",
+        page_start=6,
+        page_end=6,
+        kind=ChunkKind.TEXT,
+        text="station access map benchmark evidence",
+        asset_ids=["asset-map"],
+        metadata={"hierarchical_parent_chunk_id": "parent"},
+    )
+    cases = [RetrievalCase(query="station access map", expected_asset_ids=["asset-map"])]
+
+    result = evaluate_retrieval([parent, child], [], cases, collapse_hierarchical=True)
+
+    assert result.expected_case_count == 1
+    assert result.recall_at_k == 1.0
+    assert result.results[0].top_chunk_ids == ["parent"]
+    assert result.results[0].top_asset_ids == [["asset-map"]]
+    assert result.results[0].matched_asset_id == "asset-map"
+
+
+def test_evaluate_search_results_matches_visual_asset_id_from_payload():
+    chunk = DocumentChunk(
+        chunk_id="parent",
+        doc_id="doc",
+        page_start=6,
+        page_end=6,
+        kind=ChunkKind.TEXT,
+        text="station access",
+    )
+
+    class PayloadHit:
+        def __init__(self):
+            self.chunk = chunk
+            self.sources = ["qdrant:caption_dense"]
+            self.evidence_chunks = []
+            self.payloads = [{"asset_id": "asset-map"}]
+
+    result = evaluate_search_results(
+        cases=[RetrievalCase(query="station access map", expected_asset_ids=["asset-map"])],
+        search_fn=lambda case, graph_expand: [PayloadHit()],
+    )
+
+    assert result.recall_at_k == 1.0
+    assert result.results[0].top_asset_ids == [["asset-map"]]
+    assert result.results[0].matched_asset_id == "asset-map"
+
+
 def test_evaluate_retrieval_ablation_compares_modes():
     chunks = [
         DocumentChunk(
@@ -241,8 +298,9 @@ def test_eval_qdrant_retrieval_cli_writes_report(monkeypatch, tmp_path):
         page_end=1,
         kind=ChunkKind.TEXT,
         text="capital budget transit corridor",
+        asset_ids=["asset-1"],
     )
-    write_jsonl(cases_path, [RetrievalCase(query="capital budget", expected_pages=[1])])
+    write_jsonl(cases_path, [RetrievalCase(query="capital budget", expected_asset_ids=["asset-1"])])
 
     class FakeStore:
         def count(self):
@@ -288,6 +346,7 @@ def test_eval_qdrant_retrieval_cli_writes_report(monkeypatch, tmp_path):
     assert payload["metadata"]["collection"] == "documents"
     assert payload["repeat"] == 2
     assert payload["recall_at_k"] == 1.0
+    assert payload["results"][0]["matched_asset_id"] == "asset-1"
     assert payload["results"][0]["top_sources"] == [["qdrant:text_dense"]]
     assert len(payload["results"][0]["latency_samples_ms"]) == 2
 

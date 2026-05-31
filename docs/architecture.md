@@ -165,7 +165,7 @@ Recommended checks:
 - `write-experiment-report`: reproducible package report with artifact checksums, record counts, tokenizer settings, Qdrant configuration, and candidate comparison metrics.
 - Qdrant local mode upsert: validates named vector records and payloads.
 
-Benchmark cases should be maintained per document family. A useful case specifies the query, expected page or chunk, and whether graph expansion should be enabled.
+Benchmark cases should be maintained per document family. A useful case specifies the query, expected page, chunk, visual asset, and whether graph expansion should be enabled.
 
 Tokenizer settings are part of the retrieval experiment. Strategy comparisons should keep the tokenizer fixed unless the experiment is explicitly measuring lexical tokenization.
 
