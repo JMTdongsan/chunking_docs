@@ -166,6 +166,46 @@ def test_audit_graph_triples_reports_quality_issues():
     assert "low_information_predicate" in codes
 
 
+def test_audit_graph_triples_resolves_asset_backed_visual_triples():
+    chunk = DocumentChunk(
+        chunk_id="chunk-1",
+        doc_id="doc",
+        page_start=1,
+        page_end=1,
+        kind=ChunkKind.TEXT,
+        text="visual context",
+        source_refs=["asset:asset-1"],
+    )
+    triples = [
+        GraphTriple(
+            triple_id="visual",
+            doc_id="doc",
+            chunk_id="vlm-annotation",
+            subject="diagram",
+            predicate="depicts",
+            object="process",
+            qualifiers={"asset_id": "asset-1"},
+        ),
+        GraphTriple(
+            triple_id="missing",
+            doc_id="doc",
+            chunk_id="missing",
+            subject="diagram",
+            predicate="depicts",
+            object="unknown process",
+            qualifiers={"asset_id": "missing-asset"},
+        ),
+    ]
+
+    report = audit_graph_triples(triples, chunks=[chunk])
+
+    assert not report.passed
+    assert report.orphan_count == 1
+    assert [issue.triple_id for issue in report.issues if issue.code == "orphan_triple_chunk"] == [
+        "missing"
+    ]
+
+
 def test_graph_quality_cli_writes_normalized_triples_and_report(tmp_path):
     package_dir = tmp_path / "package"
     chunk = make_chunk("chunk-1")

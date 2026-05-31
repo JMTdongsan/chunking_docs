@@ -8,6 +8,11 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from chunking_docs.graph.extractor import make_triple_id
+from chunking_docs.graph.provenance import (
+    chunk_id_alias_map,
+    chunk_ids_by_asset_id,
+    triple_resolved_chunk_ids,
+)
 from chunking_docs.models import DocumentChunk, GraphTriple
 
 _QUOTE_CHARS = "\"'`“”‘’"
@@ -161,6 +166,8 @@ def audit_graph_triples(
     max_issues: int = 200,
 ) -> GraphTripleQualityReport:
     chunk_ids = {chunk.chunk_id for chunk in chunks or []}
+    chunk_id_by_alias = chunk_id_alias_map(chunks or [])
+    chunk_ids_by_asset = chunk_ids_by_asset_id(chunks or [])
     check_orphans = chunks is not None
     normalized = [normalize_graph_triple(triple) for triple in triples]
     predicate_counts = Counter(triple.predicate for triple in normalized if triple.predicate)
@@ -210,7 +217,12 @@ def audit_graph_triples(
                 ),
             )
 
-        if check_orphans and triple.chunk_id not in chunk_ids:
+        if check_orphans and not triple_resolved_chunk_ids(
+            triple,
+            chunk_ids,
+            chunk_id_by_alias,
+            chunk_ids_by_asset,
+        ):
             orphan_count += 1
             append_issue(
                 issues,

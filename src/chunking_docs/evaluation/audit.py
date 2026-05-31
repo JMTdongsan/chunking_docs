@@ -9,7 +9,12 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from chunking_docs.embeddings.records import asset_text
-from chunking_docs.graph.provenance import chunk_asset_ids
+from chunking_docs.graph.provenance import (
+    chunk_asset_ids,
+    chunk_id_alias_map,
+    chunk_ids_by_asset_id,
+    triple_resolved_chunk_ids,
+)
 from chunking_docs.io import read_jsonl
 from chunking_docs.models import DocumentChunk, GraphTriple, PageProfile, TextQuality, VisualAsset
 from chunking_docs.storage.records import EmbeddingRecord
@@ -82,7 +87,13 @@ def audit_package(
         )
 
     chunk_ids = {chunk.chunk_id for chunk in chunks}
-    orphan_triples = [triple.triple_id for triple in triples if triple.chunk_id not in chunk_ids]
+    chunk_id_by_alias = chunk_id_alias_map(chunks)
+    chunk_ids_by_asset = chunk_ids_by_asset_id(chunks)
+    orphan_triples = [
+        triple.triple_id
+        for triple in triples
+        if not triple_resolved_chunk_ids(triple, chunk_ids, chunk_id_by_alias, chunk_ids_by_asset)
+    ]
     if orphan_triples:
         issues.append(
             AuditIssue(

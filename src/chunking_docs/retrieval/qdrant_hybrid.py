@@ -7,7 +7,12 @@ from chunking_docs.embeddings.bm25 import BM25LexicalIndex, chunk_lexical_texts
 from chunking_docs.embeddings.interfaces import DenseTextEmbedder
 from chunking_docs.embeddings.tokenizers import LexicalTokenizerConfig
 from chunking_docs.graph.export import related_terms
-from chunking_docs.graph.provenance import chunk_asset_ids, string_values
+from chunking_docs.graph.provenance import (
+    chunk_asset_ids,
+    chunk_id_alias_map,
+    chunk_ids_by_asset_id,
+    string_values,
+)
 from chunking_docs.models import DocumentChunk, GraphTriple, VisualAsset
 from chunking_docs.retrieval.fusion import RankedHit, reciprocal_rank_fusion
 from chunking_docs.retrieval.hierarchy import (
@@ -16,8 +21,6 @@ from chunking_docs.retrieval.hierarchy import (
     merge_evidence_maps,
 )
 from chunking_docs.retrieval.local_hybrid import (
-    chunk_id_alias_map,
-    chunk_ids_by_asset_id,
     graph_candidate_chunk_ids,
     graph_match_score,
     normalize_graph_match_text,

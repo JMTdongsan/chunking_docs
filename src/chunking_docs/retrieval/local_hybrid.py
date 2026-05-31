@@ -7,7 +7,11 @@ from chunking_docs.embeddings.bm25 import BM25LexicalIndex, chunk_lexical_texts
 from chunking_docs.embeddings.interfaces import DenseTextEmbedder
 from chunking_docs.embeddings.tokenizers import LexicalTokenizerConfig
 from chunking_docs.graph.export import related_terms
-from chunking_docs.graph.provenance import chunk_asset_ids, ordered_unique, triple_asset_ids
+from chunking_docs.graph.provenance import (
+    chunk_id_alias_map,
+    chunk_ids_by_asset_id,
+    triple_resolved_chunk_ids,
+)
 from chunking_docs.models import DocumentChunk, GraphTriple, VisualAsset
 from chunking_docs.retrieval.fusion import RankedHit, reciprocal_rank_fusion
 from chunking_docs.retrieval.hierarchy import collapse_ranked_hits, merge_evidence_maps
@@ -168,38 +172,13 @@ def cosine_similarity(left: list[float], right: list[float]) -> float:
     return dot / (left_norm * right_norm)
 
 
-def chunk_id_alias_map(chunks: list[DocumentChunk]) -> dict[str, str]:
-    aliases: dict[str, str] = {}
-    for chunk in chunks:
-        aliases.setdefault(chunk.chunk_id, chunk.chunk_id)
-        for key in ("source_chunk_id", "parent_chunk_id"):
-            value = chunk.metadata.get(key)
-            if isinstance(value, str):
-                aliases.setdefault(value, chunk.chunk_id)
-    return aliases
-
-
-def chunk_ids_by_asset_id(chunks: list[DocumentChunk]) -> dict[str, list[str]]:
-    indexed: dict[str, list[str]] = {}
-    for chunk in chunks:
-        for asset_id in chunk_asset_ids(chunk):
-            indexed.setdefault(asset_id, []).append(chunk.chunk_id)
-    return {asset_id: ordered_unique(chunk_ids) for asset_id, chunk_ids in indexed.items()}
-
-
 def graph_candidate_chunk_ids(
     triple: GraphTriple,
     chunk_by_id: dict[str, DocumentChunk],
     chunk_id_by_alias: dict[str, str],
     chunk_ids_by_asset: dict[str, list[str]],
 ) -> list[str]:
-    candidates = []
-    chunk_id = chunk_id_by_alias.get(triple.chunk_id, triple.chunk_id)
-    if chunk_id in chunk_by_id:
-        candidates.append(chunk_id)
-    for asset_id in sorted(triple_asset_ids(triple)):
-        candidates.extend(chunk_ids_by_asset.get(asset_id, []))
-    return ordered_unique(candidates)
+    return triple_resolved_chunk_ids(triple, set(chunk_by_id), chunk_id_by_alias, chunk_ids_by_asset)
 
 
 def graph_match_score(query_normalized: str, triple: GraphTriple) -> float:

@@ -8,7 +8,13 @@ from typing import Literal
 
 from chunking_docs.embeddings.records import asset_text
 from chunking_docs.evaluation.retrieval import RetrievalCase
-from chunking_docs.graph.provenance import chunk_asset_ids, triple_asset_ids
+from chunking_docs.graph.provenance import (
+    chunk_asset_ids,
+    chunk_id_alias_map,
+    chunk_ids_by_asset_id,
+    triple_asset_ids,
+    triple_resolved_chunk_ids,
+)
 from chunking_docs.models import DocumentChunk, GraphTriple, VisualAsset
 
 _WHITESPACE_RE = re.compile(r"\s+")
@@ -148,6 +154,7 @@ def generate_retrieval_case_skeleton(
         cases.extend(
             triple_cases(
                 triples,
+                chunks=chunks,
                 limit=triple_limit,
                 query_max_chars=query_max_chars,
                 query_mode=query_mode,
@@ -393,6 +400,7 @@ def chunks_by_asset_id(chunks: list[DocumentChunk]) -> dict[str, list[DocumentCh
 
 def triple_cases(
     triples: list[GraphTriple],
+    chunks: list[DocumentChunk],
     limit: int,
     query_max_chars: int,
     query_mode: QueryMode = "snippet",
@@ -402,6 +410,9 @@ def triple_cases(
     min_query_terms: int = 3,
     max_query_terms: int = 8,
 ) -> list[RetrievalCase]:
+    chunk_ids = {chunk.chunk_id for chunk in chunks}
+    chunk_id_by_alias = chunk_id_alias_map(chunks)
+    chunk_ids_by_asset = chunk_ids_by_asset_id(chunks)
     candidates: list[CaseCandidate] = []
     for triple in sorted(triples, key=lambda item: (item.chunk_id, item.triple_id)):
         draft = query_from_text(
@@ -416,10 +427,16 @@ def triple_cases(
         query = draft.query
         if not query:
             continue
+        expected_chunk_ids = triple_resolved_chunk_ids(
+            triple,
+            chunk_ids,
+            chunk_id_by_alias,
+            chunk_ids_by_asset,
+        )
         case = with_case_metadata(
             RetrievalCase(
                 query=query,
-                expected_chunk_ids=[triple.chunk_id],
+                expected_chunk_ids=expected_chunk_ids or [triple.chunk_id],
                 expected_asset_ids=sorted(triple_asset_ids(triple)),
                 expected_triple_ids=[triple.triple_id],
                 graph_expand=True,

@@ -26,3 +26,31 @@ def test_remap_triples_to_first_available_child_chunk():
     assert remapped[0].chunk_id == "child-1"
     assert remapped[0].qualifiers["original_chunk_id"] == "parent-1"
     assert remapped[0].triple_id != "triple-1"
+
+
+def test_remap_triples_to_asset_linked_chunk():
+    chunk = DocumentChunk(
+        chunk_id="chunk-1",
+        doc_id="doc",
+        page_start=1,
+        page_end=1,
+        kind=ChunkKind.TEXT,
+        text="visual context",
+        source_refs=["asset:asset-1"],
+    )
+    triple = GraphTriple(
+        triple_id="triple-1",
+        doc_id="doc",
+        chunk_id="vlm-annotation",
+        subject="diagram",
+        predicate="depicts",
+        object="process",
+        qualifiers={"asset_id": "asset-1"},
+    )
+
+    remapped = remap_triples_to_available_chunks([triple], [chunk])
+
+    assert remapped[0].chunk_id == "chunk-1"
+    assert remapped[0].qualifiers["original_chunk_id"] == "vlm-annotation"
+    assert remapped[0].qualifiers["remapped_by_asset_provenance"] is True
+    assert remapped[0].qualifiers["remapped_asset_id"] == "asset-1"

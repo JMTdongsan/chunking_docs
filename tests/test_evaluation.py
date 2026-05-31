@@ -188,6 +188,38 @@ def test_audit_package_counts_source_ref_visual_asset_links():
     assert audit.chunks_with_assets == 1
 
 
+def test_audit_package_accepts_asset_backed_graph_triples():
+    chunk = DocumentChunk(
+        chunk_id="chunk",
+        doc_id="doc",
+        page_start=1,
+        page_end=1,
+        kind=ChunkKind.TEXT,
+        text="visual context",
+        source_refs=["asset:asset"],
+    )
+    asset = VisualAsset(
+        asset_id="asset",
+        doc_id="doc",
+        page_no=1,
+        kind=AssetKind.MAP,
+    )
+    triple = GraphTriple(
+        triple_id="visual",
+        doc_id="doc",
+        chunk_id="vlm-annotation",
+        subject="diagram",
+        predicate="depicts",
+        object="process",
+        qualifiers={"asset_id": "asset"},
+    )
+
+    audit = audit_package([], [chunk], [asset], [triple])
+
+    assert audit.passed
+    assert "orphan_triples" not in {issue.code for issue in audit.issues}
+
+
 def test_audit_package_requires_vlm_retry_when_parse_status_is_missing():
     profiles = [
         PageProfile(
