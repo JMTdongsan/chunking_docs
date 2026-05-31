@@ -166,6 +166,43 @@ def test_local_hybrid_graph_hits_resolve_source_chunk_alias():
     assert hits[0].sources == ["graph"]
 
 
+def test_local_hybrid_graph_hits_resolve_visual_asset_provenance():
+    chunk = DocumentChunk(
+        chunk_id="chunk-asset",
+        doc_id="doc",
+        page_start=5,
+        page_end=5,
+        kind=ChunkKind.TEXT,
+        text="summary",
+        asset_ids=["asset-map"],
+    )
+    triple = GraphTriple(
+        triple_id="t",
+        doc_id="doc",
+        chunk_id="annotation-only",
+        subject="station access map",
+        predicate="shows",
+        object="riverfront axis",
+        qualifiers={"source": "visual_annotation", "asset_id": "asset-map"},
+    )
+
+    searcher = LocalHybridSearcher(
+        [chunk],
+        HashingTextEmbedder(embedding_dim=64),
+        triples=[triple],
+    )
+    hits = searcher.search(
+        "station access map",
+        top_k=1,
+        graph_expand=True,
+        use_dense=False,
+        use_bm25=False,
+    )
+
+    assert hits[0].chunk.chunk_id == "chunk-asset"
+    assert hits[0].sources == ["graph"]
+
+
 def test_local_hybrid_graph_hits_prioritize_exact_triple_components():
     chunks = [
         DocumentChunk(

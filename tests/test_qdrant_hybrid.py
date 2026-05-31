@@ -479,6 +479,45 @@ def test_qdrant_hybrid_graph_hits_resolve_source_chunk_alias():
     assert hits[0].sources == ["graph"]
 
 
+def test_qdrant_hybrid_graph_hits_resolve_visual_asset_provenance():
+    chunk = DocumentChunk(
+        chunk_id="chunk-asset",
+        doc_id="doc",
+        page_start=5,
+        page_end=5,
+        kind=ChunkKind.TEXT,
+        text="summary",
+        asset_ids=["asset-map"],
+    )
+    triple = GraphTriple(
+        triple_id="triple-1",
+        doc_id="doc",
+        chunk_id="annotation-only",
+        subject="station access map",
+        predicate="shows",
+        object="riverfront axis",
+        qualifiers={"source": "visual_annotation", "asset_id": "asset-map"},
+    )
+
+    searcher = QdrantHybridSearcher(
+        store=FakeQdrantStore(),
+        chunks=[chunk],
+        assets=[],
+        embedder=HashingTextEmbedder(embedding_dim=8),
+        triples=[triple],
+    )
+    hits = searcher.search(
+        "station access map",
+        vector_names=["text_dense"],
+        top_k=1,
+        graph_expand=True,
+        fusion_weights={"qdrant": 0.0, "bm25": 0.0, "graph": 1.0},
+    )
+
+    assert hits[0].item_id == "chunk-asset"
+    assert hits[0].sources == ["graph"]
+
+
 def test_qdrant_hybrid_graph_hits_prioritize_exact_triple_components():
     generic = DocumentChunk(
         chunk_id="generic",

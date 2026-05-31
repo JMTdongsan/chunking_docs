@@ -16,6 +16,8 @@ from chunking_docs.retrieval.hierarchy import (
 )
 from chunking_docs.retrieval.local_hybrid import (
     chunk_id_alias_map,
+    chunk_ids_by_asset_id,
+    graph_candidate_chunk_ids,
     graph_match_score,
     normalize_graph_match_text,
 )
@@ -58,10 +60,10 @@ class QdrantHybridSearcher:
         )
         self.chunk_by_id = {chunk.chunk_id: chunk for chunk in chunks}
         self.chunk_id_by_alias = chunk_id_alias_map(chunks)
+        self.chunk_ids_by_asset_id = chunk_ids_by_asset_id(chunks)
         self.asset_to_chunk_id = {
-            asset_id: chunk.chunk_id
-            for chunk in chunks
-            for asset_id in chunk.asset_ids
+            asset_id: chunk_ids[0]
+            for asset_id, chunk_ids in self.chunk_ids_by_asset_id.items()
         }
 
     def search(
@@ -186,8 +188,12 @@ class QdrantHybridSearcher:
         for triple in self.triples:
             score = graph_match_score(query_normalized, triple)
             if score:
-                chunk_id = self.chunk_id_by_alias.get(triple.chunk_id, triple.chunk_id)
-                if chunk_id in self.chunk_by_id:
+                for chunk_id in graph_candidate_chunk_ids(
+                    triple,
+                    self.chunk_by_id,
+                    self.chunk_id_by_alias,
+                    self.chunk_ids_by_asset_id,
+                ):
                     scored[chunk_id] = max(scored.get(chunk_id, 0), score)
         ranked = sorted(scored.items(), key=lambda item: item[1], reverse=True)[:top_k]
         return [
