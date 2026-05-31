@@ -14,6 +14,7 @@ from chunking_docs.models import (
 )
 from chunking_docs.storage.postgres_records import (
     asset_row,
+    chunk_asset_link_rows,
     chunk_row,
     document_row,
     embedding_artifact_rows,
@@ -77,8 +78,57 @@ def test_postgres_row_transforms_are_json_ready():
     assert chunk_row(chunk)["metadata"]["asset_ids"] == ["asset", "source-asset"]
     assert chunk_row(chunk)["metadata"]["source_refs"] == ["asset:source-asset"]
     assert asset_row(asset, base_dir=Path("/tmp"))["path"] == "assets/page.png"
+    assert chunk_asset_link_rows([chunk], valid_asset_ids={"asset", "source-asset"}) == [
+        {
+            "chunk_id": "chunk",
+            "asset_id": "asset",
+            "doc_id": "doc",
+            "source": "asset_ids",
+            "metadata": {
+                "sources": ["asset_ids"],
+                "source_refs": [],
+                "visual_asset_unlinked": False,
+                "chunking_strategy": None,
+            },
+        },
+        {
+            "chunk_id": "chunk",
+            "asset_id": "source-asset",
+            "doc_id": "doc",
+            "source": "source_refs",
+            "metadata": {
+                "sources": ["source_refs"],
+                "source_refs": ["asset:source-asset"],
+                "visual_asset_unlinked": False,
+                "chunking_strategy": None,
+            },
+        },
+    ]
     assert triple_row(triple)["object"] == "c"
     assert embedding_artifact_rows("doc") == []
+
+
+def test_chunk_asset_link_rows_mark_standalone_visual_chunks():
+    chunk = DocumentChunk(
+        chunk_id="visual",
+        doc_id="doc",
+        page_start=1,
+        page_end=1,
+        kind=ChunkKind.MAP,
+        text="visual evidence",
+        asset_ids=["asset"],
+        source_refs=["asset:asset"],
+        metadata={
+            "chunking_strategy": "visual_asset_text",
+            "visual_asset_unlinked": True,
+        },
+    )
+
+    rows = chunk_asset_link_rows([chunk], valid_asset_ids={"asset"})
+
+    assert rows[0]["source"] == "asset_ids+source_refs+standalone_visual_chunk"
+    assert rows[0]["metadata"]["visual_asset_unlinked"] is True
+    assert rows[0]["metadata"]["chunking_strategy"] == "visual_asset_text"
 
 
 def test_manifest_rows_counts():
@@ -94,7 +144,53 @@ def test_manifest_rows_counts():
 
     assert rows["document"]["doc_id"] == "doc"
     assert rows["pages"] == []
+    assert rows["chunk_asset_links"] == []
     assert rows["embedding_artifacts"] == []
+
+
+def test_manifest_rows_include_normalized_chunk_asset_links():
+    manifest = ProcessingManifest(
+        doc=SourceDocument(doc_id="doc", title="title", local_path=Path("/tmp/doc.pdf")),
+        profiles=[],
+        chunks=[
+            DocumentChunk(
+                chunk_id="chunk",
+                doc_id="doc",
+                page_start=1,
+                page_end=1,
+                kind=ChunkKind.TEXT,
+                text="visual evidence",
+                asset_ids=["asset"],
+                source_refs=["asset:missing"],
+            )
+        ],
+        assets=[
+            VisualAsset(
+                asset_id="asset",
+                doc_id="doc",
+                page_no=1,
+                kind=AssetKind.MAP,
+            )
+        ],
+        triples=[],
+    )
+
+    rows = manifest_rows(manifest)
+
+    assert rows["chunk_asset_links"] == [
+        {
+            "chunk_id": "chunk",
+            "asset_id": "asset",
+            "doc_id": "doc",
+            "source": "asset_ids",
+            "metadata": {
+                "sources": ["asset_ids"],
+                "source_refs": [],
+                "visual_asset_unlinked": False,
+                "chunking_strategy": None,
+            },
+        }
+    ]
 
 
 def test_manifest_rows_includes_embedding_artifact_provenance(tmp_path):

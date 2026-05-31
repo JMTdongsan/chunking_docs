@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from chunking_docs.models import ProcessingManifest
 from chunking_docs.storage.postgres_records import (
     asset_row,
+    chunk_asset_link_rows,
     chunk_row,
     document_row,
     embedding_artifact_rows,
@@ -58,6 +59,13 @@ EXPECTED_POSTGRES_SCHEMA = {
         "vlm_summary": "text",
         "metadata": "jsonb",
     },
+    "chunk_asset_links": {
+        "chunk_id": "text",
+        "asset_id": "text",
+        "doc_id": "text",
+        "source": "text",
+        "metadata": "jsonb",
+    },
     "triples": {
         "triple_id": "text",
         "doc_id": "text",
@@ -85,6 +93,8 @@ EXPECTED_POSTGRES_SCHEMA = {
 
 EXPECTED_POSTGRES_INDEXES = {
     "assets_doc_page_idx": "assets",
+    "chunk_asset_links_asset_idx": "chunk_asset_links",
+    "chunk_asset_links_doc_idx": "chunk_asset_links",
     "chunks_doc_page_idx": "chunks",
     "chunks_text_bm25_idx": "chunks",
     "embedding_artifacts_collection_idx": "embedding_artifacts",
@@ -170,6 +180,7 @@ class PostgresDocumentStore:
                 upsert_pages(cursor, rows["pages"])
                 upsert_chunks(cursor, rows["chunks"])
                 upsert_assets(cursor, rows["assets"])
+                upsert_chunk_asset_links(cursor, rows["chunk_asset_links"])
                 upsert_triples(cursor, rows["triples"])
                 upsert_embedding_artifacts(cursor, rows["embedding_artifacts"])
         return {
@@ -177,6 +188,7 @@ class PostgresDocumentStore:
             "pages": len(rows["pages"]),
             "chunks": len(rows["chunks"]),
             "assets": len(rows["assets"]),
+            "chunk_asset_links": len(rows["chunk_asset_links"]),
             "triples": len(rows["triples"]),
             "embedding_artifacts": len(rows["embedding_artifacts"]),
         }
@@ -188,6 +200,10 @@ def manifest_rows(manifest: ProcessingManifest, base_dir: Path | None = None) ->
         "pages": [page_row(profile) for profile in manifest.profiles],
         "chunks": [chunk_row(chunk) for chunk in manifest.chunks],
         "assets": [asset_row(asset, base_dir=base_dir) for asset in manifest.assets],
+        "chunk_asset_links": chunk_asset_link_rows(
+            manifest.chunks,
+            valid_asset_ids={asset.asset_id for asset in manifest.assets},
+        ),
         "triples": [triple_row(triple) for triple in manifest.triples],
         "embedding_artifacts": embedding_artifact_rows(manifest.doc.doc_id, package_dir=base_dir),
     }
@@ -396,6 +412,23 @@ def upsert_assets(cursor, rows: list[dict[str, Any]]) -> None:
             caption = excluded.caption,
             ocr_text = excluded.ocr_text,
             vlm_summary = excluded.vlm_summary,
+            metadata = excluded.metadata
+        """,
+        [with_json(row, "metadata") for row in rows],
+    )
+
+
+def upsert_chunk_asset_links(cursor, rows: list[dict[str, Any]]) -> None:
+    if not rows:
+        return
+    cursor.executemany(
+        """
+        insert into chunk_asset_links (chunk_id, asset_id, doc_id, source, metadata)
+        values (
+            %(chunk_id)s, %(asset_id)s, %(doc_id)s, %(source)s, %(metadata)s::jsonb
+        )
+        on conflict (chunk_id, asset_id) do update set
+            source = excluded.source,
             metadata = excluded.metadata
         """,
         [with_json(row, "metadata") for row in rows],

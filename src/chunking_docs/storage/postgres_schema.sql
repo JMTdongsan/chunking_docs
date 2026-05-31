@@ -43,6 +43,15 @@ create table if not exists assets (
     metadata jsonb not null default '{}'::jsonb
 );
 
+create table if not exists chunk_asset_links (
+    chunk_id text not null references chunks(chunk_id) on delete cascade,
+    asset_id text not null references assets(asset_id) on delete cascade,
+    doc_id text not null references documents(doc_id) on delete cascade,
+    source text not null,
+    metadata jsonb not null default '{}'::jsonb,
+    primary key (chunk_id, asset_id)
+);
+
 create table if not exists triples (
     triple_id text primary key,
     doc_id text not null references documents(doc_id) on delete cascade,
@@ -71,6 +80,8 @@ create table if not exists embedding_artifacts (
 
 create index if not exists chunks_doc_page_idx on chunks(doc_id, page_start, page_end);
 create index if not exists assets_doc_page_idx on assets(doc_id, page_no);
+create index if not exists chunk_asset_links_asset_idx on chunk_asset_links(asset_id, chunk_id);
+create index if not exists chunk_asset_links_doc_idx on chunk_asset_links(doc_id, asset_id);
 create index if not exists triples_spo_idx on triples(subject, predicate, object);
 create index if not exists chunks_text_bm25_idx on chunks using gin (to_tsvector('simple', text));
 create index if not exists embedding_artifacts_collection_idx on embedding_artifacts(collection, vector_name);
