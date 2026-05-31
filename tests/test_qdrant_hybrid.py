@@ -25,6 +25,26 @@ class FakeQdrantStore:
         return []
 
 
+class FakeHierarchicalQdrantStore:
+    def query_vector(self, vector, vector_name, top_k, must_payload=None, score_threshold=None):
+        return [
+            VectorSearchHit(
+                point_id="child-point",
+                score=0.92,
+                vector_name=vector_name,
+                chunk_id="child",
+                doc_id="doc",
+                payload={
+                    "chunk_id": "child",
+                    "doc_id": "doc",
+                    "page_start": 8,
+                    "page_end": 8,
+                    "text": "station access child evidence",
+                },
+            )
+        ]
+
+
 def test_qdrant_hybrid_maps_asset_hits_to_parent_chunk():
     chunk = DocumentChunk(
         chunk_id="chunk-1",
@@ -86,3 +106,45 @@ def test_qdrant_hybrid_can_include_graph_hits():
 
     assert hits[0].item_id == "chunk-1"
     assert "graph" in hits[0].sources
+
+
+def test_qdrant_hybrid_can_collapse_hierarchical_child_to_parent():
+    parent = DocumentChunk(
+        chunk_id="parent",
+        doc_id="doc",
+        page_start=8,
+        page_end=8,
+        kind=ChunkKind.PAGE_SUMMARY,
+        text="page summary",
+        metadata={"retrieval_role": "parent"},
+    )
+    child = DocumentChunk(
+        chunk_id="child",
+        doc_id="doc",
+        page_start=8,
+        page_end=8,
+        kind=ChunkKind.TEXT,
+        text="station access child evidence",
+        metadata={
+            "retrieval_role": "child",
+            "hierarchical_parent_chunk_id": "parent",
+        },
+    )
+
+    searcher = QdrantHybridSearcher(
+        store=FakeHierarchicalQdrantStore(),
+        chunks=[parent, child],
+        assets=[],
+        embedder=HashingTextEmbedder(embedding_dim=8),
+    )
+    hits = searcher.search(
+        "station access",
+        vector_names=["text_dense"],
+        top_k=1,
+        collapse_hierarchical=True,
+    )
+
+    assert hits[0].item_id == "parent"
+    assert hits[0].chunk == parent
+    assert [chunk.chunk_id for chunk in hits[0].evidence_chunks] == ["child"]
+    assert hits[0].payloads[0]["chunk_id"] == "child"

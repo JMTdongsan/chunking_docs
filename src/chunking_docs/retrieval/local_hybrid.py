@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from chunking_docs.embeddings.bm25 import BM25LexicalIndex
 from chunking_docs.embeddings.interfaces import DenseTextEmbedder
@@ -9,6 +9,7 @@ from chunking_docs.embeddings.tokenizers import LexicalTokenizerConfig
 from chunking_docs.graph.export import related_terms
 from chunking_docs.models import DocumentChunk, GraphTriple
 from chunking_docs.retrieval.fusion import RankedHit, reciprocal_rank_fusion
+from chunking_docs.retrieval.hierarchy import collapse_ranked_hits, merge_evidence_maps
 
 
 @dataclass(frozen=True)
@@ -16,6 +17,7 @@ class HybridSearchHit:
     chunk: DocumentChunk
     score: float
     sources: list[str]
+    evidence_chunks: list[DocumentChunk] = field(default_factory=list)
 
 
 class LocalHybridSearcher:
@@ -31,26 +33,53 @@ class LocalHybridSearcher:
         self.bm25 = BM25LexicalIndex(chunks, tokenizer_config=tokenizer_config)
         self.chunk_vectors = embedder.embed_texts([chunk.text for chunk in chunks])
         self.triples = triples or []
+        self.chunk_by_id = {chunk.chunk_id: chunk for chunk in chunks}
 
     def search(
         self,
         query: str,
         top_k: int = 10,
         graph_expand: bool = False,
+        collapse_hierarchical: bool = False,
     ) -> list[HybridSearchHit]:
         expanded_query = self._expanded_query(query) if graph_expand else query
         dense_hits = self._dense_hits(expanded_query, top_k=max(top_k * 3, 20))
         bm25_hits = self._bm25_hits(expanded_query, top_k=max(top_k * 3, 20))
+        dense_hits, dense_evidence = collapse_ranked_hits(
+            dense_hits,
+            self.chunk_by_id,
+            collapse_hierarchical=collapse_hierarchical,
+        )
+        bm25_hits, bm25_evidence = collapse_ranked_hits(
+            bm25_hits,
+            self.chunk_by_id,
+            collapse_hierarchical=collapse_hierarchical,
+        )
         result_sets = [dense_hits, bm25_hits]
+        evidence_by_item = merge_evidence_maps(dense_evidence, bm25_evidence)
         if graph_expand:
             graph_hits = self._graph_hits(query, top_k=max(top_k * 3, 20))
+            graph_hits, graph_evidence = collapse_ranked_hits(
+                graph_hits,
+                self.chunk_by_id,
+                collapse_hierarchical=collapse_hierarchical,
+            )
+            evidence_by_item = merge_evidence_maps(evidence_by_item, graph_evidence)
             result_sets.append(graph_hits)
         fused = reciprocal_rank_fusion(result_sets, top_k=top_k)
-        chunk_by_id = {chunk.chunk_id: chunk for chunk in self.chunks}
         return [
-            HybridSearchHit(chunk=chunk_by_id[item_id], score=score, sources=sources)
+            HybridSearchHit(
+                chunk=self.chunk_by_id[item_id],
+                score=score,
+                sources=sources,
+                evidence_chunks=[
+                    self.chunk_by_id[evidence_id]
+                    for evidence_id in evidence_by_item.get(item_id, [])
+                    if evidence_id in self.chunk_by_id
+                ],
+            )
             for item_id, score, sources in fused
-            if item_id in chunk_by_id
+            if item_id in self.chunk_by_id
         ]
 
     def _dense_hits(self, query: str, top_k: int) -> list[RankedHit]:

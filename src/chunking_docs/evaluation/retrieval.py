@@ -24,6 +24,7 @@ class RetrievalCaseResult(BaseModel):
     top_pages: list[int]
     top_page_ranges: list[tuple[int, int]] = Field(default_factory=list)
     top_chunk_ids: list[str]
+    top_evidence_chunk_ids: list[list[str]] = Field(default_factory=list)
     top_sources: list[list[str]] = Field(default_factory=list)
     expected_pages: list[int]
     expected_chunk_ids: list[str]
@@ -52,6 +53,7 @@ def evaluate_retrieval(
     cases: list[RetrievalCase],
     top_k: int = 5,
     tokenizer_config: LexicalTokenizerConfig | None = None,
+    collapse_hierarchical: bool = False,
 ) -> RetrievalEvaluation:
     searcher = LocalHybridSearcher(
         chunks,
@@ -61,10 +63,16 @@ def evaluate_retrieval(
     )
     results: list[RetrievalCaseResult] = []
     for case in cases:
-        hits = searcher.search(case.query, top_k=top_k, graph_expand=case.graph_expand)
+        hits = searcher.search(
+            case.query,
+            top_k=top_k,
+            graph_expand=case.graph_expand,
+            collapse_hierarchical=collapse_hierarchical,
+        )
         top_pages = [hit.chunk.page_start for hit in hits]
         top_page_ranges = [(hit.chunk.page_start, hit.chunk.page_end) for hit in hits]
         top_chunk_ids = [hit.chunk.chunk_id for hit in hits]
+        top_evidence_chunk_ids = [[chunk.chunk_id for chunk in hit.evidence_chunks] for hit in hits]
         top_sources = [hit.sources for hit in hits]
         expected_any = bool(case.expected_pages or case.expected_chunk_ids)
         match = first_relevant_hit(hits, case)
@@ -77,6 +85,7 @@ def evaluate_retrieval(
                 top_pages=top_pages,
                 top_page_ranges=top_page_ranges,
                 top_chunk_ids=top_chunk_ids,
+                top_evidence_chunk_ids=top_evidence_chunk_ids,
                 top_sources=top_sources,
                 expected_pages=case.expected_pages,
                 expected_chunk_ids=case.expected_chunk_ids,
@@ -124,6 +133,9 @@ def first_relevant_hit(hits, case: RetrievalCase) -> RelevantHit | None:
         rank = index + 1
         if hit.chunk.chunk_id in expected_chunk_ids:
             return RelevantHit(rank=rank, chunk_id=hit.chunk.chunk_id)
+        for evidence_chunk in getattr(hit, "evidence_chunks", []):
+            if evidence_chunk.chunk_id in expected_chunk_ids:
+                return RelevantHit(rank=rank, chunk_id=evidence_chunk.chunk_id)
         matched_page = first_page_match(hit.chunk.page_start, hit.chunk.page_end, expected_pages)
         if matched_page is not None:
             return RelevantHit(rank=rank, chunk_id=hit.chunk.chunk_id, page=matched_page)

@@ -120,3 +120,31 @@ def test_evaluate_retrieval_reports_ranked_failures():
     assert result.mrr == 0.5
     assert result.failed_queries == ["missing"]
     assert result.results[0].top_page_ranges == [(1, 2)]
+
+
+def test_evaluate_retrieval_matches_collapsed_hierarchical_evidence_chunk():
+    parent = DocumentChunk(
+        chunk_id="parent",
+        doc_id="doc",
+        page_start=6,
+        page_end=6,
+        kind=ChunkKind.PAGE_SUMMARY,
+        text="summary",
+    )
+    child = DocumentChunk(
+        chunk_id="child",
+        doc_id="doc",
+        page_start=6,
+        page_end=6,
+        kind=ChunkKind.TEXT,
+        text="station access benchmark evidence",
+        metadata={"hierarchical_parent_chunk_id": "parent"},
+    )
+    cases = [RetrievalCase(query="station access", expected_chunk_ids=["child"])]
+
+    result = evaluate_retrieval([parent, child], [], cases, collapse_hierarchical=True)
+
+    assert result.recall_at_k == 1.0
+    assert result.results[0].top_chunk_ids == ["parent"]
+    assert result.results[0].top_evidence_chunk_ids == [["child"]]
+    assert result.results[0].matched_chunk_id == "child"

@@ -116,6 +116,8 @@ The Qdrant adapter supports both ingestion and named-vector querying. `qdrant-se
 
 `qdrant-hybrid-search` queries Qdrant named vectors, BM25, and optional graph expansion, then fuses results with Reciprocal Rank Fusion. Caption vector hits from visual assets are mapped back to their parent chunks so text and visual evidence can be ranked together.
 
+Hierarchical chunk files can be searched with parent collapse enabled. In that mode, dense, BM25, graph, or Qdrant hits against fine child chunks are grouped under the coarse parent chunk while the matched child IDs remain attached as evidence. This keeps answer context broad enough for citation while preserving the precise span that triggered retrieval.
+
 ## PostgreSQL Design
 
 PostgreSQL is used for provenance and relational queries, not as the default vector store.
@@ -146,6 +148,8 @@ Recommended checks:
 Benchmark cases should be maintained per document family. A useful case specifies the query, expected page or chunk, and whether graph expansion should be enabled.
 
 Tokenizer settings are part of the retrieval experiment. Strategy comparisons should keep the tokenizer fixed unless the experiment is explicitly measuring lexical tokenization.
+
+For hierarchical candidates, enable parent collapse during `eval-retrieval`, `compare-chunking`, or `write-experiment-report` when the benchmark expects page-level or parent-level citation behavior.
 
 ## Model Strategy
 

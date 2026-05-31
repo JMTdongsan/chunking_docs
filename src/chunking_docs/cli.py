@@ -289,6 +289,7 @@ def qdrant_hybrid_search(
     vector_names: str = "text_dense,caption_dense",
     top_k: int = 5,
     graph_expand: bool = False,
+    collapse_hierarchical: bool = False,
     text_backend: str = "hashing",
     text_model: str = "BAAI/bge-m3",
     device: str = "cuda",
@@ -352,6 +353,7 @@ def qdrant_hybrid_search(
         top_k=top_k,
         graph_expand=graph_expand,
         doc_id=doc_id or None,
+        collapse_hierarchical=collapse_hierarchical,
     )
     print(
         {
@@ -368,6 +370,14 @@ def qdrant_hybrid_search(
                     "page": [hit.chunk.page_start, hit.chunk.page_end] if hit.chunk else None,
                     "kind": str(hit.chunk.kind) if hit.chunk else None,
                     "preview": hit.chunk.text[:180] if hit.chunk else "",
+                    "evidence_chunks": [
+                        {
+                            "chunk_id": chunk.chunk_id,
+                            "page": [chunk.page_start, chunk.page_end],
+                            "preview": chunk.text[:120],
+                        }
+                        for chunk in hit.evidence_chunks[:3]
+                    ],
                     "qdrant_payloads": hit.payloads[:2],
                 }
                 for index, hit in enumerate(hits)
@@ -734,6 +744,7 @@ def search_local(
     chunks_file: str = "chunks.jsonl",
     top_k: int = 5,
     graph_expand: bool = False,
+    collapse_hierarchical: bool = False,
     lexical_tokenizer: TokenizerStrategy = "mixed",
     ngram_min: int = 2,
     ngram_max: int = 4,
@@ -756,7 +767,12 @@ def search_local(
             ngram_cjk_only=ngram_cjk_only,
         ),
     )
-    hits = searcher.search(query, top_k=top_k, graph_expand=graph_expand)
+    hits = searcher.search(
+        query,
+        top_k=top_k,
+        graph_expand=graph_expand,
+        collapse_hierarchical=collapse_hierarchical,
+    )
     print(
         [
             {
@@ -767,6 +783,14 @@ def search_local(
                 "sources": hit.sources,
                 "section": hit.chunk.section.label(),
                 "preview": hit.chunk.text[:180],
+                "evidence_chunks": [
+                    {
+                        "chunk_id": chunk.chunk_id,
+                        "page": [chunk.page_start, chunk.page_end],
+                        "preview": chunk.text[:120],
+                    }
+                    for chunk in hit.evidence_chunks[:3]
+                ],
             }
             for index, hit in enumerate(hits)
         ]
@@ -852,6 +876,7 @@ def eval_retrieval_command(
     package_dir: Path = Path("outputs/package"),
     chunks_file: str = "chunks.jsonl",
     top_k: int = 5,
+    collapse_hierarchical: bool = False,
     lexical_tokenizer: TokenizerStrategy = "mixed",
     ngram_min: int = 2,
     ngram_max: int = 4,
@@ -866,6 +891,7 @@ def eval_retrieval_command(
         triples=triples,
         cases=load_retrieval_cases(cases),
         top_k=top_k,
+        collapse_hierarchical=collapse_hierarchical,
         tokenizer_config=build_tokenizer_config(
             lexical_tokenizer,
             ngram_min=ngram_min,
@@ -883,6 +909,7 @@ def eval_chunking_command(
     top_k: int = 5,
     min_chars: int = 120,
     max_chars: int = 1800,
+    collapse_hierarchical: bool = False,
     lexical_tokenizer: TokenizerStrategy = "mixed",
     ngram_min: int = 2,
     ngram_max: int = 4,
@@ -900,6 +927,7 @@ def eval_chunking_command(
         top_k=top_k,
         min_chars=min_chars,
         max_chars=max_chars,
+        collapse_hierarchical=collapse_hierarchical,
         tokenizer_config=build_tokenizer_config(
             lexical_tokenizer,
             ngram_min=ngram_min,
@@ -922,6 +950,7 @@ def compare_chunking_command(
     top_k: int = 5,
     min_chars: int = 120,
     max_chars: int = 1800,
+    collapse_hierarchical: bool = False,
     lexical_tokenizer: TokenizerStrategy = "mixed",
     ngram_min: int = 2,
     ngram_max: int = 4,
@@ -943,6 +972,7 @@ def compare_chunking_command(
             top_k=top_k,
             min_chars=min_chars,
             max_chars=max_chars,
+            collapse_hierarchical=collapse_hierarchical,
             tokenizer_config=build_tokenizer_config(
                 lexical_tokenizer,
                 ngram_min=ngram_min,
@@ -966,6 +996,7 @@ def write_experiment_report_command(
     top_k: int = 5,
     min_chars: int = 120,
     max_chars: int = 1800,
+    collapse_hierarchical: bool = False,
     lexical_tokenizer: TokenizerStrategy = "mixed",
     ngram_min: int = 2,
     ngram_max: int = 4,
@@ -990,10 +1021,12 @@ def write_experiment_report_command(
         min_chars=min_chars,
         max_chars=max_chars,
         tokenizer_config=tokenizer_config,
+        collapse_hierarchical=collapse_hierarchical,
         config={
             "top_k": top_k,
             "min_chars": min_chars,
             "max_chars": max_chars,
+            "collapse_hierarchical": collapse_hierarchical,
             "retrieval_cases": str(cases) if cases else None,
             "lexical_tokenizer": tokenizer_config.model_dump(),
         },

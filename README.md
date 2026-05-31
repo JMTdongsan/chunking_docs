@@ -218,10 +218,11 @@ chunking-docs compare-chunking \
   --candidate semantic=outputs/package/chunks.semantic.jsonl \
   --candidate multimodal=outputs/package/chunks.multimodal.jsonl \
   --candidate hierarchical=outputs/package/chunks.hierarchical.jsonl \
+  --collapse-hierarchical \
   --cases examples/retrieval_cases.jsonl
 ```
 
-The `multimodal` strategy keeps semantic text chunks and adds visual asset text chunks from captions, OCR, and VLM summaries. The `hierarchical` strategy emits coarse parent chunks plus fine child chunks with shared visual context, which supports experiments where broad queries should find a page or section while precise queries should retrieve a smaller evidence span. Comparison output includes recall@k, MRR, failed queries, chunk size issues, and the best candidate by quality and retrieval behavior.
+The `multimodal` strategy keeps semantic text chunks and adds visual asset text chunks from captions, OCR, and VLM summaries. The `hierarchical` strategy emits coarse parent chunks plus fine child chunks with shared visual context, which supports experiments where broad queries should find a page or section while precise queries should retrieve a smaller evidence span. `--collapse-hierarchical` reports the parent as the final hit while preserving matched child chunks as evidence. Comparison output includes recall@k, MRR, failed queries, chunk size issues, and the best candidate by quality and retrieval behavior.
 
 Write a reproducible experiment report for a package:
 
@@ -232,6 +233,7 @@ chunking-docs write-experiment-report \
   --candidate semantic=outputs/package/chunks.semantic.jsonl \
   --candidate multimodal=outputs/package/chunks.multimodal.jsonl \
   --candidate hierarchical=outputs/package/chunks.hierarchical.jsonl \
+  --collapse-hierarchical \
   --cases examples/retrieval_cases.jsonl \
   --output outputs/package/experiment_report.json
 ```

@@ -84,3 +84,33 @@ def test_local_hybrid_graph_expansion_can_recover_related_chunk():
 
     assert hits[0].chunk.chunk_id == "a"
     assert "graph" in hits[0].sources
+
+
+def test_local_hybrid_can_collapse_hierarchical_child_to_parent():
+    parent = DocumentChunk(
+        chunk_id="parent",
+        doc_id="doc",
+        page_start=7,
+        page_end=7,
+        kind=ChunkKind.PAGE_SUMMARY,
+        text="page summary",
+        metadata={"retrieval_role": "parent"},
+    )
+    child = DocumentChunk(
+        chunk_id="child",
+        doc_id="doc",
+        page_start=7,
+        page_end=7,
+        kind=ChunkKind.TEXT,
+        text="capital program station access evidence",
+        metadata={
+            "retrieval_role": "child",
+            "hierarchical_parent_chunk_id": "parent",
+        },
+    )
+
+    searcher = LocalHybridSearcher([parent, child], HashingTextEmbedder(embedding_dim=64))
+    hits = searcher.search("station access", top_k=1, collapse_hierarchical=True)
+
+    assert hits[0].chunk.chunk_id == "parent"
+    assert [chunk.chunk_id for chunk in hits[0].evidence_chunks] == ["child"]

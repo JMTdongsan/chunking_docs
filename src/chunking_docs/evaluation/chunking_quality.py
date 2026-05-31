@@ -57,6 +57,7 @@ def evaluate_chunking_quality(
     min_chars: int = 120,
     max_chars: int = 1800,
     tokenizer_config: LexicalTokenizerConfig | None = None,
+    collapse_hierarchical: bool = False,
 ) -> ChunkingQualityReport:
     page_numbers = {profile.page_no for profile in profiles}
     if not page_numbers:
@@ -81,6 +82,7 @@ def evaluate_chunking_quality(
             cases=retrieval_cases,
             top_k=top_k,
             tokenizer_config=tokenizer_config,
+            collapse_hierarchical=collapse_hierarchical,
         )
 
     issues = quality_issues(
