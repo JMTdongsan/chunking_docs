@@ -73,15 +73,15 @@
    - `sweep-chunking` generates a strategy and parameter grid, writes candidate chunk files, and ranks the results.
 
 10. **Embedding Artifacts**
-   - `text_dense`: chunk text, OCR text, and VLM summaries.
-   - `caption_dense`: asset caption, OCR, and VLM summary text.
+   - `text_dense`: chunk text, OCR text, VLM summaries, and any visual context included by the selected strategy.
+   - `caption_dense`: asset caption, OCR, VLM summary text, and structured VLM metadata.
    - `image_dense`: rendered page or visual asset image.
    - Default hashing embedders make the pipeline testable without model downloads.
    - `embed-package` regenerates artifacts with model-backed text and image embedders.
    - `embedding_manifest.json` records vector files, dimensions, counts, checksums, backend names, model IDs, devices, and batch sizes.
 
 11. **Lexical Search**
-    - BM25 is generated from chunk text plus linked visual asset captions, OCR text, and VLM summaries.
+    - BM25 is generated from chunk text plus linked visual asset captions, OCR text, VLM summaries, and structured VLM metadata.
     - Lexical search protects exact matches for names, identifiers, dates, codes, and policy terms.
     - Tokenization is configurable as `word`, `char_ngram`, or `mixed`.
     - The default `mixed` tokenizer adds CJK character n-grams so compound terms without whitespace remain retrievable.

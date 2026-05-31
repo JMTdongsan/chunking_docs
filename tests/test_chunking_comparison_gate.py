@@ -23,6 +23,7 @@ def test_gate_chunking_comparison_passes_selected_candidate_against_baseline():
         min_target_coverage_at_k=0.8,
         min_target_ndcg_at_k=0.75,
         min_precision_at_k=0.5,
+        min_visual_text_coverage_ratio=0.8,
         min_target_type_coverage={"asset": 0.8},
         min_source_family_target_coverage={"lexical": 0.8},
         max_failed_queries=0,
@@ -35,6 +36,7 @@ def test_gate_chunking_comparison_passes_selected_candidate_against_baseline():
     assert report.baseline_candidate == "weak"
     assert report.failed_checks == []
     assert report.metrics["retrieval_recall_at_k"] == 0.9
+    assert report.metrics["visual_text_coverage_ratio"] == 0.9
     assert report.metrics["target_type.asset.coverage_at_k"] == 0.85
     assert report.metrics["source_family.lexical.target_coverage_at_k"] == 0.9
     assert report.target_metrics["asset"]["coverage_at_k"] == 0.85
@@ -51,6 +53,7 @@ def test_gate_chunking_comparison_flags_retrieval_regressions():
         require_retrieval=True,
         min_recall_at_k=0.8,
         min_target_coverage_at_k=0.75,
+        min_visual_text_coverage_ratio=0.8,
         min_target_type_coverage={"asset": 0.8},
         min_source_family_target_coverage={"lexical": 0.8},
         max_failed_queries=0,
@@ -61,6 +64,7 @@ def test_gate_chunking_comparison_flags_retrieval_regressions():
     assert report.passed is False
     assert "min_recall_at_k" in report.failed_checks
     assert "min_target_coverage_at_k" in report.failed_checks
+    assert "min_visual_text_coverage_ratio" in report.failed_checks
     assert "min_target_type_coverage:asset" in report.failed_checks
     assert "min_source_family_target_coverage:lexical" in report.failed_checks
     assert "max_failed_queries" in report.failed_checks
@@ -97,6 +101,8 @@ def test_gate_chunking_comparison_cli_writes_json_and_fails(tmp_path):
             "0.8",
             "--min-target-type-coverage",
             "asset=0.8",
+            "--min-visual-text-coverage-ratio",
+            "0.8",
             "--min-source-family-target-coverage",
             "lexical=0.8",
             "--max-recall-drop",
@@ -110,6 +116,7 @@ def test_gate_chunking_comparison_cli_writes_json_and_fails(tmp_path):
     payload = json.loads(output_path.read_text(encoding="utf-8"))
     assert payload["candidate"] == "weak"
     assert "min_recall_at_k" in payload["failed_checks"]
+    assert "min_visual_text_coverage_ratio" in payload["failed_checks"]
     assert "min_target_type_coverage:asset" in payload["failed_checks"]
     assert "min_source_family_target_coverage:lexical" in payload["failed_checks"]
     assert payload["target_metrics"]["asset"]["coverage_at_k"] == 0.2
@@ -132,6 +139,7 @@ def comparison_report() -> ChunkingComparison:
                 failed_queries=[],
                 target_metrics={"asset": {"coverage_at_k": 0.85}},
                 source_family_metrics={"lexical": {"target_coverage_at_k": 0.9}},
+                visual_text_coverage=0.9,
             ),
             row(
                 name="weak",
@@ -145,6 +153,7 @@ def comparison_report() -> ChunkingComparison:
                 failed_queries=["missing target"],
                 target_metrics={"asset": {"coverage_at_k": 0.2}},
                 source_family_metrics={"lexical": {"target_coverage_at_k": 0.1}},
+                visual_text_coverage=0.2,
             ),
         ],
         best_by_quality="strong",
@@ -165,6 +174,7 @@ def row(
     failed_queries: list[str],
     target_metrics: dict[str, dict[str, float]] | None = None,
     source_family_metrics: dict[str, dict[str, float]] | None = None,
+    visual_text_coverage: float = 1.0,
 ) -> ChunkingComparisonRow:
     return ChunkingComparisonRow(
         name=name,
@@ -183,6 +193,9 @@ def row(
         failed_queries=failed_queries,
         page_coverage_ratio=1.0,
         visual_annotation_ratio=0.5,
+        visual_text_asset_count=10,
+        visual_text_covered_asset_count=round(10 * visual_text_coverage),
+        visual_text_coverage_ratio=visual_text_coverage,
         chunks_under_min_chars=0,
         chunks_over_max_chars=0,
         issue_codes=[],

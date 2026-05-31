@@ -52,6 +52,7 @@ def gate_chunking_comparison(
     min_quality_score: float = 0.0,
     min_page_coverage_ratio: float = 1.0,
     min_visual_annotation_ratio: float | None = None,
+    min_visual_text_coverage_ratio: float | None = None,
     min_recall_at_k: float | None = None,
     min_target_coverage_at_k: float | None = None,
     min_target_ndcg_at_k: float | None = None,
@@ -132,6 +133,13 @@ def gate_chunking_comparison(
                 "visual_annotation_ratio",
                 metrics,
                 min_visual_annotation_ratio,
+            ),
+            optional_minimum_check(
+                "min_visual_text_coverage_ratio",
+                selected_name,
+                "visual_text_coverage_ratio",
+                metrics,
+                min_visual_text_coverage_ratio,
             ),
             optional_maximum_check(
                 "max_mean_latency_ms",
@@ -267,6 +275,9 @@ def row_metrics(row: ChunkingComparisonRow) -> dict[str, float | None]:
         "failed_query_count": float(len(row.failed_queries)),
         "page_coverage_ratio": row.page_coverage_ratio,
         "visual_annotation_ratio": row.visual_annotation_ratio,
+        "visual_text_asset_count": float(row.visual_text_asset_count),
+        "visual_text_covered_asset_count": float(row.visual_text_covered_asset_count),
+        "visual_text_coverage_ratio": row.visual_text_coverage_ratio,
         "chunks_under_min_chars": float(row.chunks_under_min_chars),
         "chunks_over_max_chars": float(row.chunks_over_max_chars),
     }

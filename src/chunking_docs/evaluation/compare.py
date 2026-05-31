@@ -26,6 +26,9 @@ class ChunkingComparisonRow(BaseModel):
     failed_queries: list[str]
     page_coverage_ratio: float
     visual_annotation_ratio: float
+    visual_text_asset_count: int = 0
+    visual_text_covered_asset_count: int = 0
+    visual_text_coverage_ratio: float = 1.0
     chunks_under_min_chars: int
     chunks_over_max_chars: int
     issue_codes: list[str]
@@ -69,6 +72,9 @@ def compare_chunking_reports(
                 failed_queries=report.retrieval.failed_queries if report.retrieval else [],
                 page_coverage_ratio=report.page_coverage_ratio,
                 visual_annotation_ratio=report.visual_annotation_ratio,
+                visual_text_asset_count=report.visual_text_asset_count,
+                visual_text_covered_asset_count=report.visual_text_covered_asset_count,
+                visual_text_coverage_ratio=report.visual_text_coverage_ratio,
                 chunks_under_min_chars=report.chunks_under_min_chars,
                 chunks_over_max_chars=report.chunks_over_max_chars,
                 issue_codes=[issue.code for issue in report.issues],

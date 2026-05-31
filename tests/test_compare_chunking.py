@@ -1,7 +1,7 @@
 from chunking_docs.evaluation.chunking_quality import evaluate_chunking_quality
 from chunking_docs.evaluation.compare import compare_chunking_reports
 from chunking_docs.evaluation.retrieval import RetrievalCase
-from chunking_docs.models import ChunkKind, DocumentChunk
+from chunking_docs.models import AssetKind, ChunkKind, DocumentChunk, VisualAsset
 
 
 def test_compare_chunking_reports_ranks_by_retrieval_then_quality():
@@ -33,9 +33,18 @@ def test_compare_chunking_reports_ranks_by_retrieval_then_quality():
             expected_asset_ids=["asset-1"],
         )
     ]
+    assets = [
+        VisualAsset(
+            asset_id="asset-1",
+            doc_id="doc",
+            page_no=1,
+            kind=AssetKind.MAP,
+            caption="river corridor station hub",
+        )
+    ]
     reports = {
-        "weak": evaluate_chunking_quality(weak_chunks, [], [], [], retrieval_cases=cases),
-        "strong": evaluate_chunking_quality(strong_chunks, [], [], [], retrieval_cases=cases),
+        "weak": evaluate_chunking_quality(weak_chunks, [], assets, [], retrieval_cases=cases),
+        "strong": evaluate_chunking_quality(strong_chunks, [], assets, [], retrieval_cases=cases),
     }
 
     comparison = compare_chunking_reports(reports)
@@ -50,4 +59,8 @@ def test_compare_chunking_reports_ranks_by_retrieval_then_quality():
     assert comparison.rows[0].retrieval_mean_latency_ms is not None
     assert comparison.rows[0].target_metrics["asset"]["coverage_at_k"] == 1.0
     assert comparison.rows[0].source_family_metrics["lexical"]["target_coverage_at_k"] == 1.0
+    assert comparison.rows[0].visual_text_asset_count == 1
+    assert comparison.rows[0].visual_text_covered_asset_count == 1
+    assert comparison.rows[0].visual_text_coverage_ratio == 1.0
     assert comparison.rows[-1].failed_queries == ["river corridor"]
+    assert comparison.rows[-1].visual_text_coverage_ratio == 0.0

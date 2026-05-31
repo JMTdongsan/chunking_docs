@@ -5,6 +5,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from chunking_docs.embeddings.records import asset_text_parts
 from chunking_docs.embeddings.tokenizers import LexicalTokenizerConfig
 from chunking_docs.evaluation.retrieval import (
     RetrievalCase,
@@ -42,6 +43,10 @@ class ChunkingQualityReport(BaseModel):
     section_coverage_ratio: float
     visual_asset_linkage_ratio: float
     visual_annotation_ratio: float
+    visual_text_asset_count: int = 0
+    visual_text_covered_asset_count: int = 0
+    visual_text_coverage_ratio: float = 1.0
+    visual_text_missing_asset_ids: list[str] = Field(default_factory=list)
     retrieval: RetrievalEvaluation | None = None
     quality_score: float
     issues: list[QualityIssue] = Field(default_factory=list)
@@ -76,6 +81,7 @@ def evaluate_chunking_quality(
     chunks_with_assets = sum(1 for chunk in chunks if chunk.asset_ids)
     visual_linkage = ratio(chunks_with_assets, len(chunks))
     visual_annotation = ratio(sum(1 for asset in assets if asset.ocr_text or asset.vlm_summary), len(assets))
+    visual_text_coverage = visual_text_coverage_stats(chunks, assets)
     retrieval = None
     if retrieval_cases:
         retrieval = evaluate_retrieval(
@@ -95,6 +101,9 @@ def evaluate_chunking_quality(
         under_min=under_min,
         over_max=over_max,
         chunk_count=len(chunks),
+        visual_text_asset_count=visual_text_coverage["asset_count"],
+        visual_text_coverage_ratio=visual_text_coverage["coverage_ratio"],
+        visual_text_missing_asset_ids=visual_text_coverage["missing_asset_ids"],
         retrieval=retrieval,
     )
     quality_score = compute_quality_score(
@@ -102,6 +111,9 @@ def evaluate_chunking_quality(
         size_ratio=1.0 - ratio(empty_count + under_min + over_max, len(chunks)),
         section_coverage_ratio=section_coverage,
         visual_asset_linkage_ratio=visual_linkage,
+        visual_text_coverage_ratio=visual_text_coverage["coverage_ratio"]
+        if visual_text_coverage["asset_count"]
+        else None,
         retrieval_score=retrieval_quality_score(retrieval) if retrieval else None,
     )
 
@@ -117,6 +129,10 @@ def evaluate_chunking_quality(
         section_coverage_ratio=section_coverage,
         visual_asset_linkage_ratio=visual_linkage,
         visual_annotation_ratio=visual_annotation,
+        visual_text_asset_count=visual_text_coverage["asset_count"],
+        visual_text_covered_asset_count=visual_text_coverage["covered_asset_count"],
+        visual_text_coverage_ratio=visual_text_coverage["coverage_ratio"],
+        visual_text_missing_asset_ids=visual_text_coverage["missing_asset_ids"],
         retrieval=retrieval,
         quality_score=quality_score,
         issues=issues,
@@ -155,6 +171,9 @@ def quality_issues(
     under_min: int,
     over_max: int,
     chunk_count: int,
+    visual_text_asset_count: int,
+    visual_text_coverage_ratio: float,
+    visual_text_missing_asset_ids: list[str],
     retrieval: RetrievalEvaluation | None,
 ) -> list[QualityIssue]:
     issues: list[QualityIssue] = []
@@ -183,6 +202,19 @@ def quality_issues(
                 code="chunk_size_distribution",
                 message="Many chunks fall outside the configured size window.",
                 metadata={"under_min": under_min, "over_max": over_max},
+            )
+        )
+    if visual_text_asset_count and visual_text_coverage_ratio < 0.8:
+        issues.append(
+            QualityIssue(
+                severity="warning",
+                code="visual_text_coverage",
+                message="Some linked visual asset text is not present in candidate chunks.",
+                metadata={
+                    "visual_text_asset_count": visual_text_asset_count,
+                    "visual_text_coverage_ratio": visual_text_coverage_ratio,
+                    "missing_asset_ids": visual_text_missing_asset_ids[:50],
+                },
             )
         )
     if retrieval is not None and retrieval.recall_at_k < 0.8:
@@ -238,6 +270,7 @@ def compute_quality_score(
     size_ratio: float,
     section_coverage_ratio: float,
     visual_asset_linkage_ratio: float,
+    visual_text_coverage_ratio: float | None,
     retrieval_score: float | None,
 ) -> float:
     components = [
@@ -246,6 +279,8 @@ def compute_quality_score(
         (section_coverage_ratio, 0.15),
         (visual_asset_linkage_ratio, 0.15),
     ]
+    if visual_text_coverage_ratio is not None:
+        components.append((visual_text_coverage_ratio, 0.15))
     if retrieval_score is not None:
         components.append((retrieval_score, 0.30))
     total_weight = sum(weight for _, weight in components)
@@ -259,6 +294,62 @@ def retrieval_quality_score(retrieval: RetrievalEvaluation) -> float:
         + retrieval.mean_target_ndcg_at_k * 0.25
         + retrieval.mean_precision_at_k * 0.15
     )
+
+
+def visual_text_coverage_stats(
+    chunks: list[DocumentChunk],
+    assets: list[VisualAsset],
+) -> dict[str, float | int | list[str]]:
+    assets_with_text = {}
+    for asset in assets:
+        parts = asset_text_parts(asset)
+        if parts:
+            assets_with_text[asset.asset_id] = parts
+    chunk_texts_by_asset: dict[str, list[str]] = {asset_id: [] for asset_id in assets_with_text}
+    for chunk in chunks:
+        for asset_id in chunk.asset_ids:
+            if asset_id in chunk_texts_by_asset:
+                chunk_texts_by_asset[asset_id].append(chunk.text)
+        for ref in chunk.source_refs:
+            if ref.startswith("asset:"):
+                asset_id = ref.removeprefix("asset:")
+                if asset_id in chunk_texts_by_asset:
+                    chunk_texts_by_asset[asset_id].append(chunk.text)
+
+    covered_asset_ids = []
+    missing_asset_ids = []
+    for asset_id, parts in assets_with_text.items():
+        chunk_texts = chunk_texts_by_asset.get(asset_id, [])
+        if any(visual_text_part_in_chunks(part, chunk_texts) for part in parts):
+            covered_asset_ids.append(asset_id)
+        else:
+            missing_asset_ids.append(asset_id)
+
+    asset_count = len(assets_with_text)
+    covered_count = len(covered_asset_ids)
+    return {
+        "asset_count": asset_count,
+        "covered_asset_count": covered_count,
+        "coverage_ratio": ratio(covered_count, asset_count) if asset_count else 1.0,
+        "missing_asset_ids": sorted(missing_asset_ids),
+    }
+
+
+def visual_text_part_in_chunks(part: str, chunk_texts: list[str]) -> bool:
+    normalized_part = normalize_for_coverage(part)
+    if not normalized_part:
+        return False
+    for text in chunk_texts:
+        normalized_text = normalize_for_coverage(text)
+        if normalized_part in normalized_text:
+            return True
+        if len(normalized_part) > 80 and normalized_part[:80] in normalized_text:
+            return True
+    return False
+
+
+def normalize_for_coverage(value: str) -> str:
+    return " ".join(value.split()).casefold()
 
 
 def ratio(numerator: int, denominator: int) -> float:
