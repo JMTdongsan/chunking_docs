@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 
 from chunking_docs.embeddings.interfaces import HashingTextEmbedder
 from chunking_docs.embeddings.tokenizers import LexicalTokenizerConfig
+from chunking_docs.graph.provenance import triple_asset_ids
 from chunking_docs.io import read_jsonl
 from chunking_docs.models import DocumentChunk, GraphTriple, VisualAsset
 from chunking_docs.retrieval.local_hybrid import LocalHybridSearcher
@@ -175,7 +176,9 @@ def evaluate_search_results(
     triples: list[GraphTriple] | None = None,
 ) -> RetrievalEvaluation:
     repeat = max(1, repeat)
-    triples_by_chunk = index_triples_by_chunk(triples or [])
+    indexed_triples = triples or []
+    triples_by_chunk = index_triples_by_chunk(indexed_triples)
+    triples_by_asset = index_triples_by_asset(indexed_triples)
     results: list[RetrievalCaseResult] = []
     latency_samples: list[float] = []
     for case in cases:
@@ -197,7 +200,9 @@ def evaluate_search_results(
         ]
         top_chunk_ids = [hit_chunk(hit).chunk_id for hit in hits_with_chunks]
         top_asset_ids = [hit_asset_ids(hit) for hit in hits_with_chunks]
-        top_triple_ids = [hit_triple_ids(hit, triples_by_chunk) for hit in hits_with_chunks]
+        top_triple_ids = [
+            hit_triple_ids(hit, triples_by_chunk, triples_by_asset) for hit in hits_with_chunks
+        ]
         top_evidence_chunk_ids = [
             [chunk.chunk_id for chunk in hit_evidence_chunks(hit)] for hit in hits_with_chunks
         ]
@@ -207,7 +212,12 @@ def evaluate_search_results(
         top_matched_targets: list[list[str]] = []
         relevant_hit_count = 0
         for hit in hits_with_chunks:
-            matched_targets = hit_target_keys(hit, case, triples_by_chunk=triples_by_chunk)
+            matched_targets = hit_target_keys(
+                hit,
+                case,
+                triples_by_chunk=triples_by_chunk,
+                triples_by_asset=triples_by_asset,
+            )
             if matched_targets:
                 relevant_hit_count += 1
             seen_targets.update(matched_targets)
@@ -220,11 +230,17 @@ def evaluate_search_results(
             or case.expected_asset_ids
             or case.expected_triple_ids
         )
-        match = first_relevant_hit(hits_with_chunks, case, triples_by_chunk=triples_by_chunk)
+        match = first_relevant_hit(
+            hits_with_chunks,
+            case,
+            triples_by_chunk=triples_by_chunk,
+            triples_by_asset=triples_by_asset,
+        )
         target_hits = target_relevant_hits(
             hits_with_chunks,
             case,
             triples_by_chunk=triples_by_chunk,
+            triples_by_asset=triples_by_asset,
         )
         target_matched_ranks = {
             target: target_match.rank
@@ -334,12 +350,14 @@ def first_relevant_hit(
     hits,
     case: RetrievalCase,
     triples_by_chunk: dict[str, list[GraphTriple]] | None = None,
+    triples_by_asset: dict[str, list[GraphTriple]] | None = None,
 ) -> RelevantHit | None:
     expected_chunk_ids = set(case.expected_chunk_ids)
     expected_asset_ids = set(case.expected_asset_ids)
     expected_triple_ids = set(case.expected_triple_ids)
     expected_pages = set(case.expected_pages)
     triples_by_chunk = triples_by_chunk or {}
+    triples_by_asset = triples_by_asset or {}
     for index, hit in enumerate(hits):
         rank = index + 1
         chunk = hit_chunk(hit)
@@ -355,7 +373,7 @@ def first_relevant_hit(
         for asset_id in hit_asset_ids(hit):
             if asset_id in expected_asset_ids:
                 return RelevantHit(rank=rank, chunk_id=chunk.chunk_id, asset_id=asset_id)
-        for triple_id in hit_triple_ids(hit, triples_by_chunk):
+        for triple_id in hit_triple_ids(hit, triples_by_chunk, triples_by_asset):
             if triple_id in expected_triple_ids:
                 return RelevantHit(rank=rank, chunk_id=chunk.chunk_id, triple_id=triple_id)
         matched_page = first_page_match(chunk.page_start, chunk.page_end, expected_pages)
@@ -368,9 +386,11 @@ def target_relevant_hits(
     hits,
     case: RetrievalCase,
     triples_by_chunk: dict[str, list[GraphTriple]] | None = None,
+    triples_by_asset: dict[str, list[GraphTriple]] | None = None,
 ) -> dict[str, RelevantHit | None]:
     targets: dict[str, RelevantHit | None] = {}
     triples_by_chunk = triples_by_chunk or {}
+    triples_by_asset = triples_by_asset or {}
     if case.expected_pages:
         targets["page"] = first_page_hit(hits, set(case.expected_pages))
     if case.expected_chunk_ids:
@@ -382,6 +402,7 @@ def target_relevant_hits(
             hits,
             set(case.expected_triple_ids),
             triples_by_chunk=triples_by_chunk,
+            triples_by_asset=triples_by_asset,
         )
     return targets
 
@@ -430,13 +451,15 @@ def first_triple_hit(
     hits,
     expected_triple_ids: set[str],
     triples_by_chunk: dict[str, list[GraphTriple]],
+    triples_by_asset: dict[str, list[GraphTriple]] | None = None,
 ) -> RelevantHit | None:
+    triples_by_asset = triples_by_asset or {}
     for index, hit in enumerate(hits):
         rank = index + 1
         chunk = hit_chunk(hit)
         if chunk is None:
             continue
-        for triple_id in hit_triple_ids(hit, triples_by_chunk):
+        for triple_id in hit_triple_ids(hit, triples_by_chunk, triples_by_asset):
             if triple_id in expected_triple_ids:
                 return RelevantHit(rank=rank, chunk_id=chunk.chunk_id, triple_id=triple_id)
     return None
@@ -461,6 +484,7 @@ def hit_target_keys(
     hit,
     case: RetrievalCase,
     triples_by_chunk: dict[str, list[GraphTriple]],
+    triples_by_asset: dict[str, list[GraphTriple]] | None = None,
 ) -> set[str]:
     chunk = hit_chunk(hit)
     if chunk is None:
@@ -484,7 +508,7 @@ def hit_target_keys(
     for asset_id in hit_asset_ids(hit):
         if asset_id in expected_asset_ids:
             keys.add(f"asset:{asset_id}")
-    for triple_id in hit_triple_ids(hit, triples_by_chunk):
+    for triple_id in hit_triple_ids(hit, triples_by_chunk, triples_by_asset or {}):
         if triple_id in expected_triple_ids:
             keys.add(f"triple:{triple_id}")
     return keys
@@ -517,7 +541,12 @@ def hit_asset_ids(hit) -> list[str]:
     return asset_ids
 
 
-def hit_triple_ids(hit, triples_by_chunk: dict[str, list[GraphTriple]]) -> list[str]:
+def hit_triple_ids(
+    hit,
+    triples_by_chunk: dict[str, list[GraphTriple]],
+    triples_by_asset: dict[str, list[GraphTriple]] | None = None,
+) -> list[str]:
+    triples_by_asset = triples_by_asset or {}
     seen: set[str] = set()
     triple_ids: list[str] = []
     chunk = hit_chunk(hit)
@@ -525,6 +554,8 @@ def hit_triple_ids(hit, triples_by_chunk: dict[str, list[GraphTriple]]) -> list[
         add_triple_ids_for_chunk(triple_ids, seen, chunk, triples_by_chunk)
     for evidence_chunk in hit_evidence_chunks(hit):
         add_triple_ids_for_chunk(triple_ids, seen, evidence_chunk, triples_by_chunk)
+    for asset_id in hit_asset_ids(hit):
+        add_triple_ids(triple_ids, seen, triples_by_asset.get(asset_id, []))
     return triple_ids
 
 
@@ -550,6 +581,14 @@ def index_triples_by_chunk(triples: list[GraphTriple]) -> dict[str, list[GraphTr
     for triple in triples:
         triples_by_chunk.setdefault(triple.chunk_id, []).append(triple)
     return triples_by_chunk
+
+
+def index_triples_by_asset(triples: list[GraphTriple]) -> dict[str, list[GraphTriple]]:
+    triples_by_asset: dict[str, list[GraphTriple]] = {}
+    for triple in triples:
+        for asset_id in sorted(triple_asset_ids(triple)):
+            triples_by_asset.setdefault(asset_id, []).append(triple)
+    return triples_by_asset
 
 
 def add_asset_id(asset_ids: list[str], seen: set[str], asset_id: str | None):

@@ -997,6 +997,46 @@ def test_evaluate_search_results_matches_visual_asset_id_from_payload():
     assert result.source_family_metrics["visual"].mean_relevant_rank == 1.0
 
 
+def test_evaluate_search_results_matches_visual_asset_provenance_triple_from_payload():
+    chunk = DocumentChunk(
+        chunk_id="parent",
+        doc_id="doc",
+        page_start=6,
+        page_end=6,
+        kind=ChunkKind.TEXT,
+        text="station access",
+    )
+    triple = GraphTriple(
+        triple_id="triple-map",
+        doc_id="doc",
+        chunk_id="visual-annotation-chunk",
+        subject="station access map",
+        predicate="shows",
+        object="transfer corridor",
+        qualifiers={"source": "visual_annotation", "asset_id": "asset-map"},
+    )
+
+    class PayloadHit:
+        def __init__(self):
+            self.chunk = chunk
+            self.sources = ["qdrant:caption_dense"]
+            self.evidence_chunks = []
+            self.payloads = [{"asset_id": "asset-map"}]
+
+    result = evaluate_search_results(
+        cases=[RetrievalCase(query="station access map", expected_triple_ids=["triple-map"])],
+        search_fn=lambda case, graph_expand: [PayloadHit()],
+        triples=[triple],
+    )
+
+    assert result.recall_at_k == 1.0
+    assert result.results[0].top_triple_ids == [["triple-map"]]
+    assert result.results[0].top_matched_targets == [["triple:triple-map"]]
+    assert result.results[0].matched_triple_id == "triple-map"
+    assert result.target_metrics["triple"].recall_at_k == 1.0
+    assert result.source_family_metrics["visual"].target_coverage_at_k == 1.0
+
+
 def test_evaluate_retrieval_ablation_compares_modes():
     chunks = [
         DocumentChunk(
