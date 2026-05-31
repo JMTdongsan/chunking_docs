@@ -832,6 +832,10 @@ def annotate_assets_command(
     ocr: str = "none",
     vlm: str = "none",
     vlm_model: str = "",
+    vlm_device_map: str = "auto",
+    vlm_torch_dtype: str = "auto",
+    vlm_max_new_tokens: int = 768,
+    vlm_attn_implementation: str = "",
     in_place: bool = False,
     rebuild_search: bool = True,
 ):
@@ -841,7 +845,14 @@ def annotate_assets_command(
     assets = read_jsonl(package_dir / "assets.jsonl", VisualAsset)
 
     ocr_backend, _ = build_ocr_backend(ocr)
-    vlm_backend, _ = build_vlm_backend(vlm, vlm_model)
+    vlm_backend, _ = build_vlm_backend(
+        vlm,
+        vlm_model,
+        device_map=vlm_device_map,
+        torch_dtype=vlm_torch_dtype,
+        max_new_tokens=vlm_max_new_tokens,
+        attn_implementation=vlm_attn_implementation,
+    )
 
     annotated_assets = annotate_assets(
         assets,
@@ -916,6 +927,10 @@ def run_visual_jobs_command(
     ocr: str = "none",
     vlm: str = "none",
     vlm_model: str = "",
+    vlm_device_map: str = "auto",
+    vlm_torch_dtype: str = "auto",
+    vlm_max_new_tokens: int = 768,
+    vlm_attn_implementation: str = "",
     ocr_language: str = "kor+eng",
     apply: bool = False,
     rebuild_search: bool = True,
@@ -928,7 +943,14 @@ def run_visual_jobs_command(
     assets = read_jsonl(package_dir / "assets.jsonl", VisualAsset)
 
     ocr_backend, ocr_name = build_ocr_backend(ocr)
-    vlm_backend, vlm_name = build_vlm_backend(vlm, vlm_model)
+    vlm_backend, vlm_name = build_vlm_backend(
+        vlm,
+        vlm_model,
+        device_map=vlm_device_map,
+        torch_dtype=vlm_torch_dtype,
+        max_new_tokens=vlm_max_new_tokens,
+        attn_implementation=vlm_attn_implementation,
+    )
     results = run_visual_jobs(
         planned_jobs,
         assets,
@@ -2039,16 +2061,34 @@ def build_ocr_backend(backend: str) -> tuple[OCRBackend | None, str]:
     raise typer.BadParameter("ocr must be one of: none, tesseract")
 
 
-def build_vlm_backend(backend: str, model_name: str) -> tuple[VLMBackend | None, str]:
+def build_vlm_backend(
+    backend: str,
+    model_name: str,
+    device_map: str = "auto",
+    torch_dtype: str = "auto",
+    max_new_tokens: int = 768,
+    attn_implementation: str = "",
+) -> tuple[VLMBackend | None, str]:
     normalized = normalize_backend(backend)
     if normalized == "none":
         return None, ""
     if normalized == "hf":
         if not model_name:
             raise typer.BadParameter("--vlm-model is required when --vlm hf")
+        if max_new_tokens <= 0:
+            raise typer.BadParameter("--vlm-max-new-tokens must be positive")
         from chunking_docs.vision.hf_vlm import HuggingFaceVLMBackend
 
-        return HuggingFaceVLMBackend(model_name=model_name), f"hf:{model_name}"
+        return (
+            HuggingFaceVLMBackend(
+                model_name=model_name,
+                device_map=device_map,
+                torch_dtype=torch_dtype,
+                max_new_tokens=max_new_tokens,
+                attn_implementation=attn_implementation,
+            ),
+            f"hf:{model_name}",
+        )
     raise typer.BadParameter("vlm must be one of: none, hf")
 
 

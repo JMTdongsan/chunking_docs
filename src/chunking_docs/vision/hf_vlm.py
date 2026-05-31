@@ -14,6 +14,7 @@ class HuggingFaceVLMBackend:
         device_map: str = "auto",
         torch_dtype: str = "auto",
         max_new_tokens: int = 768,
+        attn_implementation: str = "",
     ):
         try:
             import torch
@@ -25,6 +26,7 @@ class HuggingFaceVLMBackend:
         self.device_map = device_map
         self.torch_dtype = torch_dtype
         self.max_new_tokens = max_new_tokens
+        self.attn_implementation = attn_implementation
 
         dtype = torch_dtype
         if torch_dtype == "bfloat16":
@@ -35,12 +37,14 @@ class HuggingFaceVLMBackend:
             dtype = torch.float32
 
         self.processor = AutoProcessor.from_pretrained(model_name, trust_remote_code=True)
-        self.model = AutoModelForVision2Seq.from_pretrained(
-            model_name,
-            device_map=device_map,
-            torch_dtype=dtype,
-            trust_remote_code=True,
-        )
+        model_kwargs = {
+            "device_map": device_map,
+            "torch_dtype": dtype,
+            "trust_remote_code": True,
+        }
+        if attn_implementation:
+            model_kwargs["attn_implementation"] = attn_implementation
+        self.model = AutoModelForVision2Seq.from_pretrained(model_name, **model_kwargs)
 
     def metadata(self) -> dict:
         return {
@@ -49,6 +53,7 @@ class HuggingFaceVLMBackend:
             "device_map": self.device_map,
             "torch_dtype": self.torch_dtype,
             "max_new_tokens": self.max_new_tokens,
+            "attn_implementation": self.attn_implementation,
         }
 
     def summarize(self, image_path: Path, prompt: str) -> str:

@@ -2,6 +2,7 @@ from pathlib import Path
 
 from typer.testing import CliRunner
 
+import chunking_docs.cli as cli_module
 from chunking_docs.cli import app
 from chunking_docs.io import write_jsonl
 from chunking_docs.models import AssetKind, VisualAsset
@@ -199,3 +200,32 @@ def test_summarize_visual_results_cli_writes_json(tmp_path):
 
     assert result.exit_code == 0, result.output
     assert "model-a" in output.read_text(encoding="utf-8")
+
+
+def test_build_vlm_backend_passes_hf_runtime_options(monkeypatch):
+    captured = {}
+
+    class FakeHFBackend:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    monkeypatch.setattr("chunking_docs.vision.hf_vlm.HuggingFaceVLMBackend", FakeHFBackend)
+
+    backend, name = cli_module.build_vlm_backend(
+        "hf",
+        "model-id",
+        device_map="cuda:0",
+        torch_dtype="bfloat16",
+        max_new_tokens=256,
+        attn_implementation="sdpa",
+    )
+
+    assert isinstance(backend, FakeHFBackend)
+    assert name == "hf:model-id"
+    assert captured == {
+        "model_name": "model-id",
+        "device_map": "cuda:0",
+        "torch_dtype": "bfloat16",
+        "max_new_tokens": 256,
+        "attn_implementation": "sdpa",
+    }

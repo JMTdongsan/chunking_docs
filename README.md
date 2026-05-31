@@ -84,6 +84,9 @@ chunking-docs run-visual-jobs \
   --ocr tesseract \
   --vlm hf \
   --vlm-model <local-or-huggingface-vlm-model> \
+  --vlm-device-map auto \
+  --vlm-torch-dtype bfloat16 \
+  --vlm-max-new-tokens 768 \
   --limit 10 \
   --apply
 ```
@@ -92,7 +95,7 @@ The command writes `visual_annotations.jsonl` and `visual_job_results.jsonl`. Wi
 
 VLM responses may be plain text or JSON. When JSON includes `title`, `summary`, `key_points`, `visual_elements`, or `triples`, the runner converts those fields into captions, searchable VLM summaries, and graph triple candidates.
 
-Visual job results include OCR language, backend configuration, VLM prompt name, prompt SHA-256, prompt length, latency, output size, parse status, and triple count. This keeps OCR/VLM experiments reproducible without storing document-specific assumptions in the library.
+Visual job results include OCR language, backend configuration, VLM prompt name, prompt SHA-256, prompt length, latency, output size, parse status, and triple count. `--vlm-device-map`, `--vlm-torch-dtype`, `--vlm-max-new-tokens`, and optional `--vlm-attn-implementation` are recorded in that backend configuration. This keeps OCR/VLM experiments reproducible without storing document-specific assumptions in the library.
 
 Summarize visual job runs when comparing OCR/VLM backends:
 

@@ -187,7 +187,7 @@ For hierarchical candidates, enable parent collapse during `eval-retrieval`, `co
 The library exposes interfaces instead of locking in one model:
 
 - OCR: `TesseractOCRBackend`, with room for PaddleOCR or EasyOCR adapters.
-- VLM: `HuggingFaceVLMBackend`.
+- VLM: `HuggingFaceVLMBackend` with configurable device map, torch dtype, generation length, and optional attention implementation.
 - Text dense: `SentenceTransformerTextEmbedder`.
 - Image dense: `TransformersImageEmbedder`.
 
