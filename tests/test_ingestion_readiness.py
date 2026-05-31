@@ -95,6 +95,24 @@ def test_ingestion_readiness_detects_stale_bm25_visual_asset_text(tmp_path):
     assert bm25_component.metadata["text_char_count_mismatch_count"] == 1
 
 
+def test_ingestion_readiness_can_gate_package_visual_text_coverage(tmp_path):
+    package_dir, manifest = write_ready_package(tmp_path)
+
+    report = build_ingestion_readiness_report(
+        package_dir,
+        manifest,
+        min_visual_text_coverage_ratio=0.8,
+    )
+
+    assert report.passed is False
+    assert "visual_text_coverage" in report.failed_components
+    component = next(component for component in report.components if component.name == "visual_text_coverage")
+    assert component.metadata["visual_text_asset_count"] == 1
+    assert component.metadata["visual_text_covered_asset_count"] == 0
+    assert component.metadata["visual_text_coverage_ratio"] == 0.0
+    assert component.metadata["missing_asset_ids"] == ["asset-1"]
+
+
 def test_ingestion_readiness_includes_retrieval_cases_and_chunking_gate(tmp_path):
     package_dir, manifest = write_ready_package(tmp_path)
     cases = [
@@ -114,6 +132,7 @@ def test_ingestion_readiness_includes_retrieval_cases_and_chunking_gate(tmp_path
             "baseline_candidate": "baseline",
             "min_quality_score": 0.8,
             "min_recall_at_k": 0.8,
+            "min_visual_text_coverage_ratio": 0.8,
             "min_target_type_coverage": {"asset": 0.8, "triple": 0.8},
             "min_source_family_target_coverage": {"lexical": 0.8},
             "max_recall_drop": 0.05,
@@ -125,6 +144,7 @@ def test_ingestion_readiness_includes_retrieval_cases_and_chunking_gate(tmp_path
     assert report.retrieval_case_audit.target_counts["asset"] == 1
     assert report.chunking_comparison_gate is not None
     assert report.chunking_comparison_gate.candidate == "candidate"
+    assert report.chunking_comparison_gate.metrics["visual_text_coverage_ratio"] == 0.9
     assert report.chunking_comparison_gate.metrics["target_type.asset.coverage_at_k"] == 0.9
     assert report.chunking_comparison_gate.metrics["target_type.triple.coverage_at_k"] == 0.9
     assert report.chunking_comparison_gate.metrics["source_family.lexical.target_coverage_at_k"] == 0.9
@@ -457,6 +477,35 @@ def test_ingestion_readiness_cli_can_gate_visual_quality_from_assets(tmp_path):
     assert visual_component["metadata"]["source"] == "assets"
 
 
+def test_ingestion_readiness_cli_can_gate_package_visual_text_coverage(tmp_path):
+    package_dir, _ = write_ready_package(tmp_path)
+    output = tmp_path / "readiness.json"
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "ingestion-readiness",
+            "--package-dir",
+            str(package_dir),
+            "--min-visual-text-coverage-ratio",
+            "0.8",
+            "--output",
+            str(output),
+            "--no-fail",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["passed"] is False
+    assert "visual_text_coverage" in payload["failed_components"]
+    component = next(
+        component for component in payload["components"] if component["name"] == "visual_text_coverage"
+    )
+    assert component["metadata"]["visual_text_coverage_ratio"] == 0.0
+    assert component["metadata"]["missing_asset_ids"] == ["asset-1"]
+
+
 def test_ingestion_readiness_cli_can_gate_visual_run_comparison(tmp_path):
     package_dir, _ = write_ready_package(tmp_path)
     comparison_path = tmp_path / "visual_run_comparison.json"
@@ -651,6 +700,8 @@ def test_ingestion_readiness_cli_can_gate_chunking_target_coverage(tmp_path):
             "baseline",
             "--min-chunking-recall-at-k",
             "0.8",
+            "--min-chunking-visual-text-coverage-ratio",
+            "0.8",
             "--min-chunking-target-type-coverage",
             "asset=0.8",
             "--min-chunking-target-type-coverage",
@@ -671,6 +722,7 @@ def test_ingestion_readiness_cli_can_gate_chunking_target_coverage(tmp_path):
         if component["name"] == "chunking_comparison_gate"
     )
     assert component["metadata"]["candidate"] == "candidate"
+    assert component["metadata"]["metrics"]["visual_text_coverage_ratio"] == 0.9
     assert component["metadata"]["metrics"]["target_type.asset.coverage_at_k"] == 0.9
     assert component["metadata"]["metrics"]["target_type.triple.coverage_at_k"] == 0.9
     assert component["metadata"]["metrics"]["source_family.lexical.target_coverage_at_k"] == 0.9
@@ -837,6 +889,9 @@ def chunking_row(name: str, quality_score: float, recall: float):
         failed_queries=[],
         page_coverage_ratio=1.0,
         visual_annotation_ratio=1.0,
+        visual_text_asset_count=10,
+        visual_text_covered_asset_count=round(10 * recall),
+        visual_text_coverage_ratio=recall,
         chunks_under_min_chars=0,
         chunks_over_max_chars=0,
         issue_codes=[],

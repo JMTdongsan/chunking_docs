@@ -20,6 +20,7 @@ from chunking_docs.evaluation.chunking_gate import (
     ChunkingComparisonGateReport,
     gate_chunking_comparison,
 )
+from chunking_docs.evaluation.chunking_quality import visual_text_coverage_stats
 from chunking_docs.evaluation.compare import ChunkingComparison
 from chunking_docs.evaluation.gate import RetrievalGateReport, gate_retrieval_evaluation
 from chunking_docs.evaluation.retrieval import RetrievalCase, RetrievalEvaluation
@@ -71,6 +72,7 @@ def build_ingestion_readiness_report(
     required_vectors: list[str] | None = None,
     require_postgres_rows: bool = True,
     require_visual_annotations: bool = False,
+    min_visual_text_coverage_ratio: float | None = None,
     visual_results: list[VisualJobRunResult] | None = None,
     require_visual_quality: bool = False,
     visual_quality_options: dict[str, Any] | None = None,
@@ -132,6 +134,14 @@ def build_ingestion_readiness_report(
     if require_postgres_rows:
         postgres_component, postgres_row_counts = postgres_rows_component(manifest, package_dir)
         components.append(postgres_component)
+
+    if min_visual_text_coverage_ratio is not None:
+        components.append(
+            visual_text_coverage_component(
+                manifest,
+                min_coverage_ratio=min_visual_text_coverage_ratio,
+            )
+        )
 
     visual_quality = None
     if visual_results is not None or require_visual_quality:
@@ -637,6 +647,32 @@ def visual_run_comparison_component(
             "min_shared_job_count": min_shared_job_count,
             "run_job_counts": comparison.run_job_counts,
             "missing_job_ids_by_run": comparison.missing_job_ids_by_run,
+        },
+    )
+
+
+def visual_text_coverage_component(
+    manifest: ProcessingManifest,
+    min_coverage_ratio: float,
+) -> ReadinessComponent:
+    stats = visual_text_coverage_stats(manifest.chunks, manifest.assets)
+    coverage_ratio = float(stats["coverage_ratio"])
+    asset_count = int(stats["asset_count"])
+    passed = coverage_ratio >= min_coverage_ratio
+    return ReadinessComponent(
+        name="visual_text_coverage",
+        passed=passed,
+        message=(
+            "Linked visual asset text is represented in package chunks."
+            if passed
+            else "Some linked visual asset text is not represented in package chunks."
+        ),
+        metadata={
+            "min_coverage_ratio": min_coverage_ratio,
+            "visual_text_asset_count": asset_count,
+            "visual_text_covered_asset_count": int(stats["covered_asset_count"]),
+            "visual_text_coverage_ratio": coverage_ratio,
+            "missing_asset_ids": list(stats["missing_asset_ids"])[:50],
         },
     )
 

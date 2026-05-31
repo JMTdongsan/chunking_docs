@@ -398,6 +398,7 @@ chunking-docs ingestion-readiness \
   --require-visual-quality \
   --min-vlm-summary-coverage 0.95 \
   --min-vlm-json-parse-rate 0.95 \
+  --min-visual-text-coverage-ratio 0.8 \
   --required-vector text_dense \
   --required-vector caption_dense \
   --required-vector image_dense \
@@ -410,6 +411,7 @@ chunking-docs ingestion-readiness \
   --min-retrieval-target-type-coverage triple=0.9 \
   --min-retrieval-source-family-target-coverage lexical=0.75 \
   --chunking-comparison outputs/package/chunking_comparison.json \
+  --min-chunking-visual-text-coverage-ratio 0.8 \
   --min-chunking-target-type-coverage asset=0.9 \
   --min-chunking-target-type-coverage triple=0.9 \
   --min-chunking-source-family-target-coverage lexical=0.75 \
@@ -428,7 +430,7 @@ chunking-docs ingestion-readiness \
   --output outputs/package/ingestion_readiness.json
 ```
 
-The report combines package audit results, BM25 token manifest validation, required embedding artifacts, required vector-family checks, Qdrant record checks, PostgreSQL row conversion, retrieval case audit, VLM run comparison checks, chunking comparison gates, selected retrieval and Qdrant vector ablation gates, and optional visual or retrieval gates. BM25 validation recomputes asset-enriched lexical text from chunks plus linked captions, OCR text, VLM summaries, and structured VLM metadata, then checks that `bm25_tokens.json` is complete and current before ingestion. `--required-vector` verifies that selected vector families are present in `qdrant_collection.json`, represented in `embedding_manifest.json`, have non-empty record files, and use consistent dimensions. Chunking, retrieval, retrieval ablation, and Qdrant vector gates can all enforce target-type coverage for page, chunk, visual asset, or graph triple expectations and source-family coverage for dense, lexical, graph, or visual evidence. Visual run comparison checks can require the same visual job IDs across candidate VLM runs and confirm the intended profile won by quality or triple density. When `--require-visual-quality` is used without `--visual-results`, readiness evaluates the final OCR/VLM annotations currently stored in `assets.jsonl`.
+The report combines package audit results, BM25 token manifest validation, required embedding artifacts, required vector-family checks, Qdrant record checks, PostgreSQL row conversion, retrieval case audit, VLM run comparison checks, chunking comparison gates, selected retrieval and Qdrant vector ablation gates, and optional visual or retrieval gates. BM25 validation recomputes asset-enriched lexical text from chunks plus linked captions, OCR text, VLM summaries, and structured VLM metadata, then checks that `bm25_tokens.json` is complete and current before ingestion. `--min-visual-text-coverage-ratio` checks whether linked visual asset text is represented in the package chunks before text embeddings are treated as multimodal. `--required-vector` verifies that selected vector families are present in `qdrant_collection.json`, represented in `embedding_manifest.json`, have non-empty record files, and use consistent dimensions. Chunking, retrieval, retrieval ablation, and Qdrant vector gates can all enforce target-type coverage for page, chunk, visual asset, or graph triple expectations and source-family coverage for dense, lexical, graph, or visual evidence. Visual run comparison checks can require the same visual job IDs across candidate VLM runs and confirm the intended profile won by quality or triple density. When `--require-visual-quality` is used without `--visual-results`, readiness evaluates the final OCR/VLM annotations currently stored in `assets.jsonl`.
 
 ## Evaluation
 
