@@ -331,6 +331,40 @@ def test_generate_retrieval_case_skeleton_can_create_visual_lexical_probes():
     assert cases[0].metadata["query_terms"] == ["map", "legend", "signal"]
 
 
+def test_generate_retrieval_case_skeleton_can_create_visual_probe_from_source_ref():
+    chunk = DocumentChunk(
+        chunk_id="chunk-1",
+        doc_id="doc",
+        page_start=1,
+        page_end=1,
+        kind=ChunkKind.TEXT,
+        text="Transit corridor station access evidence.",
+        source_refs=["asset:asset-1"],
+    )
+    asset = VisualAsset(
+        asset_id="asset-1",
+        doc_id="doc",
+        page_no=1,
+        kind=AssetKind.MAP,
+        caption="Station access map legend signal",
+    )
+
+    cases = generate_retrieval_case_skeleton(
+        [chunk],
+        [asset],
+        [],
+        include_pages=False,
+        include_assets=False,
+        include_triples=False,
+        visual_probe_limit=1,
+    )
+
+    assert len(cases) == 1
+    assert cases[0].query == "map legend signal"
+    assert cases[0].expected_asset_ids == ["asset-1"]
+    assert cases[0].metadata["linked_chunk_ids"] == ["chunk-1"]
+
+
 def test_generate_retrieval_cases_cli_writes_jsonl(tmp_path):
     package_dir = write_case_package(tmp_path)
     output = tmp_path / "cases.jsonl"

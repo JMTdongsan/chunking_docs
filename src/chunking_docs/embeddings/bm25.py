@@ -8,6 +8,7 @@ from rank_bm25 import BM25Okapi
 
 from chunking_docs.embeddings.records import asset_text_parts
 from chunking_docs.embeddings.tokenizers import LexicalTokenizer, LexicalTokenizerConfig
+from chunking_docs.graph.provenance import chunk_asset_ids
 from chunking_docs.models import DocumentChunk, VisualAsset
 
 
@@ -71,7 +72,7 @@ def chunk_lexical_text(
     asset_by_id: dict[str, VisualAsset],
 ) -> str:
     parts = [chunk.text]
-    for asset_id in chunk.asset_ids:
+    for asset_id in chunk_asset_ids(chunk):
         asset = asset_by_id.get(asset_id)
         if asset is None:
             continue

@@ -81,7 +81,7 @@
    - `embedding_manifest.json` records vector files, dimensions, counts, checksums, backend names, model IDs, devices, and batch sizes.
 
 11. **Lexical Search**
-    - BM25 is generated from chunk text plus linked visual asset captions, OCR text, VLM summaries, and structured VLM metadata.
+    - BM25 is generated from chunk text plus visual asset captions, OCR text, VLM summaries, and structured VLM metadata linked through `asset_ids` or `asset:` source refs.
     - Lexical search protects exact matches for names, identifiers, dates, codes, and policy terms.
     - Tokenization is configurable as `word`, `char_ngram`, or `mixed`.
     - The default `mixed` tokenizer adds CJK character n-grams so compound terms without whitespace remain retrievable.

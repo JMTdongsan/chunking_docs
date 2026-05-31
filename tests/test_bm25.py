@@ -113,6 +113,43 @@ def test_bm25_can_index_linked_visual_asset_text():
     assert "north river corridor diagram" in chunk_lexical_texts(chunks, assets)[0]
 
 
+def test_bm25_can_index_source_ref_visual_asset_text():
+    chunks = [
+        DocumentChunk(
+            chunk_id="a",
+            doc_id="doc",
+            page_start=1,
+            page_end=1,
+            kind=ChunkKind.TEXT,
+            text="base text",
+            source_refs=["asset:asset-1"],
+        ),
+        DocumentChunk(
+            chunk_id="b",
+            doc_id="doc",
+            page_start=2,
+            page_end=2,
+            kind=ChunkKind.TEXT,
+            text="population structure change",
+        ),
+    ]
+    assets = [
+        VisualAsset(
+            asset_id="asset-1",
+            doc_id="doc",
+            page_no=1,
+            kind=AssetKind.FIGURE,
+            caption="transfer hub diagram",
+        )
+    ]
+    indexed_texts = chunk_lexical_texts(chunks, assets)
+
+    results = BM25LexicalIndex(chunks, texts=indexed_texts).search("transfer hub", top_k=2)
+
+    assert results[0][0].chunk_id == "a"
+    assert "transfer hub diagram" in indexed_texts[0]
+
+
 def test_bm25_indexes_structured_visual_metadata_text():
     chunks = [
         DocumentChunk(

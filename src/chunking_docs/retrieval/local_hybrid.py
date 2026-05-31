@@ -7,7 +7,7 @@ from chunking_docs.embeddings.bm25 import BM25LexicalIndex, chunk_lexical_texts
 from chunking_docs.embeddings.interfaces import DenseTextEmbedder
 from chunking_docs.embeddings.tokenizers import LexicalTokenizerConfig
 from chunking_docs.graph.export import related_terms
-from chunking_docs.graph.provenance import asset_ids_from_ref, triple_asset_ids
+from chunking_docs.graph.provenance import chunk_asset_ids, ordered_unique, triple_asset_ids
 from chunking_docs.models import DocumentChunk, GraphTriple, VisualAsset
 from chunking_docs.retrieval.fusion import RankedHit, reciprocal_rank_fusion
 from chunking_docs.retrieval.hierarchy import collapse_ranked_hits, merge_evidence_maps
@@ -187,13 +187,6 @@ def chunk_ids_by_asset_id(chunks: list[DocumentChunk]) -> dict[str, list[str]]:
     return {asset_id: ordered_unique(chunk_ids) for asset_id, chunk_ids in indexed.items()}
 
 
-def chunk_asset_ids(chunk: DocumentChunk) -> list[str]:
-    asset_ids = list(chunk.asset_ids)
-    for ref in chunk.source_refs:
-        asset_ids.extend(asset_ids_from_ref(ref))
-    return ordered_unique(asset_ids)
-
-
 def graph_candidate_chunk_ids(
     triple: GraphTriple,
     chunk_by_id: dict[str, DocumentChunk],
@@ -207,17 +200,6 @@ def graph_candidate_chunk_ids(
     for asset_id in sorted(triple_asset_ids(triple)):
         candidates.extend(chunk_ids_by_asset.get(asset_id, []))
     return ordered_unique(candidates)
-
-
-def ordered_unique(values: list[str]) -> list[str]:
-    seen = set()
-    result = []
-    for value in values:
-        if value in seen:
-            continue
-        seen.add(value)
-        result.append(value)
-    return result
 
 
 def graph_match_score(query_normalized: str, triple: GraphTriple) -> float:

@@ -8,7 +8,7 @@ from typing import Literal
 
 from chunking_docs.embeddings.records import asset_text
 from chunking_docs.evaluation.retrieval import RetrievalCase
-from chunking_docs.graph.provenance import triple_asset_ids
+from chunking_docs.graph.provenance import chunk_asset_ids, triple_asset_ids
 from chunking_docs.models import DocumentChunk, GraphTriple, VisualAsset
 
 _WHITESPACE_RE = re.compile(r"\s+")
@@ -386,7 +386,7 @@ def first_distinct_terms(
 def chunks_by_asset_id(chunks: list[DocumentChunk]) -> dict[str, list[DocumentChunk]]:
     indexed: dict[str, list[DocumentChunk]] = {}
     for chunk in chunks:
-        for asset_id in chunk.asset_ids:
+        for asset_id in chunk_asset_ids(chunk):
             indexed.setdefault(asset_id, []).append(chunk)
     return indexed
 

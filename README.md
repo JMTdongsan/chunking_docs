@@ -546,7 +546,7 @@ chunking-docs gate-retrieval outputs/package/retrieval_eval.json \
 
 ## Lexical Tokenization
 
-BM25 uses the `mixed` tokenizer by default. It combines word tokens with CJK character n-grams, which helps retrieve compound terms that may appear without whitespace in PDF text or OCR output. The lexical corpus includes chunk text plus linked visual asset captions, OCR text, and VLM summaries, so visual-only labels can still recover their parent chunks.
+BM25 uses the `mixed` tokenizer by default. It combines word tokens with CJK character n-grams, which helps retrieve compound terms that may appear without whitespace in PDF text or OCR output. The lexical corpus includes chunk text plus visual asset captions, OCR text, and VLM summaries linked through `asset_ids` or `asset:` source refs, so visual-only labels can still recover their parent chunks.
 
 ```bash
 chunking-docs search-local "urban renewal plan" \

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from chunking_docs.models import GraphTriple
+from chunking_docs.models import DocumentChunk, GraphTriple
 
 
 def triple_asset_ids(triple: GraphTriple) -> set[str]:
@@ -19,6 +19,13 @@ def triple_asset_ids(triple: GraphTriple) -> set[str]:
     return asset_ids
 
 
+def chunk_asset_ids(chunk: DocumentChunk) -> list[str]:
+    asset_ids = list(chunk.asset_ids)
+    for ref in chunk.source_refs:
+        asset_ids.extend(asset_ids_from_ref(ref))
+    return ordered_unique(asset_ids)
+
+
 def string_values(value: Any) -> list[str]:
     if isinstance(value, str):
         return [value] if value else []
@@ -31,3 +38,14 @@ def asset_ids_from_ref(ref: str) -> set[str]:
     if ref.startswith("asset:") and len(ref) > len("asset:"):
         return {ref.removeprefix("asset:")}
     return set()
+
+
+def ordered_unique(values: list[str]) -> list[str]:
+    seen = set()
+    result = []
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        result.append(value)
+    return result
