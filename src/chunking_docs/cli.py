@@ -75,6 +75,7 @@ from chunking_docs.vision.assets import (
     merge_visual_assets,
 )
 from chunking_docs.vision.compare import compare_visual_runs
+from chunking_docs.vision.experiments import build_vlm_experiment_plan, parse_profile_list
 from chunking_docs.vision.interfaces import OCRBackend, VLMBackend
 from chunking_docs.vision.jobs import (
     VisualAnnotationJob,
@@ -1416,6 +1417,59 @@ def compare_visual_runs_command(
             "best_by_triple_density": comparison.best_by_triple_density,
         }
     print(payload)
+
+
+@app.command(name="plan-vlm-experiments")
+def plan_vlm_experiments_command(
+    package_dir: Path = Path("outputs/package"),
+    jobs: Path | None = None,
+    profiles: str = "qwen2_5_vl_7b,qwen2_vl_7b,llava_next_7b",
+    output: Path | None = None,
+    output_dir: Path | None = None,
+    limit: int | None = None,
+    ocr: str = "paddleocr",
+    ocr_model_lang: str = "korean",
+    ocr_device: str = "gpu:0",
+    ocr_min_confidence: float = 0.3,
+    ocr_use_gpu: bool = False,
+    vlm_device_map: str = "auto",
+    vlm_torch_dtype: str = "auto",
+    vlm_max_new_tokens: int | None = None,
+    vlm_attn_implementation: str = "",
+):
+    """Write a reproducible command plan for comparing multiple Hugging Face VLM profiles."""
+    jobs_path = jobs or package_dir / "visual_jobs.priority.jsonl"
+    try:
+        plan = build_vlm_experiment_plan(
+            package_dir=package_dir,
+            jobs_file=jobs_path,
+            profiles=parse_profile_list(profiles),
+            output_dir=output_dir,
+            limit=limit,
+            ocr=ocr,
+            ocr_model_lang=ocr_model_lang,
+            ocr_device=ocr_device,
+            ocr_min_confidence=ocr_min_confidence,
+            ocr_use_gpu=ocr_use_gpu,
+            vlm_device_map=vlm_device_map,
+            vlm_torch_dtype=vlm_torch_dtype,
+            vlm_max_new_tokens=vlm_max_new_tokens,
+            vlm_attn_implementation=vlm_attn_implementation,
+        )
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    output_path = output or package_dir / "vlm_experiment_plan.json"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(plan.model_dump_json(indent=2), encoding="utf-8")
+    print(
+        {
+            "output": str(output_path),
+            "profile_count": len(plan.profiles),
+            "profiles": plan.profiles,
+            "jobs_file": plan.jobs_file,
+            "compare_command": plan.compare_command,
+        }
+    )
 
 
 @app.command(name="gate-visual-results")

@@ -53,6 +53,7 @@
    - Record OCR language, backend configuration, VLM prompt name, prompt hash, latency, output size, parse status, and triple count.
    - Summarize visual job results by status, backend latency, output size, VLM prompt usage, parse status, and triple count.
    - Compare multiple OCR/VLM runs by completion, annotation coverage, parse rate, triple density, and latency.
+   - Write VLM experiment plans so several profiles can be run against the same visual job set and compared afterward.
    - Gate visual runs by completion rate, OCR text coverage, VLM summary coverage, JSON parse rate, triple density, and failure counts.
    - Apply annotations back into chunks, assets, graph triples, BM25, and Qdrant records.
    - Compare before/after package directories to verify how annotations changed chunks, assets, graph triples, and vector records.
@@ -222,6 +223,7 @@ Recommended checks:
 - `eval-qdrant-retrieval`: the same benchmark cases against Qdrant named vectors plus BM25 and optional graph expansion.
 - `eval-qdrant-vector-ablation`: Qdrant text, visual caption, optional image, and graph-expanded vector comparison on the same cases.
 - `compare-visual-runs`: OCR/VLM run comparison by coverage, structured parse rate, graph triple density, and latency.
+- `plan-vlm-experiments`: reproducible profile-by-profile command recipes for running the same visual job set through multiple VLMs.
 - `eval-retrieval-ablation`: dense-only, BM25-only, graph-only, hybrid, and graph-expanded hybrid comparison on the same cases, including target coverage@k, target nDCG@k, and latency.
 - `gate-retrieval`: pass/fail checks for absolute metric floors and baseline regression limits such as recall drop, target coverage drop, target nDCG drop, precision drop, and latency ratio.
 - `compare-packages`: before/after package comparison for count deltas, changed chunk/asset/triple IDs, Qdrant record count deltas, and annotation-related observations.

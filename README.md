@@ -145,6 +145,17 @@ The command writes `visual_annotations.jsonl` and `visual_job_results.jsonl`. Wi
 
 Use `--vlm-profile` for reproducible Hugging Face VLM experiments. Profiles provide the model id, loader family, dtype, and default generation length for common local VLM families such as Qwen2.5-VL, Qwen2-VL, LLaVA-NeXT, Idefics2, and Phi-3.5 Vision. Override any profile field with `--vlm-model`, `--vlm-model-class`, `--vlm-device-map`, `--vlm-torch-dtype`, `--vlm-max-new-tokens`, or `--vlm-attn-implementation`.
 
+Create a reusable command plan when comparing several VLM profiles on the same job set:
+
+```bash
+chunking-docs plan-vlm-experiments \
+  --package-dir outputs/package \
+  --jobs outputs/package/visual_jobs.priority.jsonl \
+  --profiles qwen2_5_vl_7b,qwen2_vl_7b,llava_next_7b \
+  --limit 10 \
+  --output outputs/package/vlm_experiment_plan.json
+```
+
 VLM responses may be plain text or JSON. When JSON includes `title`, `summary`, `key_points`, `visual_elements`, or `triples`, the runner converts those fields into captions, searchable VLM summaries, and graph triple candidates.
 Triples generated from visual annotations include provenance qualifiers such as asset ID, page number, asset kind, annotation source, visual job ID, and prompt metadata when available.
 
