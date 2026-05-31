@@ -106,13 +106,15 @@ class QdrantHybridSearcher:
             qdrant_evidence: dict[str, list[str]] = {}
             for rank, hit in enumerate(hits, start=1):
                 raw_item_id = self._asset_canonical_item_id(hit)
+                if not raw_item_id:
+                    continue
+                if allowed_chunk_ids is not None and raw_item_id not in allowed_chunk_ids:
+                    continue
                 item_id = canonical_chunk_id(
                     raw_item_id,
                     self.chunk_by_id,
                     collapse_hierarchical=collapse_hierarchical,
-                ) if raw_item_id else None
-                if not item_id or (allowed_chunk_ids is not None and item_id not in allowed_chunk_ids):
-                    continue
+                )
                 if raw_item_id != item_id:
                     qdrant_evidence.setdefault(item_id, []).append(raw_item_id)
                 qdrant_hits_by_item.setdefault(item_id, []).append(hit)

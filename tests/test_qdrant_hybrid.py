@@ -679,6 +679,17 @@ def test_qdrant_hybrid_can_collapse_hierarchical_child_to_parent():
     assert [chunk.chunk_id for chunk in hits[0].evidence_chunks] == ["child"]
     assert hits[0].payloads[0]["chunk_id"] == "child"
 
+    child_filtered_hits = searcher.search(
+        "station access",
+        vector_names=["text_dense"],
+        top_k=1,
+        collapse_hierarchical=True,
+        payload_filter={"retrieval_role": "child"},
+    )
+
+    assert child_filtered_hits[0].item_id == "parent"
+    assert [chunk.chunk_id for chunk in child_filtered_hits[0].evidence_chunks] == ["child"]
+
 
 def test_qdrant_hybrid_applies_payload_filter_to_qdrant_and_local_hits():
     old = DocumentChunk(
