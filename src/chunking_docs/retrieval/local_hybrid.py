@@ -35,6 +35,7 @@ class LocalHybridSearcher:
         self.chunk_vectors = embedder.embed_texts([chunk.text for chunk in chunks])
         self.triples = triples or []
         self.chunk_by_id = {chunk.chunk_id: chunk for chunk in chunks}
+        self.chunk_id_by_alias = chunk_id_alias_map(chunks)
 
     def search(
         self,
@@ -131,7 +132,9 @@ class LocalHybridSearcher:
             haystack = " ".join([triple.subject, triple.predicate, triple.object]).lower()
             score = sum(1 for token in query_lower.split() if token in haystack)
             if score:
-                scored[triple.chunk_id] = max(scored.get(triple.chunk_id, 0), score)
+                chunk_id = self.chunk_id_by_alias.get(triple.chunk_id, triple.chunk_id)
+                if chunk_id in self.chunk_by_id:
+                    scored[chunk_id] = max(scored.get(chunk_id, 0), score)
         ranked = sorted(scored.items(), key=lambda item: item[1], reverse=True)[:top_k]
         return [
             RankedHit(item_id=chunk_id, rank=index + 1, score=float(score), source="graph")
@@ -152,3 +155,14 @@ def cosine_similarity(left: list[float], right: list[float]) -> float:
     if not left_norm or not right_norm:
         return 0.0
     return dot / (left_norm * right_norm)
+
+
+def chunk_id_alias_map(chunks: list[DocumentChunk]) -> dict[str, str]:
+    aliases: dict[str, str] = {}
+    for chunk in chunks:
+        aliases.setdefault(chunk.chunk_id, chunk.chunk_id)
+        for key in ("source_chunk_id", "parent_chunk_id"):
+            value = chunk.metadata.get(key)
+            if isinstance(value, str):
+                aliases.setdefault(value, chunk.chunk_id)
+    return aliases

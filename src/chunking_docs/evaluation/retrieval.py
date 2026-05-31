@@ -343,11 +343,13 @@ def first_relevant_hit(
         chunk = hit_chunk(hit)
         if chunk is None:
             continue
-        if chunk.chunk_id in expected_chunk_ids:
-            return RelevantHit(rank=rank, chunk_id=chunk.chunk_id)
+        matched_chunk_id = first_matching_chunk_alias(chunk, expected_chunk_ids)
+        if matched_chunk_id is not None:
+            return RelevantHit(rank=rank, chunk_id=matched_chunk_id)
         for evidence_chunk in hit_evidence_chunks(hit):
-            if evidence_chunk.chunk_id in expected_chunk_ids:
-                return RelevantHit(rank=rank, chunk_id=evidence_chunk.chunk_id)
+            matched_chunk_id = first_matching_chunk_alias(evidence_chunk, expected_chunk_ids)
+            if matched_chunk_id is not None:
+                return RelevantHit(rank=rank, chunk_id=matched_chunk_id)
         for asset_id in hit_asset_ids(hit):
             if asset_id in expected_asset_ids:
                 return RelevantHit(rank=rank, chunk_id=chunk.chunk_id, asset_id=asset_id)
@@ -400,11 +402,13 @@ def first_chunk_hit(hits, expected_chunk_ids: set[str]) -> RelevantHit | None:
         chunk = hit_chunk(hit)
         if chunk is None:
             continue
-        if chunk.chunk_id in expected_chunk_ids:
-            return RelevantHit(rank=rank, chunk_id=chunk.chunk_id)
+        matched_chunk_id = first_matching_chunk_alias(chunk, expected_chunk_ids)
+        if matched_chunk_id is not None:
+            return RelevantHit(rank=rank, chunk_id=matched_chunk_id)
         for evidence_chunk in hit_evidence_chunks(hit):
-            if evidence_chunk.chunk_id in expected_chunk_ids:
-                return RelevantHit(rank=rank, chunk_id=evidence_chunk.chunk_id)
+            matched_chunk_id = first_matching_chunk_alias(evidence_chunk, expected_chunk_ids)
+            if matched_chunk_id is not None:
+                return RelevantHit(rank=rank, chunk_id=matched_chunk_id)
     return None
 
 
@@ -471,8 +475,9 @@ def hit_target_keys(
         for page in expected_pages:
             if candidate_chunk.page_start <= page <= candidate_chunk.page_end:
                 keys.add(f"page:{page}")
-        if candidate_chunk.chunk_id in expected_chunk_ids:
-            keys.add(f"chunk:{candidate_chunk.chunk_id}")
+        matched_chunk_id = first_matching_chunk_alias(candidate_chunk, expected_chunk_ids)
+        if matched_chunk_id is not None:
+            keys.add(f"chunk:{matched_chunk_id}")
 
     for asset_id in hit_asset_ids(hit):
         if asset_id in expected_asset_ids:
@@ -515,10 +520,20 @@ def hit_triple_ids(hit, triples_by_chunk: dict[str, list[GraphTriple]]) -> list[
     triple_ids: list[str] = []
     chunk = hit_chunk(hit)
     if chunk is not None:
-        add_triple_ids(triple_ids, seen, triples_by_chunk.get(chunk.chunk_id, []))
+        add_triple_ids_for_chunk(triple_ids, seen, chunk, triples_by_chunk)
     for evidence_chunk in hit_evidence_chunks(hit):
-        add_triple_ids(triple_ids, seen, triples_by_chunk.get(evidence_chunk.chunk_id, []))
+        add_triple_ids_for_chunk(triple_ids, seen, evidence_chunk, triples_by_chunk)
     return triple_ids
+
+
+def add_triple_ids_for_chunk(
+    triple_ids: list[str],
+    seen: set[str],
+    chunk: DocumentChunk,
+    triples_by_chunk: dict[str, list[GraphTriple]],
+) -> None:
+    for chunk_id in chunk_alias_ids(chunk):
+        add_triple_ids(triple_ids, seen, triples_by_chunk.get(chunk_id, []))
 
 
 def add_triple_ids(triple_ids: list[str], seen: set[str], triples: list[GraphTriple]):
@@ -543,6 +558,33 @@ def add_asset_id(asset_ids: list[str], seen: set[str], asset_id: str | None):
 
 def hit_evidence_chunks(hit) -> list[DocumentChunk]:
     return [chunk for chunk in getattr(hit, "evidence_chunks", []) if chunk is not None]
+
+
+def first_matching_chunk_alias(chunk: DocumentChunk, expected_chunk_ids: set[str]) -> str | None:
+    for chunk_id in chunk_alias_ids(chunk):
+        if chunk_id in expected_chunk_ids:
+            return chunk_id
+    return None
+
+
+def chunk_alias_ids(chunk: DocumentChunk) -> list[str]:
+    aliases = [chunk.chunk_id]
+    for key in ("source_chunk_id", "parent_chunk_id"):
+        value = chunk.metadata.get(key)
+        if isinstance(value, str):
+            aliases.append(value)
+    return stable_ordered_values(aliases)
+
+
+def stable_ordered_values(values: list[str]) -> list[str]:
+    seen = set()
+    result = []
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        result.append(value)
+    return result
 
 
 def target_metrics(results: list[RetrievalCaseResult]) -> dict[str, RetrievalTargetMetric]:

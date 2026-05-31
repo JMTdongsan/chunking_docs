@@ -107,6 +107,36 @@ def test_local_hybrid_graph_expansion_can_recover_related_chunk():
     assert "graph" in hits[0].sources
 
 
+def test_local_hybrid_graph_hits_resolve_source_chunk_alias():
+    chunks = [
+        DocumentChunk(
+            chunk_id="parent",
+            doc_id="doc",
+            page_start=5,
+            page_end=5,
+            kind=ChunkKind.PAGE_SUMMARY,
+            text="summary",
+            metadata={"source_chunk_id": "source-a"},
+        )
+    ]
+    triples = [
+        GraphTriple(
+            triple_id="t",
+            doc_id="doc",
+            chunk_id="source-a",
+            subject="north district",
+            predicate="uses_axis",
+            object="riverfront axis",
+        )
+    ]
+
+    searcher = LocalHybridSearcher(chunks, HashingTextEmbedder(embedding_dim=64), triples=triples)
+    hits = searcher.search("north district", top_k=1, graph_expand=True, use_dense=False, use_bm25=False)
+
+    assert hits[0].chunk.chunk_id == "parent"
+    assert hits[0].sources == ["graph"]
+
+
 def test_local_hybrid_can_collapse_hierarchical_child_to_parent():
     parent = DocumentChunk(
         chunk_id="parent",

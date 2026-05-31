@@ -533,6 +533,37 @@ def test_evaluate_retrieval_matches_collapsed_hierarchical_evidence_chunk():
     assert result.results[0].matched_chunk_id == "child"
 
 
+def test_evaluate_retrieval_matches_hierarchical_source_chunk_alias():
+    parent = DocumentChunk(
+        chunk_id="parent",
+        doc_id="doc",
+        page_start=6,
+        page_end=6,
+        kind=ChunkKind.PAGE_SUMMARY,
+        text="summary",
+        metadata={"source_chunk_id": "source-1"},
+    )
+    child = DocumentChunk(
+        chunk_id="child",
+        doc_id="doc",
+        page_start=6,
+        page_end=6,
+        kind=ChunkKind.TEXT,
+        text="station access benchmark evidence",
+        metadata={
+            "source_chunk_id": "source-1",
+            "hierarchical_parent_chunk_id": "parent",
+        },
+    )
+    cases = [RetrievalCase(query="station access", expected_chunk_ids=["source-1"])]
+
+    result = evaluate_retrieval([parent, child], [], cases, collapse_hierarchical=True)
+
+    assert result.recall_at_k == 1.0
+    assert result.results[0].matched_chunk_id == "source-1"
+    assert result.results[0].target_matches["chunk"] is True
+
+
 def test_evaluate_retrieval_matches_visual_asset_id_from_evidence_chunk():
     parent = DocumentChunk(
         chunk_id="parent",
@@ -597,6 +628,40 @@ def test_evaluate_retrieval_matches_expected_triple_id():
     assert result.results[0].matched_triple_id == "triple-1"
     assert result.results[0].top_sources == [["graph"]]
     assert result.target_metrics["triple"].recall_at_k == 1.0
+
+
+def test_evaluate_retrieval_matches_triples_attached_to_source_chunk_alias():
+    parent = DocumentChunk(
+        chunk_id="parent",
+        doc_id="doc",
+        page_start=4,
+        page_end=4,
+        kind=ChunkKind.PAGE_SUMMARY,
+        text="north district river corridor",
+        metadata={"source_chunk_id": "source-1"},
+    )
+    triple = GraphTriple(
+        triple_id="triple-1",
+        doc_id="doc",
+        chunk_id="source-1",
+        subject="north district",
+        predicate="connects_to",
+        object="river corridor",
+    )
+    cases = [RetrievalCase(query="north district", expected_triple_ids=["triple-1"])]
+
+    result = evaluate_retrieval(
+        [parent],
+        [triple],
+        cases,
+        use_dense=False,
+        use_bm25=False,
+        use_graph=True,
+    )
+
+    assert result.recall_at_k == 1.0
+    assert result.results[0].matched_triple_id == "triple-1"
+    assert result.results[0].top_triple_ids == [["triple-1"]]
 
 
 def test_evaluate_search_results_matches_visual_asset_id_from_payload():
