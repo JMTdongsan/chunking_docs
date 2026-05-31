@@ -58,13 +58,36 @@ chunking-docs package data/raw/1_seoul_plan.pdf --output-dir outputs/package
 - `triples.jsonl`: graph triple 후보
 - `bm25_tokens.json`: lexical search token manifest
 - `qdrant_text_records.jsonl`: Qdrant upsert용 dry-run text vector record
+- `qdrant_image_records.jsonl`: Qdrant upsert용 dry-run image vector record
+- `qdrant_caption_records.jsonl`: Qdrant upsert용 dry-run caption vector record
 - `qdrant_collection.json`: Qdrant collection 설계 manifest
+
+OCR/VLM 주석을 붙일 때:
+
+```bash
+chunking-docs annotate-assets --package-dir outputs/package --ocr tesseract --in-place
+chunking-docs annotate-assets \
+  --package-dir outputs/package \
+  --vlm hf \
+  --vlm-model <local-or-huggingface-vlm-model> \
+  --pages 100,150,188 \
+  --in-place
+```
+
+`--in-place`와 기본 `--rebuild-search`를 함께 쓰면 OCR/VLM 결과가 `chunks.jsonl`, `bm25_tokens.json`, `qdrant_text_records.jsonl`에 반영된다.
 
 ## Qdrant 로컬 실행
 
 ```bash
 docker compose -f docker-compose.qdrant.yml up -d
 chunking-docs qdrant-upsert --records outputs/package/qdrant_text_records.jsonl
+chunking-docs qdrant-upsert-package --package-dir outputs/package
+```
+
+Docker가 없는 환경에서는 qdrant-client local mode로 upsert 로직을 검증할 수 있다.
+
+```bash
+chunking-docs qdrant-upsert-package --package-dir outputs/package --location ':memory:'
 ```
 
 ## 설계 문서

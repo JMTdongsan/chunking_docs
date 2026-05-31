@@ -6,8 +6,12 @@ from pathlib import Path
 from chunking_docs.analysis.pdf_profile import profile_pdf, summarize_profiles
 from chunking_docs.chunking.page_chunker import page_level_chunks
 from chunking_docs.embeddings.bm25 import BM25LexicalIndex
-from chunking_docs.embeddings.interfaces import HashingTextEmbedder
-from chunking_docs.embeddings.records import make_text_embedding_records
+from chunking_docs.embeddings.interfaces import HashingImageEmbedder, HashingTextEmbedder
+from chunking_docs.embeddings.records import (
+    make_caption_embedding_records,
+    make_image_embedding_records,
+    make_text_embedding_records,
+)
 from chunking_docs.graph.heuristics import section_triples
 from chunking_docs.ingest.pdf_loader import load_source_document
 from chunking_docs.io import write_jsonl
@@ -72,8 +76,13 @@ def write_package(
 
     if dry_run_embeddings:
         embedder = HashingTextEmbedder()
+        image_embedder = HashingImageEmbedder(embedding_dim=embedder.embedding_dim)
         records = make_text_embedding_records(manifest.chunks, embedder)
+        image_records = make_image_embedding_records(manifest.assets, image_embedder)
+        caption_records = make_caption_embedding_records(manifest.assets, embedder)
         write_jsonl(output_dir / "qdrant_text_records.jsonl", records)
+        write_jsonl(output_dir / "qdrant_image_records.jsonl", image_records)
+        write_jsonl(output_dir / "qdrant_caption_records.jsonl", caption_records)
         (output_dir / "qdrant_collection.json").write_text(
             json.dumps(
                 {
@@ -83,12 +92,24 @@ def write_package(
                             "size": embedder.embedding_dim,
                             "distance": "Cosine",
                             "note": "HashingTextEmbedder dry-run dimension. Replace with real dense model dimension.",
-                        }
+                        },
+                        "image_dense": {
+                            "size": image_embedder.embedding_dim,
+                            "distance": "Cosine",
+                            "note": "HashingImageEmbedder dry-run dimension. Replace with real image model dimension.",
+                        },
+                        "caption_dense": {
+                            "size": embedder.embedding_dim,
+                            "distance": "Cosine",
+                            "note": "Caption text dry-run dimension. Replace with real dense model dimension.",
+                        },
                     },
                     "payload_indexes": [
                         "doc_id",
                         "chunk_id",
+                        "asset_id",
                         "kind",
+                        "page_no",
                         "page_start",
                         "page_end",
                         "section.chapter",
@@ -100,3 +121,12 @@ def write_package(
             ),
             encoding="utf-8",
         )
+
+
+def rebuild_search_artifacts(output_dir: Path, chunks) -> None:
+    bm25 = BM25LexicalIndex(chunks)
+    bm25.dump_manifest(output_dir / "bm25_tokens.json")
+
+    embedder = HashingTextEmbedder()
+    records = make_text_embedding_records(chunks, embedder)
+    write_jsonl(output_dir / "qdrant_text_records.jsonl", records)

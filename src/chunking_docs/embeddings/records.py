@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import hashlib
+import uuid
 
 from chunking_docs.embeddings.interfaces import DenseTextEmbedder
 from chunking_docs.embeddings.interfaces import DenseImageEmbedder
@@ -9,7 +9,7 @@ from chunking_docs.storage.records import EmbeddingRecord
 
 
 def point_id(chunk_id: str, vector_name: str) -> str:
-    return hashlib.sha256(f"{chunk_id}:{vector_name}".encode("utf-8")).hexdigest()[:24]
+    return str(uuid.uuid5(uuid.NAMESPACE_URL, f"chunking-docs:{chunk_id}:{vector_name}"))
 
 
 def make_text_embedding_records(
@@ -78,3 +78,45 @@ def make_image_embedding_records(
                 )
             )
     return records
+
+
+def make_caption_embedding_records(
+    assets: list[VisualAsset],
+    embedder: DenseTextEmbedder,
+    vector_name: str = "caption_dense",
+    batch_size: int = 32,
+) -> list[EmbeddingRecord]:
+    caption_assets = [asset for asset in assets if asset_text(asset)]
+    records: list[EmbeddingRecord] = []
+    for start in range(0, len(caption_assets), batch_size):
+        batch = caption_assets[start : start + batch_size]
+        texts = [asset_text(asset) for asset in batch]
+        vectors = embedder.embed_texts(texts)
+        for asset, text, vector in zip(batch, texts, vectors):
+            records.append(
+                EmbeddingRecord(
+                    point_id=point_id(asset.asset_id, vector_name),
+                    chunk_id=asset.asset_id,
+                    doc_id=asset.doc_id,
+                    vector_name=vector_name,
+                    vector=vector,
+                    payload={
+                        "asset_id": asset.asset_id,
+                        "doc_id": asset.doc_id,
+                        "page_no": asset.page_no,
+                        "kind": asset.kind,
+                        "text": text,
+                        "caption": asset.caption,
+                        **asset.metadata,
+                    },
+                )
+            )
+    return records
+
+
+def asset_text(asset: VisualAsset) -> str:
+    return "\n".join(
+        part
+        for part in [asset.caption or "", asset.ocr_text or "", asset.vlm_summary or ""]
+        if part.strip()
+    )

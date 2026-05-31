@@ -8,14 +8,26 @@ from chunking_docs.storage.records import EmbeddingRecord, UpsertResult
 class QdrantChunkStore:
     """Thin Qdrant adapter kept optional so the core library runs without Qdrant."""
 
-    def __init__(self, url: str, collection_name: str, api_key: str | None = None):
+    def __init__(
+        self,
+        collection_name: str,
+        url: str | None = None,
+        api_key: str | None = None,
+        location: str | None = None,
+        path: str | None = None,
+    ):
         try:
             from qdrant_client import QdrantClient
             from qdrant_client.models import Distance, PointStruct, VectorParams
         except ImportError as exc:
             raise RuntimeError("Install chunking-docs[qdrant] to use QdrantChunkStore") from exc
 
-        self.client = QdrantClient(url=url, api_key=api_key)
+        if path:
+            self.client = QdrantClient(path=path)
+        elif location:
+            self.client = QdrantClient(location=location)
+        else:
+            self.client = QdrantClient(url=url or "http://localhost:6333", api_key=api_key)
         self.collection_name = collection_name
         self._point_struct = PointStruct
         self._distance = Distance
@@ -56,3 +68,6 @@ class QdrantChunkStore:
             count=len(points),
             detail={"operation_id": getattr(result, "operation_id", None)},
         )
+
+    def count(self) -> int:
+        return int(self.client.count(collection_name=self.collection_name, exact=True).count)
