@@ -8,6 +8,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from chunking_docs.embeddings.records import asset_text
 from chunking_docs.io import read_jsonl
 from chunking_docs.models import DocumentChunk, GraphTriple, PageProfile, TextQuality, VisualAsset
 from chunking_docs.storage.records import EmbeddingRecord
@@ -119,6 +120,14 @@ def audit_package(
         issues=issues,
         require_qdrant_records=require_qdrant_records,
     )
+    if package_dir is not None and require_qdrant_records and qdrant_collection:
+        validate_qdrant_target_coverage(
+            chunks=chunks,
+            assets=assets,
+            package_dir=package_dir,
+            collection_config=qdrant_collection,
+            issues=issues,
+        )
 
     return PackageAudit(
         page_count=len(profiles),
@@ -495,6 +504,91 @@ def validate_qdrant_record(
                     "point_id": record.point_id,
                     "vector_name": record.vector_name,
                     "fields": missing_payload,
+                },
+            )
+        )
+
+
+def validate_qdrant_target_coverage(
+    chunks: list[DocumentChunk],
+    assets: list[VisualAsset],
+    package_dir: Path,
+    collection_config: dict[str, Any],
+    issues: list[AuditIssue],
+) -> None:
+    named_vectors = set(collection_config.get("named_vectors", {}))
+    if "text_dense" in named_vectors:
+        validate_target_record_ids(
+            vector_name="text_dense",
+            target_label="chunk",
+            payload_key="chunk_id",
+            expected_ids={chunk.chunk_id for chunk in chunks},
+            package_dir=package_dir,
+            issues=issues,
+        )
+    if "image_dense" in named_vectors:
+        validate_target_record_ids(
+            vector_name="image_dense",
+            target_label="image_asset",
+            payload_key="asset_id",
+            expected_ids={asset.asset_id for asset in assets if asset.path is not None},
+            package_dir=package_dir,
+            issues=issues,
+        )
+    if "caption_dense" in named_vectors:
+        validate_target_record_ids(
+            vector_name="caption_dense",
+            target_label="caption_asset",
+            payload_key="asset_id",
+            expected_ids={asset.asset_id for asset in assets if asset_text(asset)},
+            package_dir=package_dir,
+            issues=issues,
+        )
+
+
+def validate_target_record_ids(
+    vector_name: str,
+    target_label: str,
+    payload_key: str,
+    expected_ids: set[str],
+    package_dir: Path,
+    issues: list[AuditIssue],
+) -> None:
+    record_file = package_dir / qdrant_record_filename(vector_name)
+    if not record_file.exists():
+        return
+    observed_ids = {
+        str(value)
+        for record in read_jsonl(record_file, EmbeddingRecord)
+        if record.vector_name == vector_name
+        for value in [record.payload.get(payload_key)]
+        if value not in {None, ""}
+    }
+    missing_ids = sorted(expected_ids - observed_ids)
+    if missing_ids:
+        issues.append(
+            AuditIssue(
+                severity="error",
+                code=f"qdrant_missing_{target_label}_records",
+                message=f"Some {target_label} IDs do not have {vector_name} records.",
+                metadata={
+                    "vector_name": vector_name,
+                    "ids": missing_ids[:50],
+                    "count": len(missing_ids),
+                },
+            )
+        )
+    stale_ids = sorted(observed_ids - expected_ids)
+    if stale_ids:
+        issues.append(
+            AuditIssue(
+                severity="error",
+                code=f"qdrant_stale_{target_label}_records",
+                message=f"Some {vector_name} records point to unknown {target_label} IDs.",
+                metadata={
+                    "vector_name": vector_name,
+                    "ids": stale_ids[:50],
+                    "count": len(stale_ids),
                 },
             )
         )

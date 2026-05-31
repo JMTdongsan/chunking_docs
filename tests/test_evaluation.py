@@ -271,6 +271,172 @@ def test_audit_package_validates_qdrant_artifacts(tmp_path):
     assert "missing_embedding_manifest" in codes
 
 
+def test_audit_package_validates_qdrant_target_coverage(tmp_path):
+    profiles = [
+        PageProfile(
+            doc_id="doc",
+            page_no=1,
+            width=1,
+            height=1,
+            char_count=10,
+            line_count=1,
+            text_block_count=1,
+            image_block_count=1,
+            embedded_image_count=1,
+            drawing_count=0,
+            text_quality=TextQuality.GOOD,
+        )
+    ]
+    chunks = [
+        DocumentChunk(
+            chunk_id="chunk-a",
+            doc_id="doc",
+            page_start=1,
+            page_end=1,
+            kind=ChunkKind.TEXT,
+            text="renewal strategy",
+        ),
+        DocumentChunk(
+            chunk_id="chunk-b",
+            doc_id="doc",
+            page_start=1,
+            page_end=1,
+            kind=ChunkKind.TEXT,
+            text="mobility access",
+        ),
+    ]
+    image_path = tmp_path / "asset.png"
+    image_path.write_bytes(b"image")
+    assets = [
+        VisualAsset(
+            asset_id="asset-a",
+            doc_id="doc",
+            page_no=1,
+            kind=AssetKind.PAGE_IMAGE,
+            path=image_path,
+            vlm_summary="diagram summary",
+        ),
+        VisualAsset(
+            asset_id="asset-b",
+            doc_id="doc",
+            page_no=1,
+            kind=AssetKind.FIGURE,
+            path=image_path,
+            vlm_summary="figure summary",
+        ),
+    ]
+    (tmp_path / "qdrant_collection.json").write_text(
+        json.dumps(
+            {
+                "collection": "documents",
+                "named_vectors": {
+                    "text_dense": {"size": 2},
+                    "image_dense": {"size": 2},
+                    "caption_dense": {"size": 2},
+                },
+                "payload_indexes": [
+                    {"field": "doc_id", "schema": "keyword"},
+                    {"field": "chunk_id", "schema": "keyword"},
+                    {"field": "asset_id", "schema": "keyword"},
+                    {"field": "kind", "schema": "keyword"},
+                    {"field": "page_no", "schema": "integer"},
+                    {"field": "page_start", "schema": "integer"},
+                    {"field": "page_end", "schema": "integer"},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    write_jsonl(
+        tmp_path / "qdrant_text_records.jsonl",
+        [
+            EmbeddingRecord(
+                point_id="text-a",
+                chunk_id="chunk-a",
+                doc_id="doc",
+                vector_name="text_dense",
+                vector=[1.0, 0.0],
+                payload={
+                    "chunk_id": "chunk-a",
+                    "doc_id": "doc",
+                    "page_start": 1,
+                    "page_end": 1,
+                    "kind": "text",
+                    "text": "renewal strategy",
+                },
+            ),
+            EmbeddingRecord(
+                point_id="text-stale",
+                chunk_id="missing-chunk",
+                doc_id="doc",
+                vector_name="text_dense",
+                vector=[0.0, 1.0],
+                payload={
+                    "chunk_id": "missing-chunk",
+                    "doc_id": "doc",
+                    "page_start": 1,
+                    "page_end": 1,
+                    "kind": "text",
+                    "text": "stale record",
+                },
+            ),
+        ],
+    )
+    write_jsonl(
+        tmp_path / "qdrant_image_records.jsonl",
+        [
+            EmbeddingRecord(
+                point_id="image-a",
+                chunk_id="asset-a",
+                doc_id="doc",
+                vector_name="image_dense",
+                vector=[0.5, 0.5],
+                payload={
+                    "asset_id": "asset-a",
+                    "doc_id": "doc",
+                    "page_no": 1,
+                    "kind": "page_image",
+                },
+            )
+        ],
+    )
+    write_jsonl(
+        tmp_path / "qdrant_caption_records.jsonl",
+        [
+            EmbeddingRecord(
+                point_id="caption-a",
+                chunk_id="asset-a",
+                doc_id="doc",
+                vector_name="caption_dense",
+                vector=[0.25, 0.75],
+                payload={
+                    "asset_id": "asset-a",
+                    "doc_id": "doc",
+                    "page_no": 1,
+                    "kind": "page_image",
+                    "text": "diagram summary",
+                },
+            )
+        ],
+    )
+
+    audit = audit_package(
+        profiles,
+        chunks,
+        assets,
+        [],
+        package_dir=tmp_path,
+        require_qdrant_records=True,
+    )
+    codes = {issue.code for issue in audit.issues}
+
+    assert not audit.passed
+    assert "qdrant_missing_chunk_records" in codes
+    assert "qdrant_stale_chunk_records" in codes
+    assert "qdrant_missing_image_asset_records" in codes
+    assert "qdrant_missing_caption_asset_records" in codes
+
+
 def test_audit_package_validates_embedding_manifest_contract(tmp_path):
     profiles = [
         PageProfile(
