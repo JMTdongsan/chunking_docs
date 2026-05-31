@@ -970,6 +970,11 @@ def gate_qdrant_vector_ablation_command(
     max_failed_queries: int | None = None,
     max_mean_latency_ms: float | None = None,
     max_p95_latency_ms: float | None = None,
+    min_source_family_target_coverage: list[str] = typer.Option(
+        None,
+        "--min-source-family-target-coverage",
+        help="Require source-family target coverage such as visual=0.8. Repeat for multiple families.",
+    ),
     require_best_by_recall: bool = False,
     require_best_by_target_coverage: bool = False,
     require_best_by_target_ndcg: bool = False,
@@ -984,6 +989,10 @@ def gate_qdrant_vector_ablation_command(
     parsed_report = QdrantVectorAblationReport.model_validate_json(
         report.read_text(encoding="utf-8")
     )
+    source_family_thresholds = parse_named_float_thresholds(
+        min_source_family_target_coverage,
+        "source family target coverage",
+    )
     try:
         gate_report = gate_qdrant_vector_ablation(
             parsed_report,
@@ -996,6 +1005,7 @@ def gate_qdrant_vector_ablation_command(
             max_failed_queries=max_failed_queries,
             max_mean_latency_ms=max_mean_latency_ms,
             max_p95_latency_ms=max_p95_latency_ms,
+            min_source_family_target_coverage=source_family_thresholds,
             require_best_by_recall=require_best_by_recall,
             require_best_by_target_coverage=require_best_by_target_coverage,
             require_best_by_target_ndcg=require_best_by_target_ndcg,
@@ -1015,6 +1025,7 @@ def gate_qdrant_vector_ablation_command(
             "vector_names": gate_report.vector_names,
             "failed_checks": gate_report.failed_checks,
             "metrics": gate_report.metrics,
+            "source_family_metrics": gate_report.source_family_metrics,
         }
     print(payload)
     if fail and not gate_report.passed:
@@ -2223,6 +2234,11 @@ def ingestion_readiness_command(
     max_qdrant_vector_failed_queries: int | None = None,
     max_qdrant_vector_mean_latency_ms: float | None = None,
     max_qdrant_vector_p95_latency_ms: float | None = None,
+    min_qdrant_vector_source_family_target_coverage: list[str] = typer.Option(
+        None,
+        "--min-qdrant-vector-source-family-target-coverage",
+        help="Require selected Qdrant vector source-family coverage such as visual=0.8.",
+    ),
     require_qdrant_vector_best_by_recall: bool = False,
     require_qdrant_vector_best_by_target_coverage: bool = False,
     require_qdrant_vector_best_by_target_ndcg: bool = False,
@@ -2245,6 +2261,10 @@ def ingestion_readiness_command(
         )
         if qdrant_vector_ablation
         else None
+    )
+    qdrant_vector_source_family_thresholds = parse_named_float_thresholds(
+        min_qdrant_vector_source_family_target_coverage,
+        "Qdrant vector source family target coverage",
     )
     report = build_ingestion_readiness_report(
         package_dir=package_dir,
@@ -2307,6 +2327,7 @@ def ingestion_readiness_command(
             "max_failed_queries": max_qdrant_vector_failed_queries,
             "max_mean_latency_ms": max_qdrant_vector_mean_latency_ms,
             "max_p95_latency_ms": max_qdrant_vector_p95_latency_ms,
+            "min_source_family_target_coverage": qdrant_vector_source_family_thresholds,
             "require_best_by_recall": require_qdrant_vector_best_by_recall,
             "require_best_by_target_coverage": require_qdrant_vector_best_by_target_coverage,
             "require_best_by_target_ndcg": require_qdrant_vector_best_by_target_ndcg,
@@ -3335,6 +3356,28 @@ def parse_fusion_weights(specs: list[str] | None = None) -> dict[str, float]:
             raise typer.BadParameter(f"fusion weight for {source} must be non-negative")
         weights[source] = weight
     return weights
+
+
+def parse_named_float_thresholds(
+    specs: list[str] | None = None,
+    label: str = "threshold",
+) -> dict[str, float]:
+    thresholds: dict[str, float] = {}
+    for spec in specs or []:
+        if "=" not in spec:
+            raise typer.BadParameter(f"{label} must use name=value")
+        name, raw_value = spec.split("=", 1)
+        name = name.strip()
+        if not name:
+            raise typer.BadParameter(f"{label} name must not be empty")
+        try:
+            value = float(raw_value.strip())
+        except ValueError as exc:
+            raise typer.BadParameter(f"{label} for {name} must be numeric") from exc
+        if value < 0:
+            raise typer.BadParameter(f"{label} for {name} must be non-negative")
+        thresholds[name] = value
+    return thresholds
 
 
 def build_reranker(

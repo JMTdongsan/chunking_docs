@@ -1280,6 +1280,7 @@ def test_gate_qdrant_vector_ablation_passes_required_mode():
         min_target_coverage_at_k=1.0,
         min_target_ndcg_at_k=1.0,
         max_failed_queries=0,
+        min_source_family_target_coverage={"visual": 1.0},
         require_best_by_recall=True,
         require_best_by_target_coverage=True,
     )
@@ -1288,6 +1289,8 @@ def test_gate_qdrant_vector_ablation_passes_required_mode():
     assert gate.mode == "caption_image"
     assert gate.vector_names == ["caption_dense", "image_dense"]
     assert gate.metrics["failed_query_count"] == 0.0
+    assert gate.metrics["source_family.visual.target_coverage_at_k"] == 1.0
+    assert gate.source_family_metrics["visual"]["target_coverage_at_k"] == 1.0
     assert gate.failed_checks == []
 
 
@@ -1299,14 +1302,17 @@ def test_gate_qdrant_vector_ablation_reports_failed_checks():
         mode="image",
         min_recall_at_k=1.0,
         max_failed_queries=0,
+        min_source_family_target_coverage={"visual": 1.0},
         require_best_by_recall=True,
     )
 
     assert not gate.passed
     assert gate.metrics["failed_query_count"] == 1.0
+    assert gate.metrics["source_family.visual.target_coverage_at_k"] == 0.0
     assert set(gate.failed_checks) == {
         "min_recall_at_k",
         "max_failed_queries",
+        "min_source_family_target_coverage:visual",
         "require_best_by_recall",
     }
 
@@ -1332,6 +1338,8 @@ def test_gate_qdrant_vector_ablation_cli_writes_report(tmp_path):
             "1.0",
             "--max-failed-queries",
             "0",
+            "--min-source-family-target-coverage",
+            "visual=1.0",
             "--require-best-by-recall",
             "--output",
             str(output),
@@ -1343,6 +1351,7 @@ def test_gate_qdrant_vector_ablation_cli_writes_report(tmp_path):
     assert payload["passed"] is True
     assert payload["mode"] == "caption_image"
     assert payload["vector_names"] == ["caption_dense", "image_dense"]
+    assert payload["source_family_metrics"]["visual"]["target_coverage_at_k"] == 1.0
 
 
 def test_gate_qdrant_vector_ablation_cli_can_report_without_failing(tmp_path):
@@ -1364,6 +1373,8 @@ def test_gate_qdrant_vector_ablation_cli_can_report_without_failing(tmp_path):
             "1.0",
             "--max-failed-queries",
             "0",
+            "--min-source-family-target-coverage",
+            "visual=1.0",
             "--require-best-by-recall",
             "--no-fail",
             "--output",
@@ -1377,6 +1388,7 @@ def test_gate_qdrant_vector_ablation_cli_can_report_without_failing(tmp_path):
     assert set(payload["failed_checks"]) == {
         "min_recall_at_k",
         "max_failed_queries",
+        "min_source_family_target_coverage:visual",
         "require_best_by_recall",
     }
 

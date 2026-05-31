@@ -56,6 +56,7 @@ class QdrantVectorAblationGateReport(BaseModel):
     vector_names: list[str] = Field(default_factory=list)
     graph_expand: bool = False
     metrics: dict[str, float]
+    source_family_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
     best_by_recall: str | None = None
     best_by_target_coverage: str | None = None
     best_by_target_ndcg: str | None = None
@@ -259,6 +260,7 @@ def gate_qdrant_vector_ablation(
     max_failed_queries: int | None = None,
     max_mean_latency_ms: float | None = None,
     max_p95_latency_ms: float | None = None,
+    min_source_family_target_coverage: dict[str, float] | None = None,
     require_best_by_recall: bool = False,
     require_best_by_target_coverage: bool = False,
     require_best_by_target_ndcg: bool = False,
@@ -268,7 +270,8 @@ def gate_qdrant_vector_ablation(
     if row is None:
         raise ValueError(f"Qdrant vector ablation mode not found: {mode}")
 
-    metrics = qdrant_vector_ablation_metrics(row.evaluation)
+    source_family_metrics = qdrant_vector_ablation_source_family_metrics(row.evaluation)
+    metrics = qdrant_vector_ablation_metrics(row.evaluation, source_family_metrics)
     checks = [
         minimum_check("min_recall_at_k", "recall_at_k", metrics, min_recall_at_k),
         minimum_check(
@@ -313,6 +316,12 @@ def gate_qdrant_vector_ablation(
                 max_p95_latency_ms,
             )
         )
+    checks.extend(
+        source_family_target_coverage_checks(
+            metrics,
+            min_source_family_target_coverage or {},
+        )
+    )
     if require_best_by_recall:
         checks.append(best_mode_check("require_best_by_recall", mode, report.best_by_recall))
     if require_best_by_target_coverage:
@@ -347,6 +356,7 @@ def gate_qdrant_vector_ablation(
         vector_names=row.mode.vector_names,
         graph_expand=row.mode.graph_expand,
         metrics=metrics,
+        source_family_metrics=source_family_metrics,
         best_by_recall=report.best_by_recall,
         best_by_target_coverage=report.best_by_target_coverage,
         best_by_target_ndcg=report.best_by_target_ndcg,
@@ -367,8 +377,11 @@ def qdrant_vector_ablation_row(
     return None
 
 
-def qdrant_vector_ablation_metrics(evaluation: RetrievalEvaluation) -> dict[str, float]:
-    return {
+def qdrant_vector_ablation_metrics(
+    evaluation: RetrievalEvaluation,
+    source_family_metrics: dict[str, dict[str, float]] | None = None,
+) -> dict[str, float]:
+    metrics = {
         "hit_rate": evaluation.hit_rate,
         "recall_at_k": evaluation.recall_at_k,
         "mrr": evaluation.mrr,
@@ -379,6 +392,53 @@ def qdrant_vector_ablation_metrics(evaluation: RetrievalEvaluation) -> dict[str,
         "p95_latency_ms": evaluation.p95_latency_ms,
         "failed_query_count": float(evaluation.failed_count),
     }
+    for family, family_metrics in (source_family_metrics or {}).items():
+        for key, value in family_metrics.items():
+            metrics[source_family_metric_key(family, key)] = value
+    return metrics
+
+
+def qdrant_vector_ablation_source_family_metrics(
+    evaluation: RetrievalEvaluation,
+) -> dict[str, dict[str, float]]:
+    return {
+        family: {
+            "query_count": float(metric.query_count),
+            "relevant_query_count": float(metric.relevant_query_count),
+            "hit_count": float(metric.hit_count),
+            "relevant_hit_count": float(metric.relevant_hit_count),
+            "expected_target_count": float(metric.expected_target_count),
+            "matched_target_count": float(metric.matched_target_count),
+            "precision_at_hits": metric.precision_at_hits,
+            "target_coverage_at_k": metric.target_coverage_at_k,
+            "mean_relevant_rank": metric.mean_relevant_rank,
+        }
+        for family, metric in sorted(evaluation.source_family_metrics.items())
+    }
+
+
+def source_family_target_coverage_checks(
+    metrics: dict[str, float],
+    thresholds: dict[str, float],
+) -> list[RetrievalGateCheck]:
+    checks = []
+    for family, threshold in sorted(thresholds.items()):
+        normalized_family = family.strip().lower()
+        metric = source_family_metric_key(normalized_family, "target_coverage_at_k")
+        metrics.setdefault(metric, 0.0)
+        checks.append(
+            minimum_check(
+                f"min_source_family_target_coverage:{normalized_family}",
+                metric,
+                metrics,
+                threshold,
+            )
+        )
+    return checks
+
+
+def source_family_metric_key(family: str, metric: str) -> str:
+    return f"source_family.{family}.{metric}"
 
 
 def best_mode_check(name: str, mode: str, actual_best: str | None) -> RetrievalGateCheck:

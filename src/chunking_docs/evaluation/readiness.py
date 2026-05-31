@@ -252,6 +252,9 @@ def build_ingestion_readiness_report(
                             "vector_names": qdrant_vector_ablation_gate.vector_names,
                             "failed_checks": qdrant_vector_ablation_gate.failed_checks,
                             "metrics": qdrant_vector_ablation_gate.metrics,
+                            "source_family_metrics": (
+                                qdrant_vector_ablation_gate.source_family_metrics
+                            ),
                             "best_by_recall": qdrant_vector_ablation_gate.best_by_recall,
                             "best_by_target_coverage": qdrant_vector_ablation_gate.best_by_target_coverage,
                             "best_by_target_ndcg": qdrant_vector_ablation_gate.best_by_target_ndcg,
