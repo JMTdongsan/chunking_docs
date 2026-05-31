@@ -232,6 +232,36 @@ def test_build_context_bundle_records_retrieved_visual_asset_refs():
     assert bundle.metadata["retrieved_asset_count"] == 1
 
 
+def test_build_context_bundle_includes_source_ref_visual_assets():
+    chunk = DocumentChunk(
+        chunk_id="chunk-1",
+        doc_id="doc",
+        page_start=4,
+        page_end=4,
+        kind=ChunkKind.TEXT,
+        text="base page text",
+        source_refs=["asset:asset-2"],
+    )
+    asset = VisualAsset(
+        asset_id="asset-2",
+        doc_id="doc",
+        page_no=4,
+        kind=AssetKind.MAP,
+        caption="visual map evidence",
+    )
+    hit = HybridSearchHit(chunk=chunk, score=0.9, sources=["bm25"])
+
+    bundle = build_context_bundle(
+        query="visual map",
+        hits=[hit],
+        assets=[asset],
+    )
+
+    assert bundle.chunks[0].asset_ids == ["asset-2"]
+    assert bundle.assets[0].asset_id == "asset-2"
+    assert bundle.metadata["asset_count"] == 1
+
+
 def test_build_context_bundle_includes_asset_provenance_triples_from_visual_hits():
     chunk = DocumentChunk(
         chunk_id="chunk-1",

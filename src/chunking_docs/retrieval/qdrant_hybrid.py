@@ -7,6 +7,7 @@ from chunking_docs.embeddings.bm25 import BM25LexicalIndex, chunk_lexical_texts
 from chunking_docs.embeddings.interfaces import DenseTextEmbedder
 from chunking_docs.embeddings.tokenizers import LexicalTokenizerConfig
 from chunking_docs.graph.export import related_terms
+from chunking_docs.graph.provenance import chunk_asset_ids, string_values
 from chunking_docs.models import DocumentChunk, GraphTriple, VisualAsset
 from chunking_docs.retrieval.fusion import RankedHit, reciprocal_rank_fusion
 from chunking_docs.retrieval.hierarchy import (
@@ -170,9 +171,9 @@ class QdrantHybridSearcher:
         return rerank_hits(query, hits, reranker, top_k=top_k)
 
     def _asset_canonical_item_id(self, hit: VectorSearchHit) -> str | None:
-        asset_id = hit.payload.get("asset_id")
-        if asset_id and asset_id in self.asset_to_chunk_id:
-            return self.asset_to_chunk_id[asset_id]
+        for asset_id in string_values(hit.payload.get("asset_id")):
+            if asset_id in self.asset_to_chunk_id:
+                return self.asset_to_chunk_id[asset_id]
         return hit.chunk_id
 
     def _bm25_hits(self, query: str, top_k: int) -> list[RankedHit]:
@@ -234,7 +235,7 @@ def chunk_filter_value(chunk: DocumentChunk, key: str, expected: Any) -> bool:
     elif key == "kind":
         actual = str(chunk.kind)
     elif key == "asset_id":
-        return match_payload_value(chunk.asset_ids, expected)
+        return match_payload_value(chunk_asset_ids(chunk), expected)
     elif key == "page_no":
         return match_page_value(chunk.page_start, chunk.page_end, expected)
     elif key == "page_start":

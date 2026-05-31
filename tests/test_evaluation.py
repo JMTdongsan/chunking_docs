@@ -997,6 +997,33 @@ def test_evaluate_search_results_matches_visual_asset_id_from_payload():
     assert result.source_family_metrics["visual"].mean_relevant_rank == 1.0
 
 
+def test_evaluate_search_results_matches_visual_asset_ids_from_payload_list():
+    chunk = DocumentChunk(
+        chunk_id="parent",
+        doc_id="doc",
+        page_start=6,
+        page_end=6,
+        kind=ChunkKind.TEXT,
+        text="station access",
+    )
+
+    class PayloadHit:
+        def __init__(self):
+            self.chunk = chunk
+            self.sources = ["qdrant:text_dense"]
+            self.evidence_chunks = []
+            self.payloads = [{"asset_id": ["asset-map", "asset-diagram"]}]
+
+    result = evaluate_search_results(
+        cases=[RetrievalCase(query="station access map", expected_asset_ids=["asset-diagram"])],
+        search_fn=lambda case, graph_expand: [PayloadHit()],
+    )
+
+    assert result.recall_at_k == 1.0
+    assert result.results[0].top_asset_ids == [["asset-map", "asset-diagram"]]
+    assert result.results[0].matched_asset_id == "asset-diagram"
+
+
 def test_evaluate_search_results_matches_visual_asset_provenance_triple_from_payload():
     chunk = DocumentChunk(
         chunk_id="parent",

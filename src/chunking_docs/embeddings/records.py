@@ -5,6 +5,7 @@ from typing import Any
 
 from chunking_docs.embeddings.interfaces import DenseTextEmbedder
 from chunking_docs.embeddings.interfaces import DenseImageEmbedder
+from chunking_docs.graph.provenance import chunk_asset_ids
 from chunking_docs.models import DocumentChunk, VisualAsset
 from chunking_docs.storage.records import EmbeddingRecord
 
@@ -24,6 +25,7 @@ def make_text_embedding_records(
         batch = chunks[start : start + batch_size]
         vectors = embedder.embed_texts([chunk.text for chunk in batch])
         for chunk, vector in zip(batch, vectors):
+            asset_ids = chunk_asset_ids(chunk)
             records.append(
                 EmbeddingRecord(
                     point_id=point_id(chunk.chunk_id, vector_name),
@@ -38,7 +40,9 @@ def make_text_embedding_records(
                         "page_end": chunk.page_end,
                         "kind": chunk.kind,
                         "section": chunk.section.model_dump(),
-                        "asset_ids": chunk.asset_ids,
+                        "asset_id": asset_ids,
+                        "asset_ids": asset_ids,
+                        "source_refs": chunk.source_refs,
                         "text": chunk.text,
                         **chunk.metadata,
                     },

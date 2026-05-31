@@ -96,6 +96,7 @@
 
 13. **Storage**
     - Qdrant stores named vectors and payloads.
+    - Text vector payloads preserve chunk IDs, page ranges, source refs, and visual asset link IDs for filtering and downstream context assembly.
     - PostgreSQL stores normalized document, page, chunk, asset, triple, and embedding artifact metadata.
     - BM25 can remain as a local manifest or be replaced by a dedicated lexical search service.
 

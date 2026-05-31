@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 
 from chunking_docs.embeddings.interfaces import HashingTextEmbedder
 from chunking_docs.embeddings.tokenizers import LexicalTokenizerConfig
-from chunking_docs.graph.provenance import triple_asset_ids
+from chunking_docs.graph.provenance import chunk_asset_ids, string_values, triple_asset_ids
 from chunking_docs.io import read_jsonl
 from chunking_docs.models import DocumentChunk, GraphTriple, VisualAsset
 from chunking_docs.retrieval.local_hybrid import LocalHybridSearcher
@@ -530,10 +530,11 @@ def hit_sources(hit) -> list[str]:
 def hit_asset_ids(hit) -> list[str]:
     seen: set[str] = set()
     asset_ids: list[str] = []
-    for asset_id in getattr(hit_chunk(hit), "asset_ids", []):
+    chunk = hit_chunk(hit)
+    for asset_id in chunk_asset_ids(chunk) if chunk is not None else []:
         add_asset_id(asset_ids, seen, asset_id)
     for evidence_chunk in hit_evidence_chunks(hit):
-        for asset_id in evidence_chunk.asset_ids:
+        for asset_id in chunk_asset_ids(evidence_chunk):
             add_asset_id(asset_ids, seen, asset_id)
     for payload in getattr(hit, "payloads", []):
         if isinstance(payload, dict):
@@ -591,10 +592,11 @@ def index_triples_by_asset(triples: list[GraphTriple]) -> dict[str, list[GraphTr
     return triples_by_asset
 
 
-def add_asset_id(asset_ids: list[str], seen: set[str], asset_id: str | None):
-    if asset_id and asset_id not in seen:
-        seen.add(asset_id)
-        asset_ids.append(asset_id)
+def add_asset_id(asset_ids: list[str], seen: set[str], asset_id: str | list[str] | None):
+    for value in string_values(asset_id):
+        if value not in seen:
+            seen.add(value)
+            asset_ids.append(value)
 
 
 def hit_evidence_chunks(hit) -> list[DocumentChunk]:

@@ -14,7 +14,7 @@
 - Supports word, character n-gram, and mixed lexical tokenization for languages where whitespace is weak.
 - Builds graph triple candidates from section metadata and visual annotations.
 - Audits and normalizes graph triples before graph expansion or export.
-- Exports Qdrant upsert records and PostgreSQL-ready normalized rows.
+- Exports Qdrant upsert records with visual asset link payloads and PostgreSQL-ready normalized rows.
 - Evaluates chunking quality and retrieval hit rate with reusable benchmark cases.
 
 ## Install

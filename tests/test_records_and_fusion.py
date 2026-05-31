@@ -24,13 +24,20 @@ def make_chunk(text: str, page_no: int = 1):
 
 
 def test_make_text_embedding_records():
-    chunks = [make_chunk("technical policy transit corridor")]
+    chunks = [
+        make_chunk("technical policy transit corridor").model_copy(
+            update={"asset_ids": ["asset-1"], "source_refs": ["asset:asset-2"]}
+        )
+    ]
     records = make_text_embedding_records(chunks, HashingTextEmbedder(embedding_dim=16))
 
     assert len(records) == 1
     assert records[0].vector_name == "text_dense"
     assert len(records[0].vector) == 16
     assert records[0].payload["chunk_id"] == chunks[0].chunk_id
+    assert records[0].payload["asset_id"] == ["asset-1", "asset-2"]
+    assert records[0].payload["asset_ids"] == ["asset-1", "asset-2"]
+    assert records[0].payload["source_refs"] == ["asset:asset-2"]
     assert str(uuid.UUID(records[0].point_id)) == records[0].point_id
 
 

@@ -5,7 +5,12 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from chunking_docs.graph.provenance import string_values, triple_asset_ids
+from chunking_docs.graph.provenance import (
+    asset_ids_from_ref,
+    chunk_asset_ids,
+    string_values,
+    triple_asset_ids,
+)
 from chunking_docs.models import DocumentChunk, GraphTriple, VisualAsset
 
 
@@ -186,7 +191,7 @@ def context_chunk(
         kind=str(chunk.kind),
         text=trim_text(chunk.text, max_chars),
         section=chunk.section.label(),
-        asset_ids=chunk.asset_ids,
+        asset_ids=chunk_asset_ids(chunk),
         source_refs=chunk.source_refs,
         score=score,
         sources=sources,
@@ -288,6 +293,8 @@ def context_assets(
 def context_asset_ids(chunks: list[RAGContextChunk]) -> set[str]:
     asset_ids = {asset_id for chunk in chunks for asset_id in chunk.asset_ids}
     for chunk in chunks:
+        for ref in chunk.source_refs:
+            asset_ids.update(asset_ids_from_ref(ref))
         asset_ids.update(string_values(chunk.metadata.get("retrieved_asset_ids")))
         for ref in chunk.metadata.get("retrieval_payload_refs", []):
             if isinstance(ref, dict):
