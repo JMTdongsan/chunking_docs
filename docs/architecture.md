@@ -152,6 +152,7 @@ Additional processing commands may create:
 - `package_delta.json`
 - `qdrant_retrieval_eval.json`
 - `qdrant_vector_ablation.json`
+- `retrieval_case_audit.json`
 - `retrieval_diagnostics.json`
 - `retrieval_gate.json`
 - `retrieval_ablation.json`
@@ -206,6 +207,7 @@ Recommended checks:
 
 - `audit-package`: structural completeness, orphan checks, OCR/VLM gaps, Qdrant vector dimensions, required payload fields, and payload index definitions.
 - `eval-chunking`: page coverage, chunk size distribution, section coverage, visual linkage, annotation coverage, retrieval recall@k, MRR, target coverage@k, target nDCG@k, precision@k, latency, failed queries, and aggregate quality score.
+- `audit-retrieval-cases`: benchmark case validation for empty or TODO queries, unknown page/chunk/asset/triple targets, duplicate queries, graph-expansion hints, and target-family coverage.
 - `eval-retrieval`: focused top-k retrieval benchmark cases with optional repeated latency sampling, target-specific page/chunk/asset/triple metrics, and source-family contribution metrics.
 - `generate-retrieval-cases`: benchmark skeleton generation from package pages, chunks, visual assets, and graph triples.
 - `diagnose-retrieval`: failure, partial-coverage, low-ranking, and low-precision analysis for retrieval evaluation JSON outputs.

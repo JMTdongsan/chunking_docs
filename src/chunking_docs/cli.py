@@ -24,6 +24,7 @@ from chunking_docs.evaluation.ablation import (
     qdrant_vector_names_for_modes,
 )
 from chunking_docs.evaluation.casegen import generate_retrieval_case_skeleton
+from chunking_docs.evaluation.case_audit import audit_retrieval_cases
 from chunking_docs.evaluation.chunking_gate import (
     chunking_gate_summary_payload,
     gate_chunking_comparison,
@@ -2102,6 +2103,56 @@ def generate_retrieval_cases_command(
             "include_todo": include_todo,
         }
     )
+
+
+@app.command(name="audit-retrieval-cases")
+def audit_retrieval_cases_command(
+    cases: Path,
+    package_dir: Path = Path("outputs/package"),
+    output: Path | None = None,
+    min_case_count: int = 1,
+    min_page_cases: int = 0,
+    min_chunk_cases: int = 0,
+    min_asset_cases: int = 0,
+    min_triple_cases: int = 0,
+    max_duplicate_queries: int = 0,
+    fail: bool = typer.Option(
+        True,
+        "--fail/--no-fail",
+        help="Exit with status 1 when retrieval case audit fails.",
+    ),
+):
+    """Validate retrieval benchmark cases against package targets and target-family coverage."""
+    manifest = load_processing_package(package_dir)
+    parsed_cases = load_retrieval_cases(cases)
+    report = audit_retrieval_cases(
+        parsed_cases,
+        profiles=manifest.profiles,
+        chunks=manifest.chunks,
+        assets=manifest.assets,
+        triples=manifest.triples,
+        min_case_count=min_case_count,
+        min_page_cases=min_page_cases,
+        min_chunk_cases=min_chunk_cases,
+        min_asset_cases=min_asset_cases,
+        min_triple_cases=min_triple_cases,
+        max_duplicate_queries=max_duplicate_queries,
+    )
+    payload = report.model_dump()
+    if output is not None:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(report.model_dump_json(indent=2), encoding="utf-8")
+        payload = {
+            "output": str(output),
+            "passed": report.passed,
+            "case_count": report.case_count,
+            "target_counts": report.target_counts,
+            "missing_target_counts": report.missing_target_counts,
+            "failed_checks": report.failed_checks,
+        }
+    print(payload)
+    if fail and not report.passed:
+        raise typer.Exit(1)
 
 
 @app.command(name="eval-retrieval-ablation")

@@ -7,6 +7,12 @@ from .ablation import (
 )
 from .audit import AuditIssue, PackageAudit, audit_package, degraded_page_ratio
 from .casegen import generate_retrieval_case_skeleton
+from .case_audit import (
+    RetrievalCaseAuditCheck,
+    RetrievalCaseAuditIssue,
+    RetrievalCaseAuditReport,
+    audit_retrieval_cases,
+)
 from .chunking_gate import (
     ChunkingComparisonGateCheck,
     ChunkingComparisonGateReport,
@@ -48,6 +54,9 @@ __all__ = [
     "RetrievalAblationMode",
     "RetrievalAblationReport",
     "RetrievalAblationRow",
+    "RetrievalCaseAuditCheck",
+    "RetrievalCaseAuditIssue",
+    "RetrievalCaseAuditReport",
     "RetrievalCase",
     "RetrievalCaseResult",
     "RetrievalDiagnosticRow",
@@ -59,6 +68,7 @@ __all__ = [
     "audit_package",
     "build_experiment_report",
     "build_ingestion_readiness_report",
+    "audit_retrieval_cases",
     "compare_processing_packages",
     "degraded_page_ratio",
     "evaluate_retrieval",
