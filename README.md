@@ -385,7 +385,7 @@ chunking-docs postgres-upsert "postgresql://user:password@localhost:5432/chunkin
   --package-dir outputs/package
 ```
 
-`postgres-schema` writes the SQL contract without opening a database connection. `postgres-check-schema` validates required tables, columns, column types, indexes, and the pgvector extension before metadata rows are upserted. Chunk-to-asset links are stored in a normalized `chunk_asset_links` table and also preserved in chunk metadata for auditability. Use `--apply-schema` when bootstrapping a new database; omit it when checking an existing schema for drift.
+`postgres-schema` writes the SQL contract without opening a database connection. `postgres-check-schema` validates required tables, columns, column types, indexes, and the pgvector extension before metadata rows are upserted. Chunk-to-asset links are stored in a normalized `chunk_asset_links` table and also preserved in chunk metadata for auditability. Asset-backed graph triples are remapped to an available chunk before PostgreSQL row export while retaining the original chunk ID in qualifiers. Use `--apply-schema` when bootstrapping a new database; omit it when checking an existing schema for drift.
 
 ## Ingestion Readiness
 

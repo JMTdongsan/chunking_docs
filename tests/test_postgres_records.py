@@ -193,6 +193,50 @@ def test_manifest_rows_include_normalized_chunk_asset_links():
     ]
 
 
+def test_manifest_rows_remap_asset_backed_triples_to_existing_chunks():
+    manifest = ProcessingManifest(
+        doc=SourceDocument(doc_id="doc", title="title", local_path=Path("/tmp/doc.pdf")),
+        profiles=[],
+        chunks=[
+            DocumentChunk(
+                chunk_id="chunk",
+                doc_id="doc",
+                page_start=1,
+                page_end=1,
+                kind=ChunkKind.TEXT,
+                text="visual evidence",
+                source_refs=["asset:asset"],
+            )
+        ],
+        assets=[
+            VisualAsset(
+                asset_id="asset",
+                doc_id="doc",
+                page_no=1,
+                kind=AssetKind.MAP,
+            )
+        ],
+        triples=[
+            GraphTriple(
+                triple_id="visual-triple",
+                doc_id="doc",
+                chunk_id="vlm-annotation",
+                subject="diagram",
+                predicate="depicts",
+                object="process",
+                qualifiers={"asset_id": "asset"},
+            )
+        ],
+    )
+
+    rows = manifest_rows(manifest)
+
+    assert rows["triples"][0]["chunk_id"] == "chunk"
+    assert rows["triples"][0]["qualifiers"]["original_chunk_id"] == "vlm-annotation"
+    assert rows["triples"][0]["qualifiers"]["remapped_by_asset_provenance"] is True
+    assert rows["triples"][0]["qualifiers"]["remapped_asset_id"] == "asset"
+
+
 def test_manifest_rows_includes_embedding_artifact_provenance(tmp_path):
     (tmp_path / "embedding_manifest.json").write_text(
         json.dumps(

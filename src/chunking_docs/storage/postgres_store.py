@@ -6,6 +6,7 @@ from typing import Any, Iterable
 
 from pydantic import BaseModel, Field
 
+from chunking_docs.graph.repair import remap_triples_to_available_chunks
 from chunking_docs.models import ProcessingManifest
 from chunking_docs.storage.postgres_records import (
     asset_row,
@@ -195,6 +196,7 @@ class PostgresDocumentStore:
 
 
 def manifest_rows(manifest: ProcessingManifest, base_dir: Path | None = None) -> dict[str, Any]:
+    triples = remap_triples_to_available_chunks(manifest.triples, manifest.chunks)
     return {
         "document": document_row(manifest.doc),
         "pages": [page_row(profile) for profile in manifest.profiles],
@@ -204,7 +206,7 @@ def manifest_rows(manifest: ProcessingManifest, base_dir: Path | None = None) ->
             manifest.chunks,
             valid_asset_ids={asset.asset_id for asset in manifest.assets},
         ),
-        "triples": [triple_row(triple) for triple in manifest.triples],
+        "triples": [triple_row(triple) for triple in triples],
         "embedding_artifacts": embedding_artifact_rows(manifest.doc.doc_id, package_dir=base_dir),
     }
 
