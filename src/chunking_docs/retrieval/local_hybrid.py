@@ -41,23 +41,36 @@ class LocalHybridSearcher:
         top_k: int = 10,
         graph_expand: bool = False,
         collapse_hierarchical: bool = False,
+        use_dense: bool = True,
+        use_bm25: bool = True,
+        use_graph: bool | None = None,
     ) -> list[HybridSearchHit]:
+        use_graph = graph_expand if use_graph is None else use_graph
         expanded_query = self._expanded_query(query) if graph_expand else query
-        dense_hits = self._dense_hits(expanded_query, top_k=max(top_k * 3, 20))
-        bm25_hits = self._bm25_hits(expanded_query, top_k=max(top_k * 3, 20))
-        dense_hits, dense_evidence = collapse_ranked_hits(
-            dense_hits,
-            self.chunk_by_id,
-            collapse_hierarchical=collapse_hierarchical,
-        )
-        bm25_hits, bm25_evidence = collapse_ranked_hits(
-            bm25_hits,
-            self.chunk_by_id,
-            collapse_hierarchical=collapse_hierarchical,
-        )
-        result_sets = [dense_hits, bm25_hits]
-        evidence_by_item = merge_evidence_maps(dense_evidence, bm25_evidence)
-        if graph_expand:
+        result_sets = []
+        evidence_by_item = {}
+
+        if use_dense:
+            dense_hits = self._dense_hits(expanded_query, top_k=max(top_k * 3, 20))
+            dense_hits, dense_evidence = collapse_ranked_hits(
+                dense_hits,
+                self.chunk_by_id,
+                collapse_hierarchical=collapse_hierarchical,
+            )
+            result_sets.append(dense_hits)
+            evidence_by_item = merge_evidence_maps(evidence_by_item, dense_evidence)
+
+        if use_bm25:
+            bm25_hits = self._bm25_hits(expanded_query, top_k=max(top_k * 3, 20))
+            bm25_hits, bm25_evidence = collapse_ranked_hits(
+                bm25_hits,
+                self.chunk_by_id,
+                collapse_hierarchical=collapse_hierarchical,
+            )
+            result_sets.append(bm25_hits)
+            evidence_by_item = merge_evidence_maps(evidence_by_item, bm25_evidence)
+
+        if use_graph:
             graph_hits = self._graph_hits(query, top_k=max(top_k * 3, 20))
             graph_hits, graph_evidence = collapse_ranked_hits(
                 graph_hits,

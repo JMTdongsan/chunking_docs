@@ -31,6 +31,27 @@ def test_local_hybrid_search_returns_bm25_and_dense_sources():
     assert "dense" in hits[0].sources
 
 
+def test_local_hybrid_can_disable_retrieval_components():
+    chunks = [
+        DocumentChunk(
+            chunk_id="a",
+            doc_id="doc",
+            page_start=1,
+            page_end=1,
+            kind=ChunkKind.TEXT,
+            text="capital budget transit corridor",
+        )
+    ]
+
+    searcher = LocalHybridSearcher(chunks, HashingTextEmbedder(embedding_dim=64))
+    bm25_hits = searcher.search("capital budget", top_k=1, use_dense=False, use_bm25=True)
+    disabled_hits = searcher.search("capital budget", top_k=1, use_dense=False, use_bm25=False)
+
+    assert bm25_hits[0].chunk.chunk_id == "a"
+    assert bm25_hits[0].sources == ["bm25"]
+    assert disabled_hits == []
+
+
 def test_local_hybrid_search_omits_zero_score_noise():
     chunks = [
         DocumentChunk(

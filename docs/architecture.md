@@ -102,6 +102,7 @@ Additional processing commands may create:
 - `graph_nodes.jsonl`
 - `graph_edges.jsonl`
 - `experiment_report.json`
+- `retrieval_ablation.json`
 
 ## Qdrant Design
 
@@ -144,6 +145,7 @@ Recommended checks:
 - `audit-package`: structural completeness and orphan checks.
 - `eval-chunking`: page coverage, chunk size distribution, section coverage, visual linkage, annotation coverage, retrieval recall@k, MRR, failed queries, and aggregate quality score.
 - `eval-retrieval`: focused top-k retrieval benchmark cases.
+- `eval-retrieval-ablation`: dense-only, BM25-only, graph-only, hybrid, and graph-expanded hybrid comparison on the same cases.
 - `compare-chunking`: side-by-side strategy comparison by quality score, recall@k, MRR, and failed queries.
 - `sweep-chunking`: parameter grid generation for max size, overlap, parent size, and visual context size.
 - `write-experiment-report`: reproducible package report with artifact checksums, record counts, tokenizer settings, Qdrant configuration, and candidate comparison metrics.

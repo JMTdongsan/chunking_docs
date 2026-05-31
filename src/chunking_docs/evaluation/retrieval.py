@@ -54,6 +54,10 @@ def evaluate_retrieval(
     top_k: int = 5,
     tokenizer_config: LexicalTokenizerConfig | None = None,
     collapse_hierarchical: bool = False,
+    graph_expand_override: bool | None = None,
+    use_dense: bool = True,
+    use_bm25: bool = True,
+    use_graph: bool | None = None,
 ) -> RetrievalEvaluation:
     searcher = LocalHybridSearcher(
         chunks,
@@ -63,11 +67,15 @@ def evaluate_retrieval(
     )
     results: list[RetrievalCaseResult] = []
     for case in cases:
+        graph_expand = case.graph_expand if graph_expand_override is None else graph_expand_override
         hits = searcher.search(
             case.query,
             top_k=top_k,
-            graph_expand=case.graph_expand,
+            graph_expand=graph_expand,
             collapse_hierarchical=collapse_hierarchical,
+            use_dense=use_dense,
+            use_bm25=use_bm25,
+            use_graph=use_graph,
         )
         top_pages = [hit.chunk.page_start for hit in hits]
         top_page_ranges = [(hit.chunk.page_start, hit.chunk.page_end) for hit in hits]

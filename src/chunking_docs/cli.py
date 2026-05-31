@@ -16,6 +16,7 @@ from chunking_docs.evaluation.audit import audit_package
 from chunking_docs.evaluation.chunking_quality import evaluate_chunking_quality
 from chunking_docs.evaluation.compare import compare_chunking_reports
 from chunking_docs.evaluation.experiment import build_experiment_report
+from chunking_docs.evaluation.ablation import evaluate_retrieval_ablation, parse_ablation_modes
 from chunking_docs.evaluation.retrieval import evaluate_retrieval, load_retrieval_cases
 from chunking_docs.evaluation.sweep import run_chunking_sweep
 from chunking_docs.graph.repair import remap_triples_to_available_chunks
@@ -901,6 +902,64 @@ def eval_retrieval_command(
         ),
     )
     print(evaluation.model_dump())
+
+
+@app.command(name="eval-retrieval-ablation")
+def eval_retrieval_ablation_command(
+    cases: Path,
+    package_dir: Path = Path("outputs/package"),
+    chunks_file: str = "chunks.jsonl",
+    output: Path | None = None,
+    modes: str = "dense,bm25,hybrid,graph,hybrid_graph",
+    top_k: int = 5,
+    collapse_hierarchical: bool = False,
+    lexical_tokenizer: TokenizerStrategy = "mixed",
+    ngram_min: int = 2,
+    ngram_max: int = 4,
+    ngram_cjk_only: bool = True,
+):
+    """Compare dense, BM25, graph, and fused retrieval on the same cases."""
+    chunks = read_jsonl(package_dir / chunks_file, DocumentChunk)
+    triples_path = package_dir / "triples.jsonl"
+    triples = read_jsonl(triples_path, GraphTriple) if triples_path.exists() else []
+    try:
+        parsed_modes = parse_ablation_modes(modes)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    report = evaluate_retrieval_ablation(
+        chunks=chunks,
+        triples=triples,
+        cases=load_retrieval_cases(cases),
+        modes=parsed_modes,
+        top_k=top_k,
+        collapse_hierarchical=collapse_hierarchical,
+        tokenizer_config=build_tokenizer_config(
+            lexical_tokenizer,
+            ngram_min=ngram_min,
+            ngram_max=ngram_max,
+            ngram_cjk_only=ngram_cjk_only,
+        ),
+    )
+    payload = report.model_dump()
+    if output is not None:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(report.model_dump_json(indent=2), encoding="utf-8")
+        payload = {
+            "output": str(output),
+            "best_by_recall": report.best_by_recall,
+            "best_by_mrr": report.best_by_mrr,
+            "rows": [
+                {
+                    "mode": row.mode.name,
+                    "recall_at_k": row.evaluation.recall_at_k,
+                    "mrr": row.evaluation.mrr,
+                    "hit_rate": row.evaluation.hit_rate,
+                    "failed_queries": row.evaluation.failed_queries,
+                }
+                for row in report.rows
+            ],
+        }
+    print(payload)
 
 
 @app.command(name="eval-chunking")

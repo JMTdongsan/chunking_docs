@@ -1,5 +1,12 @@
+import json
+
+from typer.testing import CliRunner
+
+from chunking_docs.cli import app
 from chunking_docs.evaluation.audit import audit_package, degraded_page_ratio
+from chunking_docs.evaluation.ablation import evaluate_retrieval_ablation, parse_ablation_modes
 from chunking_docs.evaluation.retrieval import RetrievalCase, evaluate_retrieval
+from chunking_docs.io import write_jsonl
 from chunking_docs.models import (
     AssetKind,
     ChunkKind,
@@ -148,3 +155,67 @@ def test_evaluate_retrieval_matches_collapsed_hierarchical_evidence_chunk():
     assert result.results[0].top_chunk_ids == ["parent"]
     assert result.results[0].top_evidence_chunk_ids == [["child"]]
     assert result.results[0].matched_chunk_id == "child"
+
+
+def test_evaluate_retrieval_ablation_compares_modes():
+    chunks = [
+        DocumentChunk(
+            chunk_id="chunk-1",
+            doc_id="doc",
+            page_start=1,
+            page_end=1,
+            kind=ChunkKind.TEXT,
+            text="capital budget transit corridor",
+        )
+    ]
+    cases = [RetrievalCase(query="capital budget", expected_pages=[1])]
+
+    report = evaluate_retrieval_ablation(
+        chunks,
+        [],
+        cases,
+        modes=parse_ablation_modes("dense,bm25,hybrid"),
+    )
+
+    assert [row.mode.name for row in report.rows]
+    assert report.best_by_recall in {"dense", "bm25", "hybrid"}
+    assert all(row.evaluation.case_count == 1 for row in report.rows)
+
+
+def test_eval_retrieval_ablation_cli_writes_report(tmp_path):
+    package_dir = tmp_path / "package"
+    package_dir.mkdir()
+    output = tmp_path / "ablation.json"
+    cases_path = tmp_path / "cases.jsonl"
+    chunks = [
+        DocumentChunk(
+            chunk_id="chunk-1",
+            doc_id="doc",
+            page_start=1,
+            page_end=1,
+            kind=ChunkKind.TEXT,
+            text="capital budget transit corridor",
+        )
+    ]
+    write_jsonl(package_dir / "chunks.jsonl", chunks)
+    write_jsonl(package_dir / "triples.jsonl", [])
+    write_jsonl(cases_path, [RetrievalCase(query="capital budget", expected_pages=[1])])
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "eval-retrieval-ablation",
+            str(cases_path),
+            "--package-dir",
+            str(package_dir),
+            "--modes",
+            "bm25,hybrid",
+            "--output",
+            str(output),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["best_by_recall"] in {"bm25", "hybrid"}
+    assert {row["mode"]["name"] for row in payload["rows"]} == {"bm25", "hybrid"}

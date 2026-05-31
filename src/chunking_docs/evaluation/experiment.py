@@ -52,6 +52,7 @@ DEFAULT_ARTIFACTS = [
     "graph_nodes.jsonl",
     "graph_edges.jsonl",
     "chunking_sweep.json",
+    "retrieval_ablation.json",
 ]
 
 

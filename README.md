@@ -159,9 +159,13 @@ Correct execution is not enough for a chunking library. Use evaluation commands 
 chunking-docs audit-package --package-dir outputs/package
 chunking-docs eval-chunking --package-dir outputs/package --cases examples/retrieval_cases.jsonl
 chunking-docs eval-retrieval examples/retrieval_cases.jsonl --package-dir outputs/package --top-k 5
+chunking-docs eval-retrieval-ablation examples/retrieval_cases.jsonl \
+  --package-dir outputs/package \
+  --modes dense,bm25,hybrid,graph,hybrid_graph \
+  --output outputs/package/retrieval_ablation.json
 ```
 
-`eval-chunking` reports page coverage, chunk size distribution, section coverage, visual asset linkage, visual annotation coverage, retrieval recall@k, MRR, failed queries, and an aggregate quality score. Retrieval cases are JSONL:
+`eval-chunking` reports page coverage, chunk size distribution, section coverage, visual asset linkage, visual annotation coverage, retrieval recall@k, MRR, failed queries, and an aggregate quality score. `eval-retrieval-ablation` compares dense-only, BM25-only, graph-only, hybrid, and graph-expanded hybrid retrieval so the effect of each retrieval signal is visible. Retrieval cases are JSONL:
 
 ```jsonl
 {"query":"policy corridor near river","expected_pages":[12],"graph_expand":true}
