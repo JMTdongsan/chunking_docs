@@ -10,6 +10,7 @@ def test_parse_vlm_output_from_json_object():
           "title": "River Corridor Diagram",
           "summary": "Shows connected station hubs.",
           "key_points": ["hub A", "hub B"],
+          "visual_elements": ["legend"],
           "entities": ["river", "station"],
           "triples": [
             {"subject": "corridor", "predicate": "connects", "object": "station hub"}
@@ -21,6 +22,8 @@ def test_parse_vlm_output_from_json_object():
 
     assert parsed.caption == "River Corridor Diagram"
     assert "Shows connected station hubs." in parsed.summary
+    assert "river" in parsed.summary
+    assert "corridor connects station hub" in parsed.summary
     assert parsed.triples[0]["subject"] == "corridor"
     assert parsed.metadata["page_type"] == "map"
     assert parsed.metadata["vlm_parse_status"] == "json_object"

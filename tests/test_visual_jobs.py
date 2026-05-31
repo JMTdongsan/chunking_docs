@@ -15,6 +15,7 @@ from chunking_docs.vision.jobs import (
     run_visual_jobs,
 )
 from chunking_docs.vision.manual_annotations import AssetAnnotation
+from chunking_docs.vision.prompts import MAP_SUMMARY_PROMPT_KO, VISUAL_PROMPT_SCHEMA_VERSION
 from chunking_docs.vision.quality import evaluate_visual_results
 from chunking_docs.vision.report import summarize_visual_results
 
@@ -133,12 +134,14 @@ def test_run_visual_jobs_returns_asset_annotations(tmp_path):
     assert results[0].metadata["ocr_backend_config"]["name"] == "fake-ocr"
     assert results[0].metadata["vlm_backend_config"]["name"] == "fake-vlm"
     assert results[0].metadata["vlm_prompt_name"] == "map_summary_ko"
+    assert results[0].metadata["vlm_prompt_schema_version"] == VISUAL_PROMPT_SCHEMA_VERSION
     assert len(results[0].metadata["vlm_prompt_sha256"]) == 64
     assert results[0].metadata["vlm_prompt_chars"] > 0
     assert annotations[0].asset_id == "map"
     assert annotations[0].ocr_text.startswith("ocr:")
     assert annotations[0].vlm_summary.startswith("vlm:")
     assert annotations[0].metadata["vlm_prompt_name"] == "map_summary_ko"
+    assert annotations[0].metadata["vlm_prompt_schema_version"] == VISUAL_PROMPT_SCHEMA_VERSION
     assert annotations[0].metadata["vlm_backend_config"]["max_new_tokens"] == 64
 
 
@@ -163,6 +166,12 @@ def test_run_visual_jobs_parses_json_vlm_triples(tmp_path):
     assert annotation.caption == "River Corridor Diagram"
     assert annotation.triples[0]["predicate"] == "connects"
     assert annotation.metadata["vlm_parse_status"] == "json_object"
+
+
+def test_map_prompt_requires_single_json_object():
+    assert "JSON 객체 하나만" in MAP_SUMMARY_PROMPT_KO
+    assert '"triples"' in MAP_SUMMARY_PROMPT_KO
+    assert "마크다운 코드블록" in MAP_SUMMARY_PROMPT_KO
 
 
 def test_summarize_visual_results_reports_backend_metrics(tmp_path):

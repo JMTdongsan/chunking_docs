@@ -1,18 +1,46 @@
-PAGE_SUMMARY_PROMPT_KO = """
-이 이미지는 문서의 한 페이지입니다.
-다음 항목을 JSON으로 정리하세요.
-1. page_type: text, table, chart, map, section_title, appendix 중 하나
-2. title: 페이지의 가장 중요한 제목
-3. key_points: 핵심 주장 또는 수치 3~7개
-4. visual_elements: 표, 그래프, 지도, 범례, 축, 캡션 설명
-5. entities: 장소, 권역, 정책명, 지표, 연도
-6. triples: subject, predicate, object 형태의 관계 후보
-한국어로 답하세요. 확실하지 않은 내용은 추정이라고 표시하세요.
+VISUAL_PROMPT_SCHEMA_VERSION = "visual_json_v2"
+
+
+STRUCTURED_VISUAL_JSON_CONTRACT_KO = """
+출력은 유효한 JSON 객체 하나만 작성하세요. 마크다운 코드블록, 설명문, 주석, JSON 밖의 문장을 쓰지 마세요.
+반드시 다음 키를 포함하세요.
+{
+  "page_type": "text | table | chart | map | section_title | appendix | mixed | unknown",
+  "title": "이미지에서 읽히는 가장 중요한 제목 또는 빈 문자열",
+  "summary": "이미지가 전달하는 핵심 내용을 1~3문장으로 요약",
+  "key_points": ["검색에 도움이 되는 핵심 주장, 수치, 라벨"],
+  "visual_elements": ["표, 그래프, 지도, 범례, 축, 캡션, 색상/기호 의미"],
+  "entities": ["장소, 조직, 정책명, 지표, 연도, 시설명 등 명명된 항목"],
+  "triples": [
+    {
+      "subject": "간결한 명사구",
+      "predicate": "관계 동사 또는 관계명",
+      "object": "간결한 명사구",
+      "evidence": "이미지에서 읽히는 근거 문구 또는 시각 단서",
+      "confidence": 0.0
+    }
+  ]
+}
+규칙:
+- 이미지에서 직접 읽히거나 명확히 보이는 정보만 추출하세요.
+- 불확실한 정보는 만들지 말고 배열을 비워 두세요.
+- triples는 검색과 그래프 확장에 쓸 수 있는 관계 후보만 넣으세요.
+- confidence는 0.0 이상 1.0 이하 숫자로 쓰세요.
+- 모든 문자열은 한국어로 쓰되, 이미지에 영어 고유명이 있으면 원문을 유지하세요.
 """.strip()
 
 
-MAP_SUMMARY_PROMPT_KO = """
-이 이미지는 지도 또는 공간 관계를 설명하는 도판일 수 있습니다.
-제목, 지역/중심지/축/거점/자연 지형/교통축, 범례 항목, 이미지에서 읽히는 주요 방향을 정리하세요.
-가능하면 관계를 triples 배열로 함께 추출하세요.
+PAGE_SUMMARY_PROMPT_KO = f"""
+이 이미지는 문서의 한 페이지입니다.
+텍스트, 표, 차트, 지도, 제목, 캡션, 스캔 품질을 함께 보고 검색 가능한 근거를 추출하세요.
+
+{STRUCTURED_VISUAL_JSON_CONTRACT_KO}
+""".strip()
+
+
+MAP_SUMMARY_PROMPT_KO = f"""
+이 이미지는 지도, 공간 관계, 네트워크, 위치도, 구역도 또는 다이어그램일 수 있습니다.
+지역/거점/축/권역/경계/자연 지형/교통축/범례 항목과 방향 관계를 우선 추출하세요.
+
+{STRUCTURED_VISUAL_JSON_CONTRACT_KO}
 """.strip()

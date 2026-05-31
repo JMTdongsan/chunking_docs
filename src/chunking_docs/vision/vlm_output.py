@@ -99,6 +99,12 @@ def summary_from_payload(payload: dict[str, Any]) -> str:
         parts.append(visual_elements.strip())
     elif isinstance(visual_elements, list):
         parts.extend(str(item).strip() for item in visual_elements if str(item).strip())
+    entities = payload.get("entities")
+    if isinstance(entities, str) and entities.strip():
+        parts.append(entities.strip())
+    elif isinstance(entities, list):
+        parts.extend(str(item).strip() for item in entities if str(item).strip())
+    parts.extend(triple_summary_lines(normalize_triples(payload.get("triples") or payload.get("relationships") or [])))
     return "\n".join(parts).strip() or json.dumps(payload, ensure_ascii=False)
 
 
@@ -131,6 +137,17 @@ def normalize_triples(value: Any) -> list[dict[str, Any]]:
             }
         )
     return triples
+
+
+def triple_summary_lines(triples: list[dict[str, Any]]) -> list[str]:
+    lines = []
+    for triple in triples:
+        subject = str(triple.get("subject", "")).strip()
+        predicate = str(triple.get("predicate", "")).strip()
+        object_ = str(triple.get("object", "")).strip()
+        if subject and predicate and object_:
+            lines.append(f"{subject} {predicate} {object_}")
+    return lines
 
 
 def selected_metadata(payload: dict[str, Any], keys: list[str]) -> dict[str, Any]:

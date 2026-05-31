@@ -109,7 +109,13 @@ def triple_provenance(annotation: AssetAnnotation) -> dict[str, Any]:
         provenance["page_no"] = annotation.page_no
     if annotation.kind is not None:
         provenance["asset_kind"] = str(annotation.kind)
-    for key in ["annotation_source", "visual_job_id", "vlm_prompt_name", "vlm_prompt_sha256"]:
+    for key in [
+        "annotation_source",
+        "visual_job_id",
+        "vlm_prompt_name",
+        "vlm_prompt_schema_version",
+        "vlm_prompt_sha256",
+    ]:
         value = annotation.metadata.get(key)
         if value:
             provenance[key] = value

@@ -12,6 +12,7 @@ from chunking_docs.models import AssetKind, VisualAsset
 from chunking_docs.vision.annotate import prompt_for_asset, prompt_name_for_asset
 from chunking_docs.vision.interfaces import OCRBackend, VLMBackend
 from chunking_docs.vision.manual_annotations import AssetAnnotation
+from chunking_docs.vision.prompts import VISUAL_PROMPT_SCHEMA_VERSION
 from chunking_docs.vision.vlm_output import parse_vlm_output
 
 VisualOperation = Literal["ocr", "vlm"]
@@ -173,6 +174,7 @@ def run_visual_jobs(
                     "ocr_backend_config": annotation.metadata.get("ocr_backend_config", {}),
                     "vlm_backend_config": annotation.metadata.get("vlm_backend_config", {}),
                     "vlm_prompt_name": annotation.metadata.get("vlm_prompt_name"),
+                    "vlm_prompt_schema_version": annotation.metadata.get("vlm_prompt_schema_version"),
                     "vlm_prompt_sha256": annotation.metadata.get("vlm_prompt_sha256"),
                     "vlm_prompt_chars": annotation.metadata.get("vlm_prompt_chars"),
                     "ocr_duration_ms": annotation.metadata.get("ocr_duration_ms"),
@@ -278,6 +280,7 @@ def vlm_prompt_metadata(asset: VisualAsset, prompt: str | None = None) -> dict[s
     prompt = prompt if prompt is not None else prompt_for_asset(asset)
     return {
         "vlm_prompt_name": prompt_name_for_asset(asset),
+        "vlm_prompt_schema_version": VISUAL_PROMPT_SCHEMA_VERSION,
         "vlm_prompt_sha256": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
         "vlm_prompt_chars": len(prompt),
     }
