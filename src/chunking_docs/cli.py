@@ -30,6 +30,7 @@ from chunking_docs.evaluation.diagnostics import (
     analyze_retrieval_evaluation,
     load_retrieval_evaluation,
 )
+from chunking_docs.evaluation.delta import compare_processing_packages
 from chunking_docs.evaluation.experiment import build_experiment_report
 from chunking_docs.evaluation.gate import gate_retrieval_evaluation, gate_summary_payload
 from chunking_docs.evaluation.readiness import build_ingestion_readiness_report
@@ -1912,6 +1913,37 @@ def characterize_package_command(
             "page_count": report.text_layer.page_count,
             "degraded_or_empty_ratio": report.text_layer.degraded_or_empty_ratio,
             "asset_kind_counts": report.visual.asset_kind_counts,
+            "observations": [observation.code for observation in report.observations],
+        }
+    print(payload)
+
+
+@app.command(name="compare-packages")
+def compare_packages_command(
+    before_dir: Path,
+    after_dir: Path,
+    output: Path | None = None,
+    max_ids: int = 50,
+):
+    """Compare two processing packages before and after annotation or strategy changes."""
+    before = load_processing_package(before_dir)
+    after = load_processing_package(after_dir)
+    report = compare_processing_packages(
+        before,
+        after,
+        before_dir=before_dir,
+        after_dir=after_dir,
+        max_ids=max_ids,
+    )
+    payload = report.model_dump()
+    if output is not None:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(report.model_dump_json(indent=2), encoding="utf-8")
+        payload = {
+            "output": str(output),
+            "count_delta": report.count_delta,
+            "changed_ids": report.changed_ids,
+            "qdrant_record_count_delta": report.qdrant_record_count_delta,
             "observations": [observation.code for observation in report.observations],
         }
     print(payload)

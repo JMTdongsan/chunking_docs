@@ -54,6 +54,7 @@
    - Summarize visual job results by status, backend latency, output size, VLM prompt usage, parse status, and triple count.
    - Gate visual runs by completion rate, OCR text coverage, VLM summary coverage, JSON parse rate, triple density, and failure counts.
    - Apply annotations back into chunks, assets, graph triples, BM25, and Qdrant records.
+   - Compare before/after package directories to verify how annotations changed chunks, assets, graph triples, and vector records.
 
 8. **Semantic Splitting**
    - Split long annotated chunks into subchunks using paragraph and line boundaries.
@@ -144,6 +145,7 @@ Additional processing commands may create:
 - `experiment_report.json`
 - `document_characteristics.json`
 - `ingestion_readiness.json`
+- `package_delta.json`
 - `qdrant_retrieval_eval.json`
 - `qdrant_vector_ablation.json`
 - `retrieval_diagnostics.json`
@@ -207,6 +209,7 @@ Recommended checks:
 - `eval-qdrant-vector-ablation`: Qdrant text, visual caption, optional image, and graph-expanded vector comparison on the same cases.
 - `eval-retrieval-ablation`: dense-only, BM25-only, graph-only, hybrid, and graph-expanded hybrid comparison on the same cases, including target coverage@k, target nDCG@k, and latency.
 - `gate-retrieval`: pass/fail checks for absolute metric floors and baseline regression limits such as recall drop, target coverage drop, target nDCG drop, precision drop, and latency ratio.
+- `compare-packages`: before/after package comparison for count deltas, changed chunk/asset/triple IDs, Qdrant record count deltas, and annotation-related observations.
 - `compare-chunking`: side-by-side strategy comparison by quality score, recall@k, MRR, target coverage@k, target nDCG@k, precision@k, latency, and failed queries.
 - `sweep-chunking`: parameter grid generation for max size, overlap, parent size, and multimodal or hierarchical visual context size.
 - `write-experiment-report`: reproducible package report with artifact checksums, record counts, tokenizer settings, Qdrant configuration, and candidate comparison metrics.

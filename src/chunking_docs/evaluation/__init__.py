@@ -13,6 +13,7 @@ from .diagnostics import (
     analyze_retrieval_evaluation,
     load_retrieval_evaluation,
 )
+from .delta import PackageDeltaReport, compare_processing_packages
 from .experiment import ArtifactSummary, ExperimentReport, build_experiment_report
 from .gate import RetrievalGateCheck, RetrievalGateReport, gate_retrieval_evaluation
 from .readiness import IngestionReadinessReport, ReadinessComponent, build_ingestion_readiness_report
@@ -34,6 +35,7 @@ __all__ = [
     "ExperimentReport",
     "IngestionReadinessReport",
     "PackageAudit",
+    "PackageDeltaReport",
     "ReadinessComponent",
     "RetrievalAblationMode",
     "RetrievalAblationReport",
@@ -49,6 +51,7 @@ __all__ = [
     "audit_package",
     "build_experiment_report",
     "build_ingestion_readiness_report",
+    "compare_processing_packages",
     "degraded_page_ratio",
     "evaluate_retrieval",
     "evaluate_retrieval_ablation",

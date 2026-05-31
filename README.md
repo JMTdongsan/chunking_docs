@@ -166,6 +166,17 @@ chunking-docs gate-visual-results \
   --output outputs/package/visual_quality.json
 ```
 
+Compare two package directories after applying annotations, changing chunking strategy, or rebuilding embeddings:
+
+```bash
+chunking-docs compare-packages \
+  outputs/package.baseline \
+  outputs/package \
+  --output outputs/package/package_delta.json
+```
+
+The report shows before/after counts, added and removed IDs, changed chunk/asset/triple IDs, Qdrant record count deltas, and observations such as newly added visual annotations or graph triples.
+
 ## Structured Tables
 
 The package command extracts detected PDF tables by default and stores each table as both a `table` chunk and a `table` visual asset. Table text is serialized as Markdown so dense embeddings, BM25, caption vectors, and downstream RAG context can all use the same structured content.
@@ -356,6 +367,8 @@ chunking-docs eval-retrieval-ablation examples/retrieval_cases.jsonl \
   --modes dense,bm25,hybrid,graph,hybrid_graph \
   --repeat 3 \
   --output outputs/package/retrieval_ablation.json
+chunking-docs compare-packages outputs/package.baseline outputs/package \
+  --output outputs/package/package_delta.json
 ```
 
 `audit-package` checks structural completeness, orphan triples, remaining OCR/VLM work, Qdrant vector dimensions, required payload fields, and payload index definitions. `eval-chunking` reports page coverage, chunk size distribution, section coverage, visual asset linkage, visual annotation coverage, retrieval recall@k, MRR, target coverage@k, target nDCG@k, precision@k, failed queries, and an aggregate quality score. `eval-retrieval` also records per-query latency samples plus mean and p95 latency when `--repeat` is greater than one. `diagnose-retrieval` groups failed or partially covered queries by reasons such as no hits, missing target type, low target nDCG@k, or low precision@k. `gate-retrieval` turns retrieval metrics into pass/fail checks for absolute floors and optional baseline regression limits such as recall drop or latency ratio. Retrieval reports include target-specific recall, MRR, target nDCG@k, source-family contribution metrics, and coverage for page, chunk, visual asset, and graph triple expectations. `eval-qdrant-retrieval` runs the same benchmark cases through Qdrant named vectors, BM25, and optional graph expansion so the production retrieval path can be validated. `eval-qdrant-vector-ablation` compares Qdrant text, visual caption, optional image, and graph-expanded modes on the same cases. `eval-retrieval-ablation` compares dense-only, BM25-only, graph-only, hybrid, and graph-expanded hybrid retrieval so the effect and runtime cost of each retrieval signal is visible. Retrieval cases are JSONL:
