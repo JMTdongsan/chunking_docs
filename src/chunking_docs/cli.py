@@ -1526,6 +1526,11 @@ def compare_visual_runs_command(
         help="Visual run in name=results.jsonl form. Repeat for multiple OCR/VLM runs.",
     ),
     output: Path | None = None,
+    require_same_jobs: bool = typer.Option(
+        False,
+        "--require-same-jobs/--no-require-same-jobs",
+        help="Exit with status 1 when compared runs were not produced from the same job IDs.",
+    ),
 ):
     """Compare multiple OCR/VLM result files by coverage, parse rate, triples, and latency."""
     parsed_runs = parse_visual_run_inputs(runs)
@@ -1545,8 +1550,14 @@ def compare_visual_runs_command(
             "best_by_quality": comparison.best_by_quality,
             "fastest_by_total_latency": comparison.fastest_by_total_latency,
             "best_by_triple_density": comparison.best_by_triple_density,
+            "job_set_mismatch": comparison.job_set_mismatch,
+            "union_job_count": comparison.union_job_count,
+            "shared_job_count": comparison.shared_job_count,
+            "missing_job_ids_by_run": comparison.missing_job_ids_by_run,
         }
     print(payload)
+    if require_same_jobs and comparison.job_set_mismatch:
+        raise typer.Exit(1)
 
 
 @app.command(name="plan-vlm-experiments")

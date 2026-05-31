@@ -168,7 +168,7 @@ def build_compare_visual_runs_command(
     args = ["chunking-docs", "compare-visual-runs"]
     for recipe in recipes:
         args.extend(["--run", f"{recipe.name}={recipe.results_output}"])
-    args.extend(["--output", str(output_dir / "visual_run_comparison.json")])
+    args.extend(["--output", str(output_dir / "visual_run_comparison.json"), "--require-same-jobs"])
     return quote_command(args)
 
 

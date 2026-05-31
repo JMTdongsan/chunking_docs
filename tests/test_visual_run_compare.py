@@ -25,6 +25,11 @@ def test_compare_visual_runs_ranks_by_quality_and_tracks_latency():
     assert comparison.rows[0].triples_per_vlm_job == 1.0
     assert comparison.rows[0].total_mean_latency_ms == 40.0
     assert comparison.rows[-1].failed_count == 1
+    assert comparison.job_set_mismatch is True
+    assert comparison.union_job_count == 2
+    assert comparison.shared_job_count == 1
+    assert comparison.missing_job_ids_by_run["json"] == ["job-2"]
+    assert comparison.unshared_job_ids_by_run["raw"] == ["job-2"]
 
 
 def test_compare_visual_runs_cli_writes_json(tmp_path):
@@ -51,7 +56,30 @@ def test_compare_visual_runs_cli_writes_json(tmp_path):
     payload = json.loads(output.read_text(encoding="utf-8"))
     assert payload["best_by_quality"] == "json"
     assert payload["fastest_by_total_latency"] == "raw"
+    assert payload["job_set_mismatch"] is True
+    assert payload["missing_job_ids_by_run"]["json"] == ["job-2"]
     assert payload["rows"][0]["name"] == "json"
+
+
+def test_compare_visual_runs_cli_can_fail_on_job_set_mismatch(tmp_path):
+    raw_path = tmp_path / "raw.jsonl"
+    json_path = tmp_path / "json.jsonl"
+    write_jsonl(raw_path, raw_text_results())
+    write_jsonl(json_path, json_results())
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "compare-visual-runs",
+            "--run",
+            f"raw={raw_path}",
+            "--run",
+            f"json={json_path}",
+            "--require-same-jobs",
+        ],
+    )
+
+    assert result.exit_code == 1
 
 
 def json_results() -> list[VisualJobRunResult]:

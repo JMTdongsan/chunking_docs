@@ -29,6 +29,7 @@ def test_build_vlm_experiment_plan_writes_profile_commands(tmp_path):
     assert "--apply" not in plan.recipes[0].command
     assert "visual_job_results.qwen2_5_vl_7b.jsonl" in plan.compare_command
     assert "visual_run_comparison.json" in plan.compare_command
+    assert "--require-same-jobs" in plan.compare_command
 
 
 def test_parse_profile_list_normalizes_names():
@@ -67,3 +68,4 @@ def test_plan_vlm_experiments_cli_writes_json(tmp_path):
     assert payload["profiles"] == ["qwen2_5_vl_7b", "phi3_5_vision"]
     assert payload["recipes"][1]["model_class"] == "causal-lm"
     assert "compare-visual-runs" in payload["compare_command"]
+    assert "--require-same-jobs" in payload["compare_command"]

@@ -53,7 +53,7 @@
    - Attach asset, page, job, source, and prompt provenance to visual-derived triples.
    - Record OCR language, backend configuration, VLM prompt name, prompt hash, latency, output size, parse status, and triple count.
    - Summarize visual job results by status, backend latency, output size, VLM prompt usage, parse status, and triple count.
-   - Compare multiple OCR/VLM runs by completion, annotation coverage, parse rate, triple density, and latency.
+   - Compare multiple OCR/VLM runs by completion, annotation coverage, parse rate, triple density, latency, and whether the same visual job IDs were used.
    - Write VLM experiment plans so several profiles can be run against the same visual job set and compared afterward.
    - Gate visual runs by completion rate, OCR text coverage, VLM summary coverage, JSON parse rate, triple density, and failure counts.
    - Apply annotations back into chunks, assets, graph triples, BM25, and Qdrant records.
@@ -231,7 +231,7 @@ Recommended checks:
 - `eval-qdrant-vector-ablation`: Qdrant text, visual caption, optional image, and graph-expanded vector comparison on the same cases.
 - `gate-qdrant-vector-ablation`: pass/fail checks for a selected Qdrant vector mode using recall, target coverage, target nDCG, precision, failed-query count, latency, target-type coverage, source-family target coverage, and optional best-mode requirements.
 - `ingestion-readiness`: final pre-ingestion gate that can combine package audit results, BM25 token manifest freshness for asset-enriched lexical text, storage artifacts, PostgreSQL row conversion, visual quality, retrieval gates, chunking comparison gates, retrieval ablation gates, and selected Qdrant vector ablation gates.
-- `compare-visual-runs`: OCR/VLM run comparison by coverage, structured parse rate, graph triple density, and latency.
+- `compare-visual-runs`: OCR/VLM run comparison by coverage, structured parse rate, graph triple density, latency, and shared job-set validation.
 - `plan-vlm-experiments`: reproducible profile-by-profile command recipes for running the same visual job set through multiple VLMs.
 - `eval-retrieval-ablation`: dense-only, BM25-only, graph-only, hybrid, graph-expanded hybrid, and text-only versus visual-asset-enriched lexical comparison on the same cases, including target coverage@k, target nDCG@k, and latency.
 - `gate-retrieval-ablation`: pass/fail checks for a selected retrieval ablation mode using absolute thresholds, baseline lift, target-type coverage, source-family coverage, best-mode requirements, and latency limits.

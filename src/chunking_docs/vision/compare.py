@@ -40,12 +40,20 @@ class VisualRunComparison(BaseModel):
     best_by_quality: str | None = None
     fastest_by_total_latency: str | None = None
     best_by_triple_density: str | None = None
+    union_job_count: int = 0
+    shared_job_count: int = 0
+    job_set_mismatch: bool = False
+    run_job_counts: dict[str, int] = Field(default_factory=dict)
+    missing_job_ids_by_run: dict[str, list[str]] = Field(default_factory=dict)
+    unshared_job_ids_by_run: dict[str, list[str]] = Field(default_factory=dict)
 
 
 def compare_visual_runs(
     runs: dict[str, list[VisualJobRunResult]],
 ) -> VisualRunComparison:
     rows = [visual_run_row(name, results) for name, results in runs.items()]
+    job_sets = visual_run_job_sets(runs)
+    job_set_report = compare_visual_job_sets(job_sets)
     rows.sort(
         key=lambda row: (
             row.quality_score,
@@ -68,6 +76,7 @@ def compare_visual_runs(
         best_by_triple_density=max(triple_rows, key=lambda row: row.triples_per_vlm_job or 0.0).name
         if triple_rows
         else None,
+        **job_set_report,
     )
 
 
@@ -129,6 +138,42 @@ def visual_run_quality_score(report: VisualQualityReport) -> float:
         )
     total_weight = sum(weight for _, weight in components)
     return sum(value * weight for value, weight in components) / total_weight if total_weight else 0.0
+
+
+def visual_run_job_sets(
+    runs: dict[str, list[VisualJobRunResult]],
+) -> dict[str, set[str]]:
+    return {
+        name: {str(result.job_id).strip() for result in results if str(result.job_id).strip()}
+        for name, results in runs.items()
+    }
+
+
+def compare_visual_job_sets(job_sets: dict[str, set[str]]) -> dict:
+    if not job_sets:
+        return {
+            "union_job_count": 0,
+            "shared_job_count": 0,
+            "job_set_mismatch": False,
+            "run_job_counts": {},
+            "missing_job_ids_by_run": {},
+            "unshared_job_ids_by_run": {},
+        }
+
+    union_ids = set().union(*job_sets.values())
+    shared_ids = set.intersection(*job_sets.values()) if job_sets else set()
+    return {
+        "union_job_count": len(union_ids),
+        "shared_job_count": len(shared_ids),
+        "job_set_mismatch": any(ids != shared_ids for ids in job_sets.values()),
+        "run_job_counts": {name: len(ids) for name, ids in sorted(job_sets.items())},
+        "missing_job_ids_by_run": {
+            name: sorted(union_ids - ids) for name, ids in sorted(job_sets.items())
+        },
+        "unshared_job_ids_by_run": {
+            name: sorted(ids - shared_ids) for name, ids in sorted(job_sets.items())
+        },
+    }
 
 
 def durations(results: list[VisualJobRunResult], key: str) -> list[float]:
