@@ -50,6 +50,37 @@ def test_ingestion_readiness_passes_ready_package(tmp_path):
     assert report.failed_components == []
 
 
+def test_ingestion_readiness_can_require_embedding_vectors(tmp_path):
+    package_dir, manifest = write_ready_package(tmp_path)
+
+    report = build_ingestion_readiness_report(
+        package_dir,
+        manifest,
+        required_vectors=["text_dense"],
+    )
+
+    component = next(component for component in report.components if component.name == "embedding_vectors")
+    assert report.passed is True
+    assert component.metadata["required_vectors"] == ["text_dense"]
+    assert component.metadata["required_vector_details"]["text_dense"]["record_count"] == 1
+    assert component.metadata["required_vector_details"]["text_dense"]["dimension"] == 2
+
+
+def test_ingestion_readiness_flags_missing_required_embedding_vector(tmp_path):
+    package_dir, manifest = write_ready_package(tmp_path)
+
+    report = build_ingestion_readiness_report(
+        package_dir,
+        manifest,
+        required_vectors=["text_dense", "caption_dense"],
+    )
+
+    component = next(component for component in report.components if component.name == "embedding_vectors")
+    assert report.passed is False
+    assert "embedding_vectors" in report.failed_components
+    assert component.metadata["missing_collection_vectors"] == ["caption_dense"]
+
+
 def test_ingestion_readiness_detects_stale_bm25_visual_asset_text(tmp_path):
     package_dir, manifest = write_ready_package(tmp_path)
     stale_index = BM25LexicalIndex(manifest.chunks, texts=[chunk.text for chunk in manifest.chunks])
@@ -468,6 +499,33 @@ def test_ingestion_readiness_cli_can_gate_visual_run_comparison(tmp_path):
     assert payload["passed"] is True
     assert component["metadata"]["job_set_mismatch"] is False
     assert component["metadata"]["best_by_quality"] == "structured"
+
+
+def test_ingestion_readiness_cli_can_require_embedding_vectors(tmp_path):
+    package_dir, _ = write_ready_package(tmp_path)
+    output = tmp_path / "readiness.json"
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "ingestion-readiness",
+            "--package-dir",
+            str(package_dir),
+            "--required-vector",
+            "text_dense",
+            "--output",
+            str(output),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    component = next(
+        component for component in payload["components"] if component["name"] == "embedding_vectors"
+    )
+    assert payload["passed"] is True
+    assert component["metadata"]["required_vectors"] == ["text_dense"]
+    assert component["metadata"]["required_vector_details"]["text_dense"]["record_count"] == 1
 
 
 def test_ingestion_readiness_cli_can_gate_qdrant_vector_ablation(tmp_path):

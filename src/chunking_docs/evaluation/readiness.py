@@ -68,6 +68,7 @@ def build_ingestion_readiness_report(
     require_qdrant_records: bool = True,
     require_bm25: bool = True,
     require_embedding_manifest: bool = True,
+    required_vectors: list[str] | None = None,
     require_postgres_rows: bool = True,
     require_visual_annotations: bool = False,
     visual_results: list[VisualJobRunResult] | None = None,
@@ -124,6 +125,8 @@ def build_ingestion_readiness_report(
                 "embedding_manifest.json",
             )
         )
+    if required_vectors:
+        components.append(embedding_vectors_component(package_dir, required_vectors))
 
     postgres_row_counts: dict[str, int] = {}
     if require_postgres_rows:
@@ -439,6 +442,154 @@ def required_artifact_component(
         message=f"Required package artifact exists: {filename}.",
         metadata={"file": filename},
     )
+
+
+def embedding_vectors_component(
+    package_dir: Path,
+    required_vectors: list[str],
+) -> ReadinessComponent:
+    normalized_vectors = sorted({vector.strip() for vector in required_vectors if vector.strip()})
+    collection_path = package_dir / "qdrant_collection.json"
+    manifest_path = package_dir / "embedding_manifest.json"
+    metadata: dict[str, Any] = {
+        "required_vectors": normalized_vectors,
+        "collection_file": collection_path.name,
+        "manifest_file": manifest_path.name,
+    }
+    if not normalized_vectors:
+        return ReadinessComponent(
+            name="embedding_vectors",
+            passed=True,
+            message="No required embedding vectors were configured.",
+            metadata=metadata,
+        )
+
+    payloads = load_embedding_contract_payloads(collection_path, manifest_path)
+    if payloads.get("error"):
+        metadata.update(payloads)
+        return ReadinessComponent(
+            name="embedding_vectors",
+            passed=False,
+            message="Embedding vector contract files are missing or invalid.",
+            metadata=metadata,
+        )
+
+    collection = payloads["collection"]
+    manifest = payloads["manifest"]
+    named_vectors = collection.get("named_vectors")
+    manifest_vectors = manifest.get("vectors")
+    if not isinstance(named_vectors, dict) or not isinstance(manifest_vectors, dict):
+        metadata.update(
+            {
+                "has_named_vectors": isinstance(named_vectors, dict),
+                "has_manifest_vectors": isinstance(manifest_vectors, dict),
+            }
+        )
+        return ReadinessComponent(
+            name="embedding_vectors",
+            passed=False,
+            message="Embedding vector contract files must include named vector and manifest vector objects.",
+            metadata=metadata,
+        )
+
+    missing_collection_vectors: list[str] = []
+    missing_manifest_vectors: list[str] = []
+    missing_record_files: list[str] = []
+    empty_record_vectors: list[str] = []
+    dimension_mismatches: dict[str, dict[str, int | None]] = {}
+    required_vector_details: dict[str, dict[str, Any]] = {}
+    for vector_name in normalized_vectors:
+        collection_vector = named_vectors.get(vector_name)
+        manifest_vector = manifest_vectors.get(vector_name)
+        if not isinstance(collection_vector, dict):
+            missing_collection_vectors.append(vector_name)
+            continue
+        if not isinstance(manifest_vector, dict):
+            missing_manifest_vectors.append(vector_name)
+            continue
+
+        collection_dimension = vector_dimension(collection_vector, "size")
+        manifest_dimension = vector_dimension(manifest_vector, "dimension")
+        if (
+            collection_dimension is not None
+            and manifest_dimension is not None
+            and collection_dimension != manifest_dimension
+        ):
+            dimension_mismatches[vector_name] = {
+                "collection": collection_dimension,
+                "manifest": manifest_dimension,
+            }
+
+        record_file = str(manifest_vector.get("file") or "")
+        record_path = package_dir / record_file if record_file else None
+        if record_path is None or not record_path.exists():
+            missing_record_files.append(vector_name)
+        record_count = manifest_vector.get("record_count")
+        if not isinstance(record_count, int) or record_count <= 0:
+            empty_record_vectors.append(vector_name)
+
+        required_vector_details[vector_name] = {
+            "file": record_file,
+            "record_count": record_count,
+            "dimension": manifest_dimension,
+            "collection_dimension": collection_dimension,
+            "distance": manifest_vector.get("distance"),
+            "note": manifest_vector.get("note"),
+            "bytes": manifest_vector.get("bytes"),
+            "sha256": manifest_vector.get("sha256"),
+        }
+
+    metadata.update(
+        {
+            "required_vector_details": required_vector_details,
+            "missing_collection_vectors": missing_collection_vectors,
+            "missing_manifest_vectors": missing_manifest_vectors,
+            "missing_record_files": missing_record_files,
+            "empty_record_vectors": empty_record_vectors,
+            "dimension_mismatches": dimension_mismatches,
+        }
+    )
+    passed = not any(
+        [
+            missing_collection_vectors,
+            missing_manifest_vectors,
+            missing_record_files,
+            empty_record_vectors,
+            dimension_mismatches,
+        ]
+    )
+    return ReadinessComponent(
+        name="embedding_vectors",
+        passed=passed,
+        message=(
+            "Required embedding vector families are configured and have record files."
+            if passed
+            else "Required embedding vector families are missing, empty, or inconsistent."
+        ),
+        metadata=metadata,
+    )
+
+
+def load_embedding_contract_payloads(collection_path: Path, manifest_path: Path) -> dict[str, Any]:
+    if not collection_path.exists():
+        return {"error": "missing_qdrant_collection"}
+    if not manifest_path.exists():
+        return {"error": "missing_embedding_manifest"}
+    try:
+        collection = json.loads(collection_path.read_text(encoding="utf-8"))
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        return {"error": "invalid_json", "detail": str(exc)}
+    if not isinstance(collection, dict) or not isinstance(manifest, dict):
+        return {"error": "invalid_payload_type"}
+    return {"collection": collection, "manifest": manifest}
+
+
+def vector_dimension(payload: dict[str, Any], key: str) -> int | None:
+    value = payload.get(key)
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    return None
 
 
 def visual_run_comparison_component(
