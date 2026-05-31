@@ -159,7 +159,7 @@ Chunking changes should be judged by retrieval behavior, not only by successful 
 
 Recommended checks:
 
-- `audit-package`: structural completeness and orphan checks.
+- `audit-package`: structural completeness, orphan checks, OCR/VLM gaps, Qdrant vector dimensions, required payload fields, and payload index definitions.
 - `eval-chunking`: page coverage, chunk size distribution, section coverage, visual linkage, annotation coverage, retrieval recall@k, MRR, latency, failed queries, and aggregate quality score.
 - `eval-retrieval`: focused top-k retrieval benchmark cases with optional repeated latency sampling.
 - `eval-qdrant-retrieval`: the same benchmark cases against Qdrant named vectors plus BM25 and optional graph expansion.

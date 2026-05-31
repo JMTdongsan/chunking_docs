@@ -18,6 +18,7 @@ from chunking_docs.models import (
     VisualAsset,
 )
 from chunking_docs.retrieval.local_hybrid import HybridSearchHit
+from chunking_docs.storage.records import EmbeddingRecord
 
 
 def test_audit_package_detects_missing_vlm_annotations():
@@ -61,6 +62,72 @@ def test_audit_package_detects_missing_vlm_annotations():
     assert not audit.passed
     assert audit.pages_requiring_vlm == [1]
     assert degraded_page_ratio(profiles) == 1.0
+
+
+def test_audit_package_validates_qdrant_artifacts(tmp_path):
+    profiles = [
+        PageProfile(
+            doc_id="doc",
+            page_no=1,
+            width=1,
+            height=1,
+            char_count=10,
+            line_count=1,
+            text_block_count=1,
+            image_block_count=0,
+            embedded_image_count=0,
+            drawing_count=0,
+            text_quality=TextQuality.GOOD,
+        )
+    ]
+    chunks = [
+        DocumentChunk(
+            chunk_id="chunk",
+            doc_id="doc",
+            page_start=1,
+            page_end=1,
+            kind=ChunkKind.TEXT,
+            text="retrieval benchmark",
+        )
+    ]
+    (tmp_path / "qdrant_collection.json").write_text(
+        json.dumps(
+            {
+                "collection": "documents",
+                "named_vectors": {"text_dense": {"size": 3}},
+                "payload_indexes": [{"field": "doc_id", "schema": "keyword"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    write_jsonl(
+        tmp_path / "qdrant_text_records.jsonl",
+        [
+            EmbeddingRecord(
+                point_id="point",
+                chunk_id="chunk",
+                doc_id="doc",
+                vector_name="text_dense",
+                vector=[1.0, 2.0],
+                payload={
+                    "chunk_id": "chunk",
+                    "doc_id": "doc",
+                    "page_start": 1,
+                    "kind": "text",
+                    "text": "retrieval benchmark",
+                },
+            )
+        ],
+    )
+
+    audit = audit_package(profiles, chunks, [], [], package_dir=tmp_path)
+    codes = {issue.code for issue in audit.issues}
+
+    assert audit.qdrant_record_counts == {"text_dense": 1}
+    assert audit.qdrant_vector_sizes == {"text_dense": 2}
+    assert "qdrant_vector_size_mismatch" in codes
+    assert "qdrant_missing_payload" in codes
+    assert "missing_qdrant_payload_indexes" in codes
 
 
 def test_evaluate_retrieval_hit_rate():

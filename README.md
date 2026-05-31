@@ -207,6 +207,7 @@ Correct execution is not enough for a chunking library. Use evaluation commands 
 
 ```bash
 chunking-docs audit-package --package-dir outputs/package
+chunking-docs audit-package --package-dir outputs/package --require-qdrant-records
 chunking-docs eval-chunking --package-dir outputs/package --cases examples/retrieval_cases.jsonl
 chunking-docs eval-retrieval examples/retrieval_cases.jsonl \
   --package-dir outputs/package \
@@ -227,7 +228,7 @@ chunking-docs eval-retrieval-ablation examples/retrieval_cases.jsonl \
   --output outputs/package/retrieval_ablation.json
 ```
 
-`eval-chunking` reports page coverage, chunk size distribution, section coverage, visual asset linkage, visual annotation coverage, retrieval recall@k, MRR, failed queries, and an aggregate quality score. `eval-retrieval` also records per-query latency samples plus mean and p95 latency when `--repeat` is greater than one. `eval-qdrant-retrieval` runs the same benchmark cases through Qdrant named vectors, BM25, and optional graph expansion so the production retrieval path can be validated. `eval-retrieval-ablation` compares dense-only, BM25-only, graph-only, hybrid, and graph-expanded hybrid retrieval so the effect and runtime cost of each retrieval signal is visible. Retrieval cases are JSONL:
+`audit-package` checks structural completeness, orphan triples, remaining OCR/VLM work, Qdrant vector dimensions, required payload fields, and payload index definitions. `eval-chunking` reports page coverage, chunk size distribution, section coverage, visual asset linkage, visual annotation coverage, retrieval recall@k, MRR, failed queries, and an aggregate quality score. `eval-retrieval` also records per-query latency samples plus mean and p95 latency when `--repeat` is greater than one. `eval-qdrant-retrieval` runs the same benchmark cases through Qdrant named vectors, BM25, and optional graph expansion so the production retrieval path can be validated. `eval-retrieval-ablation` compares dense-only, BM25-only, graph-only, hybrid, and graph-expanded hybrid retrieval so the effect and runtime cost of each retrieval signal is visible. Retrieval cases are JSONL:
 
 ```jsonl
 {"query":"policy corridor near river","expected_pages":[12],"graph_expand":true}

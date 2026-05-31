@@ -1120,6 +1120,7 @@ def postgres_rows(package_dir: Path = Path("outputs/package")):
 def audit_package_command(
     package_dir: Path = Path("outputs/package"),
     require_annotations_for_visual_pages: bool = False,
+    require_qdrant_records: bool = False,
 ):
     """Audit package completeness and remaining OCR/VLM work."""
     manifest = load_processing_package(package_dir)
@@ -1129,6 +1130,8 @@ def audit_package_command(
         manifest.assets,
         manifest.triples,
         require_annotations_for_visual_pages=require_annotations_for_visual_pages,
+        package_dir=package_dir,
+        require_qdrant_records=require_qdrant_records,
     )
     print(audit.model_dump())
 
