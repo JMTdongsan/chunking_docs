@@ -230,6 +230,11 @@ def qdrant_search_package(
     device: str = "cuda",
     hashing_dim: int = 384,
     doc_id: str = "",
+    payload_filter: list[str] = typer.Option(
+        None,
+        "--filter",
+        help="Payload filter such as kind=map, page_no=12, page_start<=12. Repeat for multiple filters.",
+    ),
 ):
     """Upsert package records and run a Qdrant named-vector text query."""
     from chunking_docs.storage.qdrant_store import QdrantChunkStore
@@ -259,7 +264,7 @@ def qdrant_search_package(
     if embedder is None:
         raise typer.BadParameter("text backend must not be none for qdrant-search-package")
     vector = embedder.embed_texts([query])[0]
-    filters = {"doc_id": doc_id} if doc_id else None
+    filters = build_payload_filter(doc_id=doc_id, filter_specs=payload_filter)
     hits = store.query_vector(
         vector=vector,
         vector_name=vector_name,
@@ -272,6 +277,7 @@ def qdrant_search_package(
             "vector_name": vector_name,
             "upserted": upserted,
             "stored_count": store.count(),
+            "filters": filters,
             "hits": [
                 {
                     "rank": index + 1,
@@ -309,6 +315,11 @@ def qdrant_hybrid_search(
     device: str = "cuda",
     hashing_dim: int = 384,
     doc_id: str = "",
+    payload_filter: list[str] = typer.Option(
+        None,
+        "--filter",
+        help="Payload filter such as kind=map, page_no=12, page_start<=12. Repeat for multiple filters.",
+    ),
     lexical_tokenizer: TokenizerStrategy = "mixed",
     ngram_min: int = 2,
     ngram_max: int = 4,
@@ -339,6 +350,7 @@ def qdrant_hybrid_search(
         top_k=top_k,
         graph_expand=graph_expand,
         doc_id=doc_id or None,
+        payload_filter=build_payload_filter(filter_specs=payload_filter),
         collapse_hierarchical=collapse_hierarchical,
     )
     print(
@@ -348,6 +360,7 @@ def qdrant_hybrid_search(
             "query_encoders": prepared["query_encoders"],
             "upserted": prepared["upserted"],
             "stored_count": prepared["store"].count(),
+            "filters": build_payload_filter(doc_id=doc_id, filter_specs=payload_filter),
             "hits": [
                 {
                     "rank": index + 1,
@@ -397,6 +410,11 @@ def qdrant_rag_context_command(
     device: str = "cuda",
     hashing_dim: int = 384,
     doc_id: str = "",
+    payload_filter: list[str] = typer.Option(
+        None,
+        "--filter",
+        help="Payload filter such as kind=map, page_no=12, page_start<=12. Repeat for multiple filters.",
+    ),
     lexical_tokenizer: TokenizerStrategy = "mixed",
     ngram_min: int = 2,
     ngram_max: int = 4,
@@ -427,6 +445,7 @@ def qdrant_rag_context_command(
         top_k=top_k,
         graph_expand=graph_expand,
         doc_id=doc_id or None,
+        payload_filter=build_payload_filter(filter_specs=payload_filter),
         collapse_hierarchical=collapse_hierarchical,
     )
     bundle = build_context_bundle(
@@ -446,6 +465,7 @@ def qdrant_rag_context_command(
             "query_encoders": prepared["query_encoders"],
             "upserted": prepared["upserted"],
             "stored_count": prepared["store"].count(),
+            "filters": build_payload_filter(doc_id=doc_id, filter_specs=payload_filter),
         }
     )
     if output is not None:
@@ -476,6 +496,11 @@ def eval_qdrant_retrieval_command(
     device: str = "cuda",
     hashing_dim: int = 384,
     doc_id: str = "",
+    payload_filter: list[str] = typer.Option(
+        None,
+        "--filter",
+        help="Payload filter such as kind=map, page_no=12, page_start<=12. Repeat for multiple filters.",
+    ),
     lexical_tokenizer: TokenizerStrategy = "mixed",
     ngram_min: int = 2,
     ngram_max: int = 4,
@@ -510,6 +535,7 @@ def eval_qdrant_retrieval_command(
             top_k=top_k,
             graph_expand=graph_expand,
             doc_id=doc_id or None,
+            payload_filter=build_payload_filter(filter_specs=payload_filter),
             collapse_hierarchical=collapse_hierarchical,
         ),
         top_k=top_k,
@@ -525,6 +551,7 @@ def eval_qdrant_retrieval_command(
             "query_encoders": prepared["query_encoders"],
             "upserted": prepared["upserted"],
             "stored_count": prepared["store"].count(),
+            "filters": build_payload_filter(doc_id=doc_id, filter_specs=payload_filter),
         }
     )
     if output is not None:
@@ -1578,6 +1605,51 @@ def build_qdrant_query_embedders(
 
         return {"image_dense": TransformersCLIPTextEmbedder(model_name=image_query_model, device=device)}
     raise typer.BadParameter("image query backend must be one of: none, same-as-text, hashing, clip")
+
+
+def build_payload_filter(
+    doc_id: str = "",
+    filter_specs: list[str] | None = None,
+) -> dict:
+    filters = {"doc_id": doc_id} if doc_id else {}
+    for spec in filter_specs or []:
+        key, operator, value = parse_payload_filter(spec)
+        if operator == "match":
+            filters[key] = value
+            continue
+        existing = filters.get(key)
+        range_filter = existing if isinstance(existing, dict) else {}
+        range_filter[operator] = value
+        filters[key] = range_filter
+    return filters
+
+
+def parse_payload_filter(spec: str) -> tuple[str, str, object]:
+    for token, operator in [
+        (">=", "gte"),
+        ("<=", "lte"),
+        (">", "gt"),
+        ("<", "lt"),
+        ("=", "match"),
+    ]:
+        if token in spec:
+            key, raw_value = spec.split(token, 1)
+            key = key.strip()
+            if not key:
+                break
+            return key, operator, parse_payload_filter_value(raw_value.strip())
+    raise typer.BadParameter(
+        "payload filters must use key=value, key>=value, key<=value, key>value, or key<value"
+    )
+
+
+def parse_payload_filter_value(value: str):
+    if not value:
+        raise typer.BadParameter("payload filter value must not be empty")
+    try:
+        return json.loads(value)
+    except json.JSONDecodeError:
+        return value
 
 
 def prepare_qdrant_hybrid_search(

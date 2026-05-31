@@ -1,7 +1,7 @@
 import pytest
 import typer
 
-from chunking_docs.cli import build_qdrant_query_embedders
+from chunking_docs.cli import build_payload_filter, build_qdrant_query_embedders
 from chunking_docs.embeddings.interfaces import HashingTextEmbedder
 from chunking_docs.models import AssetKind, ChunkKind, DocumentChunk, GraphTriple, VisualAsset
 from chunking_docs.retrieval.qdrant_hybrid import QdrantHybridSearcher
@@ -76,6 +76,32 @@ class FakeHierarchicalQdrantStore:
                     "text": "station access child evidence",
                 },
             )
+        ]
+
+
+class FilteringQdrantStore:
+    def __init__(self):
+        self.must_payload = None
+
+    def query_vector(self, vector, vector_name, top_k, must_payload=None, score_threshold=None):
+        self.must_payload = must_payload
+        return [
+            VectorSearchHit(
+                point_id="old-point",
+                score=0.9,
+                vector_name=vector_name,
+                chunk_id="old",
+                doc_id="doc",
+                payload={"chunk_id": "old", "doc_id": "doc", "page_start": 1, "page_end": 1},
+            ),
+            VectorSearchHit(
+                point_id="recent-point",
+                score=0.8,
+                vector_name=vector_name,
+                chunk_id="recent",
+                doc_id="doc",
+                payload={"chunk_id": "recent", "doc_id": "doc", "page_start": 12, "page_end": 12},
+            ),
         ]
 
 
@@ -161,6 +187,20 @@ def test_qdrant_query_embedder_requires_image_query_backend_for_mismatched_size(
         )
 
 
+def test_build_payload_filter_parses_exact_and_range_filters():
+    filters = build_payload_filter(
+        doc_id="doc",
+        filter_specs=["kind=map", "page_start<=12", "page_end>=12"],
+    )
+
+    assert filters == {
+        "doc_id": "doc",
+        "kind": "map",
+        "page_start": {"lte": 12},
+        "page_end": {"gte": 12},
+    }
+
+
 def test_qdrant_hybrid_can_include_graph_hits():
     chunk = DocumentChunk(
         chunk_id="chunk-1",
@@ -232,3 +272,39 @@ def test_qdrant_hybrid_can_collapse_hierarchical_child_to_parent():
     assert hits[0].chunk == parent
     assert [chunk.chunk_id for chunk in hits[0].evidence_chunks] == ["child"]
     assert hits[0].payloads[0]["chunk_id"] == "child"
+
+
+def test_qdrant_hybrid_applies_payload_filter_to_qdrant_and_local_hits():
+    old = DocumentChunk(
+        chunk_id="old",
+        doc_id="doc",
+        page_start=1,
+        page_end=1,
+        kind=ChunkKind.TEXT,
+        text="station access",
+    )
+    recent = DocumentChunk(
+        chunk_id="recent",
+        doc_id="doc",
+        page_start=12,
+        page_end=12,
+        kind=ChunkKind.TEXT,
+        text="station access",
+    )
+    store = FilteringQdrantStore()
+    searcher = QdrantHybridSearcher(
+        store=store,
+        chunks=[old, recent],
+        assets=[],
+        embedder=HashingTextEmbedder(embedding_dim=8),
+    )
+
+    hits = searcher.search(
+        "station access",
+        vector_names=["text_dense"],
+        top_k=2,
+        payload_filter={"page_start": {"gte": 10}},
+    )
+
+    assert store.must_payload == {"page_start": {"gte": 10}}
+    assert [hit.item_id for hit in hits] == ["recent"]

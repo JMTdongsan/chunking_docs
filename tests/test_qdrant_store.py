@@ -111,3 +111,35 @@ def test_qdrant_ensure_collection_skips_existing_payload_index():
         (call["field_name"], call["field_schema"])
         for call in store.client.created_payload_indexes
     ] == [("page_no", "integer")]
+
+
+def test_qdrant_query_vector_builds_extended_payload_filter():
+    store = object.__new__(QdrantChunkStore)
+    store.collection_name = "collection"
+    store.client = FakeQdrantClient()
+    store._filter = lambda must: SimpleNamespace(must=must)
+    store._field_condition = (
+        lambda key, match=None, range=None: SimpleNamespace(key=key, match=match, range=range)
+    )
+    store._match_value = lambda value: SimpleNamespace(value=value)
+    store._match_any = lambda any: SimpleNamespace(any=any)
+    store._range = lambda **kwargs: SimpleNamespace(**kwargs)
+
+    store.query_vector(
+        [1.0, 0.0],
+        must_payload={
+            "doc_id": "doc",
+            "kind": ["map", "figure"],
+            "page_start": {"lte": 12},
+            "page_end": {"gte": 12},
+        },
+    )
+
+    conditions = store.client.query_kwargs["query_filter"].must
+    assert [(condition.key, getattr(condition.match, "value", None)) for condition in conditions[:1]] == [
+        ("doc_id", "doc")
+    ]
+    assert conditions[1].key == "kind"
+    assert conditions[1].match.any == ["map", "figure"]
+    assert conditions[2].range.lte == 12
+    assert conditions[3].range.gte == 12

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Any
 
 from chunking_docs.embeddings.bm25 import BM25LexicalIndex
 from chunking_docs.embeddings.interfaces import DenseTextEmbedder
@@ -59,11 +60,16 @@ class QdrantHybridSearcher:
         top_k: int = 10,
         graph_expand: bool = False,
         doc_id: str | None = None,
+        payload_filter: dict[str, Any] | None = None,
         collapse_hierarchical: bool = False,
     ) -> list[QdrantHybridSearchHit]:
         vector_names = vector_names or ["text_dense", "caption_dense"]
         expanded_query = self._expanded_query(query) if graph_expand else query
-        filters = {"doc_id": doc_id} if doc_id else None
+        filters = {**(payload_filter or {})}
+        if doc_id:
+            filters["doc_id"] = doc_id
+        filters = filters or None
+        allowed_chunk_ids = self._matching_chunk_ids(filters or {})
         qdrant_hits_by_item: dict[str, list[VectorSearchHit]] = {}
         evidence_maps = []
         result_sets = []
@@ -84,7 +90,7 @@ class QdrantHybridSearcher:
                     self.chunk_by_id,
                     collapse_hierarchical=collapse_hierarchical,
                 ) if raw_item_id else None
-                if not item_id:
+                if not item_id or (allowed_chunk_ids is not None and item_id not in allowed_chunk_ids):
                     continue
                 if raw_item_id != item_id:
                     qdrant_evidence.setdefault(item_id, []).append(raw_item_id)
@@ -106,7 +112,10 @@ class QdrantHybridSearcher:
             result_sets.append(ranked_hits)
 
         bm25_hits, bm25_evidence = collapse_ranked_hits(
-            self._bm25_hits(expanded_query, top_k=max(top_k * 3, 20)),
+            self._filter_ranked_hits(
+                self._bm25_hits(expanded_query, top_k=max(top_k * 3, 20)),
+                allowed_chunk_ids,
+            ),
             self.chunk_by_id,
             collapse_hierarchical=collapse_hierarchical,
         )
@@ -114,7 +123,10 @@ class QdrantHybridSearcher:
         result_sets.append(bm25_hits)
         if graph_expand:
             graph_hits, graph_evidence = collapse_ranked_hits(
-                self._graph_hits(query, top_k=max(top_k * 3, 20)),
+                self._filter_ranked_hits(
+                    self._graph_hits(query, top_k=max(top_k * 3, 20)),
+                    allowed_chunk_ids,
+                ),
                 self.chunk_by_id,
                 collapse_hierarchical=collapse_hierarchical,
             )
@@ -175,3 +187,83 @@ class QdrantHybridSearcher:
     def _query_vector(self, query: str, vector_name: str) -> list[float]:
         embedder = self.vector_embedders.get(vector_name, self.embedder)
         return embedder.embed_texts([query])[0]
+
+    def _matching_chunk_ids(self, filters: dict[str, Any]) -> set[str] | None:
+        if not filters:
+            return None
+        return {
+            chunk.chunk_id
+            for chunk in self.chunks
+            if all(chunk_filter_value(chunk, key, expected) for key, expected in filters.items())
+        }
+
+    def _filter_ranked_hits(self, hits: list[RankedHit], allowed_chunk_ids: set[str] | None) -> list[RankedHit]:
+        if allowed_chunk_ids is None:
+            return hits
+        return [hit for hit in hits if hit.item_id in allowed_chunk_ids]
+
+
+def chunk_filter_value(chunk: DocumentChunk, key: str, expected: Any) -> bool:
+    if key == "doc_id":
+        actual = chunk.doc_id
+    elif key == "chunk_id":
+        actual = chunk.chunk_id
+    elif key == "kind":
+        actual = str(chunk.kind)
+    elif key == "asset_id":
+        return match_payload_value(chunk.asset_ids, expected)
+    elif key == "page_no":
+        return match_page_value(chunk.page_start, chunk.page_end, expected)
+    elif key == "page_start":
+        actual = chunk.page_start
+    elif key == "page_end":
+        actual = chunk.page_end
+    elif key.startswith("section."):
+        actual = getattr(chunk.section, key.split(".", 1)[1], None)
+    else:
+        actual = chunk.metadata.get(key)
+    return match_payload_value(actual, expected)
+
+
+def match_page_value(page_start: int, page_end: int, expected: Any) -> bool:
+    if isinstance(expected, dict):
+        return match_payload_value(page_start, expected) or match_payload_value(page_end, expected)
+    return page_start <= expected <= page_end
+
+
+def match_payload_value(actual: Any, expected: Any) -> bool:
+    if isinstance(expected, dict):
+        if "any" in expected:
+            return match_any(actual, expected["any"])
+        range_values = {
+            bound: expected[bound]
+            for bound in ("gt", "gte", "lt", "lte")
+            if bound in expected and expected[bound] is not None
+        }
+        if range_values:
+            return match_range(actual, range_values)
+        if "match" in expected:
+            return match_payload_value(actual, expected["match"])
+    if isinstance(actual, list):
+        return expected in actual
+    return actual == expected
+
+
+def match_any(actual: Any, expected_values: list[Any]) -> bool:
+    if isinstance(actual, list):
+        return any(value in actual for value in expected_values)
+    return actual in expected_values
+
+
+def match_range(actual: Any, range_values: dict[str, Any]) -> bool:
+    if actual is None:
+        return False
+    if "gt" in range_values and not actual > range_values["gt"]:
+        return False
+    if "gte" in range_values and not actual >= range_values["gte"]:
+        return False
+    if "lt" in range_values and not actual < range_values["lt"]:
+        return False
+    if "lte" in range_values and not actual <= range_values["lte"]:
+        return False
+    return True

@@ -24,9 +24,11 @@ class QdrantChunkStore:
                 Distance,
                 FieldCondition,
                 Filter,
+                MatchAny,
                 MatchValue,
                 PayloadSchemaType,
                 PointStruct,
+                Range,
                 VectorParams,
             )
         except ImportError as exc:
@@ -44,7 +46,9 @@ class QdrantChunkStore:
         self._vector_params = VectorParams
         self._filter = Filter
         self._field_condition = FieldCondition
+        self._match_any = MatchAny
         self._match_value = MatchValue
+        self._range = Range
         self._payload_schema_type = PayloadSchemaType
 
     def ensure_collection(
@@ -158,11 +162,25 @@ class QdrantChunkStore:
         if not must_payload:
             return None
         return self._filter(
-            must=[
-                self._field_condition(key=key, match=self._match_value(value=value))
-                for key, value in must_payload.items()
-            ]
+            must=[self._payload_condition(key, value) for key, value in must_payload.items()]
         )
+
+    def _payload_condition(self, key: str, value: Any):
+        if isinstance(value, dict):
+            if "any" in value:
+                return self._field_condition(key=key, match=self._match_any(any=value["any"]))
+            range_kwargs = {
+                bound: value[bound]
+                for bound in ("gt", "gte", "lt", "lte")
+                if bound in value and value[bound] is not None
+            }
+            if range_kwargs:
+                return self._field_condition(key=key, range=self._range(**range_kwargs))
+            if "match" in value:
+                return self._field_condition(key=key, match=self._match_value(value=value["match"]))
+        if isinstance(value, (list, tuple, set)):
+            return self._field_condition(key=key, match=self._match_any(any=list(value)))
+        return self._field_condition(key=key, match=self._match_value(value=value))
 
 
 def default_payload_schema(field_name: str) -> str:

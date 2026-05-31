@@ -140,7 +140,9 @@ Validate named-vector retrieval with the same local mode:
 chunking-docs qdrant-search-package "policy corridor" \
   --package-dir outputs/package \
   --location ':memory:' \
-  --vector-name text_dense
+  --vector-name text_dense \
+  --filter page_start<=12 \
+  --filter page_end>=12
 ```
 
 Run hybrid retrieval over Qdrant vectors, BM25, and optional graph expansion:
@@ -150,6 +152,7 @@ chunking-docs qdrant-hybrid-search "policy corridor" \
   --package-dir outputs/package \
   --location ':memory:' \
   --vector-names text_dense,caption_dense \
+  --filter kind=text \
   --graph-expand
 ```
 
