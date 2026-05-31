@@ -141,6 +141,8 @@ def test_ingestion_readiness_can_gate_retrieval_source_family(tmp_path):
     assert report.passed is True
     assert report.retrieval_gate is not None
     assert report.retrieval_gate.source_family_metrics["dense_text"]["target_coverage_at_k"] == 1.0
+    component = next(component for component in report.components if component.name == "retrieval_gate")
+    assert component.metadata["source_family_metrics"]["dense_text"]["target_coverage_at_k"] == 1.0
     assert report.failed_components == []
 
 
@@ -160,6 +162,8 @@ def test_ingestion_readiness_can_gate_retrieval_target_type(tmp_path):
     assert report.passed is True
     assert report.retrieval_gate is not None
     assert report.retrieval_gate.target_metrics["asset"]["coverage_at_k"] == 1.0
+    component = next(component for component in report.components if component.name == "retrieval_gate")
+    assert component.metadata["target_metrics"]["asset"]["coverage_at_k"] == 1.0
     assert report.failed_components == []
 
 

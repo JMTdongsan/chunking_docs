@@ -185,6 +185,8 @@ def build_ingestion_readiness_report(
                 metadata={
                     "failed_checks": retrieval_gate.failed_checks,
                     "metrics": retrieval_gate.metrics,
+                    "target_metrics": retrieval_gate.target_metrics,
+                    "source_family_metrics": retrieval_gate.source_family_metrics,
                 },
             )
         )
