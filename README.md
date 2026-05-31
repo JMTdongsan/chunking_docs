@@ -253,7 +253,7 @@ chunking-docs qdrant-rag-context "station access corridor" \
 
 ## PostgreSQL
 
-PostgreSQL is intended for source metadata, page profiles, chunks, assets, and graph triples. Vector search is handled by Qdrant by default.
+PostgreSQL is intended for source metadata, page profiles, chunks, assets, graph triples, and embedding artifact provenance. Vector search is handled by Qdrant by default, while PostgreSQL stores vector file names, dimensions, counts, checksums, and collection names so embedding runs remain auditable.
 
 ```bash
 chunking-docs postgres-rows --package-dir outputs/package

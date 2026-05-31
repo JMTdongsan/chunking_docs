@@ -9,6 +9,7 @@ from chunking_docs.storage.postgres_records import (
     asset_row,
     chunk_row,
     document_row,
+    embedding_artifact_rows,
     page_row,
     triple_row,
 )
@@ -42,12 +43,14 @@ class PostgresDocumentStore:
                 upsert_chunks(cursor, rows["chunks"])
                 upsert_assets(cursor, rows["assets"])
                 upsert_triples(cursor, rows["triples"])
+                upsert_embedding_artifacts(cursor, rows["embedding_artifacts"])
         return {
             "documents": 1,
             "pages": len(rows["pages"]),
             "chunks": len(rows["chunks"]),
             "assets": len(rows["assets"]),
             "triples": len(rows["triples"]),
+            "embedding_artifacts": len(rows["embedding_artifacts"]),
         }
 
 
@@ -58,6 +61,7 @@ def manifest_rows(manifest: ProcessingManifest, base_dir: Path | None = None) ->
         "chunks": [chunk_row(chunk) for chunk in manifest.chunks],
         "assets": [asset_row(asset, base_dir=base_dir) for asset in manifest.assets],
         "triples": [triple_row(triple) for triple in manifest.triples],
+        "embedding_artifacts": embedding_artifact_rows(manifest.doc.doc_id, package_dir=base_dir),
     }
 
 
@@ -161,6 +165,35 @@ def upsert_triples(cursor, rows: list[dict[str, Any]]) -> None:
             confidence = excluded.confidence
         """,
         [with_json(row, "qualifiers") for row in rows],
+    )
+
+
+def upsert_embedding_artifacts(cursor, rows: list[dict[str, Any]]) -> None:
+    if not rows:
+        return
+    cursor.executemany(
+        """
+        insert into embedding_artifacts (
+            doc_id, vector_name, collection, file, record_count, dimension,
+            distance, note, bytes, sha256, metadata
+        )
+        values (
+            %(doc_id)s, %(vector_name)s, %(collection)s, %(file)s, %(record_count)s,
+            %(dimension)s, %(distance)s, %(note)s, %(bytes)s, %(sha256)s,
+            %(metadata)s::jsonb
+        )
+        on conflict (doc_id, vector_name) do update set
+            collection = excluded.collection,
+            file = excluded.file,
+            record_count = excluded.record_count,
+            dimension = excluded.dimension,
+            distance = excluded.distance,
+            note = excluded.note,
+            bytes = excluded.bytes,
+            sha256 = excluded.sha256,
+            metadata = excluded.metadata
+        """,
+        [with_json(row, "metadata") for row in rows],
     )
 
 

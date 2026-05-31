@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from chunking_docs.models import (
@@ -11,7 +12,14 @@ from chunking_docs.models import (
     TextQuality,
     VisualAsset,
 )
-from chunking_docs.storage.postgres_records import asset_row, chunk_row, document_row, page_row, triple_row
+from chunking_docs.storage.postgres_records import (
+    asset_row,
+    chunk_row,
+    document_row,
+    embedding_artifact_rows,
+    page_row,
+    triple_row,
+)
 from chunking_docs.storage.postgres_store import manifest_rows
 
 
@@ -61,6 +69,7 @@ def test_postgres_row_transforms_are_json_ready():
     assert chunk_row(chunk)["metadata"]["asset_ids"] == ["asset"]
     assert asset_row(asset, base_dir=Path("/tmp"))["path"] == "assets/page.png"
     assert triple_row(triple)["object"] == "c"
+    assert embedding_artifact_rows("doc") == []
 
 
 def test_manifest_rows_counts():
@@ -76,3 +85,57 @@ def test_manifest_rows_counts():
 
     assert rows["document"]["doc_id"] == "doc"
     assert rows["pages"] == []
+    assert rows["embedding_artifacts"] == []
+
+
+def test_manifest_rows_includes_embedding_artifact_provenance(tmp_path):
+    (tmp_path / "embedding_manifest.json").write_text(
+        json.dumps(
+            {
+                "collection": "custom_documents",
+                "vectors": {
+                    "text_dense": {
+                        "file": "qdrant_text_records.jsonl",
+                        "record_count": 2,
+                        "dimension": 1024,
+                        "distance": "Cosine",
+                        "note": "text model",
+                        "exists": True,
+                        "bytes": 1234,
+                        "sha256": "a" * 64,
+                    }
+                },
+                "payload_indexes": [{"field": "doc_id", "schema": "keyword"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    manifest = ProcessingManifest(
+        doc=SourceDocument(doc_id="doc", title="title", local_path=Path("/tmp/doc.pdf")),
+        profiles=[],
+        chunks=[],
+        assets=[],
+        triples=[],
+    )
+
+    rows = manifest_rows(manifest, base_dir=tmp_path)
+
+    assert rows["embedding_artifacts"] == [
+        {
+            "doc_id": "doc",
+            "vector_name": "text_dense",
+            "collection": "custom_documents",
+            "file": "qdrant_text_records.jsonl",
+            "record_count": 2,
+            "dimension": 1024,
+            "distance": "Cosine",
+            "note": "text model",
+            "bytes": 1234,
+            "sha256": "a" * 64,
+            "metadata": {
+                "exists": True,
+                "manifest_file": "embedding_manifest.json",
+                "payload_indexes": [{"field": "doc_id", "schema": "keyword"}],
+            },
+        }
+    ]

@@ -1677,6 +1677,7 @@ def postgres_rows(package_dir: Path = Path("outputs/package")):
             "chunks": len(rows["chunks"]),
             "assets": len(rows["assets"]),
             "triples": len(rows["triples"]),
+            "embedding_artifacts": len(rows["embedding_artifacts"]),
             "first_document": rows["document"],
         }
     )

@@ -82,7 +82,7 @@
 
 13. **Storage**
     - Qdrant stores named vectors and payloads.
-    - PostgreSQL stores normalized document, page, chunk, asset, and triple metadata.
+    - PostgreSQL stores normalized document, page, chunk, asset, triple, and embedding artifact metadata.
     - BM25 can remain as a local manifest or be replaced by a dedicated lexical search service.
 
 14. **RAG Context Assembly**
@@ -168,8 +168,9 @@ Tables:
 - `chunks`
 - `assets`
 - `triples`
+- `embedding_artifacts`
 
-The writer upserts in dependency order: documents, pages, chunks, assets, triples.
+The writer upserts in dependency order: documents, pages, chunks, assets, triples, embedding artifacts. The `embedding_artifacts` table stores vector file names, dimensions, counts, checksums, Qdrant collection names, and payload index metadata from `embedding_manifest.json`; vector values remain in Qdrant record files and Qdrant itself.
 
 ## Retrieval Evaluation
 
