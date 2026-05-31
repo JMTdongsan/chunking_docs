@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import time
 from pathlib import Path
 from typing import Any
 from typing import Literal
@@ -157,7 +158,18 @@ def run_visual_jobs(
                 page_no=job.page_no,
                 status="completed",
                 annotation=annotation,
-                metadata={"operations": job.operations},
+                metadata={
+                    "operations": job.operations,
+                    "ocr_backend": ocr_backend_name,
+                    "vlm_backend": vlm_backend_name,
+                    "ocr_duration_ms": annotation.metadata.get("ocr_duration_ms"),
+                    "vlm_duration_ms": annotation.metadata.get("vlm_duration_ms"),
+                    "total_duration_ms": annotation.metadata.get("total_duration_ms"),
+                    "ocr_text_chars": annotation.metadata.get("ocr_text_chars"),
+                    "vlm_output_chars": annotation.metadata.get("vlm_output_chars"),
+                    "triple_count": len(annotation.triples),
+                    "vlm_parse_status": annotation.metadata.get("vlm_parse_status"),
+                },
             )
         )
     return results
@@ -177,14 +189,24 @@ def run_one_visual_job(
     caption = None
     triples = []
     vlm_metadata: dict[str, Any] = {}
+    run_metadata: dict[str, Any] = {}
+    started_at = time.perf_counter()
     if "ocr" in job.operations and ocr_backend is not None:
+        ocr_started_at = time.perf_counter()
         ocr_text = ocr_backend.recognize(job.asset_path, language=ocr_language)
+        run_metadata["ocr_duration_ms"] = elapsed_ms(ocr_started_at)
+        run_metadata["ocr_text_chars"] = len(ocr_text or "")
     if "vlm" in job.operations and vlm_backend is not None:
-        parsed = parse_vlm_output(vlm_backend.summarize(job.asset_path, prompt=prompt_for_asset(asset)))
+        vlm_started_at = time.perf_counter()
+        raw_vlm_output = vlm_backend.summarize(job.asset_path, prompt=prompt_for_asset(asset))
+        run_metadata["vlm_duration_ms"] = elapsed_ms(vlm_started_at)
+        run_metadata["vlm_output_chars"] = len(raw_vlm_output or "")
+        parsed = parse_vlm_output(raw_vlm_output)
         vlm_summary = parsed.summary
         caption = parsed.caption
         triples = parsed.triples
         vlm_metadata = parsed.metadata
+    run_metadata["total_duration_ms"] = elapsed_ms(started_at)
 
     return AssetAnnotation(
         asset_id=job.asset_id,
@@ -201,6 +223,7 @@ def run_one_visual_job(
             "priority": job.priority,
             "ocr_backend": ocr_backend_name,
             "vlm_backend": vlm_backend_name,
+            **run_metadata,
             **vlm_metadata,
         },
     )
@@ -242,6 +265,7 @@ def failed_result(job: VisualAnnotationJob, error: str) -> VisualJobRunResult:
         page_no=job.page_no,
         status="failed",
         error=error,
+        metadata={"operations": job.operations},
     )
 
 
@@ -252,4 +276,9 @@ def skipped_result(job: VisualAnnotationJob, reason: str) -> VisualJobRunResult:
         page_no=job.page_no,
         status="skipped",
         error=reason,
+        metadata={"operations": job.operations},
     )
+
+
+def elapsed_ms(started_at: float) -> float:
+    return round((time.perf_counter() - started_at) * 1000, 3)

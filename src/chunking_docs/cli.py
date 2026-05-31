@@ -36,11 +36,13 @@ from chunking_docs.vision.annotate import annotate_assets, merge_asset_annotatio
 from chunking_docs.vision.interfaces import OCRBackend, VLMBackend
 from chunking_docs.vision.jobs import (
     VisualAnnotationJob,
+    VisualJobRunResult,
     completed_annotations,
     plan_visual_jobs,
     run_visual_jobs,
 )
 from chunking_docs.vision.manual_annotations import AssetAnnotation, apply_asset_annotations
+from chunking_docs.vision.report import summarize_visual_results
 
 app = typer.Typer(help="Document chunking utilities.")
 
@@ -637,6 +639,22 @@ def run_visual_jobs_command(
             "rebuilt_search": bool(applied and rebuild_search),
         }
     )
+
+
+@app.command(name="summarize-visual-results")
+def summarize_visual_results_command(
+    results: Path = Path("outputs/package/visual_job_results.jsonl"),
+    output: Path | None = None,
+):
+    """Summarize OCR/VLM job results by status, backend, latency, and output volume."""
+    parsed_results = read_jsonl(results, VisualJobRunResult)
+    summary = summarize_visual_results(parsed_results)
+    if output is not None:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(summary.model_dump_json(indent=2), encoding="utf-8")
+        print({"output": str(output), **summary.model_dump()})
+        return
+    print(summary.model_dump())
 
 
 @app.command(name="apply-annotations")

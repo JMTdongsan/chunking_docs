@@ -92,6 +92,16 @@ The command writes `visual_annotations.jsonl` and `visual_job_results.jsonl`. Wi
 
 VLM responses may be plain text or JSON. When JSON includes `title`, `summary`, `key_points`, `visual_elements`, or `triples`, the runner converts those fields into captions, searchable VLM summaries, and graph triple candidates.
 
+Summarize visual job runs when comparing OCR/VLM backends:
+
+```bash
+chunking-docs summarize-visual-results \
+  --results outputs/package/visual_job_results.jsonl \
+  --output outputs/package/visual_job_summary.json
+```
+
+The summary groups completion counts, backend latency, output size, parse status, and extracted triple counts by operation.
+
 ## Embeddings
 
 The default package command writes deterministic hashing vectors so the pipeline can be tested without downloading models. Rebuild model-backed records with:

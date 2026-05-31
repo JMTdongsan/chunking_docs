@@ -34,6 +34,7 @@
    - Prioritize maps, tables, charts, figures, and pages with empty text.
    - Run jobs in bounded batches and store `visual_job_results.jsonl` plus `visual_annotations.jsonl`.
    - Parse structured VLM JSON into captions, summaries, metadata, and triple candidates.
+   - Summarize visual job results by status, backend latency, output size, parse status, and triple count.
    - Apply annotations back into chunks, assets, graph triples, BM25, and Qdrant records.
 
 7. **Semantic Splitting**
@@ -92,6 +93,7 @@ Additional processing commands may create:
 
 - `visual_jobs.jsonl`
 - `visual_job_results.jsonl`
+- `visual_job_summary.json`
 - `visual_annotations.jsonl`
 - `chunks.split.jsonl`
 - `chunks.semantic.jsonl`
