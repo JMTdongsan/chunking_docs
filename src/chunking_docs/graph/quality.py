@@ -14,6 +14,35 @@ _QUOTE_CHARS = "\"'`“”‘’"
 _WHITESPACE_RE = re.compile(r"\s+")
 _NON_WORD_RE = re.compile(r"[^\w]+", flags=re.UNICODE)
 _UNDERSCORE_RE = re.compile(r"_+")
+_LOW_INFORMATION_PREDICATES = {
+    "a",
+    "an",
+    "and",
+    "are",
+    "at",
+    "be",
+    "by",
+    "for",
+    "from",
+    "in",
+    "is",
+    "of",
+    "on",
+    "or",
+    "the",
+    "to",
+    "with",
+    "가",
+    "과",
+    "는",
+    "등",
+    "및",
+    "에",
+    "와",
+    "은",
+    "의",
+    "이",
+}
 
 
 class GraphTripleIssue(BaseModel):
@@ -118,7 +147,12 @@ def normalize_graph_triples(
 
 
 def graph_triple_has_required_fields(triple: GraphTriple) -> bool:
-    return bool(triple.subject and triple.predicate and triple.object)
+    has_fields = bool(triple.subject and triple.predicate and triple.object)
+    return has_fields and graph_triple_has_quality_predicate(triple)
+
+
+def graph_triple_has_quality_predicate(triple: GraphTriple) -> bool:
+    return triple.predicate not in _LOW_INFORMATION_PREDICATES
 
 
 def audit_graph_triples(
@@ -160,6 +194,19 @@ def audit_graph_triples(
                     triple_id=triple.triple_id,
                     chunk_id=triple.chunk_id,
                     metadata={"fields": missing_fields},
+                ),
+            )
+        elif not graph_triple_has_quality_predicate(normalized_triple):
+            append_issue(
+                issues,
+                max_issues,
+                GraphTripleIssue(
+                    severity="warning",
+                    code="low_information_predicate",
+                    message="A graph triple predicate is too generic to be useful for graph retrieval.",
+                    triple_id=triple.triple_id,
+                    chunk_id=triple.chunk_id,
+                    metadata={"predicate": normalized_triple.predicate},
                 ),
             )
 
