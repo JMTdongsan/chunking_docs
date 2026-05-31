@@ -405,6 +405,11 @@ chunking-docs ingestion-readiness \
   --min-chunking-target-type-coverage asset=0.9 \
   --min-chunking-target-type-coverage triple=0.9 \
   --min-chunking-source-family-target-coverage lexical=0.75 \
+  --retrieval-ablation outputs/package/retrieval_ablation.json \
+  --retrieval-ablation-mode bm25_visual \
+  --retrieval-ablation-baseline-mode bm25_text \
+  --min-retrieval-ablation-recall-lift 0.2 \
+  --min-retrieval-ablation-target-type-coverage asset=0.9 \
   --qdrant-vector-ablation outputs/package/qdrant_vector_ablation.json \
   --qdrant-vector-mode text_caption \
   --min-qdrant-vector-recall-at-k 0.8 \
@@ -415,7 +420,7 @@ chunking-docs ingestion-readiness \
   --output outputs/package/ingestion_readiness.json
 ```
 
-The report combines package audit results, BM25 token manifest validation, required embedding artifacts, Qdrant record checks, PostgreSQL row conversion, retrieval case audit, chunking comparison gates, selected Qdrant vector ablation gates, and optional visual or retrieval gates. BM25 validation recomputes asset-enriched lexical text from chunks plus linked captions, OCR text, and VLM summaries, then checks that `bm25_tokens.json` is complete and current before ingestion. Chunking, retrieval, and Qdrant vector gates can all enforce target-type coverage for page, chunk, visual asset, or graph triple expectations and source-family coverage for dense, lexical, graph, or visual evidence. When `--require-visual-quality` is used without `--visual-results`, readiness evaluates the final OCR/VLM annotations currently stored in `assets.jsonl`.
+The report combines package audit results, BM25 token manifest validation, required embedding artifacts, Qdrant record checks, PostgreSQL row conversion, retrieval case audit, chunking comparison gates, selected retrieval and Qdrant vector ablation gates, and optional visual or retrieval gates. BM25 validation recomputes asset-enriched lexical text from chunks plus linked captions, OCR text, and VLM summaries, then checks that `bm25_tokens.json` is complete and current before ingestion. Chunking, retrieval, retrieval ablation, and Qdrant vector gates can all enforce target-type coverage for page, chunk, visual asset, or graph triple expectations and source-family coverage for dense, lexical, graph, or visual evidence. When `--require-visual-quality` is used without `--visual-results`, readiness evaluates the final OCR/VLM annotations currently stored in `assets.jsonl`.
 
 ## Evaluation
 

@@ -2271,6 +2271,39 @@ def ingestion_readiness_command(
         "--min-chunking-source-family-target-coverage",
         help="Require selected chunking candidate source-family target coverage such as lexical=0.8.",
     ),
+    retrieval_ablation: Path | None = None,
+    require_retrieval_ablation: bool = False,
+    retrieval_ablation_mode: str | None = None,
+    retrieval_ablation_baseline_mode: str | None = None,
+    min_retrieval_ablation_recall_at_k: float = 0.0,
+    min_retrieval_ablation_target_coverage_at_k: float = 0.0,
+    min_retrieval_ablation_target_ndcg_at_k: float = 0.0,
+    min_retrieval_ablation_mrr: float = 0.0,
+    min_retrieval_ablation_precision_at_k: float = 0.0,
+    max_retrieval_ablation_failed_queries: int | None = None,
+    max_retrieval_ablation_mean_latency_ms: float | None = None,
+    max_retrieval_ablation_p95_latency_ms: float | None = None,
+    min_retrieval_ablation_target_type_coverage: list[str] = typer.Option(
+        None,
+        "--min-retrieval-ablation-target-type-coverage",
+        help="Require selected retrieval ablation target-type coverage such as asset=1.0.",
+    ),
+    min_retrieval_ablation_source_family_target_coverage: list[str] = typer.Option(
+        None,
+        "--min-retrieval-ablation-source-family-target-coverage",
+        help="Require selected retrieval ablation source-family coverage such as lexical=0.8.",
+    ),
+    min_retrieval_ablation_recall_lift: float | None = None,
+    min_retrieval_ablation_target_coverage_lift: float | None = None,
+    min_retrieval_ablation_target_ndcg_lift: float | None = None,
+    min_retrieval_ablation_mrr_lift: float | None = None,
+    min_retrieval_ablation_precision_lift: float | None = None,
+    max_retrieval_ablation_mean_latency_ratio: float | None = None,
+    max_retrieval_ablation_p95_latency_ratio: float | None = None,
+    require_retrieval_ablation_best_by_recall: bool = False,
+    require_retrieval_ablation_best_by_target_coverage: bool = False,
+    require_retrieval_ablation_best_by_target_ndcg: bool = False,
+    require_retrieval_ablation_fastest_by_mean_latency: bool = False,
     qdrant_vector_ablation: Path | None = None,
     require_qdrant_vector_ablation: bool = False,
     qdrant_vector_mode: str | None = None,
@@ -2308,6 +2341,13 @@ def ingestion_readiness_command(
     parsed_retrieval_cases = load_retrieval_cases(retrieval_cases) if retrieval_cases else None
     parsed_retrieval = load_retrieval_evaluation(retrieval_evaluation) if retrieval_evaluation else None
     parsed_chunking_comparison = load_chunking_comparison(chunking_comparison) if chunking_comparison else None
+    parsed_retrieval_ablation = (
+        RetrievalAblationReport.model_validate_json(
+            retrieval_ablation.read_text(encoding="utf-8")
+        )
+        if retrieval_ablation
+        else None
+    )
     parsed_qdrant_vector_ablation = (
         QdrantVectorAblationReport.model_validate_json(
             qdrant_vector_ablation.read_text(encoding="utf-8")
@@ -2338,6 +2378,14 @@ def ingestion_readiness_command(
     chunking_target_type_thresholds = parse_named_float_thresholds(
         min_chunking_target_type_coverage,
         "chunking target type coverage",
+    )
+    retrieval_ablation_source_family_thresholds = parse_named_float_thresholds(
+        min_retrieval_ablation_source_family_target_coverage,
+        "retrieval ablation source family target coverage",
+    )
+    retrieval_ablation_target_type_thresholds = parse_named_float_thresholds(
+        min_retrieval_ablation_target_type_coverage,
+        "retrieval ablation target type coverage",
     )
     report = build_ingestion_readiness_report(
         package_dir=package_dir,
@@ -2391,6 +2439,37 @@ def ingestion_readiness_command(
             "max_mean_latency_ratio": max_chunking_mean_latency_ratio,
             "min_target_type_coverage": chunking_target_type_thresholds,
             "min_source_family_target_coverage": chunking_source_family_thresholds,
+        },
+        retrieval_ablation=parsed_retrieval_ablation,
+        require_retrieval_ablation=require_retrieval_ablation,
+        retrieval_ablation_mode=retrieval_ablation_mode,
+        retrieval_ablation_baseline_mode=retrieval_ablation_baseline_mode,
+        retrieval_ablation_gate_options={
+            "min_recall_at_k": min_retrieval_ablation_recall_at_k,
+            "min_target_coverage_at_k": min_retrieval_ablation_target_coverage_at_k,
+            "min_target_ndcg_at_k": min_retrieval_ablation_target_ndcg_at_k,
+            "min_mrr": min_retrieval_ablation_mrr,
+            "min_precision_at_k": min_retrieval_ablation_precision_at_k,
+            "max_failed_queries": max_retrieval_ablation_failed_queries,
+            "max_mean_latency_ms": max_retrieval_ablation_mean_latency_ms,
+            "max_p95_latency_ms": max_retrieval_ablation_p95_latency_ms,
+            "min_target_type_coverage": retrieval_ablation_target_type_thresholds,
+            "min_source_family_target_coverage": retrieval_ablation_source_family_thresholds,
+            "min_recall_lift": min_retrieval_ablation_recall_lift,
+            "min_target_coverage_lift": min_retrieval_ablation_target_coverage_lift,
+            "min_target_ndcg_lift": min_retrieval_ablation_target_ndcg_lift,
+            "min_mrr_lift": min_retrieval_ablation_mrr_lift,
+            "min_precision_lift": min_retrieval_ablation_precision_lift,
+            "max_mean_latency_ratio": max_retrieval_ablation_mean_latency_ratio,
+            "max_p95_latency_ratio": max_retrieval_ablation_p95_latency_ratio,
+            "require_best_by_recall": require_retrieval_ablation_best_by_recall,
+            "require_best_by_target_coverage": (
+                require_retrieval_ablation_best_by_target_coverage
+            ),
+            "require_best_by_target_ndcg": require_retrieval_ablation_best_by_target_ndcg,
+            "require_fastest_by_mean_latency": (
+                require_retrieval_ablation_fastest_by_mean_latency
+            ),
         },
         qdrant_vector_ablation=parsed_qdrant_vector_ablation,
         require_qdrant_vector_ablation=require_qdrant_vector_ablation,

@@ -10,6 +10,9 @@ from chunking_docs.evaluation.audit import PackageAudit, audit_package
 from chunking_docs.evaluation.ablation import (
     QdrantVectorAblationGateReport,
     QdrantVectorAblationReport,
+    RetrievalAblationGateReport,
+    RetrievalAblationReport,
+    gate_retrieval_ablation,
     gate_qdrant_vector_ablation,
 )
 from chunking_docs.evaluation.case_audit import RetrievalCaseAuditReport, audit_retrieval_cases
@@ -51,6 +54,7 @@ class IngestionReadinessReport(BaseModel):
     retrieval_case_audit: RetrievalCaseAuditReport | None = None
     retrieval_gate: RetrievalGateReport | None = None
     chunking_comparison_gate: ChunkingComparisonGateReport | None = None
+    retrieval_ablation_gate: RetrievalAblationGateReport | None = None
     qdrant_vector_ablation_gate: QdrantVectorAblationGateReport | None = None
     components: list[ReadinessComponent] = Field(default_factory=list)
     failed_components: list[str] = Field(default_factory=list)
@@ -76,6 +80,11 @@ def build_ingestion_readiness_report(
     chunking_comparison: ChunkingComparison | None = None,
     require_chunking_comparison: bool = False,
     chunking_gate_options: dict[str, Any] | None = None,
+    retrieval_ablation: RetrievalAblationReport | None = None,
+    require_retrieval_ablation: bool = False,
+    retrieval_ablation_mode: str | None = None,
+    retrieval_ablation_baseline_mode: str | None = None,
+    retrieval_ablation_gate_options: dict[str, Any] | None = None,
     qdrant_vector_ablation: QdrantVectorAblationReport | None = None,
     require_qdrant_vector_ablation: bool = False,
     qdrant_vector_ablation_mode: str | None = None,
@@ -232,6 +241,70 @@ def build_ingestion_readiness_report(
             )
         )
 
+    retrieval_ablation_gate = None
+    if retrieval_ablation is not None:
+        if retrieval_ablation_mode is None:
+            components.append(
+                ReadinessComponent(
+                    name="retrieval_ablation_gate",
+                    passed=False,
+                    message="Retrieval ablation report was supplied but no mode was selected.",
+                )
+            )
+        else:
+            try:
+                retrieval_ablation_gate = gate_retrieval_ablation(
+                    retrieval_ablation,
+                    mode=retrieval_ablation_mode,
+                    baseline_mode=retrieval_ablation_baseline_mode,
+                    **(retrieval_ablation_gate_options or {}),
+                )
+                components.append(
+                    ReadinessComponent(
+                        name="retrieval_ablation_gate",
+                        passed=retrieval_ablation_gate.passed,
+                        message="Selected retrieval ablation mode meets configured thresholds and lift checks.",
+                        metadata={
+                            "mode": retrieval_ablation_gate.mode,
+                            "baseline_mode": retrieval_ablation_gate.baseline_mode,
+                            "failed_checks": retrieval_ablation_gate.failed_checks,
+                            "metrics": retrieval_ablation_gate.metrics,
+                            "baseline_metrics": retrieval_ablation_gate.baseline_metrics,
+                            "target_metrics": retrieval_ablation_gate.target_metrics,
+                            "source_family_metrics": retrieval_ablation_gate.source_family_metrics,
+                            "best_by_recall": retrieval_ablation_gate.best_by_recall,
+                            "best_by_target_coverage": (
+                                retrieval_ablation_gate.best_by_target_coverage
+                            ),
+                            "best_by_target_ndcg": retrieval_ablation_gate.best_by_target_ndcg,
+                            "fastest_by_mean_latency": (
+                                retrieval_ablation_gate.fastest_by_mean_latency
+                            ),
+                        },
+                    )
+                )
+            except ValueError as exc:
+                components.append(
+                    ReadinessComponent(
+                        name="retrieval_ablation_gate",
+                        passed=False,
+                        message="Retrieval ablation gate could not be evaluated.",
+                        metadata={
+                            "error": str(exc),
+                            "mode": retrieval_ablation_mode,
+                            "baseline_mode": retrieval_ablation_baseline_mode,
+                        },
+                    )
+                )
+    elif require_retrieval_ablation:
+        components.append(
+            ReadinessComponent(
+                name="retrieval_ablation_gate",
+                passed=False,
+                message="Retrieval ablation gate is required but no report was supplied.",
+            )
+        )
+
     qdrant_vector_ablation_gate = None
     if qdrant_vector_ablation is not None:
         if qdrant_vector_ablation_mode is None:
@@ -309,6 +382,7 @@ def build_ingestion_readiness_report(
         retrieval_case_audit=retrieval_case_audit,
         retrieval_gate=retrieval_gate,
         chunking_comparison_gate=chunking_comparison_gate,
+        retrieval_ablation_gate=retrieval_ablation_gate,
         qdrant_vector_ablation_gate=qdrant_vector_ablation_gate,
         components=components,
         failed_components=failed_components,

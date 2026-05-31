@@ -10,6 +10,9 @@ from chunking_docs.evaluation.ablation import (
     QdrantVectorAblationMode,
     QdrantVectorAblationReport,
     QdrantVectorAblationRow,
+    RetrievalAblationMode,
+    RetrievalAblationReport,
+    RetrievalAblationRow,
 )
 from chunking_docs.evaluation.compare import ChunkingComparison, ChunkingComparisonRow
 from chunking_docs.evaluation.readiness import build_ingestion_readiness_report
@@ -128,6 +131,52 @@ def test_ingestion_readiness_includes_qdrant_vector_ablation_gate(tmp_path):
         == 1.0
     )
     assert report.failed_components == []
+
+
+def test_ingestion_readiness_includes_retrieval_ablation_lift_gate(tmp_path):
+    package_dir, manifest = write_ready_package(tmp_path)
+
+    report = build_ingestion_readiness_report(
+        package_dir,
+        manifest,
+        retrieval_ablation=retrieval_ablation_report(),
+        retrieval_ablation_mode="bm25_visual",
+        retrieval_ablation_baseline_mode="bm25_text",
+        retrieval_ablation_gate_options={
+            "min_recall_at_k": 1.0,
+            "min_recall_lift": 1.0,
+            "min_target_coverage_lift": 1.0,
+            "min_target_type_coverage": {"asset": 1.0},
+            "min_source_family_target_coverage": {"lexical": 1.0},
+            "require_best_by_recall": True,
+        },
+    )
+
+    assert report.passed is True
+    assert report.retrieval_ablation_gate is not None
+    assert report.retrieval_ablation_gate.mode == "bm25_visual"
+    assert report.retrieval_ablation_gate.baseline_mode == "bm25_text"
+    assert report.retrieval_ablation_gate.metrics["recall_at_k"] == 1.0
+    assert report.retrieval_ablation_gate.baseline_metrics["recall_at_k"] == 0.0
+    component = next(
+        component for component in report.components if component.name == "retrieval_ablation_gate"
+    )
+    assert component.metadata["metrics"]["target_type.asset.coverage_at_k"] == 1.0
+    assert component.metadata["baseline_metrics"]["target_coverage_at_k"] == 0.0
+    assert report.failed_components == []
+
+
+def test_ingestion_readiness_requires_retrieval_ablation(tmp_path):
+    package_dir, manifest = write_ready_package(tmp_path)
+
+    report = build_ingestion_readiness_report(
+        package_dir,
+        manifest,
+        require_retrieval_ablation=True,
+    )
+
+    assert report.passed is False
+    assert "retrieval_ablation_gate" in report.failed_components
 
 
 def test_ingestion_readiness_requires_qdrant_vector_ablation(tmp_path):
@@ -368,6 +417,57 @@ def test_ingestion_readiness_cli_can_gate_qdrant_vector_ablation(tmp_path):
     assert component["metadata"]["source_family_metrics"]["dense_text"]["target_coverage_at_k"] == 1.0
 
 
+def test_ingestion_readiness_cli_can_gate_retrieval_ablation_lift(tmp_path):
+    package_dir, _ = write_ready_package(tmp_path)
+    ablation_path = tmp_path / "retrieval_ablation.json"
+    output = tmp_path / "readiness.json"
+    ablation_path.write_text(
+        retrieval_ablation_report().model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "ingestion-readiness",
+            "--package-dir",
+            str(package_dir),
+            "--retrieval-ablation",
+            str(ablation_path),
+            "--retrieval-ablation-mode",
+            "bm25_visual",
+            "--retrieval-ablation-baseline-mode",
+            "bm25_text",
+            "--min-retrieval-ablation-recall-at-k",
+            "1.0",
+            "--min-retrieval-ablation-recall-lift",
+            "1.0",
+            "--min-retrieval-ablation-target-coverage-lift",
+            "1.0",
+            "--min-retrieval-ablation-target-type-coverage",
+            "asset=1.0",
+            "--min-retrieval-ablation-source-family-target-coverage",
+            "lexical=1.0",
+            "--require-retrieval-ablation-best-by-recall",
+            "--output",
+            str(output),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["passed"] is True
+    component = next(
+        component
+        for component in payload["components"]
+        if component["name"] == "retrieval_ablation_gate"
+    )
+    assert component["metadata"]["mode"] == "bm25_visual"
+    assert component["metadata"]["baseline_mode"] == "bm25_text"
+    assert component["metadata"]["metrics"]["recall_at_k"] == 1.0
+    assert component["metadata"]["baseline_metrics"]["recall_at_k"] == 0.0
+
+
 def test_ingestion_readiness_cli_can_gate_chunking_target_coverage(tmp_path):
     package_dir, _ = write_ready_package(tmp_path)
     comparison_path = tmp_path / "chunking_comparison.json"
@@ -580,6 +680,62 @@ def chunking_row(name: str, quality_score: float, recall: float):
         chunks_under_min_chars=0,
         chunks_over_max_chars=0,
         issue_codes=[],
+    )
+
+
+def retrieval_ablation_report():
+    chunk = DocumentChunk(
+        chunk_id="chunk-1",
+        doc_id="doc",
+        page_start=1,
+        page_end=1,
+        kind=ChunkKind.TEXT,
+        text="reference retrieval evidence",
+        asset_ids=["asset-1"],
+    )
+    cases = [RetrievalCase(query="reference evidence", expected_asset_ids=["asset-1"])]
+    passing_evaluation = evaluate_search_results(
+        cases=cases,
+        search_fn=lambda case, graph_expand: [
+            HybridSearchHit(
+                chunk=chunk,
+                score=0.9,
+                sources=["bm25"],
+            )
+        ],
+        top_k=5,
+    )
+    failing_evaluation = evaluate_search_results(
+        cases=cases,
+        search_fn=lambda case, graph_expand: [],
+        top_k=5,
+    )
+    return RetrievalAblationReport(
+        rows=[
+            RetrievalAblationRow(
+                mode=RetrievalAblationMode(
+                    name="bm25_visual",
+                    use_dense=False,
+                    use_bm25=True,
+                    include_asset_text=True,
+                ),
+                evaluation=passing_evaluation,
+            ),
+            RetrievalAblationRow(
+                mode=RetrievalAblationMode(
+                    name="bm25_text",
+                    use_dense=False,
+                    use_bm25=True,
+                    include_asset_text=False,
+                ),
+                evaluation=failing_evaluation,
+            ),
+        ],
+        best_by_recall="bm25_visual",
+        best_by_target_coverage="bm25_visual",
+        best_by_target_ndcg="bm25_visual",
+        best_by_mrr="bm25_visual",
+        fastest_by_mean_latency="bm25_text",
     )
 
 
