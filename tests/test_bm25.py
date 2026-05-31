@@ -30,6 +30,24 @@ def test_bm25_uses_lexical_overlap_when_idf_is_zero():
     assert results[0][1] > 0
 
 
+def test_bm25_uses_lexical_overlap_when_rank_score_is_non_positive():
+    chunks = [
+        DocumentChunk(
+            chunk_id="a",
+            doc_id="doc",
+            page_start=1,
+            page_end=1,
+            kind=ChunkKind.TEXT,
+            text="north river corridor diagram",
+        )
+    ]
+
+    results = BM25LexicalIndex(chunks).search("north river corridor diagram", top_k=1)
+
+    assert results[0][0].chunk_id == "a"
+    assert results[0][1] == 1.0
+
+
 def test_bm25_mixed_tokenizer_matches_cjk_compound_terms():
     chunks = [
         DocumentChunk(

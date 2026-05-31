@@ -231,7 +231,7 @@ Recommended checks:
 - `ingestion-readiness`: final pre-ingestion gate that can combine package audit results, BM25 token manifest freshness for asset-enriched lexical text, storage artifacts, PostgreSQL row conversion, visual quality, retrieval gates, chunking comparison gates with target-type and source-family coverage, and selected Qdrant vector ablation gates.
 - `compare-visual-runs`: OCR/VLM run comparison by coverage, structured parse rate, graph triple density, and latency.
 - `plan-vlm-experiments`: reproducible profile-by-profile command recipes for running the same visual job set through multiple VLMs.
-- `eval-retrieval-ablation`: dense-only, BM25-only, graph-only, hybrid, and graph-expanded hybrid comparison on the same cases, including target coverage@k, target nDCG@k, and latency.
+- `eval-retrieval-ablation`: dense-only, BM25-only, graph-only, hybrid, graph-expanded hybrid, and text-only versus visual-asset-enriched lexical comparison on the same cases, including target coverage@k, target nDCG@k, and latency.
 - `gate-retrieval`: pass/fail checks for absolute metric floors, target-type coverage, source-family target coverage, and baseline regression limits such as recall drop, target coverage drop, target nDCG drop, precision drop, and latency ratio.
 - `compare-packages`: before/after package comparison for count deltas, changed chunk/asset/triple IDs, Qdrant record count deltas, and annotation-related observations.
 - `compare-chunking`: side-by-side strategy comparison by quality score, recall@k, MRR, target coverage@k, target nDCG@k, precision@k, target-type coverage, source-family target coverage, latency, and failed queries.

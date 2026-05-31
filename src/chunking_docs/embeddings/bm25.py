@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 
 from rank_bm25 import BM25Okapi
@@ -30,7 +31,7 @@ class BM25LexicalIndex:
         query_token_set = set(query_tokens)
         scores = self.index.get_scores(query_tokens)
         adjusted_scores = [
-            score + lexical_overlap(query_token_set, tokens)
+            finite_score(score) + lexical_overlap(query_token_set, tokens)
             for score, tokens in zip(scores, self.tokens)
         ]
         ranked = sorted(
@@ -102,3 +103,8 @@ def lexical_overlap(query_tokens: set[str], document_tokens: list[str]) -> float
         return 0.0
     overlap = query_tokens.intersection(document_tokens)
     return len(overlap) / len(query_tokens)
+
+
+def finite_score(score: float) -> float:
+    value = float(score)
+    return value if math.isfinite(value) and value > 0.0 else 0.0

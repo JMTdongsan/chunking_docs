@@ -15,7 +15,7 @@ from chunking_docs.evaluation.gate import (
     target_type_metric_key,
 )
 from chunking_docs.evaluation.retrieval import RetrievalCase, RetrievalEvaluation, evaluate_retrieval
-from chunking_docs.models import DocumentChunk, GraphTriple
+from chunking_docs.models import DocumentChunk, GraphTriple, VisualAsset
 
 
 class RetrievalAblationMode(BaseModel):
@@ -24,6 +24,7 @@ class RetrievalAblationMode(BaseModel):
     use_bm25: bool = True
     use_graph: bool = False
     graph_expand: bool = False
+    include_asset_text: bool = True
 
 
 class RetrievalAblationRow(BaseModel):
@@ -80,7 +81,31 @@ class QdrantVectorAblationGateReport(BaseModel):
 DEFAULT_ABLATION_MODES = {
     "dense": RetrievalAblationMode(name="dense", use_dense=True, use_bm25=False),
     "bm25": RetrievalAblationMode(name="bm25", use_dense=False, use_bm25=True),
+    "bm25_text": RetrievalAblationMode(
+        name="bm25_text",
+        use_dense=False,
+        use_bm25=True,
+        include_asset_text=False,
+    ),
+    "bm25_visual": RetrievalAblationMode(
+        name="bm25_visual",
+        use_dense=False,
+        use_bm25=True,
+        include_asset_text=True,
+    ),
     "hybrid": RetrievalAblationMode(name="hybrid", use_dense=True, use_bm25=True),
+    "hybrid_text": RetrievalAblationMode(
+        name="hybrid_text",
+        use_dense=True,
+        use_bm25=True,
+        include_asset_text=False,
+    ),
+    "hybrid_visual": RetrievalAblationMode(
+        name="hybrid_visual",
+        use_dense=True,
+        use_bm25=True,
+        include_asset_text=True,
+    ),
     "graph": RetrievalAblationMode(
         name="graph",
         use_dense=False,
@@ -140,24 +165,20 @@ def evaluate_retrieval_ablation(
     collapse_hierarchical: bool = False,
     repeat: int = 1,
     fusion_weights: dict[str, float] | None = None,
+    assets: list[VisualAsset] | None = None,
 ) -> RetrievalAblationReport:
     rows = [
-        RetrievalAblationRow(
-            mode=mode,
-            evaluation=evaluate_retrieval(
-                chunks=chunks,
-                triples=triples,
-                cases=cases,
-                top_k=top_k,
-                tokenizer_config=tokenizer_config,
-                collapse_hierarchical=collapse_hierarchical,
-                graph_expand_override=mode.graph_expand,
-                use_dense=mode.use_dense,
-                use_bm25=mode.use_bm25,
-                use_graph=mode.use_graph,
-                repeat=repeat,
-                fusion_weights=fusion_weights,
-            ),
+        evaluate_retrieval_ablation_mode(
+            mode,
+            chunks=chunks,
+            triples=triples,
+            cases=cases,
+            assets=assets,
+            top_k=top_k,
+            tokenizer_config=tokenizer_config,
+            collapse_hierarchical=collapse_hierarchical,
+            repeat=repeat,
+            fusion_weights=fusion_weights,
         )
         for mode in (modes or list(DEFAULT_ABLATION_MODES.values()))
     ]
@@ -191,6 +212,38 @@ def evaluate_retrieval_ablation(
         if rows
         else None,
     )
+
+
+def evaluate_retrieval_ablation_mode(
+    mode: RetrievalAblationMode,
+    chunks: list[DocumentChunk],
+    triples: list[GraphTriple],
+    cases: list[RetrievalCase],
+    assets: list[VisualAsset] | None = None,
+    top_k: int = 5,
+    tokenizer_config: LexicalTokenizerConfig | None = None,
+    collapse_hierarchical: bool = False,
+    repeat: int = 1,
+    fusion_weights: dict[str, float] | None = None,
+) -> RetrievalAblationRow:
+    evaluation = evaluate_retrieval(
+        chunks=chunks,
+        triples=triples,
+        cases=cases,
+        assets=assets if mode.include_asset_text else None,
+        top_k=top_k,
+        tokenizer_config=tokenizer_config,
+        collapse_hierarchical=collapse_hierarchical,
+        graph_expand_override=mode.graph_expand,
+        use_dense=mode.use_dense,
+        use_bm25=mode.use_bm25,
+        use_graph=mode.use_graph,
+        repeat=repeat,
+        fusion_weights=fusion_weights,
+    )
+    evaluation.metadata["ablation_mode"] = mode.name
+    evaluation.metadata["include_asset_text"] = mode.include_asset_text
+    return RetrievalAblationRow(mode=mode, evaluation=evaluation)
 
 
 def parse_ablation_modes(value: str) -> list[RetrievalAblationMode]:

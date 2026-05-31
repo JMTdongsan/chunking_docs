@@ -2703,6 +2703,8 @@ def eval_retrieval_ablation_command(
     chunks = read_jsonl(package_dir / chunks_file, DocumentChunk)
     triples_path = package_dir / "triples.jsonl"
     triples = read_jsonl(triples_path, GraphTriple) if triples_path.exists() else []
+    assets_path = package_dir / "assets.jsonl"
+    assets = read_jsonl(assets_path, VisualAsset) if assets_path.exists() else []
     try:
         parsed_modes = parse_ablation_modes(modes)
     except ValueError as exc:
@@ -2711,6 +2713,7 @@ def eval_retrieval_ablation_command(
         chunks=chunks,
         triples=triples,
         cases=load_retrieval_cases(cases),
+        assets=assets,
         modes=parsed_modes,
         top_k=top_k,
         repeat=repeat,

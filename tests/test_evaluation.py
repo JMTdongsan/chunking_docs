@@ -1025,6 +1025,45 @@ def test_evaluate_retrieval_ablation_compares_modes():
     assert all(row.evaluation.repeat == 2 for row in report.rows)
 
 
+def test_evaluate_retrieval_ablation_can_measure_visual_lexical_gain():
+    chunks = [
+        DocumentChunk(
+            chunk_id="chunk-1",
+            doc_id="doc",
+            page_start=1,
+            page_end=1,
+            kind=ChunkKind.TEXT,
+            text="reference overview",
+            asset_ids=["asset-1"],
+        )
+    ]
+    assets = [
+        VisualAsset(
+            asset_id="asset-1",
+            doc_id="doc",
+            page_no=1,
+            kind=AssetKind.MAP,
+            caption="north river corridor diagram",
+        )
+    ]
+    cases = [RetrievalCase(query="north river corridor diagram", expected_asset_ids=["asset-1"])]
+
+    report = evaluate_retrieval_ablation(
+        chunks,
+        [],
+        cases,
+        assets=assets,
+        modes=parse_ablation_modes("bm25_text,bm25_visual"),
+    )
+    rows = {row.mode.name: row for row in report.rows}
+
+    assert rows["bm25_text"].evaluation.recall_at_k == 0.0
+    assert rows["bm25_visual"].evaluation.recall_at_k == 1.0
+    assert rows["bm25_text"].evaluation.metadata["include_asset_text"] is False
+    assert rows["bm25_visual"].evaluation.metadata["include_asset_text"] is True
+    assert report.best_by_recall == "bm25_visual"
+
+
 def test_eval_retrieval_cli_writes_latency_report(tmp_path):
     package_dir = tmp_path / "package"
     package_dir.mkdir()
@@ -1477,3 +1516,55 @@ def test_eval_retrieval_ablation_cli_writes_report(tmp_path):
     assert payload["best_by_target_ndcg"] in {"bm25", "hybrid"}
     assert payload["fastest_by_mean_latency"] in {"bm25", "hybrid"}
     assert {row["mode"]["name"] for row in payload["rows"]} == {"bm25", "hybrid"}
+
+
+def test_eval_retrieval_ablation_cli_compares_visual_lexical_modes(tmp_path):
+    package_dir = tmp_path / "package"
+    package_dir.mkdir()
+    output = tmp_path / "ablation.json"
+    cases_path = tmp_path / "cases.jsonl"
+    chunks = [
+        DocumentChunk(
+            chunk_id="chunk-1",
+            doc_id="doc",
+            page_start=1,
+            page_end=1,
+            kind=ChunkKind.TEXT,
+            text="reference overview",
+            asset_ids=["asset-1"],
+        )
+    ]
+    assets = [
+        VisualAsset(
+            asset_id="asset-1",
+            doc_id="doc",
+            page_no=1,
+            kind=AssetKind.MAP,
+            caption="north river corridor diagram",
+        )
+    ]
+    write_jsonl(package_dir / "chunks.jsonl", chunks)
+    write_jsonl(package_dir / "assets.jsonl", assets)
+    write_jsonl(package_dir / "triples.jsonl", [])
+    write_jsonl(cases_path, [RetrievalCase(query="north river corridor diagram", expected_asset_ids=["asset-1"])])
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "eval-retrieval-ablation",
+            str(cases_path),
+            "--package-dir",
+            str(package_dir),
+            "--modes",
+            "bm25_text,bm25_visual",
+            "--output",
+            str(output),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    rows = {row["mode"]["name"]: row for row in payload["rows"]}
+    assert rows["bm25_text"]["evaluation"]["recall_at_k"] == 0.0
+    assert rows["bm25_visual"]["evaluation"]["recall_at_k"] == 1.0
+    assert payload["best_by_recall"] == "bm25_visual"
