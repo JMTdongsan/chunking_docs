@@ -294,6 +294,8 @@ def qdrant_hybrid_search(
     collapse_hierarchical: bool = False,
     text_backend: str = "hashing",
     text_model: str = "BAAI/bge-m3",
+    image_query_backend: str = "none",
+    image_query_model: str = "openai/clip-vit-large-patch14",
     device: str = "cuda",
     hashing_dim: int = 384,
     doc_id: str = "",
@@ -331,6 +333,15 @@ def qdrant_hybrid_search(
     )
     if embedder is None:
         raise typer.BadParameter("text backend must not be none for qdrant-hybrid-search")
+    vector_embedders = build_qdrant_query_embedders(
+        selected_vectors=selected_vectors,
+        vector_sizes=named_vectors,
+        default_embedder=embedder,
+        image_query_backend=image_query_backend,
+        image_query_model=image_query_model,
+        device=device,
+        hashing_dim=hashing_dim,
+    )
 
     chunks = read_jsonl(package_dir / "chunks.jsonl", DocumentChunk)
     assets = read_jsonl(package_dir / "assets.jsonl", VisualAsset)
@@ -341,6 +352,7 @@ def qdrant_hybrid_search(
         chunks=chunks,
         assets=assets,
         embedder=embedder,
+        vector_embedders=vector_embedders,
         triples=triples,
         tokenizer_config=build_tokenizer_config(
             lexical_tokenizer,
@@ -361,6 +373,14 @@ def qdrant_hybrid_search(
         {
             "collection": collection_name,
             "vector_names": selected_vectors,
+            "query_encoders": {
+                name: (
+                    "default_text"
+                    if vector_embedders.get(name, embedder) is embedder
+                    else image_query_backend
+                )
+                for name in selected_vectors
+            },
             "upserted": upserted,
             "stored_count": store.count(),
             "hits": [
@@ -1273,6 +1293,38 @@ def build_image_embedder(
             f"TransformersImageEmbedder model={model_name} device={device}.",
         )
     raise typer.BadParameter("image backend must be one of: none, hashing, clip")
+
+
+def build_qdrant_query_embedders(
+    selected_vectors: list[str],
+    vector_sizes: dict[str, int],
+    default_embedder,
+    image_query_backend: str,
+    image_query_model: str,
+    device: str,
+    hashing_dim: int,
+):
+    if "image_dense" not in selected_vectors:
+        return {}
+    normalized = normalize_backend(image_query_backend)
+    if normalized == "none":
+        image_size = vector_sizes.get("image_dense")
+        if image_size is not None and image_size != default_embedder.embedding_dim:
+            raise typer.BadParameter(
+                "--image-query-backend is required when image_dense size differs from the text query encoder"
+            )
+        return {}
+    if normalized == "same-as-text":
+        return {"image_dense": default_embedder}
+    if normalized == "hashing":
+        from chunking_docs.embeddings.interfaces import HashingTextEmbedder
+
+        return {"image_dense": HashingTextEmbedder(embedding_dim=hashing_dim)}
+    if normalized in {"clip", "transformers"}:
+        from chunking_docs.embeddings.clip import TransformersCLIPTextEmbedder
+
+        return {"image_dense": TransformersCLIPTextEmbedder(model_name=image_query_model, device=device)}
+    raise typer.BadParameter("image query backend must be one of: none, same-as-text, hashing, clip")
 
 
 def normalize_backend(value: str) -> str:

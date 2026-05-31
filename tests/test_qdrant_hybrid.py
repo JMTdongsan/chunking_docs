@@ -1,11 +1,30 @@
+import pytest
+import typer
+
+from chunking_docs.cli import build_qdrant_query_embedders
 from chunking_docs.embeddings.interfaces import HashingTextEmbedder
 from chunking_docs.models import AssetKind, ChunkKind, DocumentChunk, GraphTriple, VisualAsset
 from chunking_docs.retrieval.qdrant_hybrid import QdrantHybridSearcher
 from chunking_docs.storage.records import VectorSearchHit
 
 
+class RecordingTextEmbedder:
+    def __init__(self, embedding_dim=8, value=1.0):
+        self.embedding_dim = embedding_dim
+        self.value = value
+        self.calls = []
+
+    def embed_texts(self, texts):
+        self.calls.extend(texts)
+        return [[self.value] * self.embedding_dim for _ in texts]
+
+
 class FakeQdrantStore:
+    def __init__(self):
+        self.queries = []
+
     def query_vector(self, vector, vector_name, top_k, must_payload=None, score_threshold=None):
+        self.queries.append((vector_name, vector))
         if vector_name == "caption_dense":
             return [
                 VectorSearchHit(
@@ -19,6 +38,21 @@ class FakeQdrantStore:
                         "doc_id": "doc",
                         "page_no": 5,
                         "caption": "river corridor diagram",
+                    },
+                )
+            ]
+        if vector_name == "image_dense":
+            return [
+                VectorSearchHit(
+                    point_id="image-point",
+                    score=0.8,
+                    vector_name=vector_name,
+                    chunk_id="asset-1",
+                    doc_id="doc",
+                    payload={
+                        "asset_id": "asset-1",
+                        "doc_id": "doc",
+                        "page_no": 5,
                     },
                 )
             ]
@@ -63,8 +97,9 @@ def test_qdrant_hybrid_maps_asset_hits_to_parent_chunk():
         caption="river corridor diagram",
     )
 
+    store = FakeQdrantStore()
     searcher = QdrantHybridSearcher(
-        store=FakeQdrantStore(),
+        store=store,
         chunks=[chunk],
         assets=[asset],
         embedder=HashingTextEmbedder(embedding_dim=8),
@@ -75,6 +110,55 @@ def test_qdrant_hybrid_maps_asset_hits_to_parent_chunk():
     assert hits[0].chunk == chunk
     assert "qdrant:caption_dense" in hits[0].sources
     assert hits[0].payloads[0]["asset_id"] == "asset-1"
+
+
+def test_qdrant_hybrid_uses_per_vector_query_embedders():
+    chunk = DocumentChunk(
+        chunk_id="chunk-1",
+        doc_id="doc",
+        page_start=5,
+        page_end=5,
+        kind=ChunkKind.TEXT,
+        text="base text",
+        asset_ids=["asset-1"],
+    )
+    asset = VisualAsset(
+        asset_id="asset-1",
+        doc_id="doc",
+        page_no=5,
+        kind=AssetKind.FIGURE,
+        caption="river corridor diagram",
+    )
+    store = FakeQdrantStore()
+    text_embedder = RecordingTextEmbedder(embedding_dim=3, value=1.0)
+    image_query_embedder = RecordingTextEmbedder(embedding_dim=5, value=2.0)
+
+    searcher = QdrantHybridSearcher(
+        store=store,
+        chunks=[chunk],
+        assets=[asset],
+        embedder=text_embedder,
+        vector_embedders={"image_dense": image_query_embedder},
+    )
+    searcher.search("river corridor", vector_names=["text_dense", "image_dense"], top_k=1)
+
+    assert store.queries[0] == ("text_dense", [1.0, 1.0, 1.0])
+    assert store.queries[1] == ("image_dense", [2.0, 2.0, 2.0, 2.0, 2.0])
+    assert text_embedder.calls == ["river corridor"]
+    assert image_query_embedder.calls == ["river corridor"]
+
+
+def test_qdrant_query_embedder_requires_image_query_backend_for_mismatched_size():
+    with pytest.raises(typer.BadParameter):
+        build_qdrant_query_embedders(
+            selected_vectors=["text_dense", "image_dense"],
+            vector_sizes={"text_dense": 3, "image_dense": 5},
+            default_embedder=RecordingTextEmbedder(embedding_dim=3),
+            image_query_backend="none",
+            image_query_model="clip-model",
+            device="cpu",
+            hashing_dim=3,
+        )
 
 
 def test_qdrant_hybrid_can_include_graph_hits():

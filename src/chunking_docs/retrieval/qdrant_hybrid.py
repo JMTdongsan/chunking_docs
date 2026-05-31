@@ -34,6 +34,7 @@ class QdrantHybridSearcher:
         chunks: list[DocumentChunk],
         assets: list[VisualAsset],
         embedder: DenseTextEmbedder,
+        vector_embedders: dict[str, DenseTextEmbedder] | None = None,
         triples: list[GraphTriple] | None = None,
         tokenizer_config: LexicalTokenizerConfig | None = None,
     ):
@@ -41,6 +42,7 @@ class QdrantHybridSearcher:
         self.chunks = chunks
         self.assets = assets
         self.embedder = embedder
+        self.vector_embedders = vector_embedders or {}
         self.triples = triples or []
         self.bm25 = BM25LexicalIndex(chunks, tokenizer_config=tokenizer_config)
         self.chunk_by_id = {chunk.chunk_id: chunk for chunk in chunks}
@@ -61,12 +63,12 @@ class QdrantHybridSearcher:
     ) -> list[QdrantHybridSearchHit]:
         vector_names = vector_names or ["text_dense", "caption_dense"]
         expanded_query = self._expanded_query(query) if graph_expand else query
-        query_vector = self.embedder.embed_texts([expanded_query])[0]
         filters = {"doc_id": doc_id} if doc_id else None
         qdrant_hits_by_item: dict[str, list[VectorSearchHit]] = {}
         evidence_maps = []
         result_sets = []
         for vector_name in vector_names:
+            query_vector = self._query_vector(expanded_query, vector_name)
             hits = self.store.query_vector(
                 vector=query_vector,
                 vector_name=vector_name,
@@ -169,3 +171,7 @@ class QdrantHybridSearcher:
         if not terms:
             return query
         return query + " " + " ".join(terms)
+
+    def _query_vector(self, query: str, vector_name: str) -> list[float]:
+        embedder = self.vector_embedders.get(vector_name, self.embedder)
+        return embedder.embed_texts([query])[0]

@@ -141,6 +141,16 @@ chunking-docs qdrant-hybrid-search "policy corridor" \
   --graph-expand
 ```
 
+When `image_dense` is included, use a text query encoder from the same image-text model family:
+
+```bash
+chunking-docs qdrant-hybrid-search "map showing station access" \
+  --package-dir outputs/package \
+  --vector-names text_dense,caption_dense,image_dense \
+  --image-query-backend clip \
+  --image-query-model openai/clip-vit-large-patch14
+```
+
 ## PostgreSQL
 
 PostgreSQL is intended for source metadata, page profiles, chunks, assets, and graph triples. Vector search is handled by Qdrant by default.

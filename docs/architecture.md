@@ -120,6 +120,8 @@ The Qdrant adapter supports both ingestion and named-vector querying. `qdrant-se
 
 `qdrant-hybrid-search` queries Qdrant named vectors, BM25, and optional graph expansion, then fuses results with Reciprocal Rank Fusion. Caption vector hits from visual assets are mapped back to their parent chunks so text and visual evidence can be ranked together.
 
+Image vectors may use a different embedding space from text vectors. When querying `image_dense`, the searcher can use a per-vector query encoder, such as CLIP text features for CLIP image embeddings, while continuing to use the document text embedder for `text_dense` and `caption_dense`.
+
 Hierarchical chunk files can be searched with parent collapse enabled. In that mode, dense, BM25, graph, or Qdrant hits against fine child chunks are grouped under the coarse parent chunk while the matched child IDs remain attached as evidence. This keeps answer context broad enough for citation while preserving the precise span that triggered retrieval.
 
 ## PostgreSQL Design
