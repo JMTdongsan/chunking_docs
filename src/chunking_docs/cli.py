@@ -2132,6 +2132,20 @@ def postgres_upsert(
     print(result)
 
 
+@app.command(name="postgres-schema")
+def postgres_schema(output: Path | None = None):
+    """Print or write the PostgreSQL schema SQL used by the package writer."""
+    from chunking_docs.storage.postgres_store import postgres_schema_sql
+
+    schema = postgres_schema_sql()
+    if output is None:
+        builtins.print(schema)
+        return
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(schema, encoding="utf-8")
+    print_json({"output": str(output), "bytes": len(schema.encode("utf-8"))})
+
+
 @app.command(name="postgres-check-schema")
 def postgres_check_schema(
     dsn: str,
@@ -2163,6 +2177,7 @@ def postgres_check_schema(
             "missing_tables": report.missing_tables,
             "missing_columns": report.missing_columns,
             "type_mismatches": report.type_mismatches,
+            "missing_indexes": report.missing_indexes,
         }
     print(payload)
     if fail and not report.passed:

@@ -374,6 +374,7 @@ Qdrant search, evaluation, ablation, and RAG context outputs include `query_enco
 PostgreSQL is intended for source metadata, page profiles, chunks, assets, graph triples, and embedding artifact provenance. Vector search is handled by Qdrant by default, while PostgreSQL stores vector file names, dimensions, counts, checksums, and collection names so embedding runs remain auditable.
 
 ```bash
+chunking-docs postgres-schema --output outputs/package/postgres_schema.sql
 chunking-docs postgres-check-schema \
   "postgresql://user:password@localhost:5432/chunking_docs" \
   --output outputs/package/postgres_schema_contract.json \
@@ -383,7 +384,7 @@ chunking-docs postgres-upsert "postgresql://user:password@localhost:5432/chunkin
   --package-dir outputs/package
 ```
 
-`postgres-check-schema` validates required tables, columns, column types, and the pgvector extension before metadata rows are upserted. Use `--apply-schema` when bootstrapping a new database; omit it when checking an existing schema for drift.
+`postgres-schema` writes the SQL contract without opening a database connection. `postgres-check-schema` validates required tables, columns, column types, indexes, and the pgvector extension before metadata rows are upserted. Use `--apply-schema` when bootstrapping a new database; omit it when checking an existing schema for drift.
 
 ## Ingestion Readiness
 

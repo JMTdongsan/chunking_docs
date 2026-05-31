@@ -83,6 +83,14 @@ EXPECTED_POSTGRES_SCHEMA = {
     },
 }
 
+EXPECTED_POSTGRES_INDEXES = {
+    "assets_doc_page_idx": "assets",
+    "chunks_doc_page_idx": "chunks",
+    "chunks_text_bm25_idx": "chunks",
+    "embedding_artifacts_collection_idx": "embedding_artifacts",
+    "triples_spo_idx": "triples",
+}
+
 
 class PostgresSchemaCheck(BaseModel):
     name: str
@@ -102,6 +110,9 @@ class PostgresSchemaReport(BaseModel):
     missing_tables: list[str] = Field(default_factory=list)
     missing_columns: dict[str, list[str]] = Field(default_factory=dict)
     type_mismatches: dict[str, dict[str, dict[str, str | None]]] = Field(default_factory=dict)
+    required_indexes: dict[str, str] = Field(default_factory=dict)
+    present_indexes: dict[str, str] = Field(default_factory=dict)
+    missing_indexes: dict[str, str] = Field(default_factory=dict)
     checks: list[PostgresSchemaCheck] = Field(default_factory=list)
     failed_checks: list[str] = Field(default_factory=list)
 
@@ -119,24 +130,34 @@ class PostgresDocumentStore:
         self.dsn = dsn
 
     def apply_schema(self) -> None:
-        schema = SCHEMA_PATH.read_text(encoding="utf-8")
+        schema = postgres_schema_sql()
         with self.psycopg.connect(self.dsn) as connection:
             connection.execute(schema)
 
     def check_schema(self, require_pgvector: bool = True) -> PostgresSchemaReport:
         table_names = sorted(EXPECTED_POSTGRES_SCHEMA)
         placeholders = ", ".join(["%s"] * len(table_names))
+        index_names = sorted(EXPECTED_POSTGRES_INDEXES)
+        index_placeholders = ", ".join(["%s"] * len(index_names))
         columns_query = f"""
             select table_name, column_name, data_type, udt_name
             from information_schema.columns
             where table_schema = 'public'
               and table_name in ({placeholders})
         """
+        indexes_query = f"""
+            select indexname, tablename
+            from pg_indexes
+            where schemaname = 'public'
+              and indexname in ({index_placeholders})
+        """
         with self.psycopg.connect(self.dsn) as connection:
             extension_rows = connection.execute("select extname from pg_extension").fetchall()
             column_rows = connection.execute(columns_query, tuple(table_names)).fetchall()
+            index_rows = connection.execute(indexes_query, tuple(index_names)).fetchall()
         return check_postgres_schema_snapshot(
             column_rows=column_rows,
+            index_rows=index_rows,
             extension_names=[row_value(row, 0, "extname") for row in extension_rows],
             require_pgvector=require_pgvector,
         )
@@ -172,14 +193,23 @@ def manifest_rows(manifest: ProcessingManifest, base_dir: Path | None = None) ->
     }
 
 
+def postgres_schema_sql() -> str:
+    return SCHEMA_PATH.read_text(encoding="utf-8")
+
+
 def check_postgres_schema_snapshot(
     column_rows: Iterable,
     extension_names: Iterable[str],
+    index_rows: Iterable | None = None,
     required_schema: dict[str, dict[str, str]] | None = None,
+    required_indexes: dict[str, str] | None = None,
     require_pgvector: bool = True,
+    require_indexes: bool = True,
 ) -> PostgresSchemaReport:
     if required_schema is None:
         required_schema = EXPECTED_POSTGRES_SCHEMA
+    if required_indexes is None:
+        required_indexes = EXPECTED_POSTGRES_INDEXES
     present_extensions = sorted(str(name) for name in extension_names if name)
     required_extensions = ["vector"] if require_pgvector else []
     actual_schema: dict[str, dict[str, str]] = {}
@@ -210,6 +240,17 @@ def check_postgres_schema_snapshot(
                     "actual": actual_type,
                 }
 
+    required_index_map = dict(sorted(required_indexes.items())) if require_indexes else {}
+    present_index_map: dict[str, str] = {}
+    for row in index_rows or []:
+        index_name = row_value(row, 0, "indexname")
+        table_name = row_value(row, 1, "tablename")
+        if index_name and table_name:
+            present_index_map[str(index_name)] = str(table_name)
+    missing_index_map = {
+        name: table for name, table in required_index_map.items() if name not in present_index_map
+    }
+
     missing_extensions = sorted(set(required_extensions) - set(present_extensions))
     checks = [
         PostgresSchemaCheck(
@@ -236,6 +277,12 @@ def check_postgres_schema_snapshot(
             message="PostgreSQL column types match the package row contract.",
             metadata={"mismatches": type_mismatches},
         ),
+        PostgresSchemaCheck(
+            name="required_indexes",
+            passed=not missing_index_map,
+            message="Required PostgreSQL indexes exist.",
+            metadata={"missing": missing_index_map},
+        ),
     ]
     failed_checks = [check.name for check in checks if not check.passed and check.severity == "error"]
     return PostgresSchemaReport(
@@ -248,6 +295,9 @@ def check_postgres_schema_snapshot(
         missing_tables=missing_tables,
         missing_columns=missing_columns,
         type_mismatches=type_mismatches,
+        required_indexes=required_index_map,
+        present_indexes=dict(sorted(present_index_map.items())),
+        missing_indexes=missing_index_map,
         checks=checks,
         failed_checks=failed_checks,
     )

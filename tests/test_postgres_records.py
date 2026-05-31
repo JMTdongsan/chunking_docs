@@ -21,10 +21,12 @@ from chunking_docs.storage.postgres_records import (
     triple_row,
 )
 from chunking_docs.storage.postgres_store import (
+    EXPECTED_POSTGRES_INDEXES,
     EXPECTED_POSTGRES_SCHEMA,
     PostgresSchemaReport,
     check_postgres_schema_snapshot,
     manifest_rows,
+    postgres_schema_sql,
 )
 
 
@@ -146,7 +148,7 @@ def test_manifest_rows_includes_embedding_artifact_provenance(tmp_path):
     ]
 
 
-def test_check_postgres_schema_snapshot_passes_expected_schema():
+def expected_schema_rows():
     rows = []
     for table, columns in EXPECTED_POSTGRES_SCHEMA.items():
         for column, data_type in columns.items():
@@ -154,11 +156,32 @@ def test_check_postgres_schema_snapshot_passes_expected_schema():
                 rows.append((table, column, "ARRAY", "_float8"))
             else:
                 rows.append((table, column, data_type, data_type))
+    return rows
 
-    report = check_postgres_schema_snapshot(rows, extension_names=["plpgsql", "vector"])
+
+def expected_index_rows():
+    return [(name, table) for name, table in EXPECTED_POSTGRES_INDEXES.items()]
+
+
+def test_postgres_schema_sql_contains_expected_tables_and_indexes():
+    schema = postgres_schema_sql()
+
+    for table in EXPECTED_POSTGRES_SCHEMA:
+        assert f"create table if not exists {table}" in schema
+    for index_name in EXPECTED_POSTGRES_INDEXES:
+        assert f"create index if not exists {index_name}" in schema
+
+
+def test_check_postgres_schema_snapshot_passes_expected_schema():
+    report = check_postgres_schema_snapshot(
+        expected_schema_rows(),
+        extension_names=["plpgsql", "vector"],
+        index_rows=expected_index_rows(),
+    )
 
     assert report.passed is True
     assert report.missing_tables == []
+    assert report.missing_indexes == {}
     assert report.failed_checks == []
 
 
@@ -180,6 +203,32 @@ def test_check_postgres_schema_snapshot_flags_missing_table_column_type_and_exte
         "expected": "jsonb",
         "actual": "text",
     }
+    assert "required_indexes" in report.failed_checks
+    assert report.missing_indexes == EXPECTED_POSTGRES_INDEXES
+
+
+def test_check_postgres_schema_snapshot_flags_missing_indexes():
+    report = check_postgres_schema_snapshot(
+        expected_schema_rows(),
+        extension_names=["vector"],
+        index_rows=[],
+    )
+
+    assert report.passed is False
+    assert "required_indexes" in report.failed_checks
+    assert report.missing_indexes == EXPECTED_POSTGRES_INDEXES
+
+
+def test_postgres_schema_cli_writes_sql(tmp_path):
+    output = tmp_path / "postgres_schema.sql"
+
+    from chunking_docs.cli import app
+    from typer.testing import CliRunner
+
+    result = CliRunner().invoke(app, ["postgres-schema", "--output", str(output)])
+
+    assert result.exit_code == 0, result.output
+    assert output.read_text(encoding="utf-8") == postgres_schema_sql()
 
 
 def test_postgres_check_schema_cli_writes_report(tmp_path, monkeypatch):

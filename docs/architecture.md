@@ -209,7 +209,7 @@ Tables:
 
 The writer upserts in dependency order: documents, pages, chunks, assets, triples, embedding artifacts. The `embedding_artifacts` table stores vector file names, dimensions, counts, checksums, Qdrant collection names, and payload index metadata from `embedding_manifest.json`; vector values remain in Qdrant record files and Qdrant itself.
 
-`postgres-check-schema` validates the live PostgreSQL schema before upsert. It checks required tables, columns, column types, and the pgvector extension so metadata ingestion failures are caught before batch writes.
+`postgres-schema` exports the SQL contract for review or migration tooling without requiring a live database. `postgres-check-schema` validates the live PostgreSQL schema before upsert. It checks required tables, columns, column types, relational/search indexes, and the pgvector extension so metadata ingestion failures and slow-path schema drift are caught before batch writes.
 
 ## Retrieval Evaluation
 
@@ -219,7 +219,8 @@ Recommended checks:
 
 - `audit-package`: structural completeness, orphan checks, OCR/VLM gaps, Qdrant vector dimensions, required payload fields, payload index definitions, and embedding manifest count/checksum consistency.
 - `qdrant-check-collection`: live Qdrant collection contract validation for named-vector dimensions and payload indexes.
-- `postgres-check-schema`: live PostgreSQL schema contract validation for required extensions, tables, columns, and column types.
+- `postgres-schema`: offline PostgreSQL SQL contract export for review or migration tooling.
+- `postgres-check-schema`: live PostgreSQL schema contract validation for required extensions, tables, columns, column types, and indexes.
 - `eval-chunking`: page coverage, chunk size distribution, section coverage, visual linkage, annotation coverage, retrieval recall@k, MRR, target coverage@k, target nDCG@k, precision@k, latency, failed queries, and aggregate quality score.
 - `audit-retrieval-cases`: benchmark case validation for empty or TODO queries, unknown page/chunk/asset/triple targets, duplicate queries, graph-expansion hints, and target-family coverage.
 - `eval-retrieval`: focused top-k retrieval benchmark cases with optional repeated latency sampling, target-specific page/chunk/asset/triple metrics, and source-family contribution metrics.
