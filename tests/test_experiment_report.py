@@ -43,7 +43,11 @@ def test_build_experiment_report_summarizes_artifacts_and_candidates(tmp_path):
     assert validations["ingestion_readiness.final.json"].passed is True
     assert validations["ingestion_readiness.final.json#retrieval_gate"].metrics["recall_at_k"] == 1.0
     assert validations["retrieval_gate.final.json"].metrics["recall_at_k"] == 1.0
+    assert validations["retrieval_gate.final.json"].metrics["mrr"] == 1.0
+    assert validations["retrieval_gate.final.json"].metrics["p95_latency_ms"] == 12.0
     assert validations["qdrant_eval.final.json"].metrics["target_coverage_at_k"] == 1.0
+    assert validations["qdrant_eval.final.json"].metrics["mean_latency_ms"] == 8.0
+    assert validations["qdrant_eval.final.json"].metrics["case_count"] == 1.0
     assert validations["graph_audit.final.json"].metrics["orphan_count"] == 0.0
     assert validations["visual_gate.final.json"].metrics["vlm_summary_coverage"] == 1.0
     assert report.qdrant_collection["collection"] == "document_chunks"
@@ -173,7 +177,12 @@ def write_minimal_package(tmp_path):
             {
                 "passed": True,
                 "failed_checks": [],
-                "metrics": {"recall_at_k": 1.0, "target_type.asset.coverage_at_k": 1.0},
+                "metrics": {
+                    "recall_at_k": 1.0,
+                    "mrr": 1.0,
+                    "p95_latency_ms": 12.0,
+                    "target_type.asset.coverage_at_k": 1.0,
+                },
             },
             indent=2,
         ),
@@ -183,8 +192,11 @@ def write_minimal_package(tmp_path):
         json.dumps(
             {
                 "recall_at_k": 1.0,
+                "mrr": 1.0,
                 "target_coverage_at_k": 1.0,
                 "mean_target_ndcg_at_k": 1.0,
+                "mean_latency_ms": 8.0,
+                "case_count": 1,
             },
             indent=2,
         ),
