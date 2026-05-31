@@ -21,14 +21,22 @@ def make_triple_id(chunk_id: str, subject: str, predicate: str, object_: str) ->
     return hashlib.sha256(raw).hexdigest()[:24]
 
 
-def triples_from_vlm_json(chunk: DocumentChunk, triples: list[dict]) -> list[GraphTriple]:
+def triples_from_vlm_json(
+    chunk: DocumentChunk,
+    triples: list[dict],
+    qualifiers: dict | None = None,
+) -> list[GraphTriple]:
     results: list[GraphTriple] = []
+    base_qualifiers = qualifiers or {}
     for triple in triples:
         subject = str(triple.get("subject", "")).strip()
         predicate = str(triple.get("predicate", "")).strip()
         object_ = str(triple.get("object", "")).strip()
         if not subject or not predicate or not object_:
             continue
+        triple_qualifiers = {
+            k: v for k, v in triple.items() if k not in {"subject", "predicate", "object"}
+        }
         results.append(
             GraphTriple(
                 triple_id=make_triple_id(chunk.chunk_id, subject, predicate, object_),
@@ -37,7 +45,7 @@ def triples_from_vlm_json(chunk: DocumentChunk, triples: list[dict]) -> list[Gra
                 subject=subject,
                 predicate=predicate,
                 object=object_,
-                qualifiers={k: v for k, v in triple.items() if k not in {"subject", "predicate", "object"}},
+                qualifiers={**triple_qualifiers, **base_qualifiers},
             )
         )
     return results

@@ -35,7 +35,13 @@ def apply_asset_annotations(
         if annotation.triples:
             chunk = chunk_for_annotation(chunks, updated_assets, annotation)
             if chunk is not None:
-                triples.extend(triples_from_vlm_json(chunk, annotation.triples))
+                triples.extend(
+                    triples_from_vlm_json(
+                        chunk,
+                        annotation.triples,
+                        qualifiers=triple_provenance(annotation),
+                    )
+                )
 
     updated_chunks = merge_asset_annotations_into_chunks(chunks, updated_assets)
     triples = normalize_graph_triples(triples)
@@ -93,3 +99,18 @@ def chunk_for_annotation(
             if chunk.page_start <= annotation.page_no <= chunk.page_end:
                 return chunk
     return None
+
+
+def triple_provenance(annotation: AssetAnnotation) -> dict[str, Any]:
+    provenance: dict[str, Any] = {"source": "visual_annotation"}
+    if annotation.asset_id is not None:
+        provenance["asset_id"] = annotation.asset_id
+    if annotation.page_no is not None:
+        provenance["page_no"] = annotation.page_no
+    if annotation.kind is not None:
+        provenance["asset_kind"] = str(annotation.kind)
+    for key in ["annotation_source", "visual_job_id", "vlm_prompt_name", "vlm_prompt_sha256"]:
+        value = annotation.metadata.get(key)
+        if value:
+            provenance[key] = value
+    return provenance

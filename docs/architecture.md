@@ -43,6 +43,7 @@
    - Filter jobs by page range or asset kind to run bounded OCR/VLM batches.
    - Run jobs in bounded batches and store `visual_job_results.jsonl` plus `visual_annotations.jsonl`.
    - Parse structured VLM JSON into captions, summaries, metadata, and triple candidates.
+   - Attach asset, page, job, source, and prompt provenance to visual-derived triples.
    - Record OCR language, backend configuration, VLM prompt name, prompt hash, latency, output size, parse status, and triple count.
    - Summarize visual job results by status, backend latency, output size, VLM prompt usage, parse status, and triple count.
    - Apply annotations back into chunks, assets, graph triples, BM25, and Qdrant records.
