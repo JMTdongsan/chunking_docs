@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import Counter
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -129,13 +130,13 @@ def build_context_bundle(
         chunks=context_chunks,
         assets=selected_assets,
         triples=selected_triples,
-        metadata={
-            "hit_count": len(context_chunks),
-            "asset_count": len(selected_assets),
-            "triple_count": len(selected_triples),
-            "max_chars_per_chunk": max_chars_per_chunk,
-            "neighbor_window": max(0, neighbor_window),
-        },
+        metadata=context_bundle_metadata(
+            context_chunks,
+            selected_assets,
+            selected_triples,
+            max_chars_per_chunk=max_chars_per_chunk,
+            neighbor_window=neighbor_window,
+        ),
     )
 
 
@@ -272,6 +273,84 @@ def context_triples(triples: list[GraphTriple], chunk_ids: set[str]) -> list[RAG
             )
         )
     return selected
+
+
+def context_bundle_metadata(
+    chunks: list[RAGContextChunk],
+    assets: list[RAGContextAsset],
+    triples: list[RAGContextTriple],
+    max_chars_per_chunk: int,
+    neighbor_window: int,
+) -> dict[str, Any]:
+    role_counts = count_values(chunk.role for chunk in chunks)
+    source_counts = count_values(source for chunk in chunks for source in chunk.sources)
+    source_family_counts = count_values(
+        context_source_family(source) for chunk in chunks for source in chunk.sources
+    )
+    kind_counts = count_values(chunk.kind for chunk in chunks)
+    pages = context_pages(chunks)
+    return {
+        "hit_count": len(chunks),
+        "chunk_count": len(chunks),
+        "hit_chunk_count": role_counts.get("hit", 0),
+        "evidence_chunk_count": role_counts.get("evidence", 0),
+        "neighbor_chunk_count": role_counts.get("neighbor", 0),
+        "asset_count": len(assets),
+        "triple_count": len(triples),
+        "page_count": len(pages),
+        "pages": pages,
+        "page_ranges": context_page_ranges(chunks),
+        "doc_ids": sorted({chunk.doc_id for chunk in chunks}),
+        "role_counts": role_counts,
+        "kind_counts": kind_counts,
+        "source_counts": source_counts,
+        "source_family_counts": source_family_counts,
+        "has_dense_text_context": source_family_counts.get("dense_text", 0) > 0,
+        "has_lexical_context": source_family_counts.get("lexical", 0) > 0,
+        "has_visual_context": bool(assets) or source_family_counts.get("visual", 0) > 0,
+        "has_graph_context": bool(triples) or source_family_counts.get("graph", 0) > 0,
+        "max_chars_per_chunk": max_chars_per_chunk,
+        "neighbor_window": max(0, neighbor_window),
+    }
+
+
+def context_source_family(source: str) -> str:
+    normalized = source.strip().lower()
+    if "caption_dense" in normalized or "image_dense" in normalized:
+        return "visual"
+    if normalized == "dense" or "text_dense" in normalized:
+        return "dense_text"
+    if normalized.startswith("rerank:"):
+        return "reranker"
+    if normalized == "bm25" or "lexical" in normalized:
+        return "lexical"
+    if normalized == "graph":
+        return "graph"
+    return normalized.split(":", 1)[0] if normalized else "unknown"
+
+
+def context_pages(chunks: list[RAGContextChunk]) -> list[int]:
+    pages = set()
+    for chunk in chunks:
+        start = min(chunk.page_start, chunk.page_end)
+        end = max(chunk.page_start, chunk.page_end)
+        pages.update(range(start, end + 1))
+    return sorted(pages)
+
+
+def context_page_ranges(chunks: list[RAGContextChunk]) -> list[dict[str, int | str]]:
+    return [
+        {
+            "chunk_id": chunk.chunk_id,
+            "page_start": chunk.page_start,
+            "page_end": chunk.page_end,
+        }
+        for chunk in chunks
+    ]
+
+
+def count_values(values) -> dict[str, int]:
+    return dict(sorted(Counter(values).items()))
 
 
 def trim_text(text: str, max_chars: int) -> str:

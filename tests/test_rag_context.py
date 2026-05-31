@@ -58,6 +58,15 @@ def test_build_context_bundle_includes_evidence_assets_and_triples(tmp_path):
     assert bundle.assets[0].asset_id == "asset-1"
     assert bundle.triples[0].triple_id == "triple-1"
     assert bundle.metadata["asset_count"] == 1
+    assert bundle.metadata["chunk_count"] == 2
+    assert bundle.metadata["hit_chunk_count"] == 1
+    assert bundle.metadata["evidence_chunk_count"] == 1
+    assert bundle.metadata["source_family_counts"] == {"dense_text": 2}
+    assert bundle.metadata["pages"] == [3]
+    assert bundle.metadata["page_count"] == 1
+    assert bundle.metadata["has_dense_text_context"] is True
+    assert bundle.metadata["has_visual_context"] is True
+    assert bundle.metadata["has_graph_context"] is True
 
 
 def test_build_context_bundle_adds_neighbor_chunks():
@@ -111,6 +120,11 @@ def test_build_context_bundle_adds_neighbor_chunks():
     assert bundle.chunks[1].metadata["neighbor_offset"] == -1
     assert bundle.triples[0].triple_id == "neighbor-triple"
     assert bundle.metadata["neighbor_window"] == 1
+    assert bundle.metadata["neighbor_chunk_count"] == 2
+    assert bundle.metadata["source_family_counts"] == {"lexical": 1, "neighbor": 2}
+    assert bundle.metadata["role_counts"] == {"hit": 1, "neighbor": 2}
+    assert bundle.metadata["pages"] == [1, 2, 3]
+    assert bundle.metadata["has_lexical_context"] is True
 
 
 def test_build_rag_context_cli_writes_bundle(tmp_path):
@@ -171,6 +185,9 @@ def test_build_rag_context_cli_writes_bundle(tmp_path):
     assert payload["chunks"][0]["chunk_id"] == "chunk-1"
     assert payload["assets"][0]["asset_id"] == "asset-1"
     assert payload["triples"][0]["triple_id"] == "triple-1"
+    assert payload["metadata"]["source_family_counts"] == {"dense_text": 1, "lexical": 1}
+    assert payload["metadata"]["has_visual_context"] is True
+    assert payload["metadata"]["has_graph_context"] is True
 
 
 def test_qdrant_rag_context_cli_writes_bundle(monkeypatch, tmp_path):
@@ -241,5 +258,8 @@ def test_qdrant_rag_context_cli_writes_bundle(monkeypatch, tmp_path):
     assert result.exit_code == 0, result.output
     payload = json.loads(output.read_text(encoding="utf-8"))
     assert payload["metadata"]["collection"] == "documents"
+    assert payload["metadata"]["source_family_counts"] == {"dense_text": 1}
+    assert payload["metadata"]["has_dense_text_context"] is True
+    assert payload["metadata"]["has_visual_context"] is True
     assert payload["chunks"][0]["sources"] == ["qdrant:text_dense"]
     assert payload["assets"][0]["asset_id"] == "asset-1"
