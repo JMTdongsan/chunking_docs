@@ -79,6 +79,17 @@ For documents with maps, diagrams, charts, scans, or broken text layers, plan OC
 chunking-docs plan-visual-jobs --package-dir outputs/package
 ```
 
+Prioritize a GPU/VLM batch for high-value visual evidence:
+
+```bash
+chunking-docs plan-visual-jobs \
+  --package-dir outputs/package \
+  --kind map \
+  --kind table \
+  --limit 50 \
+  --output outputs/package/visual_jobs.priority.jsonl
+```
+
 For dense visual pages, create overlapping page tiles before planning jobs:
 
 ```bash

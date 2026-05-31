@@ -47,6 +47,7 @@ class VisualJobRunResult(BaseModel):
 def plan_visual_jobs(
     assets: list[VisualAsset],
     pages: set[int] | None = None,
+    kinds: set[AssetKind] | None = None,
     include_ocr: bool = True,
     include_vlm: bool = True,
     limit: int | None = None,
@@ -54,6 +55,8 @@ def plan_visual_jobs(
     jobs = []
     for asset in assets:
         if pages is not None and asset.page_no not in pages:
+            continue
+        if kinds is not None and asset.kind not in kinds:
             continue
         job = visual_job_for_asset(asset, include_ocr=include_ocr, include_vlm=include_vlm)
         if job is not None:

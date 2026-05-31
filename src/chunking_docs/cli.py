@@ -42,7 +42,7 @@ from chunking_docs.graph.repair import remap_triples_to_available_chunks
 from chunking_docs.ingest.pdf_loader import load_source_document, render_pages
 from chunking_docs.ingest.tables import extract_pdf_tables
 from chunking_docs.io import read_jsonl, write_jsonl
-from chunking_docs.models import DocumentChunk, GraphTriple, VisualAsset
+from chunking_docs.models import AssetKind, DocumentChunk, GraphTriple, VisualAsset
 from chunking_docs.pipeline import (
     build_processing_package,
     load_processing_package,
@@ -1130,15 +1130,22 @@ def plan_visual_jobs_command(
     output: Path | None = None,
     pages: str = "",
     limit: int | None = None,
+    kinds: list[AssetKind] = typer.Option(
+        None,
+        "--kind",
+        help="Restrict jobs to asset kinds such as map, table, figure, or page_image.",
+    ),
     include_ocr: bool = True,
     include_vlm: bool = True,
 ):
     """Plan prioritized OCR/VLM jobs for rendered visual assets."""
     selected_pages = parse_page_numbers(pages) or None
+    selected_kinds = set(kinds) if kinds else None
     assets = read_jsonl(package_dir / "assets.jsonl", VisualAsset)
     jobs = plan_visual_jobs(
         assets,
         pages=selected_pages,
+        kinds=selected_kinds,
         include_ocr=include_ocr,
         include_vlm=include_vlm,
         limit=limit,
@@ -1152,6 +1159,7 @@ def plan_visual_jobs_command(
             "top_pages": [job.page_no for job in jobs[:10]],
             "operation_counts": operation_counts(jobs),
             "kind_counts": kind_counts(jobs),
+            "filtered_kinds": [str(kind) for kind in sorted(selected_kinds)] if selected_kinds else [],
         }
     )
 

@@ -74,6 +74,35 @@ def test_plan_visual_jobs_prioritizes_maps_and_missing_annotations(tmp_path):
     assert jobs[0].operations == ["ocr", "vlm"]
 
 
+def test_plan_visual_jobs_filters_by_asset_kind(tmp_path):
+    map_path = tmp_path / "map.png"
+    page_path = tmp_path / "page.png"
+    map_path.write_bytes(b"map")
+    page_path.write_bytes(b"page")
+    assets = [
+        VisualAsset(
+            asset_id="page",
+            doc_id="doc",
+            page_no=1,
+            kind=AssetKind.PAGE_IMAGE,
+            path=page_path,
+            metadata={"requires_ocr": True, "requires_vlm": True},
+        ),
+        VisualAsset(
+            asset_id="map",
+            doc_id="doc",
+            page_no=2,
+            kind=AssetKind.MAP,
+            path=map_path,
+            metadata={"requires_ocr": True, "requires_vlm": True},
+        ),
+    ]
+
+    jobs = plan_visual_jobs(assets, kinds={AssetKind.MAP})
+
+    assert [job.asset_id for job in jobs] == ["map"]
+
+
 def test_run_visual_jobs_returns_asset_annotations(tmp_path):
     image_path = tmp_path / "map.png"
     image_path.write_bytes(b"map")
@@ -200,6 +229,55 @@ def test_summarize_visual_results_cli_writes_json(tmp_path):
 
     assert result.exit_code == 0, result.output
     assert "model-a" in output.read_text(encoding="utf-8")
+
+
+def test_plan_visual_jobs_cli_filters_kind(tmp_path):
+    package_dir = tmp_path / "package"
+    package_dir.mkdir()
+    map_path = tmp_path / "map.png"
+    page_path = tmp_path / "page.png"
+    map_path.write_bytes(b"map")
+    page_path.write_bytes(b"page")
+    write_jsonl(
+        package_dir / "assets.jsonl",
+        [
+            VisualAsset(
+                asset_id="page",
+                doc_id="doc",
+                page_no=1,
+                kind=AssetKind.PAGE_IMAGE,
+                path=page_path,
+                metadata={"requires_ocr": True, "requires_vlm": True},
+            ),
+            VisualAsset(
+                asset_id="map",
+                doc_id="doc",
+                page_no=2,
+                kind=AssetKind.MAP,
+                path=map_path,
+                metadata={"requires_ocr": True, "requires_vlm": True},
+            ),
+        ],
+    )
+    output = tmp_path / "jobs.jsonl"
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "plan-visual-jobs",
+            "--package-dir",
+            str(package_dir),
+            "--kind",
+            "map",
+            "--output",
+            str(output),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "'filtered_kinds': ['map']" in result.output
+    assert "page_image" not in result.output
+    assert output.read_text(encoding="utf-8").count("\n") == 1
 
 
 def test_build_vlm_backend_passes_hf_runtime_options(monkeypatch):

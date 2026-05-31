@@ -39,6 +39,7 @@
 7. **OCR/VLM Job Planning**
    - Build `visual_jobs.jsonl` from missing OCR/VLM annotations.
    - Prioritize maps, tables, charts, figures, and pages with empty text.
+   - Filter jobs by page range or asset kind to run bounded OCR/VLM batches.
    - Run jobs in bounded batches and store `visual_job_results.jsonl` plus `visual_annotations.jsonl`.
    - Parse structured VLM JSON into captions, summaries, metadata, and triple candidates.
    - Record OCR language, backend configuration, VLM prompt name, prompt hash, latency, output size, parse status, and triple count.
