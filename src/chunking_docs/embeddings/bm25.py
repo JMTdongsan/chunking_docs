@@ -22,8 +22,18 @@ class BM25LexicalIndex:
         self.index = BM25Okapi(self.tokens)
 
     def search(self, query: str, top_k: int = 10) -> list[tuple[DocumentChunk, float]]:
-        scores = self.index.get_scores(tokenize(query))
-        ranked = sorted(enumerate(scores), key=lambda item: item[1], reverse=True)[:top_k]
+        query_tokens = tokenize(query)
+        query_token_set = set(query_tokens)
+        scores = self.index.get_scores(query_tokens)
+        adjusted_scores = [
+            score + lexical_overlap(query_token_set, tokens)
+            for score, tokens in zip(scores, self.tokens)
+        ]
+        ranked = sorted(
+            [(index, score) for index, score in enumerate(adjusted_scores) if score > 0],
+            key=lambda item: item[1],
+            reverse=True,
+        )[:top_k]
         return [(self.chunks[index], float(score)) for index, score in ranked]
 
     def dump_manifest(self, path: Path) -> None:
@@ -33,3 +43,10 @@ class BM25LexicalIndex:
             for chunk, tokens in zip(self.chunks, self.tokens)
         ]
         path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def lexical_overlap(query_tokens: set[str], document_tokens: list[str]) -> float:
+    if not query_tokens:
+        return 0.0
+    overlap = query_tokens.intersection(document_tokens)
+    return len(overlap) / len(query_tokens)

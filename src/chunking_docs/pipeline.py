@@ -5,6 +5,7 @@ from pathlib import Path
 
 from chunking_docs.analysis.pdf_profile import profile_pdf, summarize_profiles
 from chunking_docs.chunking.page_chunker import page_level_chunks
+from chunking_docs.chunking.semantic_splitter import semantic_subchunks
 from chunking_docs.embeddings.bm25 import BM25LexicalIndex
 from chunking_docs.embeddings.interfaces import HashingImageEmbedder, HashingTextEmbedder
 from chunking_docs.embeddings.records import (
@@ -123,10 +124,23 @@ def write_package(
         )
 
 
-def rebuild_search_artifacts(output_dir: Path, chunks) -> None:
+def rebuild_search_artifacts(output_dir: Path, chunks, assets=None) -> None:
     bm25 = BM25LexicalIndex(chunks)
     bm25.dump_manifest(output_dir / "bm25_tokens.json")
 
     embedder = HashingTextEmbedder()
     records = make_text_embedding_records(chunks, embedder)
     write_jsonl(output_dir / "qdrant_text_records.jsonl", records)
+
+    if assets is not None:
+        image_embedder = HashingImageEmbedder(embedding_dim=embedder.embedding_dim)
+        image_records = make_image_embedding_records(assets, image_embedder)
+        caption_records = make_caption_embedding_records(assets, embedder)
+        write_jsonl(output_dir / "qdrant_image_records.jsonl", image_records)
+        write_jsonl(output_dir / "qdrant_caption_records.jsonl", caption_records)
+
+
+def write_split_chunks(output_dir: Path, chunks, max_chars: int = 1600, overlap_chars: int = 180):
+    split_chunks = semantic_subchunks(chunks, max_chars=max_chars, overlap_chars=overlap_chars)
+    write_jsonl(output_dir / "chunks.split.jsonl", split_chunks)
+    return split_chunks

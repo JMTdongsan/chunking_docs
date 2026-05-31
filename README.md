@@ -76,6 +76,16 @@ chunking-docs annotate-assets \
 
 `--in-place`와 기본 `--rebuild-search`를 함께 쓰면 OCR/VLM 결과가 `chunks.jsonl`, `bm25_tokens.json`, `qdrant_text_records.jsonl`에 반영된다.
 
+외부 VLM 또는 사람이 검수한 주석을 JSONL로 반영할 수도 있다.
+
+```bash
+chunking-docs apply-annotations examples/seoul_plan_seed_annotations.jsonl --package-dir outputs/package --in-place
+chunking-docs split-chunks --package-dir outputs/package --max-chars 600 --overlap-chars 80 --in-place
+chunking-docs search-local "동북권 발전구상 중랑천" --package-dir outputs/package --top-k 5
+```
+
+`apply-annotations`는 `assets.jsonl`, `chunks.jsonl`, `triples.jsonl`, BM25, Qdrant dry-run records를 갱신한다.
+
 ## Qdrant 로컬 실행
 
 ```bash

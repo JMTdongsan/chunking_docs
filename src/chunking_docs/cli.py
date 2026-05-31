@@ -11,10 +11,12 @@ from chunking_docs.analysis.pdf_profile import profile_pdf, summarize_profiles, 
 from chunking_docs.chunking.page_chunker import page_level_chunks
 from chunking_docs.ingest.pdf_loader import load_source_document, render_pages
 from chunking_docs.io import read_jsonl, write_jsonl
-from chunking_docs.models import DocumentChunk, VisualAsset
-from chunking_docs.pipeline import build_processing_package, rebuild_search_artifacts
+from chunking_docs.models import DocumentChunk, GraphTriple, VisualAsset
+from chunking_docs.pipeline import build_processing_package, rebuild_search_artifacts, write_split_chunks
+from chunking_docs.retrieval.local_hybrid import LocalHybridSearcher
 from chunking_docs.storage.records import EmbeddingRecord
 from chunking_docs.vision.annotate import annotate_assets, merge_asset_annotations_into_chunks
+from chunking_docs.vision.manual_annotations import AssetAnnotation, apply_asset_annotations
 
 app = typer.Typer(help="Document chunking utilities.")
 
@@ -220,6 +222,110 @@ def annotate_assets_command(
             "chunk_output": str(chunk_output),
             "rebuilt_search": bool(rebuild_search and in_place),
         }
+    )
+
+
+@app.command(name="apply-annotations")
+def apply_annotations_command(
+    annotations: Path,
+    package_dir: Path = Path("outputs/package"),
+    in_place: bool = True,
+    rebuild_search: bool = True,
+):
+    """Apply manual or external VLM annotations from JSONL to package assets/chunks/triples."""
+    chunks = read_jsonl(package_dir / "chunks.jsonl", DocumentChunk)
+    assets = read_jsonl(package_dir / "assets.jsonl", VisualAsset)
+    triples_path = package_dir / "triples.jsonl"
+    triples = read_jsonl(triples_path, GraphTriple) if triples_path.exists() else []
+    parsed_annotations = read_jsonl(annotations, AssetAnnotation)
+
+    updated_assets, updated_chunks, updated_triples = apply_asset_annotations(
+        assets,
+        chunks,
+        parsed_annotations,
+        existing_triples=triples,
+    )
+
+    suffix = "" if in_place else ".annotated"
+    write_jsonl(package_dir / f"assets{suffix}.jsonl", updated_assets)
+    write_jsonl(package_dir / f"chunks{suffix}.jsonl", updated_chunks)
+    write_jsonl(package_dir / f"triples{suffix}.jsonl", updated_triples)
+
+    if in_place and rebuild_search:
+        rebuild_search_artifacts(package_dir, updated_chunks, assets=updated_assets)
+
+    print(
+        {
+            "annotations": len(parsed_annotations),
+            "assets": len(updated_assets),
+            "chunks": len(updated_chunks),
+            "triples": len(updated_triples),
+            "in_place": in_place,
+            "rebuilt_search": bool(in_place and rebuild_search),
+        }
+    )
+
+
+@app.command(name="split-chunks")
+def split_chunks_command(
+    package_dir: Path = Path("outputs/package"),
+    chunks_file: str = "chunks.jsonl",
+    max_chars: int = 1600,
+    overlap_chars: int = 180,
+    in_place: bool = False,
+    rebuild_search: bool = True,
+):
+    """Create semantic subchunks from page chunks, usually after OCR/VLM annotation."""
+    chunks = read_jsonl(package_dir / chunks_file, DocumentChunk)
+    split_chunks = write_split_chunks(
+        package_dir,
+        chunks,
+        max_chars=max_chars,
+        overlap_chars=overlap_chars,
+    )
+    output = package_dir / "chunks.split.jsonl"
+    if in_place:
+        write_jsonl(package_dir / "chunks.jsonl", split_chunks)
+        if rebuild_search:
+            rebuild_search_artifacts(package_dir, split_chunks)
+    print(
+        {
+            "source": str(package_dir / chunks_file),
+            "output": str(output),
+            "input_chunks": len(chunks),
+            "split_chunks": len(split_chunks),
+            "in_place": in_place,
+            "rebuilt_search": bool(in_place and rebuild_search),
+        }
+    )
+
+
+@app.command(name="search-local")
+def search_local(
+    query: str,
+    package_dir: Path = Path("outputs/package"),
+    chunks_file: str = "chunks.jsonl",
+    top_k: int = 5,
+):
+    """Run local dry-run hybrid search over package chunks using hashing dense + BM25."""
+    from chunking_docs.embeddings.interfaces import HashingTextEmbedder
+
+    chunks = read_jsonl(package_dir / chunks_file, DocumentChunk)
+    searcher = LocalHybridSearcher(chunks, HashingTextEmbedder())
+    hits = searcher.search(query, top_k=top_k)
+    print(
+        [
+            {
+                "rank": index + 1,
+                "chunk_id": hit.chunk.chunk_id,
+                "page": [hit.chunk.page_start, hit.chunk.page_end],
+                "score": round(hit.score, 6),
+                "sources": hit.sources,
+                "section": hit.chunk.section.label(),
+                "preview": hit.chunk.text[:180],
+            }
+            for index, hit in enumerate(hits)
+        ]
     )
 
 
