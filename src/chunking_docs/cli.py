@@ -835,6 +835,11 @@ def annotate_assets_command(
     pages: str = "",
     limit: int | None = None,
     ocr: str = "none",
+    ocr_model_lang: str = "korean",
+    ocr_device: str = "",
+    ocr_engine: str = "",
+    ocr_min_confidence: float = 0.0,
+    ocr_use_gpu: bool = False,
     vlm: str = "none",
     vlm_model: str = "",
     vlm_device_map: str = "auto",
@@ -849,7 +854,14 @@ def annotate_assets_command(
     chunks = read_jsonl(package_dir / "chunks.jsonl", DocumentChunk)
     assets = read_jsonl(package_dir / "assets.jsonl", VisualAsset)
 
-    ocr_backend, _ = build_ocr_backend(ocr)
+    ocr_backend, _ = build_ocr_backend(
+        ocr,
+        model_lang=ocr_model_lang,
+        device=ocr_device,
+        engine=ocr_engine,
+        min_confidence=ocr_min_confidence,
+        use_gpu=ocr_use_gpu,
+    )
     vlm_backend, _ = build_vlm_backend(
         vlm,
         vlm_model,
@@ -930,6 +942,11 @@ def run_visual_jobs_command(
     results_output: Path | None = None,
     limit: int | None = None,
     ocr: str = "none",
+    ocr_model_lang: str = "korean",
+    ocr_device: str = "",
+    ocr_engine: str = "",
+    ocr_min_confidence: float = 0.0,
+    ocr_use_gpu: bool = False,
     vlm: str = "none",
     vlm_model: str = "",
     vlm_device_map: str = "auto",
@@ -947,7 +964,14 @@ def run_visual_jobs_command(
     planned_jobs = read_jsonl(job_path, VisualAnnotationJob)
     assets = read_jsonl(package_dir / "assets.jsonl", VisualAsset)
 
-    ocr_backend, ocr_name = build_ocr_backend(ocr)
+    ocr_backend, ocr_name = build_ocr_backend(
+        ocr,
+        model_lang=ocr_model_lang,
+        device=ocr_device,
+        engine=ocr_engine,
+        min_confidence=ocr_min_confidence,
+        use_gpu=ocr_use_gpu,
+    )
     vlm_backend, vlm_name = build_vlm_backend(
         vlm,
         vlm_model,
@@ -2063,7 +2087,14 @@ def normalize_backend(value: str) -> str:
     return value.strip().lower()
 
 
-def build_ocr_backend(backend: str) -> tuple[OCRBackend | None, str]:
+def build_ocr_backend(
+    backend: str,
+    model_lang: str = "korean",
+    device: str = "",
+    engine: str = "",
+    min_confidence: float = 0.0,
+    use_gpu: bool = False,
+) -> tuple[OCRBackend | None, str]:
     normalized = normalize_backend(backend)
     if normalized == "none":
         return None, ""
@@ -2071,7 +2102,22 @@ def build_ocr_backend(backend: str) -> tuple[OCRBackend | None, str]:
         from chunking_docs.vision.tesseract_ocr import TesseractOCRBackend
 
         return TesseractOCRBackend(), "tesseract"
-    raise typer.BadParameter("ocr must be one of: none, tesseract")
+    if normalized in {"paddle", "paddleocr"}:
+        if min_confidence < 0.0 or min_confidence > 1.0:
+            raise typer.BadParameter("--ocr-min-confidence must be between 0.0 and 1.0")
+        from chunking_docs.vision.paddle_ocr import PaddleOCRBackend
+
+        return (
+            PaddleOCRBackend(
+                lang=model_lang,
+                device=device,
+                engine=engine,
+                min_confidence=min_confidence,
+                use_gpu=True if use_gpu else None,
+            ),
+            f"paddleocr:{model_lang}",
+        )
+    raise typer.BadParameter("ocr must be one of: none, tesseract, paddleocr")
 
 
 def build_vlm_backend(

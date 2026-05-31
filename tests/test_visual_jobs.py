@@ -229,3 +229,32 @@ def test_build_vlm_backend_passes_hf_runtime_options(monkeypatch):
         "max_new_tokens": 256,
         "attn_implementation": "sdpa",
     }
+
+
+def test_build_ocr_backend_passes_paddle_options(monkeypatch):
+    captured = {}
+
+    class FakePaddleBackend:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    monkeypatch.setattr("chunking_docs.vision.paddle_ocr.PaddleOCRBackend", FakePaddleBackend)
+
+    backend, name = cli_module.build_ocr_backend(
+        "paddleocr",
+        model_lang="korean",
+        device="gpu:0",
+        engine="paddle_static",
+        min_confidence=0.4,
+        use_gpu=True,
+    )
+
+    assert isinstance(backend, FakePaddleBackend)
+    assert name == "paddleocr:korean"
+    assert captured == {
+        "lang": "korean",
+        "device": "gpu:0",
+        "engine": "paddle_static",
+        "min_confidence": 0.4,
+        "use_gpu": True,
+    }
