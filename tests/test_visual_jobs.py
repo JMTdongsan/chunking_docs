@@ -16,7 +16,7 @@ from chunking_docs.vision.jobs import (
 )
 from chunking_docs.vision.manual_annotations import AssetAnnotation
 from chunking_docs.vision.prompts import MAP_SUMMARY_PROMPT_KO, VISUAL_PROMPT_SCHEMA_VERSION
-from chunking_docs.vision.quality import evaluate_visual_results
+from chunking_docs.vision.quality import evaluate_visual_results, visual_results_from_assets
 from chunking_docs.vision.report import summarize_visual_results
 
 
@@ -375,6 +375,81 @@ def test_summarize_visual_results_cli_writes_json(tmp_path):
     assert "model-a" in output.read_text(encoding="utf-8")
 
 
+def test_visual_results_from_assets_reports_applied_annotation_state(tmp_path):
+    assets = [
+        VisualAsset(
+            asset_id="asset-1",
+            doc_id="doc",
+            page_no=1,
+            kind=AssetKind.PAGE_IMAGE,
+            ocr_text="recognized text",
+            vlm_summary="structured summary",
+            metadata={
+                "requires_ocr": True,
+                "requires_vlm": True,
+                "ocr_backend": "fake-ocr",
+                "vlm_backend": "fake-vlm",
+                "vlm_parse_status": "json_object",
+            },
+        ),
+        VisualAsset(
+            asset_id="asset-2",
+            doc_id="doc",
+            page_no=2,
+            kind=AssetKind.FIGURE,
+            vlm_summary="optional summary",
+            metadata={"requires_vlm": False},
+        ),
+    ]
+
+    results = visual_results_from_assets(assets)
+    report = evaluate_visual_results(results, min_ocr_text_coverage=1.0, min_vlm_json_parse_rate=1.0)
+
+    assert [result.asset_id for result in results] == ["asset-1"]
+    assert results[0].metadata["operations"] == ["ocr", "vlm"]
+    assert results[0].metadata["ocr_text_chars"] == len("recognized text")
+    assert report.passed is True
+    assert report.vlm_json_parse_rate == 1.0
+
+
+def test_summarize_visual_assets_cli_writes_json(tmp_path):
+    package_dir = tmp_path / "package"
+    output = tmp_path / "visual_assets_summary.json"
+    write_jsonl(
+        package_dir / "assets.jsonl",
+        [
+            VisualAsset(
+                asset_id="asset",
+                doc_id="doc",
+                page_no=1,
+                kind=AssetKind.PAGE_IMAGE,
+                ocr_text="recognized text",
+                vlm_summary="structured summary",
+                metadata={
+                    "requires_ocr": True,
+                    "requires_vlm": True,
+                    "vlm_parse_status": "json_object",
+                },
+            )
+        ],
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "summarize-visual-assets",
+            "--package-dir",
+            str(package_dir),
+            "--output",
+            str(output),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "'result_count': 1" in result.output
+    assert "json_object" in output.read_text(encoding="utf-8")
+
+
 def test_evaluate_visual_results_gates_annotation_quality():
     results = [
         VisualJobRunResult(
@@ -492,6 +567,50 @@ def test_gate_visual_results_cli_writes_report(tmp_path):
     assert result.exit_code == 0, result.output
     assert "'passed': True" in result.output
     assert "visual summary" not in output.read_text(encoding="utf-8")
+
+
+def test_gate_visual_assets_cli_writes_report(tmp_path):
+    package_dir = tmp_path / "package"
+    output = tmp_path / "visual_assets_quality.json"
+    write_jsonl(
+        package_dir / "assets.jsonl",
+        [
+            VisualAsset(
+                asset_id="asset",
+                doc_id="doc",
+                page_no=1,
+                kind=AssetKind.PAGE_IMAGE,
+                ocr_text="recognized text",
+                vlm_summary="structured summary",
+                metadata={
+                    "requires_ocr": True,
+                    "requires_vlm": True,
+                    "vlm_parse_status": "json_object",
+                },
+            )
+        ],
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "gate-visual-assets",
+            "--package-dir",
+            str(package_dir),
+            "--min-ocr-text-coverage",
+            "1",
+            "--min-vlm-summary-coverage",
+            "1",
+            "--min-vlm-json-parse-rate",
+            "1",
+            "--output",
+            str(output),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "'passed': True" in result.output
+    assert "structured summary" not in output.read_text(encoding="utf-8")
 
 
 def test_plan_visual_jobs_cli_filters_kind(tmp_path):

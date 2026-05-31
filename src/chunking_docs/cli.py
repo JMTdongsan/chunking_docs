@@ -86,7 +86,7 @@ from chunking_docs.vision.jobs import (
     run_visual_jobs,
 )
 from chunking_docs.vision.manual_annotations import AssetAnnotation, apply_asset_annotations
-from chunking_docs.vision.quality import evaluate_visual_results
+from chunking_docs.vision.quality import evaluate_visual_results, visual_results_from_assets
 from chunking_docs.vision.report import summarize_visual_results
 
 app = typer.Typer(help="Document chunking utilities.")
@@ -1393,6 +1393,28 @@ def summarize_visual_results_command(
     print(summary.model_dump())
 
 
+@app.command(name="summarize-visual-assets")
+def summarize_visual_assets_command(
+    package_dir: Path = Path("outputs/package"),
+    output: Path | None = None,
+    required_only: bool = typer.Option(
+        True,
+        "--required-only/--all-assets",
+        help="Summarize only assets marked as requiring OCR/VLM, or every asset with visual text.",
+    ),
+):
+    """Summarize the final OCR/VLM annotation state currently stored in assets.jsonl."""
+    assets = read_jsonl(package_dir / "assets.jsonl", VisualAsset)
+    results = visual_results_from_assets(assets, required_only=required_only)
+    summary = summarize_visual_results(results)
+    if output is not None:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(summary.model_dump_json(indent=2), encoding="utf-8")
+        print({"output": str(output), **summary.model_dump()})
+        return
+    print(summary.model_dump())
+
+
 @app.command(name="compare-visual-runs")
 def compare_visual_runs_command(
     runs: list[str] = typer.Option(
@@ -1528,6 +1550,63 @@ def gate_visual_results_command(
             "vlm_summary_coverage": report.vlm_summary_coverage,
             "vlm_json_parse_rate": report.vlm_json_parse_rate,
             "triples_per_vlm_job": report.triples_per_vlm_job,
+        }
+    print(payload)
+    if fail and not report.passed:
+        raise typer.Exit(1)
+
+
+@app.command(name="gate-visual-assets")
+def gate_visual_assets_command(
+    package_dir: Path = Path("outputs/package"),
+    output: Path | None = None,
+    required_only: bool = typer.Option(
+        True,
+        "--required-only/--all-assets",
+        help="Gate only assets marked as requiring OCR/VLM, or every asset with visual text.",
+    ),
+    min_completion_rate: float = 0.0,
+    min_annotation_rate: float = 0.0,
+    min_ocr_text_coverage: float = 0.0,
+    min_vlm_summary_coverage: float = 0.0,
+    min_vlm_json_parse_rate: float = 0.0,
+    min_mean_ocr_text_chars: float = 0.0,
+    min_mean_vlm_summary_chars: float = 0.0,
+    max_failed_count: int | None = None,
+    max_skipped_count: int | None = None,
+    fail: bool = typer.Option(
+        True,
+        "--fail/--no-fail",
+        help="Exit with status 1 when visual asset quality checks fail.",
+    ),
+):
+    """Fail a package when the applied visual annotations in assets.jsonl are incomplete."""
+    assets = read_jsonl(package_dir / "assets.jsonl", VisualAsset)
+    report = evaluate_visual_results(
+        visual_results_from_assets(assets, required_only=required_only),
+        min_completion_rate=min_completion_rate,
+        min_annotation_rate=min_annotation_rate,
+        min_ocr_text_coverage=min_ocr_text_coverage,
+        min_vlm_summary_coverage=min_vlm_summary_coverage,
+        min_vlm_json_parse_rate=min_vlm_json_parse_rate,
+        min_mean_ocr_text_chars=min_mean_ocr_text_chars,
+        min_mean_vlm_summary_chars=min_mean_vlm_summary_chars,
+        max_failed_count=max_failed_count,
+        max_skipped_count=max_skipped_count,
+    )
+    payload = report.model_dump()
+    if output is not None:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(report.model_dump_json(indent=2), encoding="utf-8")
+        payload = {
+            "output": str(output),
+            "passed": report.passed,
+            "failed_checks": report.failed_checks,
+            "completion_rate": report.completion_rate,
+            "annotation_rate": report.annotation_rate,
+            "ocr_text_coverage": report.ocr_text_coverage,
+            "vlm_summary_coverage": report.vlm_summary_coverage,
+            "vlm_json_parse_rate": report.vlm_json_parse_rate,
         }
     print(payload)
     if fail and not report.passed:

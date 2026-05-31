@@ -193,6 +193,23 @@ chunking-docs gate-visual-results \
   --output outputs/package/visual_quality.json
 ```
 
+After multiple OCR/VLM batches have been applied, gate the final package state directly from `assets.jsonl`:
+
+```bash
+chunking-docs summarize-visual-assets \
+  --package-dir outputs/package \
+  --output outputs/package/visual_asset_summary.json
+
+chunking-docs gate-visual-assets \
+  --package-dir outputs/package \
+  --min-ocr-text-coverage 0.8 \
+  --min-vlm-summary-coverage 0.95 \
+  --min-vlm-json-parse-rate 0.95 \
+  --output outputs/package/visual_asset_quality.json
+```
+
+This is useful when OCR/VLM work was split across several result files but the retrieval package should be judged by the annotations that are actually present in `assets.jsonl`.
+
 Compare two package directories after applying annotations, changing chunking strategy, or rebuilding embeddings:
 
 ```bash

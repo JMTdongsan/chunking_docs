@@ -4,7 +4,9 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from chunking_docs.models import VisualAsset
 from chunking_docs.vision.jobs import VisualJobRunResult
+from chunking_docs.vision.manual_annotations import AssetAnnotation
 
 STRUCTURED_VLM_PARSE_STATUSES = {"json_object", "json_list", "json_repaired"}
 
@@ -53,6 +55,69 @@ class VisualQualityReport(BaseModel):
     failed_checks: list[str] = Field(default_factory=list)
     checks: list[VisualQualityCheck] = Field(default_factory=list)
     issues: list[VisualQualityIssue] = Field(default_factory=list)
+
+
+def visual_results_from_assets(
+    assets: list[VisualAsset],
+    required_only: bool = True,
+) -> list[VisualJobRunResult]:
+    results = []
+    for asset in assets:
+        operations = visual_asset_operations(asset, required_only=required_only)
+        if not operations:
+            continue
+        results.append(
+            VisualJobRunResult(
+                job_id=f"asset-state:{asset.asset_id}",
+                asset_id=asset.asset_id,
+                page_no=asset.page_no,
+                status="completed",
+                annotation=AssetAnnotation(
+                    asset_id=asset.asset_id,
+                    page_no=asset.page_no,
+                    kind=asset.kind,
+                    caption=asset.caption,
+                    ocr_text=asset.ocr_text,
+                    vlm_summary=asset.vlm_summary,
+                    metadata=dict(asset.metadata),
+                ),
+                metadata=visual_asset_result_metadata(asset, operations),
+            )
+        )
+    return results
+
+
+def visual_asset_operations(asset: VisualAsset, required_only: bool = True) -> list[str]:
+    operations = []
+    if asset.metadata.get("requires_ocr") or (not required_only and asset.ocr_text is not None):
+        operations.append("ocr")
+    if asset.metadata.get("requires_vlm") or (not required_only and asset.vlm_summary is not None):
+        operations.append("vlm")
+    return operations
+
+
+def visual_asset_result_metadata(asset: VisualAsset, operations: list[str]) -> dict[str, Any]:
+    metadata = {
+        "operations": operations,
+        "ocr_backend": asset.metadata.get("ocr_backend"),
+        "vlm_backend": asset.metadata.get("vlm_backend"),
+        "ocr_text_chars": asset.metadata.get("ocr_text_chars", len((asset.ocr_text or "").strip())),
+        "vlm_output_chars": asset.metadata.get("vlm_output_chars", len((asset.vlm_summary or "").strip())),
+        "vlm_parse_status": asset.metadata.get("vlm_parse_status"),
+    }
+    for key in [
+        "ocr_language",
+        "vlm_prompt_name",
+        "vlm_prompt_schema_version",
+        "vlm_prompt_sha256",
+        "vlm_prompt_chars",
+        "ocr_duration_ms",
+        "vlm_duration_ms",
+        "total_duration_ms",
+    ]:
+        if key in asset.metadata:
+            metadata[key] = asset.metadata[key]
+    return metadata
 
 
 def evaluate_visual_results(
