@@ -72,6 +72,18 @@ class RetrievalTargetMetric(BaseModel):
     failed_queries: list[str] = Field(default_factory=list)
 
 
+class RetrievalSourceMetric(BaseModel):
+    query_count: int = 0
+    relevant_query_count: int = 0
+    hit_count: int = 0
+    relevant_hit_count: int = 0
+    expected_target_count: int = 0
+    matched_target_count: int = 0
+    precision_at_hits: float = 0.0
+    target_coverage_at_k: float = 0.0
+    mean_relevant_rank: float = 0.0
+
+
 class RetrievalEvaluation(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
     case_count: int
@@ -91,6 +103,8 @@ class RetrievalEvaluation(BaseModel):
     mean_latency_ms: float = 0.0
     p95_latency_ms: float = 0.0
     target_metrics: dict[str, RetrievalTargetMetric] = Field(default_factory=dict)
+    source_metrics: dict[str, RetrievalSourceMetric] = Field(default_factory=dict)
+    source_family_metrics: dict[str, RetrievalSourceMetric] = Field(default_factory=dict)
     failed_queries: list[str]
     results: list[RetrievalCaseResult]
 
@@ -294,6 +308,8 @@ def evaluate_search_results(
         mean_latency_ms=sum(latency_samples) / len(latency_samples) if latency_samples else 0.0,
         p95_latency_ms=percentile_latency(latency_samples, 0.95),
         target_metrics=target_metrics(results),
+        source_metrics=source_metrics(results),
+        source_family_metrics=source_metrics(results, family=True),
         failed_queries=[result.query for result in results if not result.passed],
         results=results,
     )
@@ -555,6 +571,95 @@ def target_metrics(results: list[RetrievalCaseResult]) -> dict[str, RetrievalTar
             ],
         )
     return metrics
+
+
+def source_metrics(
+    results: list[RetrievalCaseResult],
+    family: bool = False,
+) -> dict[str, RetrievalSourceMetric]:
+    total_expected_targets = sum(result.expected_target_count for result in results)
+    accumulators: dict[str, dict[str, Any]] = {}
+
+    for result in results:
+        sources_seen_in_query: set[str] = set()
+        relevant_sources_seen_in_query: set[str] = set()
+        best_rank_by_source: dict[str, int] = {}
+        matched_targets_by_source: dict[str, set[str]] = {}
+
+        for index, raw_sources in enumerate(result.top_sources):
+            rank = index + 1
+            matched_targets = set(result.top_matched_targets[index]) if index < len(result.top_matched_targets) else set()
+            for source in metric_source_keys(raw_sources, family=family):
+                accumulator = accumulators.setdefault(
+                    source,
+                    {
+                        "query_count": 0,
+                        "relevant_query_count": 0,
+                        "hit_count": 0,
+                        "relevant_hit_count": 0,
+                        "matched_target_count": 0,
+                        "rank_sum": 0,
+                        "rank_count": 0,
+                    },
+                )
+                sources_seen_in_query.add(source)
+                accumulator["hit_count"] += 1
+                if matched_targets:
+                    accumulator["relevant_hit_count"] += 1
+                    relevant_sources_seen_in_query.add(source)
+                    best_rank_by_source[source] = min(best_rank_by_source.get(source, rank), rank)
+                    matched_targets_by_source.setdefault(source, set()).update(matched_targets)
+
+        for source in sources_seen_in_query:
+            accumulators[source]["query_count"] += 1
+        for source in relevant_sources_seen_in_query:
+            accumulators[source]["relevant_query_count"] += 1
+            accumulators[source]["rank_sum"] += best_rank_by_source[source]
+            accumulators[source]["rank_count"] += 1
+        for source, matched_targets in matched_targets_by_source.items():
+            accumulators[source]["matched_target_count"] += len(matched_targets)
+
+    return {
+        source: RetrievalSourceMetric(
+            query_count=values["query_count"],
+            relevant_query_count=values["relevant_query_count"],
+            hit_count=values["hit_count"],
+            relevant_hit_count=values["relevant_hit_count"],
+            expected_target_count=total_expected_targets,
+            matched_target_count=values["matched_target_count"],
+            precision_at_hits=values["relevant_hit_count"] / values["hit_count"]
+            if values["hit_count"]
+            else 0.0,
+            target_coverage_at_k=values["matched_target_count"] / total_expected_targets
+            if total_expected_targets
+            else 0.0,
+            mean_relevant_rank=values["rank_sum"] / values["rank_count"]
+            if values["rank_count"]
+            else 0.0,
+        )
+        for source, values in sorted(accumulators.items())
+    }
+
+
+def metric_source_keys(sources: list[str], family: bool = False) -> set[str]:
+    if family:
+        return {source_family(source) for source in sources}
+    return set(sources)
+
+
+def source_family(source: str) -> str:
+    normalized = source.strip().lower()
+    if "caption_dense" in normalized or "image_dense" in normalized:
+        return "visual"
+    if normalized == "dense" or "text_dense" in normalized:
+        return "dense_text"
+    if normalized.startswith("rerank:"):
+        return "reranker"
+    if normalized == "bm25" or "lexical" in normalized:
+        return "lexical"
+    if normalized == "graph":
+        return "graph"
+    return normalized.split(":", 1)[0] if normalized else "unknown"
 
 
 def expected_result_target_keys(result: RetrievalCaseResult, target: str) -> set[str]:

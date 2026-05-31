@@ -682,6 +682,7 @@ def eval_qdrant_retrieval_command(
                 "mean_latency_ms": evaluation.mean_latency_ms,
                 "p95_latency_ms": evaluation.p95_latency_ms,
                 "target_metrics": retrieval_target_metrics_payload(evaluation),
+                "source_family_metrics": retrieval_source_family_metrics_payload(evaluation),
                 **evaluation.metadata,
             }
         )
@@ -822,6 +823,9 @@ def eval_qdrant_vector_ablation_command(
                         "mean_latency_ms": row.evaluation.mean_latency_ms,
                         "p95_latency_ms": row.evaluation.p95_latency_ms,
                         "target_metrics": retrieval_target_metrics_payload(row.evaluation),
+                        "source_family_metrics": retrieval_source_family_metrics_payload(
+                            row.evaluation
+                        ),
                         "failed_queries": row.evaluation.failed_queries,
                     }
                     for row in report.rows
@@ -1689,6 +1693,7 @@ def eval_retrieval_command(
                 "mean_latency_ms": evaluation.mean_latency_ms,
                 "p95_latency_ms": evaluation.p95_latency_ms,
                 "target_metrics": retrieval_target_metrics_payload(evaluation),
+                "source_family_metrics": retrieval_source_family_metrics_payload(evaluation),
             }
         )
         return
@@ -1764,6 +1769,7 @@ def eval_retrieval_ablation_command(
                     "mean_latency_ms": row.evaluation.mean_latency_ms,
                     "p95_latency_ms": row.evaluation.p95_latency_ms,
                     "target_metrics": retrieval_target_metrics_payload(row.evaluation),
+                    "source_family_metrics": retrieval_source_family_metrics_payload(row.evaluation),
                     "failed_queries": row.evaluation.failed_queries,
                 }
                 for row in report.rows
@@ -2152,6 +2158,13 @@ def retrieval_target_metrics_payload(evaluation) -> dict:
     return {
         name: metric.model_dump()
         for name, metric in getattr(evaluation, "target_metrics", {}).items()
+    }
+
+
+def retrieval_source_family_metrics_payload(evaluation) -> dict:
+    return {
+        name: metric.model_dump()
+        for name, metric in getattr(evaluation, "source_family_metrics", {}).items()
     }
 
 

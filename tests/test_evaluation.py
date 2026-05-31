@@ -275,6 +275,11 @@ def test_evaluate_search_results_reports_target_coverage_and_precision():
     assert result.target_metrics["chunk"].ndcg_at_k == 0.0
     assert result.target_metrics["asset"].coverage_at_k == 1.0
     assert result.target_metrics["asset"].ndcg_at_k == 1.0
+    assert result.source_metrics["test"].query_count == 1
+    assert result.source_metrics["test"].hit_count == 2
+    assert result.source_metrics["test"].relevant_hit_count == 2
+    assert result.source_metrics["test"].matched_target_count == 3
+    assert result.source_metrics["test"].target_coverage_at_k == 0.75
 
 
 def test_evaluate_retrieval_reports_ranked_failures():
@@ -431,6 +436,9 @@ def test_evaluate_search_results_matches_visual_asset_id_from_payload():
     assert result.recall_at_k == 1.0
     assert result.results[0].top_asset_ids == [["asset-map"]]
     assert result.results[0].matched_asset_id == "asset-map"
+    assert result.source_metrics["qdrant:caption_dense"].target_coverage_at_k == 1.0
+    assert result.source_family_metrics["visual"].target_coverage_at_k == 1.0
+    assert result.source_family_metrics["visual"].mean_relevant_rank == 1.0
 
 
 def test_evaluate_retrieval_ablation_compares_modes():
@@ -564,6 +572,7 @@ def test_eval_qdrant_retrieval_cli_writes_report(monkeypatch, tmp_path):
     assert payload["recall_at_k"] == 1.0
     assert payload["results"][0]["matched_asset_id"] == "asset-1"
     assert payload["results"][0]["top_sources"] == [["qdrant:text_dense"]]
+    assert payload["source_family_metrics"]["dense_text"]["target_coverage_at_k"] == 1.0
     assert len(payload["results"][0]["latency_samples_ms"]) == 2
 
 
@@ -649,6 +658,7 @@ def test_eval_qdrant_vector_ablation_cli_writes_report(monkeypatch, tmp_path):
     assert rows["text"]["evaluation"]["recall_at_k"] == 0.0
     assert rows["caption"]["evaluation"]["recall_at_k"] == 1.0
     assert rows["caption"]["evaluation"]["target_coverage_at_k"] == 1.0
+    assert rows["caption"]["evaluation"]["source_family_metrics"]["visual"]["target_coverage_at_k"] == 1.0
     assert rows["caption"]["evaluation"]["metadata"]["vector_names"] == ["caption_dense"]
     assert calls.count((("caption_dense",), False)) == 2
 
