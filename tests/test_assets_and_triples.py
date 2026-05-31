@@ -1,3 +1,5 @@
+import fitz
+
 from chunking_docs.graph.heuristics import section_triples
 from chunking_docs.models import (
     ChunkKind,
@@ -6,7 +8,7 @@ from chunking_docs.models import (
     SectionPath,
     TextQuality,
 )
-from chunking_docs.vision.assets import page_kind, should_render_page
+from chunking_docs.vision.assets import build_page_tile_assets, page_kind, page_tiles, should_render_page
 
 
 def test_page_kind_detects_visual_dense_page_as_map():
@@ -44,6 +46,53 @@ def test_page_kind_keeps_cover_as_page_image():
     )
 
     assert page_kind(profile).value == "page_image"
+
+
+def test_page_tiles_adds_overlap_without_leaving_page_bounds():
+    tiles = page_tiles(page_width=100, page_height=200, rows=2, cols=2, overlap_ratio=0.1)
+
+    assert len(tiles) == 4
+    assert tiles[0].bbox == (0.0, 0.0, 55.0, 110.0)
+    assert tiles[-1].bbox == (45.0, 90.0, 100.0, 200.0)
+
+
+def test_build_page_tile_assets_renders_tiles(tmp_path):
+    pdf_path = tmp_path / "doc.pdf"
+    doc = fitz.open()
+    doc.new_page(width=100, height=200)
+    doc.save(pdf_path)
+    doc.close()
+    profile = PageProfile(
+        doc_id="doc",
+        page_no=1,
+        width=100,
+        height=200,
+        char_count=0,
+        line_count=0,
+        text_block_count=0,
+        image_block_count=0,
+        embedded_image_count=0,
+        drawing_count=0,
+        text_quality=TextQuality.EMPTY,
+    )
+
+    assets = build_page_tile_assets(
+        pdf_path=pdf_path,
+        doc_id="doc",
+        profiles=[profile],
+        output_dir=tmp_path / "assets",
+        rows=2,
+        cols=2,
+        overlap_ratio=0.1,
+        zoom=1.0,
+    )
+
+    assert len(assets) == 4
+    assert all(asset.path and asset.path.exists() for asset in assets)
+    assert assets[0].metadata["asset_scope"] == "tile"
+    assert assets[0].metadata["tile_rows"] == 2
+    assert assets[0].metadata["tile_cols"] == 2
+    assert assets[0].metadata["requires_ocr"] is True
 
 
 def test_section_triples_from_chunk_metadata():

@@ -46,6 +46,11 @@ from chunking_docs.retrieval.local_hybrid import LocalHybridSearcher
 from chunking_docs.retrieval.context import build_context_bundle
 from chunking_docs.storage.records import EmbeddingRecord
 from chunking_docs.vision.annotate import annotate_assets, merge_asset_annotations_into_chunks
+from chunking_docs.vision.assets import (
+    attach_assets_to_chunks,
+    build_page_tile_assets,
+    merge_visual_assets,
+)
 from chunking_docs.vision.interfaces import OCRBackend, VLMBackend
 from chunking_docs.vision.jobs import (
     VisualAnnotationJob,
@@ -84,7 +89,7 @@ def profile(pdf: Path, output_dir: Path = Path("outputs/profile")):
 @app.command()
 def render(pdf: Path, output_dir: Path = Path("outputs/renders"), pages: str = ""):
     """Render selected PDF pages to PNG."""
-    page_numbers = [int(item) for item in pages.split(",") if item.strip()] or None
+    page_numbers = sorted(parse_page_numbers(pages)) or None
     rendered = render_pages(pdf, output_dir, pages=page_numbers)
     print(f"Rendered {len(rendered)} pages into {output_dir}")
 
@@ -829,6 +834,63 @@ def embed_package_command(
     )
 
 
+@app.command(name="build-tile-assets")
+def build_tile_assets_command(
+    package_dir: Path = Path("outputs/package"),
+    pdf: Path | None = None,
+    pages: str = "",
+    rows: int = 2,
+    cols: int = 2,
+    overlap_ratio: float = 0.08,
+    zoom: float = 2.0,
+    in_place: bool = True,
+    rebuild_search: bool = True,
+):
+    """Create overlapping page-tile visual assets for OCR/VLM processing."""
+    manifest = load_processing_package(package_dir)
+    pdf_path = pdf or manifest.doc.local_path
+    selected_pages = parse_page_numbers(pages) or None
+    try:
+        tile_assets = build_page_tile_assets(
+            pdf_path=pdf_path,
+            doc_id=manifest.doc.doc_id,
+            profiles=manifest.profiles,
+            output_dir=package_dir / "assets",
+            pages=selected_pages,
+            rows=rows,
+            cols=cols,
+            overlap_ratio=overlap_ratio,
+            zoom=zoom,
+        )
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    tile_assets = apply_chunk_section_labels(tile_assets, manifest.chunks)
+
+    existing_assets = read_jsonl(package_dir / "assets.jsonl", VisualAsset)
+    merged_assets = merge_visual_assets(existing_assets, tile_assets)
+    updated_chunks = attach_assets_to_chunks(manifest.chunks, merged_assets)
+
+    asset_output = package_dir / ("assets.jsonl" if in_place else "assets.tiled.jsonl")
+    chunk_output = package_dir / ("chunks.jsonl" if in_place else "chunks.tiled.jsonl")
+    write_jsonl(asset_output, merged_assets)
+    write_jsonl(chunk_output, updated_chunks)
+    if in_place and rebuild_search:
+        rebuild_search_artifacts(package_dir, updated_chunks, assets=merged_assets)
+
+    print(
+        {
+            "tile_assets": len(tile_assets),
+            "total_assets": len(merged_assets),
+            "asset_output": str(asset_output),
+            "chunk_output": str(chunk_output),
+            "rows": rows,
+            "cols": cols,
+            "overlap_ratio": overlap_ratio,
+            "rebuilt_search": bool(in_place and rebuild_search),
+        }
+    )
+
+
 @app.command(name="annotate-assets")
 def annotate_assets_command(
     package_dir: Path = Path("outputs/package"),
@@ -850,7 +912,7 @@ def annotate_assets_command(
     rebuild_search: bool = True,
 ):
     """Annotate rendered assets with OCR/VLM output and merge it into chunks."""
-    selected_pages = {int(item) for item in pages.split(",") if item.strip()} or None
+    selected_pages = parse_page_numbers(pages) or None
     chunks = read_jsonl(package_dir / "chunks.jsonl", DocumentChunk)
     assets = read_jsonl(package_dir / "assets.jsonl", VisualAsset)
 
@@ -912,7 +974,7 @@ def plan_visual_jobs_command(
     include_vlm: bool = True,
 ):
     """Plan prioritized OCR/VLM jobs for rendered visual assets."""
-    selected_pages = {int(item) for item in pages.split(",") if item.strip()} or None
+    selected_pages = parse_page_numbers(pages) or None
     assets = read_jsonl(package_dir / "assets.jsonl", VisualAsset)
     jobs = plan_visual_jobs(
         assets,
@@ -1794,6 +1856,57 @@ def write_experiment_report_command(
 
 def print_json(payload: dict):
     print(json.dumps(payload, ensure_ascii=False, indent=2))
+
+
+def parse_page_numbers(value: str) -> set[int]:
+    pages: set[int] = set()
+    for item in value.split(","):
+        item = item.strip()
+        if not item:
+            continue
+        if "-" in item:
+            start_text, end_text = item.split("-", 1)
+            start = int(start_text)
+            end = int(end_text)
+            if start <= 0 or end <= 0:
+                raise typer.BadParameter("page numbers must be positive")
+            if end < start:
+                raise typer.BadParameter("page ranges must be ascending")
+            pages.update(range(start, end + 1))
+        else:
+            page = int(item)
+            if page <= 0:
+                raise typer.BadParameter("page numbers must be positive")
+            pages.add(page)
+    return pages
+
+
+def apply_chunk_section_labels(
+    assets: list[VisualAsset],
+    chunks: list[DocumentChunk],
+) -> list[VisualAsset]:
+    labels = section_labels_by_page(chunks)
+    updated_assets = []
+    for asset in assets:
+        label = labels.get(asset.page_no)
+        if not label:
+            updated_assets.append(asset)
+            continue
+        updated_assets.append(
+            asset.model_copy(update={"metadata": {**asset.metadata, "section_label": label}})
+        )
+    return updated_assets
+
+
+def section_labels_by_page(chunks: list[DocumentChunk]) -> dict[int, str]:
+    labels = {}
+    for chunk in chunks:
+        label = chunk.section.label() or str(chunk.metadata.get("section_label", ""))
+        if not label:
+            continue
+        for page_no in range(chunk.page_start, chunk.page_end + 1):
+            labels.setdefault(page_no, label)
+    return labels
 
 
 def retrieval_target_metrics_payload(evaluation) -> dict:

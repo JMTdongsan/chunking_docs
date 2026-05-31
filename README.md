@@ -76,6 +76,17 @@ For documents with maps, diagrams, charts, scans, or broken text layers, plan OC
 chunking-docs plan-visual-jobs --package-dir outputs/package
 ```
 
+For dense visual pages, create overlapping page tiles before planning jobs:
+
+```bash
+chunking-docs build-tile-assets \
+  --package-dir outputs/package \
+  --pages 10-20 \
+  --rows 2 \
+  --cols 2 \
+  --overlap-ratio 0.08
+```
+
 Run a small batch:
 
 ```bash

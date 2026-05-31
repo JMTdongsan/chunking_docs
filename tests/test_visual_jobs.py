@@ -5,7 +5,7 @@ from typer.testing import CliRunner
 import chunking_docs.cli as cli_module
 from chunking_docs.cli import app
 from chunking_docs.io import write_jsonl
-from chunking_docs.models import AssetKind, VisualAsset
+from chunking_docs.models import AssetKind, ChunkKind, DocumentChunk, SectionPath, VisualAsset
 from chunking_docs.vision.jobs import (
     VisualJobRunResult,
     completed_annotations,
@@ -258,3 +258,30 @@ def test_build_ocr_backend_passes_paddle_options(monkeypatch):
         "min_confidence": 0.4,
         "use_gpu": True,
     }
+
+
+def test_parse_page_numbers_accepts_ranges():
+    assert cli_module.parse_page_numbers("1,3-5,8") == {1, 3, 4, 5, 8}
+
+
+def test_apply_chunk_section_labels_to_visual_assets():
+    asset = VisualAsset(
+        asset_id="asset",
+        doc_id="doc",
+        page_no=3,
+        kind=AssetKind.MAP,
+        metadata={"asset_scope": "tile"},
+    )
+    chunk = DocumentChunk(
+        chunk_id="chunk",
+        doc_id="doc",
+        page_start=2,
+        page_end=4,
+        kind=ChunkKind.TEXT,
+        text="text",
+        section=SectionPath(chapter="Chapter", section="Section"),
+    )
+
+    updated = cli_module.apply_chunk_section_labels([asset], [chunk])
+
+    assert updated[0].metadata["section_label"] == "Chapter > Section"

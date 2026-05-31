@@ -26,6 +26,7 @@
 
 5. **Visual Assets**
    - Render pages that have weak text layers or visual density.
+   - Optionally render overlapping page tiles for dense maps, tables, and diagrams.
    - Store each rendered image in `assets.jsonl` with page, kind, path, and processing hints.
    - Link visual assets back to chunks through `asset_ids`.
 
@@ -102,6 +103,8 @@ Additional processing commands may create:
 - `visual_job_results.jsonl`
 - `visual_job_summary.json`
 - `visual_annotations.jsonl`
+- `assets.tiled.jsonl`
+- `chunks.tiled.jsonl`
 - `chunks.split.jsonl`
 - `chunks.semantic.jsonl`
 - `chunks.multimodal.jsonl`
