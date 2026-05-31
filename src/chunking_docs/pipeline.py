@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 from typing import Any
@@ -142,11 +143,7 @@ def write_package(
             text_embedder=embedder,
             image_embedder=image_embedder,
             caption_embedder=embedder,
-            vector_notes={
-                "text_dense": "HashingTextEmbedder dry-run dimension. Replace with real dense model dimension.",
-                "image_dense": "HashingImageEmbedder dry-run dimension. Replace with real image model dimension.",
-                "caption_dense": "Caption text dry-run dimension. Replace with real dense model dimension.",
-            },
+            vector_notes=hashing_vector_notes(include_visual=True),
         )
 
 
@@ -160,15 +157,18 @@ def rebuild_search_artifacts(
     bm25.dump_manifest(output_dir / "bm25_tokens.json")
 
     embedder = HashingTextEmbedder()
-    records = make_text_embedding_records(chunks, embedder)
-    write_jsonl(output_dir / "qdrant_text_records.jsonl", records)
-
-    if assets is not None:
-        image_embedder = HashingImageEmbedder(embedding_dim=embedder.embedding_dim)
-        image_records = make_image_embedding_records(assets, image_embedder)
-        caption_records = make_caption_embedding_records(assets, embedder)
-        write_jsonl(output_dir / "qdrant_image_records.jsonl", image_records)
-        write_jsonl(output_dir / "qdrant_caption_records.jsonl", caption_records)
+    write_embedding_artifacts(
+        output_dir=output_dir,
+        chunks=chunks,
+        assets=assets or [],
+        text_embedder=embedder,
+        image_embedder=HashingImageEmbedder(embedding_dim=embedder.embedding_dim)
+        if assets is not None
+        else None,
+        caption_embedder=embedder if assets is not None else None,
+        collection=existing_collection_name(output_dir),
+        vector_notes=hashing_vector_notes(include_visual=assets is not None),
+    )
 
 
 def write_split_chunks(output_dir: Path, chunks, max_chars: int = 1600, overlap_chars: int = 180):
@@ -246,11 +246,45 @@ def write_embedding_artifacts(
         counts["caption_dense"] = len(caption_records)
 
     write_qdrant_collection_config(output_dir, collection, named_vectors)
+    write_embedding_manifest(
+        output_dir=output_dir,
+        collection=collection,
+        named_vectors=named_vectors,
+        record_counts=counts,
+        vector_notes=notes,
+    )
     return {
         "collection": collection,
         "records": counts,
         "named_vectors": {name: config["size"] for name, config in named_vectors.items()},
+        "embedding_manifest": str(output_dir / "embedding_manifest.json"),
     }
+
+
+def hashing_vector_notes(include_visual: bool = True) -> dict[str, str]:
+    notes = {
+        "text_dense": "HashingTextEmbedder dry-run dimension. Replace with real dense model dimension.",
+    }
+    if include_visual:
+        notes.update(
+            {
+                "image_dense": "HashingImageEmbedder dry-run dimension. Replace with real image model dimension.",
+                "caption_dense": "Caption text dry-run dimension. Replace with real dense model dimension.",
+            }
+        )
+    return notes
+
+
+def existing_collection_name(output_dir: Path, default: str = "document_chunks") -> str:
+    path = output_dir / "qdrant_collection.json"
+    if not path.exists():
+        return default
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return default
+    collection = payload.get("collection")
+    return str(collection) if collection else default
 
 
 def vector_config(size: int, note: str | None = None) -> dict[str, Any]:
@@ -277,6 +311,50 @@ def write_qdrant_collection_config(
         ),
         encoding="utf-8",
     )
+
+
+def write_embedding_manifest(
+    output_dir: Path,
+    collection: str,
+    named_vectors: dict[str, dict[str, Any]],
+    record_counts: dict[str, int],
+    vector_notes: dict[str, str],
+) -> None:
+    vectors = {}
+    for vector_name, config in sorted(named_vectors.items()):
+        filename = QDRANT_RECORD_FILES[vector_name]
+        path = output_dir / filename
+        vectors[vector_name] = {
+            "file": filename,
+            "record_count": record_counts.get(vector_name, 0),
+            "dimension": int(config["size"]),
+            "distance": config.get("distance", "Cosine"),
+            "note": vector_notes.get(vector_name) or config.get("note"),
+            **file_summary(path),
+        }
+    (output_dir / "embedding_manifest.json").write_text(
+        json.dumps(
+            {
+                "collection": collection,
+                "vectors": vectors,
+                "payload_indexes": QDRANT_PAYLOAD_INDEXES,
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+
+def file_summary(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {"exists": False, "bytes": 0, "sha256": None}
+    content = path.read_bytes()
+    return {
+        "exists": True,
+        "bytes": len(content),
+        "sha256": hashlib.sha256(content).hexdigest(),
+    }
 
 
 def load_processing_package(package_dir: Path) -> ProcessingManifest:

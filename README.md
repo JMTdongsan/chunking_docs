@@ -50,6 +50,7 @@ The package directory contains:
 - `assets.jsonl`: rendered visual asset records
 - `triples.jsonl`: graph triple candidates
 - `bm25_tokens.json`: lexical search token manifest
+- `embedding_manifest.json`: vector record files, dimensions, counts, and checksums
 - `qdrant_*_records.jsonl`: Qdrant upsert records
 - `qdrant_collection.json`: named-vector collection configuration
 
@@ -170,7 +171,7 @@ chunking-docs embed-package \
   --device cuda
 ```
 
-This regenerates Qdrant text, caption, and image records using the selected model dimensions.
+This regenerates Qdrant text, caption, and image records using the selected model dimensions. It also writes `embedding_manifest.json` so vector files, record counts, dimensions, and checksums can be compared across embedding runs.
 
 ## Qdrant
 

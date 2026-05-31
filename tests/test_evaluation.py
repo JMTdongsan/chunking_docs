@@ -135,6 +135,7 @@ def test_audit_package_validates_qdrant_artifacts(tmp_path):
     assert "qdrant_vector_size_mismatch" in codes
     assert "qdrant_missing_payload" in codes
     assert "missing_qdrant_payload_indexes" in codes
+    assert "missing_embedding_manifest" in codes
 
 
 def test_evaluate_retrieval_hit_rate():

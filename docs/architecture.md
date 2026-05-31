@@ -64,6 +64,7 @@
    - `image_dense`: rendered page or visual asset image.
    - Default hashing embedders make the pipeline testable without model downloads.
    - `embed-package` regenerates artifacts with model-backed text and image embedders.
+   - `embedding_manifest.json` records vector files, dimensions, counts, and checksums.
 
 11. **Lexical Search**
     - BM25 is generated from chunk text.
@@ -100,6 +101,7 @@
 - `assets.jsonl`
 - `triples.jsonl`
 - `bm25_tokens.json`
+- `embedding_manifest.json`
 - `qdrant_text_records.jsonl`
 - `qdrant_image_records.jsonl`
 - `qdrant_caption_records.jsonl`

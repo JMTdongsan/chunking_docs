@@ -145,6 +145,7 @@ def audit_qdrant_artifacts(
     if package_dir is None:
         return {}, {}, {}
     collection_path = package_dir / "qdrant_collection.json"
+    embedding_manifest_path = package_dir / "embedding_manifest.json"
     record_files = sorted(package_dir.glob("qdrant_*_records.jsonl"))
     if not collection_path.exists():
         if record_files or require_qdrant_records:
@@ -159,6 +160,15 @@ def audit_qdrant_artifacts(
         return {}, {}, {}
 
     collection_config = json.loads(collection_path.read_text(encoding="utf-8"))
+    if record_files and not embedding_manifest_path.exists():
+        issues.append(
+            AuditIssue(
+                severity="warning",
+                code="missing_embedding_manifest",
+                message="Qdrant record files should include embedding_manifest.json for reproducibility.",
+                metadata={"record_files": [path.name for path in record_files]},
+            )
+        )
     named_vectors = {
         name: int(config["size"])
         for name, config in collection_config.get("named_vectors", {}).items()

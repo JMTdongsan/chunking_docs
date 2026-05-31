@@ -45,6 +45,7 @@ DEFAULT_ARTIFACTS = [
     "assets.jsonl",
     "triples.jsonl",
     "bm25_tokens.json",
+    "embedding_manifest.json",
     "qdrant_collection.json",
     "qdrant_text_records.jsonl",
     "qdrant_caption_records.jsonl",

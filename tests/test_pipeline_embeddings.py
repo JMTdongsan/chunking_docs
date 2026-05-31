@@ -1,7 +1,7 @@
 import json
 
 from chunking_docs.models import AssetKind, ChunkKind, DocumentChunk, VisualAsset
-from chunking_docs.pipeline import write_embedding_artifacts
+from chunking_docs.pipeline import rebuild_search_artifacts, write_embedding_artifacts
 from chunking_docs.storage.records import EmbeddingRecord
 
 
@@ -52,6 +52,7 @@ def test_write_embedding_artifacts_writes_selected_vectors_and_config(tmp_path):
     )
 
     assert result["records"] == {"text_dense": 1, "caption_dense": 1}
+    assert result["embedding_manifest"] == str(tmp_path / "embedding_manifest.json")
     assert not (tmp_path / "qdrant_image_records.jsonl").exists()
 
     text_records = [
@@ -72,6 +73,16 @@ def test_write_embedding_artifacts_writes_selected_vectors_and_config(tmp_path):
     assert {"field": "doc_id", "schema": "keyword"} in config["payload_indexes"]
     assert {"field": "page_no", "schema": "integer"} in config["payload_indexes"]
     assert "image_dense" not in config["named_vectors"]
+    manifest = json.loads((tmp_path / "embedding_manifest.json").read_text(encoding="utf-8"))
+    assert manifest["collection"] == "document_chunks"
+    assert manifest["vectors"]["text_dense"]["file"] == "qdrant_text_records.jsonl"
+    assert manifest["vectors"]["text_dense"]["record_count"] == 1
+    assert manifest["vectors"]["text_dense"]["dimension"] == 3
+    assert manifest["vectors"]["text_dense"]["note"] == "text model"
+    assert manifest["vectors"]["text_dense"]["exists"] is True
+    assert len(manifest["vectors"]["text_dense"]["sha256"]) == 64
+    assert manifest["vectors"]["caption_dense"]["dimension"] == 4
+    assert "image_dense" not in manifest["vectors"]
 
 
 def test_write_embedding_artifacts_supports_image_vectors(tmp_path):
@@ -93,9 +104,34 @@ def test_write_embedding_artifacts_supports_image_vectors(tmp_path):
     )
 
     assert result["records"] == {"image_dense": 1}
+    manifest = json.loads((tmp_path / "embedding_manifest.json").read_text(encoding="utf-8"))
+    assert manifest["vectors"]["image_dense"]["record_count"] == 1
+    assert manifest["vectors"]["image_dense"]["dimension"] == 5
     image_records = [
         EmbeddingRecord.model_validate_json(line)
         for line in (tmp_path / "qdrant_image_records.jsonl").read_text(encoding="utf-8").splitlines()
     ]
     assert image_records[0].vector_name == "image_dense"
     assert len(image_records[0].vector) == 5
+
+
+def test_rebuild_search_artifacts_preserves_existing_collection_name(tmp_path):
+    (tmp_path / "qdrant_collection.json").write_text(
+        json.dumps({"collection": "custom_documents", "named_vectors": {}}),
+        encoding="utf-8",
+    )
+    chunk = DocumentChunk(
+        chunk_id="chunk-1",
+        doc_id="doc",
+        page_start=1,
+        page_end=1,
+        kind=ChunkKind.TEXT,
+        text="renewal strategy",
+    )
+
+    rebuild_search_artifacts(tmp_path, [chunk])
+
+    config = json.loads((tmp_path / "qdrant_collection.json").read_text(encoding="utf-8"))
+    manifest = json.loads((tmp_path / "embedding_manifest.json").read_text(encoding="utf-8"))
+    assert config["collection"] == "custom_documents"
+    assert manifest["collection"] == "custom_documents"
