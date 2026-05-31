@@ -55,6 +55,8 @@ DEFAULT_ARTIFACTS = [
     "visual_job_summary.json",
     "visual_quality.json",
     "document_characteristics.json",
+    "chunking_comparison.json",
+    "chunking_comparison_gate.json",
     "chunking_sweep.json",
     "qdrant_retrieval_eval.json",
     "qdrant_vector_ablation.json",

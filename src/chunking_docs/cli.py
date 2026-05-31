@@ -24,6 +24,11 @@ from chunking_docs.evaluation.ablation import (
     qdrant_vector_names_for_modes,
 )
 from chunking_docs.evaluation.casegen import generate_retrieval_case_skeleton
+from chunking_docs.evaluation.chunking_gate import (
+    chunking_gate_summary_payload,
+    gate_chunking_comparison,
+    load_chunking_comparison,
+)
 from chunking_docs.evaluation.chunking_quality import evaluate_chunking_quality
 from chunking_docs.evaluation.compare import compare_chunking_reports
 from chunking_docs.evaluation.diagnostics import (
@@ -2289,6 +2294,7 @@ def eval_chunking_command(
 @app.command(name="compare-chunking")
 def compare_chunking_command(
     package_dir: Path = Path("outputs/package"),
+    output: Path | None = None,
     candidates: list[str] = typer.Option(
         None,
         "--candidate",
@@ -2337,7 +2343,94 @@ def compare_chunking_command(
                 ngram_cjk_only=ngram_cjk_only,
             ),
         )
-    print(compare_chunking_reports(reports).model_dump())
+    comparison = compare_chunking_reports(reports)
+    payload = comparison.model_dump()
+    if output is not None:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(comparison.model_dump_json(indent=2), encoding="utf-8")
+        payload = {
+            "output": str(output),
+            "candidate_count": len(comparison.rows),
+            "best_by_quality": comparison.best_by_quality,
+            "best_by_retrieval": comparison.best_by_retrieval,
+            "fastest_by_mean_latency": comparison.fastest_by_mean_latency,
+        }
+    print(payload)
+
+
+@app.command(name="gate-chunking-comparison")
+def gate_chunking_comparison_command(
+    comparison: Path,
+    output: Path | None = None,
+    candidate: str | None = None,
+    baseline_candidate: str | None = None,
+    require_retrieval: bool = typer.Option(
+        False,
+        "--require-retrieval/--allow-quality-only",
+        help="Require the selected candidate to contain retrieval metrics.",
+    ),
+    min_quality_score: float = 0.0,
+    min_page_coverage_ratio: float = 1.0,
+    min_visual_annotation_ratio: float | None = None,
+    min_recall_at_k: float | None = None,
+    min_target_coverage_at_k: float | None = None,
+    min_target_ndcg_at_k: float | None = None,
+    min_mrr: float | None = None,
+    min_precision_at_k: float | None = None,
+    max_mean_latency_ms: float | None = None,
+    max_p95_latency_ms: float | None = None,
+    max_failed_queries: int | None = 0,
+    max_chunks_under_min_chars: int | None = None,
+    max_chunks_over_max_chars: int | None = None,
+    max_quality_drop: float | None = None,
+    max_recall_drop: float | None = None,
+    max_target_coverage_drop: float | None = None,
+    max_target_ndcg_drop: float | None = None,
+    max_precision_drop: float | None = None,
+    max_mean_latency_ratio: float | None = None,
+    max_p95_latency_ratio: float | None = None,
+    fail: bool = typer.Option(
+        True,
+        "--fail/--no-fail",
+        help="Exit with status 1 when any gate check fails.",
+    ),
+):
+    """Fail a chunking strategy comparison when quality, retrieval, or latency checks are missed."""
+    parsed_comparison = load_chunking_comparison(comparison)
+    report = gate_chunking_comparison(
+        parsed_comparison,
+        candidate=candidate,
+        baseline_candidate=baseline_candidate,
+        require_retrieval=require_retrieval,
+        min_quality_score=min_quality_score,
+        min_page_coverage_ratio=min_page_coverage_ratio,
+        min_visual_annotation_ratio=min_visual_annotation_ratio,
+        min_recall_at_k=min_recall_at_k,
+        min_target_coverage_at_k=min_target_coverage_at_k,
+        min_target_ndcg_at_k=min_target_ndcg_at_k,
+        min_mrr=min_mrr,
+        min_precision_at_k=min_precision_at_k,
+        max_mean_latency_ms=max_mean_latency_ms,
+        max_p95_latency_ms=max_p95_latency_ms,
+        max_failed_queries=max_failed_queries,
+        max_chunks_under_min_chars=max_chunks_under_min_chars,
+        max_chunks_over_max_chars=max_chunks_over_max_chars,
+        max_quality_drop=max_quality_drop,
+        max_recall_drop=max_recall_drop,
+        max_target_coverage_drop=max_target_coverage_drop,
+        max_target_ndcg_drop=max_target_ndcg_drop,
+        max_precision_drop=max_precision_drop,
+        max_mean_latency_ratio=max_mean_latency_ratio,
+        max_p95_latency_ratio=max_p95_latency_ratio,
+    )
+    payload = report.model_dump()
+    if output is not None:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(report.model_dump_json(indent=2), encoding="utf-8")
+        payload = {"output": str(output), **chunking_gate_summary_payload(report)}
+    print(payload)
+    if fail and not report.passed:
+        raise typer.Exit(1)
 
 
 @app.command(name="sweep-chunking")

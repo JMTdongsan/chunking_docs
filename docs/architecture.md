@@ -138,6 +138,8 @@ Additional processing commands may create:
 - `chunks.semantic.jsonl`
 - `chunks.multimodal.jsonl`
 - `chunks.hierarchical.jsonl`
+- `chunking_comparison.json`
+- `chunking_comparison_gate.json`
 - `chunking_sweep.json`
 - `chunking_sweep/chunks.*.jsonl`
 - `graph_nodes.jsonl`
@@ -211,6 +213,7 @@ Recommended checks:
 - `gate-retrieval`: pass/fail checks for absolute metric floors and baseline regression limits such as recall drop, target coverage drop, target nDCG drop, precision drop, and latency ratio.
 - `compare-packages`: before/after package comparison for count deltas, changed chunk/asset/triple IDs, Qdrant record count deltas, and annotation-related observations.
 - `compare-chunking`: side-by-side strategy comparison by quality score, recall@k, MRR, target coverage@k, target nDCG@k, precision@k, latency, and failed queries.
+- `gate-chunking-comparison`: pass/fail checks for selected chunking candidates using quality, page coverage, retrieval floors, failed-query limits, and baseline regression limits.
 - `sweep-chunking`: parameter grid generation for max size, overlap, parent size, and multimodal or hierarchical visual context size.
 - `write-experiment-report`: reproducible package report with artifact checksums, record counts, tokenizer settings, Qdrant configuration, and candidate comparison metrics.
 - Qdrant local mode upsert: validates named vector records and payloads.
