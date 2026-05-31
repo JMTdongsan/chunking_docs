@@ -3,7 +3,7 @@ from chunking_docs.models import ChunkKind, DocumentChunk, SectionPath
 
 
 def test_split_text_keeps_overlap_for_long_blocks():
-    text = "\n\n".join([f"{index}. " + ("urban planning " * 35) for index in range(8)])
+    text = "\n\n".join([f"{index}. " + ("technical policy " * 35) for index in range(8)])
 
     chunks = split_text(text, max_chars=500, overlap_chars=50)
 

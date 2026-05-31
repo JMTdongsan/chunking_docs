@@ -171,7 +171,7 @@ def write_embedding_artifacts(
     text_embedder: DenseTextEmbedder | None = None,
     image_embedder: DenseImageEmbedder | None = None,
     caption_embedder: DenseTextEmbedder | None = None,
-    collection: str = "planning_chunks",
+    collection: str = "document_chunks",
     text_batch_size: int = 32,
     image_batch_size: int = 16,
     caption_batch_size: int = 32,

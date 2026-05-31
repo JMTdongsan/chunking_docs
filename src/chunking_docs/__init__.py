@@ -1,4 +1,4 @@
-"""Chunking and multimodal extraction tools for planning documents."""
+"""Chunking and multimodal extraction tools for complex documents."""
 
 __all__ = ["__version__"]
 

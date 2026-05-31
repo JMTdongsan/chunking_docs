@@ -217,6 +217,20 @@ chunking-docs compare-chunking \
 
 The `multimodal` strategy keeps semantic text chunks and adds visual asset text chunks from captions, OCR, and VLM summaries. This makes maps, tables, charts, and figures retrievable even when the PDF text layer is weak. Comparison output includes recall@k, MRR, failed queries, chunk size issues, and the best candidate by quality and retrieval behavior.
 
+Write a reproducible experiment report for a package:
+
+```bash
+chunking-docs write-experiment-report \
+  --package-dir outputs/package \
+  --candidate baseline=outputs/package/chunks.jsonl \
+  --candidate semantic=outputs/package/chunks.semantic.jsonl \
+  --candidate multimodal=outputs/package/chunks.multimodal.jsonl \
+  --cases examples/retrieval_cases.jsonl \
+  --output outputs/package/experiment_report.json
+```
+
+The report records package artifact checksums, JSONL record counts, BM25 tokenizer settings, Qdrant named-vector configuration, chunking quality metrics, retrieval recall@k, MRR, failed queries, and the best candidate by retrieval behavior. This makes chunking changes reviewable and repeatable before new defaults are adopted.
+
 ## Development Checks
 
 ```bash

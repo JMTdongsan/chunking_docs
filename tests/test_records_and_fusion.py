@@ -24,7 +24,7 @@ def make_chunk(text: str, page_no: int = 1):
 
 
 def test_make_text_embedding_records():
-    chunks = [make_chunk("urban planning transit corridor")]
+    chunks = [make_chunk("technical policy transit corridor")]
     records = make_text_embedding_records(chunks, HashingTextEmbedder(embedding_dim=16))
 
     assert len(records) == 1

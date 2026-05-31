@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "chunking-docs"
 version = "0.1.0"
-description = "Document chunking and multimodal embedding pipeline for urban planning PDFs."
+description = "Document chunking and multimodal embedding pipeline for complex PDFs."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

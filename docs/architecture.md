@@ -1,6 +1,6 @@
 # Architecture
 
-`chunking_docs` prepares complex PDFs for retrieval-augmented generation. The package keeps document-specific assumptions in external data files so the core library can be reused across planning documents, reports, manuals, scanned PDFs, and visual-heavy PDFs.
+`chunking_docs` prepares complex PDFs for retrieval-augmented generation. The package keeps document-specific assumptions in external data files so the core library can be reused across technical reports, manuals, scanned PDFs, and visual-heavy PDFs.
 
 ## Pipeline
 
@@ -96,10 +96,11 @@ Additional processing commands may create:
 - `chunks.multimodal.jsonl`
 - `graph_nodes.jsonl`
 - `graph_edges.jsonl`
+- `experiment_report.json`
 
 ## Qdrant Design
 
-The default collection is `planning_chunks`, but callers can choose another collection name.
+The default collection is `document_chunks`, but callers can choose another collection name.
 
 Named vectors:
 
@@ -137,6 +138,7 @@ Recommended checks:
 - `eval-chunking`: page coverage, chunk size distribution, section coverage, visual linkage, annotation coverage, retrieval recall@k, MRR, failed queries, and aggregate quality score.
 - `eval-retrieval`: focused top-k retrieval benchmark cases.
 - `compare-chunking`: side-by-side strategy comparison by quality score, recall@k, MRR, and failed queries.
+- `write-experiment-report`: reproducible package report with artifact checksums, record counts, tokenizer settings, Qdrant configuration, and candidate comparison metrics.
 - Qdrant local mode upsert: validates named vector records and payloads.
 
 Benchmark cases should be maintained per document family. A useful case specifies the query, expected page or chunk, and whether graph expansion should be enabled.

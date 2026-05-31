@@ -15,6 +15,7 @@ from chunking_docs.embeddings.tokenizers import LexicalTokenizerConfig, Tokenize
 from chunking_docs.evaluation.audit import audit_package
 from chunking_docs.evaluation.chunking_quality import evaluate_chunking_quality
 from chunking_docs.evaluation.compare import compare_chunking_reports
+from chunking_docs.evaluation.experiment import build_experiment_report
 from chunking_docs.evaluation.retrieval import evaluate_retrieval, load_retrieval_cases
 from chunking_docs.graph.repair import remap_triples_to_available_chunks
 from chunking_docs.ingest.pdf_loader import load_source_document, render_pages
@@ -134,7 +135,7 @@ def package_pdf(
 def qdrant_upsert(
     records: Path = Path("outputs/package/qdrant_text_records.jsonl"),
     url: str = "http://localhost:6333",
-    collection: str = "planning_chunks",
+    collection: str = "document_chunks",
     vector_name: str = "text_dense",
     vector_size: int = 384,
     location: str = "",
@@ -378,7 +379,7 @@ def qdrant_hybrid_search(
 @app.command(name="embed-package")
 def embed_package_command(
     package_dir: Path = Path("outputs/package"),
-    collection: str = "planning_chunks",
+    collection: str = "document_chunks",
     text_backend: str = "sentence-transformers",
     caption_backend: str = "same-as-text",
     image_backend: str = "clip",
@@ -948,6 +949,64 @@ def compare_chunking_command(
     print(compare_chunking_reports(reports).model_dump())
 
 
+@app.command(name="write-experiment-report")
+def write_experiment_report_command(
+    package_dir: Path = Path("outputs/package"),
+    output: Path | None = None,
+    candidates: list[str] = typer.Option(
+        None,
+        "--candidate",
+        help="Candidate in name=path form. Repeat for multiple chunk files.",
+    ),
+    cases: Path | None = None,
+    top_k: int = 5,
+    min_chars: int = 120,
+    max_chars: int = 1800,
+    lexical_tokenizer: TokenizerStrategy = "mixed",
+    ngram_min: int = 2,
+    ngram_max: int = 4,
+    ngram_cjk_only: bool = True,
+):
+    """Write a reproducible experiment report for package artifacts and chunk candidates."""
+    manifest = load_processing_package(package_dir)
+    retrieval_cases = load_retrieval_cases(cases) if cases is not None else None
+    tokenizer_config = build_tokenizer_config(
+        lexical_tokenizer,
+        ngram_min=ngram_min,
+        ngram_max=ngram_max,
+        ngram_cjk_only=ngram_cjk_only,
+    )
+    parsed_candidates = parse_candidates(candidates, package_dir)
+    report = build_experiment_report(
+        package_dir=package_dir,
+        manifest=manifest,
+        candidates=parsed_candidates,
+        retrieval_cases=retrieval_cases,
+        top_k=top_k,
+        min_chars=min_chars,
+        max_chars=max_chars,
+        tokenizer_config=tokenizer_config,
+        config={
+            "top_k": top_k,
+            "min_chars": min_chars,
+            "max_chars": max_chars,
+            "retrieval_cases": str(cases) if cases else None,
+            "lexical_tokenizer": tokenizer_config.model_dump(),
+        },
+    )
+    output_path = output or package_dir / "experiment_report.json"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(report.model_dump_json(indent=2), encoding="utf-8")
+    print(
+        {
+            "output": str(output_path),
+            "candidates": list(parsed_candidates),
+            "best_by_quality": report.comparison.best_by_quality if report.comparison else None,
+            "best_by_retrieval": report.comparison.best_by_retrieval if report.comparison else None,
+        }
+    )
+
+
 def print_json(payload: dict):
     print(json.dumps(payload, ensure_ascii=False, indent=2))
 
@@ -1084,7 +1143,10 @@ def parse_candidates(values: list[str] | None, package_dir: Path) -> dict[str, P
         name = name.strip()
         if not name:
             raise typer.BadParameter("--candidate name must not be empty")
-        parsed[name] = Path(path)
+        candidate_path = Path(path)
+        if not candidate_path.is_absolute() and not candidate_path.exists():
+            candidate_path = package_dir / candidate_path
+        parsed[name] = candidate_path
     return parsed
 
 
