@@ -108,6 +108,47 @@ def test_generate_retrieval_case_skeleton_merges_duplicate_triple_queries():
     assert cases[0].metadata["merged_case_count"] == 2
 
 
+def test_generate_retrieval_case_skeleton_targets_visual_asset_from_triple_provenance():
+    chunk = DocumentChunk(
+        chunk_id="chunk-1",
+        doc_id="doc",
+        page_start=1,
+        page_end=1,
+        kind=ChunkKind.TEXT,
+        text="Transit corridor station access evidence.",
+    )
+    asset = VisualAsset(
+        asset_id="asset-1",
+        doc_id="doc",
+        page_no=1,
+        kind=AssetKind.MAP,
+        caption="Station access map",
+    )
+    triple = GraphTriple(
+        triple_id="triple-1",
+        doc_id="doc",
+        chunk_id="chunk-1",
+        subject="station access map",
+        predicate="shows",
+        object="corridor link",
+        qualifiers={"source": "visual_annotation", "asset_id": "asset-1"},
+    )
+
+    cases = generate_retrieval_case_skeleton(
+        [chunk],
+        [asset],
+        [triple],
+        include_pages=False,
+        include_assets=False,
+    )
+
+    assert len(cases) == 1
+    assert cases[0].expected_chunk_ids == ["chunk-1"]
+    assert cases[0].expected_asset_ids == ["asset-1"]
+    assert cases[0].expected_triple_ids == ["triple-1"]
+    assert cases[0].graph_expand is True
+
+
 def test_generate_retrieval_case_skeleton_can_emit_todo_cases():
     chunk = DocumentChunk(
         chunk_id="chunk-1",

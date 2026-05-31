@@ -8,6 +8,7 @@ from typing import Literal
 
 from chunking_docs.embeddings.records import asset_text
 from chunking_docs.evaluation.retrieval import RetrievalCase
+from chunking_docs.graph.provenance import triple_asset_ids
 from chunking_docs.models import DocumentChunk, GraphTriple, VisualAsset
 
 _WHITESPACE_RE = re.compile(r"\s+")
@@ -419,6 +420,7 @@ def triple_cases(
             RetrievalCase(
                 query=query,
                 expected_chunk_ids=[triple.chunk_id],
+                expected_asset_ids=sorted(triple_asset_ids(triple)),
                 expected_triple_ids=[triple.triple_id],
                 graph_expand=True,
             ),

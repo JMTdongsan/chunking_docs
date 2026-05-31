@@ -1,3 +1,0 @@
-# Contributors
-
-- LEE5J
