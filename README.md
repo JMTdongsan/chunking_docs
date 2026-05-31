@@ -295,6 +295,18 @@ chunking-docs postgres-upsert "postgresql://user:password@localhost:5432/chunkin
   --package-dir outputs/package
 ```
 
+## Ingestion Readiness
+
+Before loading a package into Qdrant, PostgreSQL, or a RAG service, run a combined readiness check:
+
+```bash
+chunking-docs ingestion-readiness \
+  --package-dir outputs/package \
+  --output outputs/package/ingestion_readiness.json
+```
+
+The report combines package audit results, required BM25 and embedding artifacts, Qdrant record checks, PostgreSQL row conversion, and optional visual or retrieval gates.
+
 ## Evaluation
 
 Correct execution is not enough for a chunking library. Use evaluation commands to check whether the chunking strategy is useful for retrieval.

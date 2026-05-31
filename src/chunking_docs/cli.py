@@ -30,6 +30,7 @@ from chunking_docs.evaluation.diagnostics import (
 )
 from chunking_docs.evaluation.experiment import build_experiment_report
 from chunking_docs.evaluation.gate import gate_retrieval_evaluation, gate_summary_payload
+from chunking_docs.evaluation.readiness import build_ingestion_readiness_report
 from chunking_docs.evaluation.retrieval import (
     evaluate_retrieval,
     evaluate_search_results,
@@ -1806,6 +1807,82 @@ def audit_package_command(
         require_qdrant_records=require_qdrant_records,
     )
     print(audit.model_dump())
+
+
+@app.command(name="ingestion-readiness")
+def ingestion_readiness_command(
+    package_dir: Path = Path("outputs/package"),
+    output: Path | None = None,
+    require_qdrant_records: bool = True,
+    require_bm25: bool = True,
+    require_embedding_manifest: bool = True,
+    require_postgres_rows: bool = True,
+    require_visual_annotations: bool = False,
+    visual_results: Path | None = None,
+    require_visual_quality: bool = False,
+    min_visual_completion_rate: float = 0.0,
+    min_ocr_text_coverage: float = 0.0,
+    min_vlm_summary_coverage: float = 0.0,
+    min_vlm_json_parse_rate: float = 0.0,
+    max_visual_failed_count: int | None = None,
+    retrieval_evaluation: Path | None = None,
+    require_retrieval_evaluation: bool = False,
+    min_recall_at_k: float = 0.0,
+    min_target_coverage_at_k: float = 0.0,
+    min_target_ndcg_at_k: float = 0.0,
+    min_precision_at_k: float = 0.0,
+    max_p95_latency_ms: float | None = None,
+    fail: bool = typer.Option(
+        True,
+        "--fail/--no-fail",
+        help="Exit with status 1 when ingestion readiness checks fail.",
+    ),
+):
+    """Check whether a package is ready for Qdrant/PostgreSQL ingestion and RAG evaluation."""
+    manifest = load_processing_package(package_dir)
+    parsed_visual_results = read_jsonl(visual_results, VisualJobRunResult) if visual_results else None
+    parsed_retrieval = load_retrieval_evaluation(retrieval_evaluation) if retrieval_evaluation else None
+    report = build_ingestion_readiness_report(
+        package_dir=package_dir,
+        manifest=manifest,
+        require_qdrant_records=require_qdrant_records,
+        require_bm25=require_bm25,
+        require_embedding_manifest=require_embedding_manifest,
+        require_postgres_rows=require_postgres_rows,
+        require_visual_annotations=require_visual_annotations,
+        visual_results=parsed_visual_results,
+        require_visual_quality=require_visual_quality,
+        visual_quality_options={
+            "min_completion_rate": min_visual_completion_rate,
+            "min_ocr_text_coverage": min_ocr_text_coverage,
+            "min_vlm_summary_coverage": min_vlm_summary_coverage,
+            "min_vlm_json_parse_rate": min_vlm_json_parse_rate,
+            "max_failed_count": max_visual_failed_count,
+        },
+        retrieval_evaluation=parsed_retrieval,
+        require_retrieval_evaluation=require_retrieval_evaluation,
+        retrieval_gate_options={
+            "min_recall_at_k": min_recall_at_k,
+            "min_target_coverage_at_k": min_target_coverage_at_k,
+            "min_target_ndcg_at_k": min_target_ndcg_at_k,
+            "min_precision_at_k": min_precision_at_k,
+            "max_p95_latency_ms": max_p95_latency_ms,
+        },
+    )
+    payload = report.model_dump()
+    if output is not None:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(report.model_dump_json(indent=2), encoding="utf-8")
+        payload = {
+            "output": str(output),
+            "passed": report.passed,
+            "failed_components": report.failed_components,
+            "package_counts": report.package_counts,
+            "postgres_row_counts": report.postgres_row_counts,
+        }
+    print(payload)
+    if fail and not report.passed:
+        raise typer.Exit(1)
 
 
 @app.command(name="eval-retrieval")

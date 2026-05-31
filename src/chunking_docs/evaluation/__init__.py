@@ -14,6 +14,7 @@ from .diagnostics import (
 )
 from .experiment import ArtifactSummary, ExperimentReport, build_experiment_report
 from .gate import RetrievalGateCheck, RetrievalGateReport, gate_retrieval_evaluation
+from .readiness import IngestionReadinessReport, ReadinessComponent, build_ingestion_readiness_report
 from .retrieval import (
     RetrievalCase,
     RetrievalCaseResult,
@@ -30,7 +31,9 @@ __all__ = [
     "ChunkingSweepCandidate",
     "ChunkingSweepReport",
     "ExperimentReport",
+    "IngestionReadinessReport",
     "PackageAudit",
+    "ReadinessComponent",
     "RetrievalAblationMode",
     "RetrievalAblationReport",
     "RetrievalAblationRow",
@@ -44,6 +47,7 @@ __all__ = [
     "analyze_retrieval_evaluation",
     "audit_package",
     "build_experiment_report",
+    "build_ingestion_readiness_report",
     "degraded_page_ratio",
     "evaluate_retrieval",
     "evaluate_retrieval_ablation",

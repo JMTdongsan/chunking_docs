@@ -94,7 +94,12 @@
     - PostgreSQL stores normalized document, page, chunk, asset, triple, and embedding artifact metadata.
     - BM25 can remain as a local manifest or be replaced by a dedicated lexical search service.
 
-14. **RAG Context Assembly**
+14. **Ingestion Readiness**
+    - Combine package audit, required artifact checks, Qdrant record validation, and PostgreSQL row conversion.
+    - Optionally include visual quality gates and retrieval quality gates before a package is loaded into serving systems.
+    - Emit a single pass/fail report for CI, portfolio review, or deployment handoff.
+
+15. **RAG Context Assembly**
     - Convert retrieval hits into a structured context bundle.
     - Support both local hybrid retrieval and Qdrant hybrid retrieval.
     - Include hit chunks, optional neighboring chunks, hierarchical evidence chunks, linked visual assets, and graph triples.
@@ -136,6 +141,7 @@ Additional processing commands may create:
 - `graph_nodes.jsonl`
 - `graph_edges.jsonl`
 - `experiment_report.json`
+- `ingestion_readiness.json`
 - `qdrant_retrieval_eval.json`
 - `qdrant_vector_ablation.json`
 - `retrieval_diagnostics.json`
