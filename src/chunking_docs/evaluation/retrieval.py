@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 from time import perf_counter
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -38,6 +40,7 @@ class RetrievalCaseResult(BaseModel):
 
 
 class RetrievalEvaluation(BaseModel):
+    metadata: dict[str, Any] = Field(default_factory=dict)
     case_count: int
     expected_case_count: int
     passed_count: int
@@ -77,6 +80,33 @@ def evaluate_retrieval(
         tokenizer_config=tokenizer_config,
     )
     index_build_ms = elapsed_ms(index_start)
+    return evaluate_search_results(
+        cases=cases,
+        search_fn=lambda case, graph_expand: searcher.search(
+            case.query,
+            top_k=top_k,
+            graph_expand=graph_expand,
+            collapse_hierarchical=collapse_hierarchical,
+            use_dense=use_dense,
+            use_bm25=use_bm25,
+            use_graph=use_graph,
+        ),
+        top_k=top_k,
+        repeat=repeat,
+        index_build_ms=index_build_ms,
+        graph_expand_override=graph_expand_override,
+    )
+
+
+def evaluate_search_results(
+    cases: list[RetrievalCase],
+    search_fn: Callable[[RetrievalCase, bool], list],
+    top_k: int = 5,
+    repeat: int = 1,
+    index_build_ms: float = 0.0,
+    graph_expand_override: bool | None = None,
+) -> RetrievalEvaluation:
+    repeat = max(1, repeat)
     results: list[RetrievalCaseResult] = []
     latency_samples: list[float] = []
     for case in cases:
@@ -85,28 +115,25 @@ def evaluate_retrieval(
         case_latencies = []
         for index in range(repeat):
             query_start = perf_counter()
-            search_hits = searcher.search(
-                case.query,
-                top_k=top_k,
-                graph_expand=graph_expand,
-                collapse_hierarchical=collapse_hierarchical,
-                use_dense=use_dense,
-                use_bm25=use_bm25,
-                use_graph=use_graph,
-            )
+            search_hits = search_fn(case, graph_expand)
             case_latencies.append(elapsed_ms(query_start))
             if index == 0:
                 hits = search_hits
         latency_samples.extend(case_latencies)
-        top_pages = [hit.chunk.page_start for hit in hits]
-        top_page_ranges = [(hit.chunk.page_start, hit.chunk.page_end) for hit in hits]
-        top_chunk_ids = [hit.chunk.chunk_id for hit in hits]
-        top_evidence_chunk_ids = [[chunk.chunk_id for chunk in hit.evidence_chunks] for hit in hits]
-        top_sources = [hit.sources for hit in hits]
+        hits_with_chunks = [hit for hit in hits if hit_chunk(hit) is not None]
+        top_pages = [hit_chunk(hit).page_start for hit in hits_with_chunks]
+        top_page_ranges = [
+            (hit_chunk(hit).page_start, hit_chunk(hit).page_end) for hit in hits_with_chunks
+        ]
+        top_chunk_ids = [hit_chunk(hit).chunk_id for hit in hits_with_chunks]
+        top_evidence_chunk_ids = [
+            [chunk.chunk_id for chunk in hit_evidence_chunks(hit)] for hit in hits_with_chunks
+        ]
+        top_sources = [hit_sources(hit) for hit in hits_with_chunks]
         expected_any = bool(case.expected_pages or case.expected_chunk_ids)
-        match = first_relevant_hit(hits, case)
-        passed = match is not None if expected_any else bool(hits)
-        matched_rank = match.rank if match else (1 if not expected_any and hits else None)
+        match = first_relevant_hit(hits_with_chunks, case)
+        passed = match is not None if expected_any else bool(hits_with_chunks)
+        matched_rank = match.rank if match else (1 if not expected_any and hits_with_chunks else None)
         results.append(
             RetrievalCaseResult(
                 query=case.query,
@@ -167,14 +194,17 @@ def first_relevant_hit(hits, case: RetrievalCase) -> RelevantHit | None:
     expected_pages = set(case.expected_pages)
     for index, hit in enumerate(hits):
         rank = index + 1
-        if hit.chunk.chunk_id in expected_chunk_ids:
-            return RelevantHit(rank=rank, chunk_id=hit.chunk.chunk_id)
-        for evidence_chunk in getattr(hit, "evidence_chunks", []):
+        chunk = hit_chunk(hit)
+        if chunk is None:
+            continue
+        if chunk.chunk_id in expected_chunk_ids:
+            return RelevantHit(rank=rank, chunk_id=chunk.chunk_id)
+        for evidence_chunk in hit_evidence_chunks(hit):
             if evidence_chunk.chunk_id in expected_chunk_ids:
                 return RelevantHit(rank=rank, chunk_id=evidence_chunk.chunk_id)
-        matched_page = first_page_match(hit.chunk.page_start, hit.chunk.page_end, expected_pages)
+        matched_page = first_page_match(chunk.page_start, chunk.page_end, expected_pages)
         if matched_page is not None:
-            return RelevantHit(rank=rank, chunk_id=hit.chunk.chunk_id, page=matched_page)
+            return RelevantHit(rank=rank, chunk_id=chunk.chunk_id, page=matched_page)
     return None
 
 
@@ -183,6 +213,18 @@ def first_page_match(page_start: int, page_end: int, expected_pages: set[int]) -
         if page_start <= page <= page_end:
             return page
     return None
+
+
+def hit_chunk(hit):
+    return getattr(hit, "chunk", None)
+
+
+def hit_sources(hit) -> list[str]:
+    return list(getattr(hit, "sources", []))
+
+
+def hit_evidence_chunks(hit) -> list[DocumentChunk]:
+    return [chunk for chunk in getattr(hit, "evidence_chunks", []) if chunk is not None]
 
 
 def elapsed_ms(start: float) -> float:

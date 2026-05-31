@@ -208,6 +208,13 @@ chunking-docs eval-retrieval examples/retrieval_cases.jsonl \
   --top-k 5 \
   --repeat 3 \
   --output outputs/package/retrieval_eval.json
+chunking-docs eval-qdrant-retrieval examples/retrieval_cases.jsonl \
+  --package-dir outputs/package \
+  --location ':memory:' \
+  --vector-names text_dense,caption_dense \
+  --top-k 5 \
+  --repeat 3 \
+  --output outputs/package/qdrant_retrieval_eval.json
 chunking-docs eval-retrieval-ablation examples/retrieval_cases.jsonl \
   --package-dir outputs/package \
   --modes dense,bm25,hybrid,graph,hybrid_graph \
@@ -215,7 +222,7 @@ chunking-docs eval-retrieval-ablation examples/retrieval_cases.jsonl \
   --output outputs/package/retrieval_ablation.json
 ```
 
-`eval-chunking` reports page coverage, chunk size distribution, section coverage, visual asset linkage, visual annotation coverage, retrieval recall@k, MRR, failed queries, and an aggregate quality score. `eval-retrieval` also records per-query latency samples plus mean and p95 latency when `--repeat` is greater than one. `eval-retrieval-ablation` compares dense-only, BM25-only, graph-only, hybrid, and graph-expanded hybrid retrieval so the effect and runtime cost of each retrieval signal is visible. Retrieval cases are JSONL:
+`eval-chunking` reports page coverage, chunk size distribution, section coverage, visual asset linkage, visual annotation coverage, retrieval recall@k, MRR, failed queries, and an aggregate quality score. `eval-retrieval` also records per-query latency samples plus mean and p95 latency when `--repeat` is greater than one. `eval-qdrant-retrieval` runs the same benchmark cases through Qdrant named vectors, BM25, and optional graph expansion so the production retrieval path can be validated. `eval-retrieval-ablation` compares dense-only, BM25-only, graph-only, hybrid, and graph-expanded hybrid retrieval so the effect and runtime cost of each retrieval signal is visible. Retrieval cases are JSONL:
 
 ```jsonl
 {"query":"policy corridor near river","expected_pages":[12],"graph_expand":true}

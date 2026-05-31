@@ -12,6 +12,7 @@ from .retrieval import (
     RetrievalCaseResult,
     RetrievalEvaluation,
     evaluate_retrieval,
+    evaluate_search_results,
     load_retrieval_cases,
 )
 from .sweep import ChunkingSweepCandidate, ChunkingSweepReport, run_chunking_sweep
@@ -34,6 +35,7 @@ __all__ = [
     "degraded_page_ratio",
     "evaluate_retrieval",
     "evaluate_retrieval_ablation",
+    "evaluate_search_results",
     "load_retrieval_cases",
     "parse_ablation_modes",
     "run_chunking_sweep",

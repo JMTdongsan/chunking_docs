@@ -2,6 +2,7 @@ import json
 
 from typer.testing import CliRunner
 
+import chunking_docs.cli as cli_module
 from chunking_docs.cli import app
 from chunking_docs.evaluation.audit import audit_package, degraded_page_ratio
 from chunking_docs.evaluation.ablation import evaluate_retrieval_ablation, parse_ablation_modes
@@ -16,6 +17,7 @@ from chunking_docs.models import (
     TextQuality,
     VisualAsset,
 )
+from chunking_docs.retrieval.local_hybrid import HybridSearchHit
 
 
 def test_audit_package_detects_missing_vlm_annotations():
@@ -226,6 +228,67 @@ def test_eval_retrieval_cli_writes_latency_report(tmp_path):
     payload = json.loads(output.read_text(encoding="utf-8"))
     assert payload["repeat"] == 2
     assert payload["mean_latency_ms"] >= 0.0
+    assert len(payload["results"][0]["latency_samples_ms"]) == 2
+
+
+def test_eval_qdrant_retrieval_cli_writes_report(monkeypatch, tmp_path):
+    output = tmp_path / "qdrant_retrieval.json"
+    cases_path = tmp_path / "cases.jsonl"
+    chunk = DocumentChunk(
+        chunk_id="chunk-1",
+        doc_id="doc",
+        page_start=1,
+        page_end=1,
+        kind=ChunkKind.TEXT,
+        text="capital budget transit corridor",
+    )
+    write_jsonl(cases_path, [RetrievalCase(query="capital budget", expected_pages=[1])])
+
+    class FakeStore:
+        def count(self):
+            return 1
+
+    class FakeSearcher:
+        def search(self, **kwargs):
+            assert kwargs["vector_names"] == ["text_dense"]
+            assert kwargs["top_k"] == 5
+            return [HybridSearchHit(chunk=chunk, score=0.8, sources=["qdrant:text_dense"])]
+
+    def fake_prepare(**kwargs):
+        return {
+            "searcher": FakeSearcher(),
+            "store": FakeStore(),
+            "collection_name": "documents",
+            "selected_vectors": ["text_dense"],
+            "query_encoders": {"text_dense": "default_text"},
+            "upserted": 1,
+        }
+
+    monkeypatch.setattr(cli_module, "prepare_qdrant_hybrid_search", fake_prepare)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "eval-qdrant-retrieval",
+            str(cases_path),
+            "--package-dir",
+            str(tmp_path),
+            "--vector-names",
+            "text_dense",
+            "--repeat",
+            "2",
+            "--output",
+            str(output),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["metadata"]["backend"] == "qdrant_hybrid"
+    assert payload["metadata"]["collection"] == "documents"
+    assert payload["repeat"] == 2
+    assert payload["recall_at_k"] == 1.0
+    assert payload["results"][0]["top_sources"] == [["qdrant:text_dense"]]
     assert len(payload["results"][0]["latency_samples_ms"]) == 2
 
 

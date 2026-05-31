@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from time import perf_counter
 
 import httpx
 import typer
@@ -17,7 +18,11 @@ from chunking_docs.evaluation.chunking_quality import evaluate_chunking_quality
 from chunking_docs.evaluation.compare import compare_chunking_reports
 from chunking_docs.evaluation.experiment import build_experiment_report
 from chunking_docs.evaluation.ablation import evaluate_retrieval_ablation, parse_ablation_modes
-from chunking_docs.evaluation.retrieval import evaluate_retrieval, load_retrieval_cases
+from chunking_docs.evaluation.retrieval import (
+    evaluate_retrieval,
+    evaluate_search_results,
+    load_retrieval_cases,
+)
 from chunking_docs.evaluation.sweep import run_chunking_sweep
 from chunking_docs.graph.repair import remap_triples_to_available_chunks
 from chunking_docs.ingest.pdf_loader import load_source_document, render_pages
@@ -447,6 +452,94 @@ def qdrant_rag_context_command(
         print({"output": str(output), **bundle.metadata})
         return
     print(bundle.model_dump())
+
+
+@app.command(name="eval-qdrant-retrieval")
+def eval_qdrant_retrieval_command(
+    cases: Path,
+    package_dir: Path = Path("outputs/package"),
+    output: Path | None = None,
+    url: str = "http://localhost:6333",
+    collection: str = "",
+    location: str = "",
+    path: str = "",
+    vector_names: str = "text_dense,caption_dense",
+    top_k: int = 5,
+    repeat: int = 1,
+    collapse_hierarchical: bool = False,
+    text_backend: str = "hashing",
+    text_model: str = "BAAI/bge-m3",
+    image_query_backend: str = "none",
+    image_query_model: str = "openai/clip-vit-large-patch14",
+    device: str = "cuda",
+    hashing_dim: int = 384,
+    doc_id: str = "",
+    lexical_tokenizer: TokenizerStrategy = "mixed",
+    ngram_min: int = 2,
+    ngram_max: int = 4,
+    ngram_cjk_only: bool = True,
+):
+    """Evaluate Qdrant hybrid retrieval against JSONL benchmark cases."""
+    prepare_start = perf_counter()
+    prepared = prepare_qdrant_hybrid_search(
+        package_dir=package_dir,
+        url=url,
+        collection=collection,
+        location=location,
+        path=path,
+        vector_names=vector_names,
+        text_backend=text_backend,
+        text_model=text_model,
+        image_query_backend=image_query_backend,
+        image_query_model=image_query_model,
+        device=device,
+        hashing_dim=hashing_dim,
+        lexical_tokenizer=lexical_tokenizer,
+        ngram_min=ngram_min,
+        ngram_max=ngram_max,
+        ngram_cjk_only=ngram_cjk_only,
+    )
+    index_build_ms = (perf_counter() - prepare_start) * 1000
+    evaluation = evaluate_search_results(
+        cases=load_retrieval_cases(cases),
+        search_fn=lambda case, graph_expand: prepared["searcher"].search(
+            query=case.query,
+            vector_names=prepared["selected_vectors"],
+            top_k=top_k,
+            graph_expand=graph_expand,
+            doc_id=doc_id or None,
+            collapse_hierarchical=collapse_hierarchical,
+        ),
+        top_k=top_k,
+        repeat=repeat,
+        index_build_ms=index_build_ms,
+    )
+    evaluation.metadata.update(
+        {
+            "backend": "qdrant_hybrid",
+            "collection": prepared["collection_name"],
+            "vector_names": prepared["selected_vectors"],
+            "query_encoders": prepared["query_encoders"],
+            "upserted": prepared["upserted"],
+            "stored_count": prepared["store"].count(),
+        }
+    )
+    if output is not None:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(evaluation.model_dump_json(indent=2), encoding="utf-8")
+        print(
+            {
+                "output": str(output),
+                "case_count": evaluation.case_count,
+                "recall_at_k": evaluation.recall_at_k,
+                "mrr": evaluation.mrr,
+                "mean_latency_ms": evaluation.mean_latency_ms,
+                "p95_latency_ms": evaluation.p95_latency_ms,
+                **evaluation.metadata,
+            }
+        )
+        return
+    print(evaluation.model_dump())
 
 
 @app.command(name="embed-package")
