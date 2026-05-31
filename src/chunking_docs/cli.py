@@ -1491,6 +1491,76 @@ def export_graph_command(package_dir: Path = Path("outputs/package")):
     )
 
 
+@app.command(name="audit-graph-triples")
+def audit_graph_triples_command(
+    package_dir: Path = Path("outputs/package"),
+    output: Path | None = None,
+    max_issues: int = 200,
+):
+    """Audit graph triples for normalization, duplicate, and provenance issues."""
+    from chunking_docs.graph.quality import audit_graph_triples
+
+    triples_path = package_dir / "triples.jsonl"
+    chunks_path = package_dir / "chunks.jsonl"
+    triples = read_jsonl(triples_path, GraphTriple) if triples_path.exists() else []
+    chunks = read_jsonl(chunks_path, DocumentChunk) if chunks_path.exists() else None
+    report = audit_graph_triples(triples, chunks=chunks, max_issues=max_issues)
+    payload = report.model_dump(mode="json")
+    if output is not None:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    print_json(payload)
+
+
+@app.command(name="normalize-graph-triples")
+def normalize_graph_triples_command(
+    package_dir: Path = Path("outputs/package"),
+    output: Path | None = None,
+    in_place: bool = False,
+    dedupe: bool = True,
+    export_graph_artifacts: bool = typer.Option(False, "--export-graph"),
+):
+    """Normalize graph triple labels and optionally rebuild graph JSONL artifacts."""
+    from chunking_docs.graph.export import export_graph
+    from chunking_docs.graph.quality import audit_graph_triples, normalize_graph_triples
+
+    triples_path = package_dir / "triples.jsonl"
+    if not triples_path.exists():
+        raise typer.BadParameter(f"Missing triples file: {triples_path}")
+    chunks_path = package_dir / "chunks.jsonl"
+    chunks = read_jsonl(chunks_path, DocumentChunk) if chunks_path.exists() else []
+    triples = read_jsonl(triples_path, GraphTriple)
+    before = audit_graph_triples(triples, chunks=chunks if chunks_path.exists() else None)
+    normalized = normalize_graph_triples(triples, dedupe=dedupe)
+    output_path = package_dir / "triples.jsonl" if in_place else output
+    if output_path is None:
+        output_path = package_dir / "triples.normalized.jsonl"
+    write_jsonl(output_path, normalized)
+
+    graph_nodes_output = None
+    graph_edges_output = None
+    if export_graph_artifacts:
+        nodes, edges = export_graph(normalized, chunks=chunks)
+        graph_nodes_output = package_dir / "graph_nodes.jsonl"
+        graph_edges_output = package_dir / "graph_edges.jsonl"
+        write_jsonl(graph_nodes_output, nodes)
+        write_jsonl(graph_edges_output, edges)
+
+    print_json(
+        {
+            "source": str(triples_path),
+            "output": str(output_path),
+            "input_triples": len(triples),
+            "output_triples": len(normalized),
+            "normalized_triples": before.normalized_count,
+            "removed_duplicates": len(triples) - len(normalized),
+            "dedupe": dedupe,
+            "graph_nodes_output": str(graph_nodes_output) if graph_nodes_output else None,
+            "graph_edges_output": str(graph_edges_output) if graph_edges_output else None,
+        }
+    )
+
+
 @app.command(name="postgres-upsert")
 def postgres_upsert(
     dsn: str,

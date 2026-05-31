@@ -5,6 +5,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from chunking_docs.graph.extractor import triples_from_vlm_json
+from chunking_docs.graph.quality import normalize_graph_triples
 from chunking_docs.models import AssetKind, DocumentChunk, GraphTriple, VisualAsset
 from chunking_docs.vision.annotate import merge_asset_annotations_into_chunks
 
@@ -37,7 +38,7 @@ def apply_asset_annotations(
                 triples.extend(triples_from_vlm_json(chunk, annotation.triples))
 
     updated_chunks = merge_asset_annotations_into_chunks(chunks, updated_assets)
-    triples = dedupe_triples(triples)
+    triples = normalize_graph_triples(triples)
     return updated_assets, updated_chunks, triples
 
 
@@ -92,8 +93,3 @@ def chunk_for_annotation(
             if chunk.page_start <= annotation.page_no <= chunk.page_end:
                 return chunk
     return None
-
-
-def dedupe_triples(triples: list[GraphTriple]) -> list[GraphTriple]:
-    by_id = {triple.triple_id: triple for triple in triples}
-    return list(by_id.values())

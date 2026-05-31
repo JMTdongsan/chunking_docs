@@ -12,6 +12,7 @@
 - Produces dense text, dense image, caption, and BM25 lexical artifacts.
 - Supports word, character n-gram, and mixed lexical tokenization for languages where whitespace is weak.
 - Builds graph triple candidates from section metadata and visual annotations.
+- Audits and normalizes graph triples before graph expansion or export.
 - Exports Qdrant upsert records and PostgreSQL-ready normalized rows.
 - Evaluates chunking quality and retrieval hit rate with reusable benchmark cases.
 
@@ -121,6 +122,23 @@ chunking-docs summarize-visual-results \
 ```
 
 The summary groups completion counts, backend latency, output size, VLM prompt usage, parse status, and extracted triple counts by operation.
+
+## Graph Triple Quality
+
+Graph triples can come from section metadata, manual annotations, OCR-adjacent review, or VLM JSON. Normalize and audit them before using graph expansion or exporting a graph view:
+
+```bash
+chunking-docs audit-graph-triples \
+  --package-dir outputs/package \
+  --output outputs/package/graph_triple_quality.json
+
+chunking-docs normalize-graph-triples \
+  --package-dir outputs/package \
+  --output outputs/package/triples.normalized.jsonl \
+  --export-graph
+```
+
+Normalization collapses whitespace, canonicalizes predicate names, recomputes stable triple IDs, and can remove semantic duplicates within the same chunk. The audit report counts duplicates, triples that would change under normalization, orphan chunk references, empty fields, invalid confidence values, and normalized predicate frequencies.
 
 ## Embeddings
 

@@ -69,6 +69,8 @@
 11. **Graph Triples**
     - Section metadata creates baseline graph relationships.
     - OCR/VLM JSON or external annotations can add `subject, predicate, object` triples.
+    - Triple normalization canonicalizes labels, predicate names, and stable IDs.
+    - Triple audit flags duplicates, orphan chunk references, empty fields, and invalid confidence values.
     - Graph terms are used for query expansion and relationship browsing.
 
 12. **Storage**
@@ -105,6 +107,8 @@ Additional processing commands may create:
 - `visual_annotations.jsonl`
 - `assets.tiled.jsonl`
 - `chunks.tiled.jsonl`
+- `triples.normalized.jsonl`
+- `graph_triple_quality.json`
 - `chunks.split.jsonl`
 - `chunks.semantic.jsonl`
 - `chunks.multimodal.jsonl`
