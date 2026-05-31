@@ -65,6 +65,14 @@ The package directory contains:
 - `qdrant_*_records.jsonl`: Qdrant upsert records
 - `qdrant_collection.json`: named-vector collection configuration
 
+Summarize the package characteristics that should drive chunking, OCR/VLM, graph, and retrieval choices:
+
+```bash
+chunking-docs characterize-package \
+  --package-dir outputs/package \
+  --output outputs/package/document_characteristics.json
+```
+
 ## Document Structure
 
 Document-specific structure should be supplied as data, not hardcoded in the library.

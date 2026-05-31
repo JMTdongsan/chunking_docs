@@ -18,6 +18,7 @@
    - Measure page size, text length, text blocks, image blocks, embedded images, and drawing count.
    - Classify the text layer as `good`, `degraded`, or `empty`.
    - Use the profile to decide which pages need OCR, VLM summaries, or visual embeddings.
+   - Summarize package characteristics that guide chunking, OCR/VLM, graph, and retrieval strategy.
 
 3. **Section Mapping**
    - Accept optional section ranges as JSON or JSONL.
@@ -141,6 +142,7 @@ Additional processing commands may create:
 - `graph_nodes.jsonl`
 - `graph_edges.jsonl`
 - `experiment_report.json`
+- `document_characteristics.json`
 - `ingestion_readiness.json`
 - `qdrant_retrieval_eval.json`
 - `qdrant_vector_ablation.json`

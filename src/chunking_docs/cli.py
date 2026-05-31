@@ -8,6 +8,7 @@ import httpx
 import typer
 from rich import print
 
+from chunking_docs.analysis.characterize import characterize_package
 from chunking_docs.analysis.pdf_profile import profile_pdf, summarize_profiles, write_profile_outputs
 from chunking_docs.chunking.multimodal import ChunkStrategy, build_strategy_chunks
 from chunking_docs.chunking.page_chunker import page_level_chunks
@@ -1884,6 +1885,36 @@ def ingestion_readiness_command(
     print(payload)
     if fail and not report.passed:
         raise typer.Exit(1)
+
+
+@app.command(name="characterize-package")
+def characterize_package_command(
+    package_dir: Path = Path("outputs/package"),
+    output: Path | None = None,
+    max_pages: int = 25,
+):
+    """Summarize document characteristics that guide chunking, visual, and retrieval strategy."""
+    manifest = load_processing_package(package_dir)
+    report = characterize_package(
+        profiles=manifest.profiles,
+        chunks=manifest.chunks,
+        assets=manifest.assets,
+        triples=manifest.triples,
+        package_dir=package_dir,
+        max_pages=max_pages,
+    )
+    payload = report.model_dump()
+    if output is not None:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(report.model_dump_json(indent=2), encoding="utf-8")
+        payload = {
+            "output": str(output),
+            "page_count": report.text_layer.page_count,
+            "degraded_or_empty_ratio": report.text_layer.degraded_or_empty_ratio,
+            "asset_kind_counts": report.visual.asset_kind_counts,
+            "observations": [observation.code for observation in report.observations],
+        }
+    print(payload)
 
 
 @app.command(name="eval-retrieval")
