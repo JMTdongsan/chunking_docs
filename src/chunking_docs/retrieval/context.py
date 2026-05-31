@@ -84,6 +84,7 @@ def build_context_bundle(
                     score=getattr(hit, "score", None),
                     sources=list(getattr(hit, "sources", [])),
                     rank=rank,
+                    payloads=list(getattr(hit, "payloads", [])),
                 )
             )
             seen_chunks.add(chunk.chunk_id)
@@ -154,6 +155,7 @@ def context_chunk(
     sources: list[str],
     rank: int,
     parent_chunk_id: str | None = None,
+    payloads: list[dict[str, Any]] | None = None,
 ) -> RAGContextChunk:
     metadata = {
         "rank": rank,
@@ -161,6 +163,14 @@ def context_chunk(
     }
     if parent_chunk_id:
         metadata["retrieved_parent_chunk_id"] = parent_chunk_id
+    retrieval_refs = retrieval_payload_refs(payloads or [])
+    retrieved_asset_ids = sorted(
+        {ref["asset_id"] for ref in retrieval_refs if "asset_id" in ref}
+    )
+    if retrieval_refs:
+        metadata["retrieval_payload_refs"] = retrieval_refs
+    if retrieved_asset_ids:
+        metadata["retrieved_asset_ids"] = retrieved_asset_ids
     return RAGContextChunk(
         chunk_id=chunk.chunk_id,
         doc_id=chunk.doc_id,
@@ -305,6 +315,13 @@ def context_bundle_metadata(
     kind_counts = count_values(chunk.kind for chunk in chunks)
     pages = context_pages(chunks)
     asset_text = context_asset_text_summary(assets)
+    retrieved_asset_ids = sorted(
+        {
+            asset_id
+            for chunk in chunks
+            for asset_id in chunk.metadata.get("retrieved_asset_ids", [])
+        }
+    )
     return {
         "hit_count": len(chunks),
         "chunk_count": len(chunks),
@@ -312,6 +329,8 @@ def context_bundle_metadata(
         "evidence_chunk_count": role_counts.get("evidence", 0),
         "neighbor_chunk_count": role_counts.get("neighbor", 0),
         "asset_count": len(assets),
+        "retrieved_asset_count": len(retrieved_asset_ids),
+        "retrieved_asset_ids": retrieved_asset_ids,
         "triple_count": len(triples),
         "page_count": len(pages),
         "pages": pages,
@@ -372,6 +391,38 @@ def context_page_ranges(chunks: list[RAGContextChunk]) -> list[dict[str, int | s
 
 def count_values(values) -> dict[str, int]:
     return dict(sorted(Counter(values).items()))
+
+
+def retrieval_payload_refs(payloads: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    refs = []
+    seen = set()
+    for payload in payloads:
+        ref = retrieval_payload_ref(payload)
+        if not ref:
+            continue
+        key = tuple(sorted(ref.items()))
+        if key in seen:
+            continue
+        seen.add(key)
+        refs.append(ref)
+    return refs
+
+
+def retrieval_payload_ref(payload: dict[str, Any]) -> dict[str, Any]:
+    ref = {}
+    for key in (
+        "asset_id",
+        "chunk_id",
+        "doc_id",
+        "page_no",
+        "page_start",
+        "page_end",
+        "kind",
+    ):
+        value = payload.get(key)
+        if value is not None:
+            ref[key] = value
+    return ref
 
 
 def context_asset_text_fields(

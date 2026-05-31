@@ -108,6 +108,7 @@
     - Support both local hybrid retrieval and Qdrant hybrid retrieval.
     - Include hit chunks, optional neighboring chunks, hierarchical evidence chunks, linked visual assets, and graph triples.
     - Keep page ranges, section labels, source refs, scores, and retrieval sources available for citation.
+    - Preserve compact retrieval payload references for visual vector hits so answer generators can tell which asset triggered the parent chunk.
     - Bound chunk text and visual asset text separately, while recording original and context character counts plus truncated OCR/VLM fields.
 
 ## Package Files
