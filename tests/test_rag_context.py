@@ -185,7 +185,7 @@ def test_build_context_bundle_records_retrieved_visual_asset_refs():
         page_end=4,
         kind=ChunkKind.TEXT,
         text="base page text",
-        asset_ids=["asset-1", "asset-2"],
+        asset_ids=["asset-1"],
     )
     asset = VisualAsset(
         asset_id="asset-2",
@@ -230,6 +230,61 @@ def test_build_context_bundle_records_retrieved_visual_asset_refs():
     assert bundle.metadata["asset_count"] == 1
     assert bundle.metadata["retrieved_asset_ids"] == ["asset-2"]
     assert bundle.metadata["retrieved_asset_count"] == 1
+
+
+def test_build_context_bundle_includes_asset_provenance_triples_from_visual_hits():
+    chunk = DocumentChunk(
+        chunk_id="chunk-1",
+        doc_id="doc",
+        page_start=4,
+        page_end=4,
+        kind=ChunkKind.TEXT,
+        text="base page text",
+    )
+    asset = VisualAsset(
+        asset_id="asset-2",
+        doc_id="doc",
+        page_no=4,
+        kind=AssetKind.MAP,
+        caption="visual map evidence",
+    )
+    triple = GraphTriple(
+        triple_id="asset-triple",
+        doc_id="doc",
+        chunk_id="visual-annotation-chunk",
+        subject="visual map",
+        predicate="shows",
+        object="target feature",
+        qualifiers={"source": "visual_annotation", "asset_id": "asset-2"},
+    )
+    unrelated = GraphTriple(
+        triple_id="unrelated-triple",
+        doc_id="doc",
+        chunk_id="visual-annotation-chunk",
+        subject="other visual",
+        predicate="shows",
+        object="other feature",
+        qualifiers={"source": "visual_annotation", "asset_id": "asset-3"},
+    )
+    hit = SimpleNamespace(
+        chunk=chunk,
+        score=0.9,
+        sources=["qdrant:caption_dense"],
+        payloads=[{"asset_id": "asset-2", "doc_id": "doc", "page_no": 4, "kind": "map"}],
+        evidence_chunks=[],
+    )
+
+    bundle = build_context_bundle(
+        query="visual map",
+        hits=[hit],
+        assets=[asset],
+        triples=[unrelated, triple],
+    )
+
+    assert [asset.asset_id for asset in bundle.assets] == ["asset-2"]
+    assert [triple.triple_id for triple in bundle.triples] == ["asset-triple"]
+    assert bundle.metadata["triple_count"] == 1
+    assert bundle.metadata["has_graph_context"] is True
 
 
 def test_build_rag_context_cli_writes_bundle(tmp_path):

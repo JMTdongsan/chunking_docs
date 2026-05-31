@@ -119,6 +119,7 @@ def build_context_bundle(
         )
 
     selected_chunk_ids = {chunk.chunk_id for chunk in context_chunks}
+    selected_asset_ids = context_asset_ids(context_chunks)
     selected_assets = []
     if include_assets and assets:
         selected_assets = context_assets(
@@ -126,10 +127,15 @@ def build_context_bundle(
             context_chunks,
             max_chars_per_asset_text=max_chars_per_asset_text,
         )
+        selected_asset_ids.update(asset.asset_id for asset in selected_assets)
 
     selected_triples = []
     if include_triples and triples:
-        selected_triples = context_triples(triples, selected_chunk_ids)
+        selected_triples = context_triples(
+            triples,
+            selected_chunk_ids,
+            selected_asset_ids,
+        )
 
     return RAGContextBundle(
         query=query,
@@ -252,13 +258,7 @@ def context_assets(
     chunks: list[RAGContextChunk],
     max_chars_per_asset_text: int,
 ) -> list[RAGContextAsset]:
-    asset_ids = {asset_id for chunk in chunks for asset_id in chunk.asset_ids}
-    asset_ids.update(
-        asset_id
-        for chunk in chunks
-        for asset_id in chunk.metadata.get("retrieved_asset_ids", [])
-        if isinstance(asset_id, str)
-    )
+    asset_ids = context_asset_ids(chunks)
     selected = []
     seen = set()
     for asset in assets:
@@ -284,11 +284,26 @@ def context_assets(
     return selected
 
 
-def context_triples(triples: list[GraphTriple], chunk_ids: set[str]) -> list[RAGContextTriple]:
+def context_asset_ids(chunks: list[RAGContextChunk]) -> set[str]:
+    asset_ids = {asset_id for chunk in chunks for asset_id in chunk.asset_ids}
+    for chunk in chunks:
+        asset_ids.update(string_values(chunk.metadata.get("retrieved_asset_ids")))
+        for ref in chunk.metadata.get("retrieval_payload_refs", []):
+            if isinstance(ref, dict):
+                asset_ids.update(string_values(ref.get("asset_id")))
+    return asset_ids
+
+
+def context_triples(
+    triples: list[GraphTriple],
+    chunk_ids: set[str],
+    asset_ids: set[str] | None = None,
+) -> list[RAGContextTriple]:
+    asset_ids = asset_ids or set()
     selected = []
     seen = set()
     for triple in triples:
-        if triple.chunk_id not in chunk_ids or triple.triple_id in seen:
+        if not triple_matches_context(triple, chunk_ids, asset_ids) or triple.triple_id in seen:
             continue
         seen.add(triple.triple_id)
         selected.append(
@@ -303,6 +318,46 @@ def context_triples(triples: list[GraphTriple], chunk_ids: set[str]) -> list[RAG
             )
         )
     return selected
+
+
+def triple_matches_context(
+    triple: GraphTriple,
+    chunk_ids: set[str],
+    asset_ids: set[str],
+) -> bool:
+    if triple.chunk_id in chunk_ids:
+        return True
+    if not asset_ids:
+        return False
+    return bool(triple_asset_ids(triple) & asset_ids)
+
+
+def triple_asset_ids(triple: GraphTriple) -> set[str]:
+    qualifiers = triple.qualifiers or {}
+    asset_ids: set[str] = set()
+    for key in ("asset_id", "source_asset_id", "visual_asset_id"):
+        asset_ids.update(string_values(qualifiers.get(key)))
+    for key in ("asset_ids", "source_asset_ids", "visual_asset_ids"):
+        asset_ids.update(string_values(qualifiers.get(key)))
+    for value in string_values(qualifiers.get("source_ref")):
+        asset_ids.update(asset_ids_from_ref(value))
+    for value in string_values(qualifiers.get("source_refs")):
+        asset_ids.update(asset_ids_from_ref(value))
+    return asset_ids
+
+
+def string_values(value: Any) -> list[str]:
+    if isinstance(value, str):
+        return [value] if value else []
+    if isinstance(value, (list, tuple, set)):
+        return [item for item in value if isinstance(item, str) and item]
+    return []
+
+
+def asset_ids_from_ref(ref: str) -> set[str]:
+    if ref.startswith("asset:") and len(ref) > len("asset:"):
+        return {ref.removeprefix("asset:")}
+    return set()
 
 
 def context_bundle_metadata(

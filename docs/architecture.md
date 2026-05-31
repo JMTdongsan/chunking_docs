@@ -110,6 +110,7 @@
     - Include hit chunks, optional neighboring chunks, hierarchical evidence chunks, linked visual assets, and graph triples.
     - Keep page ranges, section labels, source refs, scores, and retrieval sources available for citation.
     - Preserve compact retrieval payload references for visual vector hits so answer generators can tell which asset triggered the parent chunk, and include those retrieved assets in the bundle even when the parent chunk did not list them directly.
+    - Select graph triples by matched chunk IDs and by visual asset provenance so VLM-derived relationships remain attached to retrieved visual evidence.
     - Bound chunk text and visual asset text separately, while recording original and context character counts plus truncated OCR/VLM fields.
 
 ## Package Files
