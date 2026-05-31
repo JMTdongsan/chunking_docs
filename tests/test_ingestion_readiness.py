@@ -65,6 +65,40 @@ def test_ingestion_readiness_includes_retrieval_cases_and_chunking_gate(tmp_path
     assert report.failed_components == []
 
 
+def test_ingestion_readiness_can_gate_visual_quality_from_assets(tmp_path):
+    package_dir, manifest = write_ready_package(tmp_path)
+    manifest.assets[0] = manifest.assets[0].model_copy(
+        update={
+            "ocr_text": "recognized visual text",
+            "vlm_summary": "structured visual summary",
+            "metadata": {
+                "requires_ocr": True,
+                "requires_vlm": True,
+                "vlm_parse_status": "json_object",
+            },
+        }
+    )
+
+    report = build_ingestion_readiness_report(
+        package_dir,
+        manifest,
+        require_visual_annotations=True,
+        require_visual_quality=True,
+        visual_quality_options={
+            "min_completion_rate": 1.0,
+            "min_ocr_text_coverage": 1.0,
+            "min_vlm_summary_coverage": 1.0,
+            "min_vlm_json_parse_rate": 1.0,
+        },
+    )
+    visual_component = next(component for component in report.components if component.name == "visual_quality")
+
+    assert report.passed is True
+    assert report.visual_quality is not None
+    assert report.visual_quality.vlm_json_parse_rate == 1.0
+    assert visual_component.metadata["source"] == "assets"
+
+
 def test_ingestion_readiness_cli_reports_missing_required_artifact(tmp_path):
     package_dir, _ = write_ready_package(tmp_path)
     (package_dir / "bm25_tokens.json").unlink()
@@ -109,6 +143,57 @@ def test_ingestion_readiness_cli_requires_retrieval_cases(tmp_path):
     payload = json.loads(output.read_text(encoding="utf-8"))
     assert payload["passed"] is False
     assert "retrieval_case_audit" in payload["failed_components"]
+
+
+def test_ingestion_readiness_cli_can_gate_visual_quality_from_assets(tmp_path):
+    package_dir, _ = write_ready_package(tmp_path)
+    assets = [
+        VisualAsset(
+            asset_id="asset-1",
+            doc_id="doc",
+            page_no=1,
+            kind=AssetKind.PAGE_IMAGE,
+            path=package_dir / "assets/page.png",
+            ocr_text="recognized visual text",
+            vlm_summary="structured visual summary",
+            metadata={
+                "requires_ocr": True,
+                "requires_vlm": True,
+                "vlm_parse_status": "json_object",
+            },
+        )
+    ]
+    write_jsonl(package_dir / "assets.jsonl", assets)
+    output = tmp_path / "readiness.json"
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "ingestion-readiness",
+            "--package-dir",
+            str(package_dir),
+            "--require-visual-annotations",
+            "--require-visual-quality",
+            "--min-visual-completion-rate",
+            "1",
+            "--min-ocr-text-coverage",
+            "1",
+            "--min-vlm-summary-coverage",
+            "1",
+            "--min-vlm-json-parse-rate",
+            "1",
+            "--output",
+            str(output),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["passed"] is True
+    visual_component = next(
+        component for component in payload["components"] if component["name"] == "visual_quality"
+    )
+    assert visual_component["metadata"]["source"] == "assets"
 
 
 def write_ready_package(tmp_path: Path):

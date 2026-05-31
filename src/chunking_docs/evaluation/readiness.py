@@ -17,7 +17,11 @@ from chunking_docs.evaluation.retrieval import RetrievalCase, RetrievalEvaluatio
 from chunking_docs.models import ProcessingManifest
 from chunking_docs.storage.postgres_store import manifest_rows
 from chunking_docs.vision.jobs import VisualJobRunResult
-from chunking_docs.vision.quality import VisualQualityReport, evaluate_visual_results
+from chunking_docs.vision.quality import (
+    VisualQualityReport,
+    evaluate_visual_results,
+    visual_results_from_assets,
+)
 
 
 class ReadinessComponent(BaseModel):
@@ -100,30 +104,29 @@ def build_ingestion_readiness_report(
         components.append(postgres_component)
 
     visual_quality = None
-    if visual_results is not None:
+    if visual_results is not None or require_visual_quality:
+        visual_quality_source = "visual_results"
+        evaluated_visual_results = visual_results
+        if evaluated_visual_results is None:
+            visual_quality_source = "assets"
+            evaluated_visual_results = visual_results_from_assets(manifest.assets)
         visual_quality = evaluate_visual_results(
-            visual_results,
+            evaluated_visual_results,
             **(visual_quality_options or {}),
         )
         components.append(
             ReadinessComponent(
                 name="visual_quality",
                 passed=visual_quality.passed,
-                message="Visual OCR/VLM job results meet configured quality thresholds.",
+                message="Visual OCR/VLM annotations meet configured quality thresholds.",
                 metadata={
+                    "source": visual_quality_source,
                     "failed_checks": visual_quality.failed_checks,
                     "completion_rate": visual_quality.completion_rate,
                     "ocr_text_coverage": visual_quality.ocr_text_coverage,
                     "vlm_summary_coverage": visual_quality.vlm_summary_coverage,
+                    "vlm_json_parse_rate": visual_quality.vlm_json_parse_rate,
                 },
-            )
-        )
-    elif require_visual_quality:
-        components.append(
-            ReadinessComponent(
-                name="visual_quality",
-                passed=False,
-                message="Visual quality results are required but were not supplied.",
             )
         )
 
