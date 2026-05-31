@@ -1169,7 +1169,9 @@ def annotate_assets_command(
     ocr_min_confidence: float = 0.0,
     ocr_use_gpu: bool = False,
     vlm: str = "none",
+    vlm_profile: str = "",
     vlm_model: str = "",
+    vlm_model_class: str = "auto",
     vlm_device_map: str = "auto",
     vlm_torch_dtype: str = "auto",
     vlm_max_new_tokens: int = 768,
@@ -1193,6 +1195,8 @@ def annotate_assets_command(
     vlm_backend, _ = build_vlm_backend(
         vlm,
         vlm_model,
+        profile=vlm_profile,
+        model_class=vlm_model_class,
         device_map=vlm_device_map,
         torch_dtype=vlm_torch_dtype,
         max_new_tokens=vlm_max_new_tokens,
@@ -1284,7 +1288,9 @@ def run_visual_jobs_command(
     ocr_min_confidence: float = 0.0,
     ocr_use_gpu: bool = False,
     vlm: str = "none",
+    vlm_profile: str = "",
     vlm_model: str = "",
+    vlm_model_class: str = "auto",
     vlm_device_map: str = "auto",
     vlm_torch_dtype: str = "auto",
     vlm_max_new_tokens: int = 768,
@@ -1311,6 +1317,8 @@ def run_visual_jobs_command(
     vlm_backend, vlm_name = build_vlm_backend(
         vlm,
         vlm_model,
+        profile=vlm_profile,
+        model_class=vlm_model_class,
         device_map=vlm_device_map,
         torch_dtype=vlm_torch_dtype,
         max_new_tokens=vlm_max_new_tokens,
@@ -3246,6 +3254,8 @@ def build_ocr_backend(
 def build_vlm_backend(
     backend: str,
     model_name: str,
+    profile: str = "",
+    model_class: str = "auto",
     device_map: str = "auto",
     torch_dtype: str = "auto",
     max_new_tokens: int = 768,
@@ -3255,6 +3265,21 @@ def build_vlm_backend(
     if normalized == "none":
         return None, ""
     if normalized == "hf":
+        profile_name = ""
+        if profile:
+            from chunking_docs.vision.hf_vlm import get_vlm_model_profile
+
+            try:
+                model_profile = get_vlm_model_profile(profile)
+            except ValueError as exc:
+                raise typer.BadParameter(str(exc)) from exc
+            profile_name = model_profile.name
+            model_name = model_name or model_profile.model_name
+            model_class = model_class if model_class != "auto" else model_profile.model_class
+            device_map = device_map if device_map != "auto" else model_profile.device_map
+            torch_dtype = torch_dtype if torch_dtype != "auto" else model_profile.torch_dtype
+            max_new_tokens = max_new_tokens if max_new_tokens != 768 else model_profile.max_new_tokens
+            attn_implementation = attn_implementation or model_profile.attn_implementation
         if not model_name:
             raise typer.BadParameter("--vlm-model is required when --vlm hf")
         if max_new_tokens <= 0:
@@ -3268,8 +3293,10 @@ def build_vlm_backend(
                 torch_dtype=torch_dtype,
                 max_new_tokens=max_new_tokens,
                 attn_implementation=attn_implementation,
+                model_class=model_class,
+                profile=profile_name,
             ),
-            f"hf:{model_name}",
+            f"hf:{profile_name or model_name}",
         )
     raise typer.BadParameter("vlm must be one of: none, hf")
 

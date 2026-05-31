@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+import typer
 from typer.testing import CliRunner
 
 import chunking_docs.cli as cli_module
@@ -394,6 +396,7 @@ def test_build_vlm_backend_passes_hf_runtime_options(monkeypatch):
         torch_dtype="bfloat16",
         max_new_tokens=256,
         attn_implementation="sdpa",
+        model_class="vision2seq",
     )
 
     assert isinstance(backend, FakeHFBackend)
@@ -404,7 +407,38 @@ def test_build_vlm_backend_passes_hf_runtime_options(monkeypatch):
         "torch_dtype": "bfloat16",
         "max_new_tokens": 256,
         "attn_implementation": "sdpa",
+        "model_class": "vision2seq",
+        "profile": "",
     }
+
+
+def test_build_vlm_backend_applies_named_profile(monkeypatch):
+    captured = {}
+
+    class FakeHFBackend:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    monkeypatch.setattr("chunking_docs.vision.hf_vlm.HuggingFaceVLMBackend", FakeHFBackend)
+
+    backend, name = cli_module.build_vlm_backend("hf", "", profile="qwen2_5_vl_7b")
+
+    assert isinstance(backend, FakeHFBackend)
+    assert name == "hf:qwen2_5_vl_7b"
+    assert captured == {
+        "model_name": "Qwen/Qwen2.5-VL-7B-Instruct",
+        "device_map": "auto",
+        "torch_dtype": "bfloat16",
+        "max_new_tokens": 768,
+        "attn_implementation": "",
+        "model_class": "image-text-to-text",
+        "profile": "qwen2_5_vl_7b",
+    }
+
+
+def test_build_vlm_backend_rejects_unknown_profile():
+    with pytest.raises(typer.BadParameter, match="Unsupported VLM profile"):
+        cli_module.build_vlm_backend("hf", "", profile="unknown")
 
 
 def test_build_ocr_backend_passes_paddle_options(monkeypatch):

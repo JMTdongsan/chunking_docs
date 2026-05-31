@@ -249,6 +249,7 @@ The library exposes interfaces instead of locking in one model:
 
 - OCR: `TesseractOCRBackend` and `PaddleOCRBackend` for multilingual scanned pages.
 - VLM: `HuggingFaceVLMBackend` with configurable device map, torch dtype, generation length, and optional attention implementation.
+- VLM profiles: named Hugging Face profiles record the model id, loader family, dtype, and generation defaults for reproducible local model comparisons.
 - Text dense: `SentenceTransformerTextEmbedder`.
 - Image dense: `TransformersImageEmbedder`.
 
