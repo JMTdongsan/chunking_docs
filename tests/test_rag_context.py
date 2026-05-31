@@ -2,6 +2,7 @@ import json
 
 from typer.testing import CliRunner
 
+import chunking_docs.cli as cli_module
 from chunking_docs.cli import app
 from chunking_docs.io import write_jsonl
 from chunking_docs.models import AssetKind, ChunkKind, DocumentChunk, GraphTriple, VisualAsset
@@ -115,3 +116,74 @@ def test_build_rag_context_cli_writes_bundle(tmp_path):
     assert payload["chunks"][0]["chunk_id"] == "chunk-1"
     assert payload["assets"][0]["asset_id"] == "asset-1"
     assert payload["triples"][0]["triple_id"] == "triple-1"
+
+
+def test_qdrant_rag_context_cli_writes_bundle(monkeypatch, tmp_path):
+    output = tmp_path / "qdrant_context.json"
+    chunk = DocumentChunk(
+        chunk_id="chunk-1",
+        doc_id="doc",
+        page_start=1,
+        page_end=1,
+        kind=ChunkKind.TEXT,
+        text="station access corridor evidence",
+        asset_ids=["asset-1"],
+    )
+    asset = VisualAsset(
+        asset_id="asset-1",
+        doc_id="doc",
+        page_no=1,
+        kind=AssetKind.FIGURE,
+        caption="station access diagram",
+    )
+    triple = GraphTriple(
+        triple_id="triple-1",
+        doc_id="doc",
+        chunk_id="chunk-1",
+        subject="station access",
+        predicate="uses",
+        object="corridor",
+    )
+
+    class FakeStore:
+        def count(self):
+            return 1
+
+    class FakeSearcher:
+        def search(self, **kwargs):
+            assert kwargs["vector_names"] == ["text_dense"]
+            return [HybridSearchHit(chunk=chunk, score=0.7, sources=["qdrant:text_dense"])]
+
+    def fake_prepare(**kwargs):
+        return {
+            "searcher": FakeSearcher(),
+            "store": FakeStore(),
+            "collection_name": "documents",
+            "selected_vectors": ["text_dense"],
+            "query_encoders": {"text_dense": "default_text"},
+            "upserted": 1,
+            "assets": [asset],
+            "triples": [triple],
+        }
+
+    monkeypatch.setattr(cli_module, "prepare_qdrant_hybrid_search", fake_prepare)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "qdrant-rag-context",
+            "station access",
+            "--package-dir",
+            str(tmp_path),
+            "--vector-names",
+            "text_dense",
+            "--output",
+            str(output),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["metadata"]["collection"] == "documents"
+    assert payload["chunks"][0]["sources"] == ["qdrant:text_dense"]
+    assert payload["assets"][0]["asset_id"] == "asset-1"

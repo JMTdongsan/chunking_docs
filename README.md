@@ -175,6 +175,17 @@ chunking-docs build-rag-context "station access corridor" \
 
 The bundle contains retrieved chunks, hierarchical evidence chunks, linked visual assets, and graph triples so downstream RAG services can pass structured context to an answer generator.
 
+Use the Qdrant path when validating production retrieval:
+
+```bash
+chunking-docs qdrant-rag-context "station access corridor" \
+  --package-dir outputs/package \
+  --location ':memory:' \
+  --vector-names text_dense,caption_dense \
+  --top-k 5 \
+  --output outputs/package/rag_context.qdrant.json
+```
+
 ## PostgreSQL
 
 PostgreSQL is intended for source metadata, page profiles, chunks, assets, and graph triples. Vector search is handled by Qdrant by default.

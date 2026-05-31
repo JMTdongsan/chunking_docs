@@ -76,6 +76,7 @@
 
 13. **RAG Context Assembly**
     - Convert retrieval hits into a structured context bundle.
+    - Support both local hybrid retrieval and Qdrant hybrid retrieval.
     - Include hit chunks, hierarchical evidence chunks, linked visual assets, and graph triples.
     - Keep page ranges, section labels, source refs, scores, and retrieval sources available for citation.
 

@@ -308,65 +308,27 @@ def qdrant_hybrid_search(
     ngram_cjk_only: bool = True,
 ):
     """Run Qdrant named-vector + BM25 + optional graph hybrid retrieval."""
-    from chunking_docs.retrieval.qdrant_hybrid import QdrantHybridSearcher
-    from chunking_docs.storage.qdrant_store import QdrantChunkStore
-
-    collection_config = json.loads((package_dir / "qdrant_collection.json").read_text(encoding="utf-8"))
-    collection_name = collection or collection_config["collection"]
-    named_vectors = {
-        name: int(config["size"])
-        for name, config in collection_config.get("named_vectors", {}).items()
-    }
-    selected_vectors = [item.strip() for item in vector_names.split(",") if item.strip()]
-    store = QdrantChunkStore(
+    prepared = prepare_qdrant_hybrid_search(
+        package_dir=package_dir,
         url=url,
-        collection_name=collection_name,
-        location=location or None,
-        path=path or None,
-    )
-    store.ensure_collection(named_vectors)
-    upserted = upsert_package_records(store, package_dir)
-
-    embedder, _ = build_text_embedder(
-        backend=text_backend,
-        model_name=text_model,
-        device=device,
-        hashing_dim=hashing_dim,
-        vector_name=selected_vectors[0] if selected_vectors else "text_dense",
-    )
-    if embedder is None:
-        raise typer.BadParameter("text backend must not be none for qdrant-hybrid-search")
-    vector_embedders = build_qdrant_query_embedders(
-        selected_vectors=selected_vectors,
-        vector_sizes=named_vectors,
-        default_embedder=embedder,
+        collection=collection,
+        location=location,
+        path=path,
+        vector_names=vector_names,
+        text_backend=text_backend,
+        text_model=text_model,
         image_query_backend=image_query_backend,
         image_query_model=image_query_model,
         device=device,
         hashing_dim=hashing_dim,
+        lexical_tokenizer=lexical_tokenizer,
+        ngram_min=ngram_min,
+        ngram_max=ngram_max,
+        ngram_cjk_only=ngram_cjk_only,
     )
-
-    chunks = read_jsonl(package_dir / "chunks.jsonl", DocumentChunk)
-    assets = read_jsonl(package_dir / "assets.jsonl", VisualAsset)
-    triples_path = package_dir / "triples.jsonl"
-    triples = read_jsonl(triples_path, GraphTriple) if triples_path.exists() else []
-    searcher = QdrantHybridSearcher(
-        store=store,
-        chunks=chunks,
-        assets=assets,
-        embedder=embedder,
-        vector_embedders=vector_embedders,
-        triples=triples,
-        tokenizer_config=build_tokenizer_config(
-            lexical_tokenizer,
-            ngram_min=ngram_min,
-            ngram_max=ngram_max,
-            ngram_cjk_only=ngram_cjk_only,
-        ),
-    )
-    hits = searcher.search(
+    hits = prepared["searcher"].search(
         query=query,
-        vector_names=selected_vectors,
+        vector_names=prepared["selected_vectors"],
         top_k=top_k,
         graph_expand=graph_expand,
         doc_id=doc_id or None,
@@ -374,18 +336,11 @@ def qdrant_hybrid_search(
     )
     print(
         {
-            "collection": collection_name,
-            "vector_names": selected_vectors,
-            "query_encoders": {
-                name: (
-                    "default_text"
-                    if vector_embedders.get(name, embedder) is embedder
-                    else image_query_backend
-                )
-                for name in selected_vectors
-            },
-            "upserted": upserted,
-            "stored_count": store.count(),
+            "collection": prepared["collection_name"],
+            "vector_names": prepared["selected_vectors"],
+            "query_encoders": prepared["query_encoders"],
+            "upserted": prepared["upserted"],
+            "stored_count": prepared["store"].count(),
             "hits": [
                 {
                     "rank": index + 1,
@@ -409,6 +364,89 @@ def qdrant_hybrid_search(
             ],
         }
     )
+
+
+@app.command(name="qdrant-rag-context")
+def qdrant_rag_context_command(
+    query: str,
+    package_dir: Path = Path("outputs/package"),
+    output: Path | None = None,
+    url: str = "http://localhost:6333",
+    collection: str = "",
+    location: str = "",
+    path: str = "",
+    vector_names: str = "text_dense,caption_dense",
+    top_k: int = 5,
+    graph_expand: bool = False,
+    collapse_hierarchical: bool = False,
+    max_chars_per_chunk: int = 1400,
+    include_evidence: bool = True,
+    include_assets: bool = True,
+    include_triples: bool = True,
+    text_backend: str = "hashing",
+    text_model: str = "BAAI/bge-m3",
+    image_query_backend: str = "none",
+    image_query_model: str = "openai/clip-vit-large-patch14",
+    device: str = "cuda",
+    hashing_dim: int = 384,
+    doc_id: str = "",
+    lexical_tokenizer: TokenizerStrategy = "mixed",
+    ngram_min: int = 2,
+    ngram_max: int = 4,
+    ngram_cjk_only: bool = True,
+):
+    """Build a citation-ready RAG context bundle from Qdrant hybrid search hits."""
+    prepared = prepare_qdrant_hybrid_search(
+        package_dir=package_dir,
+        url=url,
+        collection=collection,
+        location=location,
+        path=path,
+        vector_names=vector_names,
+        text_backend=text_backend,
+        text_model=text_model,
+        image_query_backend=image_query_backend,
+        image_query_model=image_query_model,
+        device=device,
+        hashing_dim=hashing_dim,
+        lexical_tokenizer=lexical_tokenizer,
+        ngram_min=ngram_min,
+        ngram_max=ngram_max,
+        ngram_cjk_only=ngram_cjk_only,
+    )
+    hits = prepared["searcher"].search(
+        query=query,
+        vector_names=prepared["selected_vectors"],
+        top_k=top_k,
+        graph_expand=graph_expand,
+        doc_id=doc_id or None,
+        collapse_hierarchical=collapse_hierarchical,
+    )
+    bundle = build_context_bundle(
+        query=query,
+        hits=hits,
+        assets=prepared["assets"],
+        triples=prepared["triples"],
+        max_chars_per_chunk=max_chars_per_chunk,
+        include_evidence=include_evidence,
+        include_assets=include_assets,
+        include_triples=include_triples,
+    )
+    bundle.metadata.update(
+        {
+            "collection": prepared["collection_name"],
+            "vector_names": prepared["selected_vectors"],
+            "query_encoders": prepared["query_encoders"],
+            "upserted": prepared["upserted"],
+            "stored_count": prepared["store"].count(),
+        }
+    )
+    if output is not None:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(bundle.model_dump_json(indent=2), encoding="utf-8")
+        print({"output": str(output), **bundle.metadata})
+        return
+    print(bundle.model_dump())
 
 
 @app.command(name="embed-package")
@@ -1405,6 +1443,108 @@ def build_qdrant_query_embedders(
 
         return {"image_dense": TransformersCLIPTextEmbedder(model_name=image_query_model, device=device)}
     raise typer.BadParameter("image query backend must be one of: none, same-as-text, hashing, clip")
+
+
+def prepare_qdrant_hybrid_search(
+    package_dir: Path,
+    url: str,
+    collection: str,
+    location: str,
+    path: str,
+    vector_names: str,
+    text_backend: str,
+    text_model: str,
+    image_query_backend: str,
+    image_query_model: str,
+    device: str,
+    hashing_dim: int,
+    lexical_tokenizer: TokenizerStrategy,
+    ngram_min: int,
+    ngram_max: int,
+    ngram_cjk_only: bool,
+):
+    from chunking_docs.retrieval.qdrant_hybrid import QdrantHybridSearcher
+    from chunking_docs.storage.qdrant_store import QdrantChunkStore
+
+    collection_config = json.loads((package_dir / "qdrant_collection.json").read_text(encoding="utf-8"))
+    collection_name = collection or collection_config["collection"]
+    named_vectors = {
+        name: int(config["size"])
+        for name, config in collection_config.get("named_vectors", {}).items()
+    }
+    selected_vectors = [item.strip() for item in vector_names.split(",") if item.strip()]
+    store = QdrantChunkStore(
+        url=url,
+        collection_name=collection_name,
+        location=location or None,
+        path=path or None,
+    )
+    store.ensure_collection(named_vectors)
+    upserted = upsert_package_records(store, package_dir)
+    embedder, _ = build_text_embedder(
+        backend=text_backend,
+        model_name=text_model,
+        device=device,
+        hashing_dim=hashing_dim,
+        vector_name=selected_vectors[0] if selected_vectors else "text_dense",
+    )
+    if embedder is None:
+        raise typer.BadParameter("text backend must not be none for Qdrant hybrid search")
+    vector_embedders = build_qdrant_query_embedders(
+        selected_vectors=selected_vectors,
+        vector_sizes=named_vectors,
+        default_embedder=embedder,
+        image_query_backend=image_query_backend,
+        image_query_model=image_query_model,
+        device=device,
+        hashing_dim=hashing_dim,
+    )
+    chunks = read_jsonl(package_dir / "chunks.jsonl", DocumentChunk)
+    assets = read_jsonl(package_dir / "assets.jsonl", VisualAsset)
+    triples_path = package_dir / "triples.jsonl"
+    triples = read_jsonl(triples_path, GraphTriple) if triples_path.exists() else []
+    searcher = QdrantHybridSearcher(
+        store=store,
+        chunks=chunks,
+        assets=assets,
+        embedder=embedder,
+        vector_embedders=vector_embedders,
+        triples=triples,
+        tokenizer_config=build_tokenizer_config(
+            lexical_tokenizer,
+            ngram_min=ngram_min,
+            ngram_max=ngram_max,
+            ngram_cjk_only=ngram_cjk_only,
+        ),
+    )
+    return {
+        "searcher": searcher,
+        "store": store,
+        "collection_name": collection_name,
+        "selected_vectors": selected_vectors,
+        "query_encoders": query_encoder_names(
+            selected_vectors,
+            vector_embedders=vector_embedders,
+            default_embedder=embedder,
+            image_query_backend=image_query_backend,
+        ),
+        "upserted": upserted,
+        "chunks": chunks,
+        "assets": assets,
+        "triples": triples,
+    }
+
+
+def query_encoder_names(
+    selected_vectors: list[str],
+    vector_embedders: dict,
+    default_embedder,
+    image_query_backend: str,
+) -> dict[str, str]:
+    return {
+        name: "default_text" if vector_embedders.get(name, default_embedder) is default_embedder else image_query_backend
+        for name in selected_vectors
+    }
 
 
 def normalize_backend(value: str) -> str:
