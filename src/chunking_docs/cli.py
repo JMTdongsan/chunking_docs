@@ -22,6 +22,7 @@ from chunking_docs.evaluation.ablation import (
     parse_qdrant_vector_ablation_modes,
     qdrant_vector_names_for_modes,
 )
+from chunking_docs.evaluation.casegen import generate_retrieval_case_skeleton
 from chunking_docs.evaluation.chunking_quality import evaluate_chunking_quality
 from chunking_docs.evaluation.compare import compare_chunking_reports
 from chunking_docs.evaluation.diagnostics import (
@@ -1959,6 +1960,48 @@ def eval_retrieval_command(
         )
         return
     print(evaluation.model_dump())
+
+
+@app.command(name="generate-retrieval-cases")
+def generate_retrieval_cases_command(
+    package_dir: Path = Path("outputs/package"),
+    output: Path | None = None,
+    page_limit: int = 20,
+    asset_limit: int = 20,
+    triple_limit: int = 20,
+    include_pages: bool = True,
+    include_assets: bool = True,
+    include_triples: bool = True,
+    include_todo: bool = False,
+    query_max_chars: int = 120,
+):
+    """Generate a retrieval benchmark JSONL skeleton from package chunks, assets, and triples."""
+    manifest = load_processing_package(package_dir)
+    cases = generate_retrieval_case_skeleton(
+        chunks=manifest.chunks,
+        assets=manifest.assets,
+        triples=manifest.triples,
+        page_limit=page_limit,
+        asset_limit=asset_limit,
+        triple_limit=triple_limit,
+        include_pages=include_pages,
+        include_assets=include_assets,
+        include_triples=include_triples,
+        include_todo=include_todo,
+        query_max_chars=query_max_chars,
+    )
+    output_path = output or package_dir / "retrieval_cases.skeleton.jsonl"
+    write_jsonl(output_path, cases)
+    print(
+        {
+            "output": str(output_path),
+            "case_count": len(cases),
+            "page_limit": page_limit,
+            "asset_limit": asset_limit,
+            "triple_limit": triple_limit,
+            "include_todo": include_todo,
+        }
+    )
 
 
 @app.command(name="eval-retrieval-ablation")

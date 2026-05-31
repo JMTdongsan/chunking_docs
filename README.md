@@ -356,6 +356,15 @@ Qdrant vector ablation modes include `text`, `caption`, `image`, `text_caption`,
 
 Hybrid retrieval commands accept repeatable `--fusion-weight source=weight` values. Sources can be exact names such as `qdrant:caption_dense` or families such as `qdrant`, `bm25`, `dense`, and `graph`. Use `--reranker lexical` for dependency-free overlap reranking, or `--reranker cross-encoder --reranker-model <model>` when the embeddings extra is installed.
 
+Generate a benchmark skeleton from existing package targets, then edit the queries for the document family:
+
+```bash
+chunking-docs generate-retrieval-cases \
+  --package-dir outputs/package \
+  --include-todo \
+  --output outputs/package/retrieval_cases.skeleton.jsonl
+```
+
 ```jsonl
 {"query":"policy corridor near river","expected_pages":[12],"graph_expand":true}
 {"query":"capital investment table","expected_chunk_ids":["chunk-id"]}

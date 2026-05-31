@@ -6,6 +6,7 @@ from .ablation import (
     parse_ablation_modes,
 )
 from .audit import AuditIssue, PackageAudit, audit_package, degraded_page_ratio
+from .casegen import generate_retrieval_case_skeleton
 from .diagnostics import (
     RetrievalDiagnosticRow,
     RetrievalDiagnosticsReport,
@@ -52,6 +53,7 @@ __all__ = [
     "evaluate_retrieval",
     "evaluate_retrieval_ablation",
     "evaluate_search_results",
+    "generate_retrieval_case_skeleton",
     "gate_retrieval_evaluation",
     "load_retrieval_evaluation",
     "load_retrieval_cases",
