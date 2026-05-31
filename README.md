@@ -415,7 +415,7 @@ chunking-docs ingestion-readiness \
   --output outputs/package/ingestion_readiness.json
 ```
 
-The report combines package audit results, required BM25 and embedding artifacts, Qdrant record checks, PostgreSQL row conversion, retrieval case audit, chunking comparison gates, selected Qdrant vector ablation gates, and optional visual or retrieval gates. Chunking, retrieval, and Qdrant vector gates can all enforce target-type coverage for page, chunk, visual asset, or graph triple expectations and source-family coverage for dense, lexical, graph, or visual evidence. When `--require-visual-quality` is used without `--visual-results`, readiness evaluates the final OCR/VLM annotations currently stored in `assets.jsonl`.
+The report combines package audit results, BM25 token manifest validation, required embedding artifacts, Qdrant record checks, PostgreSQL row conversion, retrieval case audit, chunking comparison gates, selected Qdrant vector ablation gates, and optional visual or retrieval gates. BM25 validation recomputes asset-enriched lexical text from chunks plus linked captions, OCR text, and VLM summaries, then checks that `bm25_tokens.json` is complete and current before ingestion. Chunking, retrieval, and Qdrant vector gates can all enforce target-type coverage for page, chunk, visual asset, or graph triple expectations and source-family coverage for dense, lexical, graph, or visual evidence. When `--require-visual-quality` is used without `--visual-results`, readiness evaluates the final OCR/VLM annotations currently stored in `assets.jsonl`.
 
 ## Evaluation
 

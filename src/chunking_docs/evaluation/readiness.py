@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from chunking_docs.evaluation.audit import PackageAudit, audit_package
 from chunking_docs.evaluation.ablation import (
@@ -19,6 +20,8 @@ from chunking_docs.evaluation.chunking_gate import (
 from chunking_docs.evaluation.compare import ChunkingComparison
 from chunking_docs.evaluation.gate import RetrievalGateReport, gate_retrieval_evaluation
 from chunking_docs.evaluation.retrieval import RetrievalCase, RetrievalEvaluation
+from chunking_docs.embeddings.bm25 import asset_text_parts, chunk_lexical_texts
+from chunking_docs.embeddings.tokenizers import LexicalTokenizer, LexicalTokenizerConfig
 from chunking_docs.models import ProcessingManifest
 from chunking_docs.storage.postgres_store import manifest_rows
 from chunking_docs.vision.jobs import VisualJobRunResult
@@ -98,7 +101,7 @@ def build_ingestion_readiness_report(
     ]
 
     if require_bm25:
-        components.append(required_artifact_component("bm25_tokens", artifact_presence, "bm25_tokens.json"))
+        components.append(bm25_tokens_component(package_dir, manifest))
     if require_embedding_manifest:
         components.append(
             required_artifact_component(
@@ -340,6 +343,173 @@ def required_artifact_component(
         message=f"Required package artifact exists: {filename}.",
         metadata={"file": filename},
     )
+
+
+def bm25_tokens_component(
+    package_dir: Path,
+    manifest: ProcessingManifest,
+) -> ReadinessComponent:
+    path = package_dir / "bm25_tokens.json"
+    if not path.exists():
+        return ReadinessComponent(
+            name="bm25_tokens",
+            passed=False,
+            message="Required package artifact exists and matches asset-enriched chunk text: bm25_tokens.json.",
+            metadata={"file": "bm25_tokens.json", "error": "missing_file"},
+        )
+
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        return ReadinessComponent(
+            name="bm25_tokens",
+            passed=False,
+            message="bm25_tokens.json is not valid JSON.",
+            metadata={"file": "bm25_tokens.json", "error": str(exc)},
+        )
+
+    tokenizer_payload = payload.get("tokenizer")
+    chunks_payload = payload.get("chunks")
+    if not isinstance(tokenizer_payload, dict) or not isinstance(chunks_payload, list):
+        return ReadinessComponent(
+            name="bm25_tokens",
+            passed=False,
+            message="bm25_tokens.json must contain tokenizer and chunks entries.",
+            metadata={
+                "file": "bm25_tokens.json",
+                "has_tokenizer": isinstance(tokenizer_payload, dict),
+                "has_chunks": isinstance(chunks_payload, list),
+            },
+        )
+
+    try:
+        tokenizer_config = LexicalTokenizerConfig.model_validate(tokenizer_payload)
+    except ValidationError as exc:
+        return ReadinessComponent(
+            name="bm25_tokens",
+            passed=False,
+            message="bm25_tokens.json tokenizer configuration is invalid.",
+            metadata={"file": "bm25_tokens.json", "errors": exc.errors()},
+        )
+
+    tokenizer = LexicalTokenizer(tokenizer_config)
+    expected_texts = chunk_lexical_texts(manifest.chunks, manifest.assets)
+    expected_chunk_ids = {chunk.chunk_id for chunk in manifest.chunks}
+    entry_by_chunk_id: dict[str, dict[str, Any]] = {}
+    duplicate_chunk_ids: list[str] = []
+    invalid_entry_count = 0
+
+    for entry in chunks_payload:
+        if not isinstance(entry, dict):
+            invalid_entry_count += 1
+            continue
+        chunk_id = entry.get("chunk_id")
+        if not isinstance(chunk_id, str) or not chunk_id:
+            invalid_entry_count += 1
+            continue
+        if chunk_id in entry_by_chunk_id:
+            duplicate_chunk_ids.append(chunk_id)
+        entry_by_chunk_id[chunk_id] = entry
+
+    observed_chunk_ids = set(entry_by_chunk_id)
+    missing_chunk_ids = sorted(expected_chunk_ids - observed_chunk_ids)
+    stale_chunk_ids = sorted(observed_chunk_ids - expected_chunk_ids)
+    token_mismatch_chunk_ids: list[str] = []
+    text_char_count_mismatch_chunk_ids: list[str] = []
+    invalid_token_chunk_ids: list[str] = []
+    invalid_text_char_count_chunk_ids: list[str] = []
+
+    for chunk, expected_text in zip(manifest.chunks, expected_texts):
+        entry = entry_by_chunk_id.get(chunk.chunk_id)
+        if entry is None:
+            continue
+        tokens = entry.get("tokens")
+        if not isinstance(tokens, list) or not all(isinstance(token, str) for token in tokens):
+            invalid_token_chunk_ids.append(chunk.chunk_id)
+        elif tokens != tokenizer.tokenize(expected_text):
+            token_mismatch_chunk_ids.append(chunk.chunk_id)
+
+        text_char_count = entry.get("text_char_count")
+        if not isinstance(text_char_count, int):
+            invalid_text_char_count_chunk_ids.append(chunk.chunk_id)
+        elif text_char_count != len(expected_text):
+            text_char_count_mismatch_chunk_ids.append(chunk.chunk_id)
+
+    linked_asset_text_chunk_ids = chunks_with_linked_asset_text(manifest)
+    inconsistent_chunk_ids = {
+        *missing_chunk_ids,
+        *token_mismatch_chunk_ids,
+        *text_char_count_mismatch_chunk_ids,
+        *invalid_token_chunk_ids,
+        *invalid_text_char_count_chunk_ids,
+    }
+    indexed_linked_asset_text_chunk_ids = sorted(
+        chunk_id for chunk_id in linked_asset_text_chunk_ids if chunk_id not in inconsistent_chunk_ids
+    )
+    missing_linked_asset_text_chunk_ids = sorted(
+        set(linked_asset_text_chunk_ids) - set(indexed_linked_asset_text_chunk_ids)
+    )
+
+    metadata = {
+        "file": "bm25_tokens.json",
+        "tokenizer": tokenizer_config.model_dump(),
+        "expected_chunk_count": len(manifest.chunks),
+        "manifest_chunk_count": len(chunks_payload),
+        "missing_chunk_count": len(missing_chunk_ids),
+        "stale_chunk_count": len(stale_chunk_ids),
+        "duplicate_chunk_count": len(duplicate_chunk_ids),
+        "invalid_entry_count": invalid_entry_count,
+        "token_mismatch_count": len(token_mismatch_chunk_ids),
+        "text_char_count_mismatch_count": len(text_char_count_mismatch_chunk_ids),
+        "invalid_token_chunk_count": len(invalid_token_chunk_ids),
+        "invalid_text_char_count_chunk_count": len(invalid_text_char_count_chunk_ids),
+        "chunks_with_linked_asset_text": len(linked_asset_text_chunk_ids),
+        "indexed_linked_asset_text_chunk_count": len(indexed_linked_asset_text_chunk_ids),
+        "missing_linked_asset_text_chunk_count": len(missing_linked_asset_text_chunk_ids),
+        "missing_chunk_ids": missing_chunk_ids[:50],
+        "stale_chunk_ids": stale_chunk_ids[:50],
+        "duplicate_chunk_ids": duplicate_chunk_ids[:50],
+        "token_mismatch_chunk_ids": token_mismatch_chunk_ids[:50],
+        "text_char_count_mismatch_chunk_ids": text_char_count_mismatch_chunk_ids[:50],
+        "invalid_token_chunk_ids": invalid_token_chunk_ids[:50],
+        "invalid_text_char_count_chunk_ids": invalid_text_char_count_chunk_ids[:50],
+        "missing_linked_asset_text_chunk_ids": missing_linked_asset_text_chunk_ids[:50],
+    }
+    passed = not any(
+        [
+            missing_chunk_ids,
+            stale_chunk_ids,
+            duplicate_chunk_ids,
+            invalid_entry_count,
+            token_mismatch_chunk_ids,
+            text_char_count_mismatch_chunk_ids,
+            invalid_token_chunk_ids,
+            invalid_text_char_count_chunk_ids,
+            missing_linked_asset_text_chunk_ids,
+        ]
+    )
+    return ReadinessComponent(
+        name="bm25_tokens",
+        passed=passed,
+        message=(
+            "BM25 token manifest covers every chunk and matches asset-enriched lexical text."
+            if passed
+            else "BM25 token manifest is missing, stale, or does not match asset-enriched chunk text."
+        ),
+        metadata=metadata,
+    )
+
+
+def chunks_with_linked_asset_text(manifest: ProcessingManifest) -> list[str]:
+    asset_by_id = {asset.asset_id: asset for asset in manifest.assets}
+    chunk_ids: list[str] = []
+    for chunk in manifest.chunks:
+        for asset_id in chunk.asset_ids:
+            asset = asset_by_id.get(asset_id)
+            if asset is not None and asset_text_parts(asset):
+                chunk_ids.append(chunk.chunk_id)
+                break
+    return chunk_ids
 
 
 def postgres_rows_component(

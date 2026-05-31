@@ -5,6 +5,7 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 from chunking_docs.cli import app
+from chunking_docs.embeddings.bm25 import BM25LexicalIndex, chunk_lexical_texts
 from chunking_docs.evaluation.ablation import (
     QdrantVectorAblationMode,
     QdrantVectorAblationReport,
@@ -13,7 +14,7 @@ from chunking_docs.evaluation.ablation import (
 from chunking_docs.evaluation.compare import ChunkingComparison, ChunkingComparisonRow
 from chunking_docs.evaluation.readiness import build_ingestion_readiness_report
 from chunking_docs.evaluation.retrieval import RetrievalCase, evaluate_search_results
-from chunking_docs.io import write_jsonl
+from chunking_docs.io import read_jsonl, write_jsonl
 from chunking_docs.models import (
     AssetKind,
     ChunkKind,
@@ -37,7 +38,24 @@ def test_ingestion_readiness_passes_ready_package(tmp_path):
     assert report.package_counts == {"pages": 1, "chunks": 1, "assets": 1, "triples": 0}
     assert report.artifact_presence["bm25_tokens.json"] is True
     assert report.postgres_row_counts["embedding_artifacts"] == 1
+    bm25_component = next(component for component in report.components if component.name == "bm25_tokens")
+    assert bm25_component.metadata["chunks_with_linked_asset_text"] == 1
+    assert bm25_component.metadata["indexed_linked_asset_text_chunk_count"] == 1
     assert report.failed_components == []
+
+
+def test_ingestion_readiness_detects_stale_bm25_visual_asset_text(tmp_path):
+    package_dir, manifest = write_ready_package(tmp_path)
+    stale_index = BM25LexicalIndex(manifest.chunks, texts=[chunk.text for chunk in manifest.chunks])
+    stale_index.dump_manifest(package_dir / "bm25_tokens.json")
+
+    report = build_ingestion_readiness_report(package_dir, manifest)
+
+    assert report.passed is False
+    assert "bm25_tokens" in report.failed_components
+    bm25_component = next(component for component in report.components if component.name == "bm25_tokens")
+    assert bm25_component.metadata["missing_linked_asset_text_chunk_count"] == 1
+    assert bm25_component.metadata["text_char_count_mismatch_count"] == 1
 
 
 def test_ingestion_readiness_includes_retrieval_cases_and_chunking_gate(tmp_path):
@@ -180,6 +198,7 @@ def test_ingestion_readiness_can_gate_visual_quality_from_assets(tmp_path):
             },
         }
     )
+    write_bm25_manifest(package_dir, manifest.chunks, manifest.assets)
 
     report = build_ingestion_readiness_report(
         package_dir,
@@ -266,6 +285,8 @@ def test_ingestion_readiness_cli_can_gate_visual_quality_from_assets(tmp_path):
         )
     ]
     write_jsonl(package_dir / "assets.jsonl", assets)
+    chunks = read_jsonl(package_dir / "chunks.jsonl", DocumentChunk)
+    write_bm25_manifest(package_dir, chunks, assets)
     output = tmp_path / "readiness.json"
 
     result = CliRunner().invoke(
@@ -448,7 +469,7 @@ def write_ready_package(tmp_path: Path):
     write_jsonl(package_dir / "chunks.jsonl", chunks)
     write_jsonl(package_dir / "assets.jsonl", assets)
     write_jsonl(package_dir / "triples.jsonl", [])
-    (package_dir / "bm25_tokens.json").write_text(json.dumps({"tokenizer": {"strategy": "mixed"}}), encoding="utf-8")
+    write_bm25_manifest(package_dir, chunks, assets)
     (package_dir / "qdrant_collection.json").write_text(
         json.dumps(
             {
@@ -509,6 +530,18 @@ def write_ready_package(tmp_path: Path):
         encoding="utf-8",
     )
     return package_dir, manifest
+
+
+def write_bm25_manifest(
+    package_dir: Path,
+    chunks: list[DocumentChunk],
+    assets: list[VisualAsset],
+) -> None:
+    bm25 = BM25LexicalIndex(
+        chunks,
+        texts=chunk_lexical_texts(chunks, assets),
+    )
+    bm25.dump_manifest(package_dir / "bm25_tokens.json")
 
 
 def chunking_comparison():
