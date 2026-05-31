@@ -16,6 +16,7 @@ class RetrievalDiagnosticRow(BaseModel):
     matched_targets: list[str] = Field(default_factory=list)
     missing_targets: list[str] = Field(default_factory=list)
     target_coverage_at_k: float = 0.0
+    target_ndcg_at_k: float = 0.0
     precision_at_k: float = 0.0
     matched_rank: int | None = None
     top_pages: list[int] = Field(default_factory=list)
@@ -29,6 +30,7 @@ class RetrievalDiagnosticsReport(BaseModel):
     partial_count: int
     no_hit_count: int
     low_precision_count: int
+    low_target_ndcg_count: int
     reason_counts: dict[str, int]
     missing_target_type_counts: dict[str, int]
     source_counts: dict[str, int]
@@ -38,6 +40,7 @@ class RetrievalDiagnosticsReport(BaseModel):
 def analyze_retrieval_evaluation(
     evaluation: RetrievalEvaluation,
     precision_floor: float = 0.2,
+    target_ndcg_floor: float = 0.7,
     include_passed: bool = False,
 ) -> RetrievalDiagnosticsReport:
     all_rows = []
@@ -50,7 +53,11 @@ def analyze_retrieval_evaluation(
         for source_list in result.top_sources:
             source_counter.update(source_list)
 
-        row = diagnostic_row(result, precision_floor=precision_floor)
+        row = diagnostic_row(
+            result,
+            precision_floor=precision_floor,
+            target_ndcg_floor=target_ndcg_floor,
+        )
         all_rows.append(row)
         if row.reasons or include_passed:
             rows.append(row)
@@ -67,6 +74,13 @@ def analyze_retrieval_evaluation(
             for result in evaluation.results
             if result.top_chunk_ids and result.precision_at_k < precision_floor
         ),
+        low_target_ndcg_count=sum(
+            1
+            for result in evaluation.results
+            if result.expected_target_count
+            and result.top_chunk_ids
+            and result.target_ndcg_at_k < target_ndcg_floor
+        ),
         reason_counts=dict(sorted(reason_counter.items())),
         missing_target_type_counts=dict(sorted(missing_type_counter.items())),
         source_counts=dict(sorted(source_counter.items())),
@@ -77,6 +91,7 @@ def analyze_retrieval_evaluation(
 def diagnostic_row(
     result: RetrievalCaseResult,
     precision_floor: float = 0.2,
+    target_ndcg_floor: float = 0.7,
 ) -> RetrievalDiagnosticRow:
     expected_targets = sorted_targets(expected_result_targets(result))
     matched_targets = sorted_targets(matched_result_targets(result))
@@ -86,6 +101,7 @@ def diagnostic_row(
         matched_targets,
         missing_targets,
         precision_floor=precision_floor,
+        target_ndcg_floor=target_ndcg_floor,
     )
     return RetrievalDiagnosticRow(
         query=result.query,
@@ -95,6 +111,7 @@ def diagnostic_row(
         matched_targets=matched_targets,
         missing_targets=missing_targets,
         target_coverage_at_k=result.target_coverage_at_k,
+        target_ndcg_at_k=result.target_ndcg_at_k,
         precision_at_k=result.precision_at_k,
         matched_rank=result.matched_rank,
         top_pages=result.top_pages,
@@ -108,6 +125,7 @@ def diagnostic_reasons(
     matched_targets: list[str],
     missing_targets: list[str],
     precision_floor: float = 0.2,
+    target_ndcg_floor: float = 0.7,
 ) -> list[str]:
     reasons = []
     if not result.top_chunk_ids:
@@ -118,6 +136,12 @@ def diagnostic_reasons(
         reasons.append("partial_target_coverage")
     if result.top_chunk_ids and result.precision_at_k < precision_floor:
         reasons.append("low_precision_at_k")
+    if (
+        result.expected_target_count
+        and result.top_chunk_ids
+        and result.target_ndcg_at_k < target_ndcg_floor
+    ):
+        reasons.append("low_target_ndcg_at_k")
     for target in missing_targets:
         reason = f"missing_{target_type(target)}"
         if reason not in reasons:

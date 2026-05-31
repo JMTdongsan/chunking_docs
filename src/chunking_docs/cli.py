@@ -677,6 +677,7 @@ def eval_qdrant_retrieval_command(
                 "recall_at_k": evaluation.recall_at_k,
                 "mrr": evaluation.mrr,
                 "target_coverage_at_k": evaluation.target_coverage_at_k,
+                "mean_target_ndcg_at_k": evaluation.mean_target_ndcg_at_k,
                 "mean_precision_at_k": evaluation.mean_precision_at_k,
                 "mean_latency_ms": evaluation.mean_latency_ms,
                 "p95_latency_ms": evaluation.p95_latency_ms,
@@ -803,6 +804,7 @@ def eval_qdrant_vector_ablation_command(
                 "output": str(output),
                 "best_by_recall": report.best_by_recall,
                 "best_by_target_coverage": report.best_by_target_coverage,
+                "best_by_target_ndcg": report.best_by_target_ndcg,
                 "best_by_mrr": report.best_by_mrr,
                 "fastest_by_mean_latency": report.fastest_by_mean_latency,
                 "rows": [
@@ -814,6 +816,7 @@ def eval_qdrant_vector_ablation_command(
                         "mrr": row.evaluation.mrr,
                         "hit_rate": row.evaluation.hit_rate,
                         "target_coverage_at_k": row.evaluation.target_coverage_at_k,
+                        "mean_target_ndcg_at_k": row.evaluation.mean_target_ndcg_at_k,
                         "mean_precision_at_k": row.evaluation.mean_precision_at_k,
                         "repeat": row.evaluation.repeat,
                         "mean_latency_ms": row.evaluation.mean_latency_ms,
@@ -1681,6 +1684,7 @@ def eval_retrieval_command(
                 "recall_at_k": evaluation.recall_at_k,
                 "mrr": evaluation.mrr,
                 "target_coverage_at_k": evaluation.target_coverage_at_k,
+                "mean_target_ndcg_at_k": evaluation.mean_target_ndcg_at_k,
                 "mean_precision_at_k": evaluation.mean_precision_at_k,
                 "mean_latency_ms": evaluation.mean_latency_ms,
                 "p95_latency_ms": evaluation.p95_latency_ms,
@@ -1744,6 +1748,7 @@ def eval_retrieval_ablation_command(
             "output": str(output),
             "best_by_recall": report.best_by_recall,
             "best_by_target_coverage": report.best_by_target_coverage,
+            "best_by_target_ndcg": report.best_by_target_ndcg,
             "best_by_mrr": report.best_by_mrr,
             "fastest_by_mean_latency": report.fastest_by_mean_latency,
             "rows": [
@@ -1753,6 +1758,7 @@ def eval_retrieval_ablation_command(
                     "mrr": row.evaluation.mrr,
                     "hit_rate": row.evaluation.hit_rate,
                     "target_coverage_at_k": row.evaluation.target_coverage_at_k,
+                    "mean_target_ndcg_at_k": row.evaluation.mean_target_ndcg_at_k,
                     "mean_precision_at_k": row.evaluation.mean_precision_at_k,
                     "repeat": row.evaluation.repeat,
                     "mean_latency_ms": row.evaluation.mean_latency_ms,
@@ -1771,15 +1777,19 @@ def diagnose_retrieval_command(
     evaluation: Path,
     output: Path | None = None,
     precision_floor: float = 0.2,
+    target_ndcg_floor: float = 0.7,
     include_passed: bool = False,
 ):
     """Analyze retrieval evaluation failures and partial target coverage."""
     if precision_floor < 0.0 or precision_floor > 1.0:
         raise typer.BadParameter("--precision-floor must be between 0.0 and 1.0")
+    if target_ndcg_floor < 0.0 or target_ndcg_floor > 1.0:
+        raise typer.BadParameter("--target-ndcg-floor must be between 0.0 and 1.0")
     parsed_evaluation = load_retrieval_evaluation(evaluation)
     report = analyze_retrieval_evaluation(
         parsed_evaluation,
         precision_floor=precision_floor,
+        target_ndcg_floor=target_ndcg_floor,
         include_passed=include_passed,
     )
     payload = report.model_dump()
@@ -1793,6 +1803,7 @@ def diagnose_retrieval_command(
             "partial_count": report.partial_count,
             "no_hit_count": report.no_hit_count,
             "low_precision_count": report.low_precision_count,
+            "low_target_ndcg_count": report.low_target_ndcg_count,
             "reason_counts": report.reason_counts,
             "missing_target_type_counts": report.missing_target_type_counts,
         }
@@ -1990,6 +2001,9 @@ def sweep_chunking_command(
                     if candidate.report.retrieval
                     else None,
                     "target_coverage_at_k": candidate.report.retrieval.target_coverage_at_k
+                    if candidate.report.retrieval
+                    else None,
+                    "mean_target_ndcg_at_k": candidate.report.retrieval.mean_target_ndcg_at_k
                     if candidate.report.retrieval
                     else None,
                     "mrr": candidate.report.retrieval.mrr if candidate.report.retrieval else None,

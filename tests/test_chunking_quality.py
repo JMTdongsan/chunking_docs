@@ -98,3 +98,4 @@ def test_evaluate_chunking_quality_flags_size_and_retrieval_issues():
     codes = {issue.code for issue in report.issues}
     assert "chunk_size_distribution" in codes
     assert "retrieval_hit_rate" in codes
+    assert "retrieval_target_ranking" in codes

@@ -102,7 +102,7 @@ def evaluate_chunking_quality(
         size_ratio=1.0 - ratio(empty_count + under_min + over_max, len(chunks)),
         section_coverage_ratio=section_coverage,
         visual_asset_linkage_ratio=visual_linkage,
-        retrieval_hit_rate=retrieval.recall_at_k if retrieval else None,
+        retrieval_score=retrieval_quality_score(retrieval) if retrieval else None,
     )
 
     return ChunkingQualityReport(
@@ -195,6 +195,7 @@ def quality_issues(
                     "recall_at_k": retrieval.recall_at_k,
                     "mrr": retrieval.mrr,
                     "target_coverage_at_k": retrieval.target_coverage_at_k,
+                    "mean_target_ndcg_at_k": retrieval.mean_target_ndcg_at_k,
                     "mean_precision_at_k": retrieval.mean_precision_at_k,
                     "expected_case_count": retrieval.expected_case_count,
                     "failed_queries": retrieval.failed_queries[:10],
@@ -210,6 +211,21 @@ def quality_issues(
                 metadata={
                     "target_coverage_at_k": retrieval.target_coverage_at_k,
                     "recall_at_k": retrieval.recall_at_k,
+                    "mean_target_ndcg_at_k": retrieval.mean_target_ndcg_at_k,
+                    "mean_precision_at_k": retrieval.mean_precision_at_k,
+                },
+            )
+        )
+    if retrieval is not None and retrieval.expected_case_count and retrieval.mean_target_ndcg_at_k < 0.7:
+        issues.append(
+            QualityIssue(
+                severity="warning",
+                code="retrieval_target_ranking",
+                message="Expected retrieval targets are not ranked highly enough.",
+                metadata={
+                    "mean_target_ndcg_at_k": retrieval.mean_target_ndcg_at_k,
+                    "target_coverage_at_k": retrieval.target_coverage_at_k,
+                    "recall_at_k": retrieval.recall_at_k,
                     "mean_precision_at_k": retrieval.mean_precision_at_k,
                 },
             )
@@ -222,7 +238,7 @@ def compute_quality_score(
     size_ratio: float,
     section_coverage_ratio: float,
     visual_asset_linkage_ratio: float,
-    retrieval_hit_rate: float | None,
+    retrieval_score: float | None,
 ) -> float:
     components = [
         (page_coverage_ratio, 0.30),
@@ -230,10 +246,19 @@ def compute_quality_score(
         (section_coverage_ratio, 0.15),
         (visual_asset_linkage_ratio, 0.15),
     ]
-    if retrieval_hit_rate is not None:
-        components.append((retrieval_hit_rate, 0.30))
+    if retrieval_score is not None:
+        components.append((retrieval_score, 0.30))
     total_weight = sum(weight for _, weight in components)
     return sum(value * weight for value, weight in components) / total_weight if total_weight else 0.0
+
+
+def retrieval_quality_score(retrieval: RetrievalEvaluation) -> float:
+    return (
+        retrieval.recall_at_k * 0.35
+        + retrieval.target_coverage_at_k * 0.25
+        + retrieval.mean_target_ndcg_at_k * 0.25
+        + retrieval.mean_precision_at_k * 0.15
+    )
 
 
 def ratio(numerator: int, denominator: int) -> float:

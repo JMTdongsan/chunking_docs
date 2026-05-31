@@ -52,10 +52,13 @@ def test_analyze_retrieval_evaluation_reports_failure_reasons():
     assert report.partial_count == 1
     assert report.no_hit_count == 1
     assert report.low_precision_count == 1
+    assert report.low_target_ndcg_count == 1
     assert report.reason_counts["partial_target_coverage"] == 1
+    assert report.reason_counts["low_target_ndcg_at_k"] == 1
     assert report.reason_counts["no_hits"] == 1
     assert report.reason_counts["missing_page"] == 2
     assert rows["partial"].missing_targets == ["page:2"]
+    assert rows["partial"].target_ndcg_at_k == 0.5
     assert rows["partial"].precision_at_k == 0.25
     assert rows["empty"].reasons == ["no_hits", "no_expected_target_retrieved", "missing_page"]
 
@@ -83,4 +86,5 @@ def test_diagnose_retrieval_cli_writes_report(tmp_path):
     assert result.exit_code == 0, result.output
     payload = json.loads(output_path.read_text(encoding="utf-8"))
     assert payload["no_hit_count"] == 1
+    assert payload["low_target_ndcg_count"] == 0
     assert payload["rows"][0]["query"] == "empty"

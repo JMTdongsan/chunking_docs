@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from collections.abc import Callable
 from pathlib import Path
 from time import perf_counter
@@ -44,6 +45,7 @@ class RetrievalCaseResult(BaseModel):
     expected_target_count: int = 0
     matched_target_count: int = 0
     target_coverage_at_k: float = 0.0
+    target_ndcg_at_k: float = 0.0
     relevant_hit_count: int = 0
     precision_at_k: float = 0.0
     matched_rank: int | None = None
@@ -54,6 +56,7 @@ class RetrievalCaseResult(BaseModel):
     reciprocal_rank: float = 0.0
     target_matches: dict[str, bool] = Field(default_factory=dict)
     target_matched_ranks: dict[str, int] = Field(default_factory=dict)
+    target_key_matched_ranks: dict[str, int] = Field(default_factory=dict)
     target_reciprocal_ranks: dict[str, float] = Field(default_factory=dict)
 
 
@@ -65,6 +68,7 @@ class RetrievalTargetMetric(BaseModel):
     target_count: int = 0
     matched_target_count: int = 0
     coverage_at_k: float = 0.0
+    ndcg_at_k: float = 0.0
     failed_queries: list[str] = Field(default_factory=list)
 
 
@@ -78,6 +82,7 @@ class RetrievalEvaluation(BaseModel):
     recall_at_k: float
     mrr: float
     target_coverage_at_k: float = 0.0
+    mean_target_ndcg_at_k: float = 0.0
     mean_precision_at_k: float = 0.0
     top_k: int
     repeat: int = 1
@@ -191,6 +196,7 @@ def evaluate_search_results(
             seen_targets.update(matched_targets)
             top_matched_targets.append(sorted_target_keys(matched_targets))
         matched_target_count = len(seen_targets)
+        target_key_matched_ranks = matched_target_key_ranks(top_matched_targets)
         expected_any = bool(
             case.expected_pages
             or case.expected_chunk_ids
@@ -233,6 +239,7 @@ def evaluate_search_results(
                 target_coverage_at_k=matched_target_count / len(expected_targets)
                 if expected_targets
                 else 0.0,
+                target_ndcg_at_k=target_ndcg_score(expected_targets, target_key_matched_ranks),
                 relevant_hit_count=relevant_hit_count,
                 precision_at_k=relevant_hit_count / top_k if top_k > 0 else 0.0,
                 matched_rank=matched_rank,
@@ -245,6 +252,7 @@ def evaluate_search_results(
                     target: target_match is not None for target, target_match in target_hits.items()
                 },
                 target_matched_ranks=target_matched_ranks,
+                target_key_matched_ranks=target_key_matched_ranks,
                 target_reciprocal_ranks={
                     target: 1.0 / rank for target, rank in target_matched_ranks.items()
                 },
@@ -270,6 +278,10 @@ def evaluate_search_results(
         target_coverage_at_k=sum(result.matched_target_count for result in expected_results)
         / sum(result.expected_target_count for result in expected_results)
         if sum(result.expected_target_count for result in expected_results)
+        else 0.0,
+        mean_target_ndcg_at_k=sum(result.target_ndcg_at_k for result in expected_results)
+        / len(expected_results)
+        if expected_results
         else 0.0,
         mean_precision_at_k=sum(result.precision_at_k for result in expected_results)
         / len(expected_results)
@@ -536,6 +548,8 @@ def target_metrics(results: list[RetrievalCaseResult]) -> dict[str, RetrievalTar
             target_count=target_count,
             matched_target_count=matched_target_count,
             coverage_at_k=matched_target_count / target_count if target_count else 0.0,
+            ndcg_at_k=sum(result_target_ndcg_score(result, target) for result in target_results)
+            / len(target_results),
             failed_queries=[
                 result.query for result in target_results if not result.target_matches.get(target)
             ],
@@ -563,6 +577,39 @@ def matched_result_target_keys(result: RetrievalCaseResult, target: str) -> set[
         for target_key in matched_targets
         if target_key.startswith(prefix)
     }
+
+
+def result_target_ndcg_score(result: RetrievalCaseResult, target: str) -> float:
+    expected_keys = expected_result_target_keys(result, target)
+    if not expected_keys:
+        return 0.0
+    prefix = f"{target}:"
+    ranks = {
+        target_key: rank
+        for target_key, rank in result.target_key_matched_ranks.items()
+        if target_key.startswith(prefix)
+    }
+    return target_ndcg_score(expected_keys, ranks)
+
+
+def matched_target_key_ranks(top_matched_targets: list[list[str]]) -> dict[str, int]:
+    ranks: dict[str, int] = {}
+    for index, matched_targets in enumerate(top_matched_targets):
+        rank = index + 1
+        for target in matched_targets:
+            ranks.setdefault(target, rank)
+    return ranks
+
+
+def target_ndcg_score(expected_targets: set[str], matched_ranks: dict[str, int]) -> float:
+    if not expected_targets:
+        return 0.0
+    discounted_gain = sum(
+        1.0 / math.log2(matched_ranks[target] + 1)
+        for target in expected_targets
+        if target in matched_ranks
+    )
+    return discounted_gain / len(expected_targets)
 
 
 def elapsed_ms(start: float) -> float:

@@ -13,6 +13,7 @@ class ChunkingComparisonRow(BaseModel):
     retrieval_recall_at_k: float | None
     retrieval_mrr: float | None
     retrieval_target_coverage_at_k: float | None
+    retrieval_mean_target_ndcg_at_k: float | None
     retrieval_mean_precision_at_k: float | None
     retrieval_mean_latency_ms: float | None
     retrieval_p95_latency_ms: float | None
@@ -45,6 +46,9 @@ def compare_chunking_reports(
             retrieval_target_coverage_at_k=report.retrieval.target_coverage_at_k
             if report.retrieval
             else None,
+            retrieval_mean_target_ndcg_at_k=report.retrieval.mean_target_ndcg_at_k
+            if report.retrieval
+            else None,
             retrieval_mean_precision_at_k=report.retrieval.mean_precision_at_k
             if report.retrieval
             else None,
@@ -65,6 +69,9 @@ def compare_chunking_reports(
             row.retrieval_target_coverage_at_k
             if row.retrieval_target_coverage_at_k is not None
             else -1.0,
+            row.retrieval_mean_target_ndcg_at_k
+            if row.retrieval_mean_target_ndcg_at_k is not None
+            else -1.0,
             row.retrieval_mrr if row.retrieval_mrr is not None else -1.0,
             row.quality_score,
         ),
@@ -78,6 +85,7 @@ def compare_chunking_reports(
             key=lambda row: (
                 row.retrieval_recall_at_k or 0.0,
                 row.retrieval_target_coverage_at_k or 0.0,
+                row.retrieval_mean_target_ndcg_at_k or 0.0,
                 row.retrieval_mrr or 0.0,
             ),
         ).name

@@ -1,5 +1,7 @@
 import json
+import math
 
+import pytest
 from typer.testing import CliRunner
 
 import chunking_docs.cli as cli_module
@@ -163,14 +165,18 @@ def test_evaluate_retrieval_hit_rate():
     assert result.hit_rate == 1.0
     assert result.recall_at_k == 1.0
     assert result.mrr == 1.0
+    assert result.mean_target_ndcg_at_k == 1.0
     assert result.repeat == 2
     assert result.mean_latency_ms >= 0.0
     assert result.p95_latency_ms >= 0.0
     assert result.target_metrics["page"].recall_at_k == 1.0
     assert result.target_metrics["page"].mrr == 1.0
+    assert result.target_metrics["page"].ndcg_at_k == 1.0
     assert result.results[0].passed
     assert result.results[0].target_matches == {"page": True}
     assert result.results[0].target_matched_ranks == {"page": 1}
+    assert result.results[0].target_key_matched_ranks == {"page:12": 1}
+    assert result.results[0].target_ndcg_at_k == 1.0
     assert len(result.results[0].latency_samples_ms) == 2
     assert result.results[0].matched_rank == 1
     assert result.results[0].matched_page == 12
@@ -247,16 +253,28 @@ def test_evaluate_search_results_reports_target_coverage_and_precision():
     assert case_result.expected_target_count == 4
     assert case_result.matched_target_count == 3
     assert case_result.target_coverage_at_k == 0.75
+    assert case_result.target_ndcg_at_k == pytest.approx((2 + 1 / math.log2(3)) / 4)
     assert case_result.relevant_hit_count == 2
     assert case_result.precision_at_k == 2 / 3
     assert case_result.top_matched_targets == [["page:1", "asset:asset-a"], ["page:2"]]
+    assert case_result.target_key_matched_ranks == {
+        "page:1": 1,
+        "asset:asset-a": 1,
+        "page:2": 2,
+    }
     assert result.target_coverage_at_k == 0.75
+    assert result.mean_target_ndcg_at_k == case_result.target_ndcg_at_k
     assert result.mean_precision_at_k == 2 / 3
     assert result.target_metrics["page"].target_count == 2
     assert result.target_metrics["page"].matched_target_count == 2
     assert result.target_metrics["page"].coverage_at_k == 1.0
+    assert result.target_metrics["page"].ndcg_at_k == pytest.approx(
+        (1 + 1 / math.log2(3)) / 2
+    )
     assert result.target_metrics["chunk"].coverage_at_k == 0.0
+    assert result.target_metrics["chunk"].ndcg_at_k == 0.0
     assert result.target_metrics["asset"].coverage_at_k == 1.0
+    assert result.target_metrics["asset"].ndcg_at_k == 1.0
 
 
 def test_evaluate_retrieval_reports_ranked_failures():
@@ -480,6 +498,7 @@ def test_eval_retrieval_cli_writes_latency_report(tmp_path):
     assert result.exit_code == 0, result.output
     payload = json.loads(output.read_text(encoding="utf-8"))
     assert payload["repeat"] == 2
+    assert payload["mean_target_ndcg_at_k"] == 1.0
     assert payload["mean_latency_ms"] >= 0.0
     assert len(payload["results"][0]["latency_samples_ms"]) == 2
 
@@ -626,6 +645,7 @@ def test_eval_qdrant_vector_ablation_cli_writes_report(monkeypatch, tmp_path):
     rows = {row["mode"]["name"]: row for row in payload["rows"]}
     assert payload["best_by_recall"] == "caption"
     assert payload["best_by_target_coverage"] == "caption"
+    assert payload["best_by_target_ndcg"] == "caption"
     assert rows["text"]["evaluation"]["recall_at_k"] == 0.0
     assert rows["caption"]["evaluation"]["recall_at_k"] == 1.0
     assert rows["caption"]["evaluation"]["target_coverage_at_k"] == 1.0
@@ -670,5 +690,6 @@ def test_eval_retrieval_ablation_cli_writes_report(tmp_path):
     payload = json.loads(output.read_text(encoding="utf-8"))
     assert payload["best_by_recall"] in {"bm25", "hybrid"}
     assert payload["best_by_target_coverage"] in {"bm25", "hybrid"}
+    assert payload["best_by_target_ndcg"] in {"bm25", "hybrid"}
     assert payload["fastest_by_mean_latency"] in {"bm25", "hybrid"}
     assert {row["mode"]["name"] for row in payload["rows"]} == {"bm25", "hybrid"}

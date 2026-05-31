@@ -24,6 +24,7 @@ class RetrievalAblationReport(BaseModel):
     rows: list[RetrievalAblationRow]
     best_by_recall: str | None
     best_by_target_coverage: str | None
+    best_by_target_ndcg: str | None
     best_by_mrr: str | None
     fastest_by_mean_latency: str | None
 
@@ -43,6 +44,7 @@ class QdrantVectorAblationReport(BaseModel):
     rows: list[QdrantVectorAblationRow]
     best_by_recall: str | None
     best_by_target_coverage: str | None
+    best_by_target_ndcg: str | None
     best_by_mrr: str | None
     fastest_by_mean_latency: str | None
 
@@ -135,6 +137,7 @@ def evaluate_retrieval_ablation(
         key=lambda row: (
             row.evaluation.recall_at_k,
             row.evaluation.target_coverage_at_k,
+            row.evaluation.mean_target_ndcg_at_k,
             row.evaluation.mrr,
             row.evaluation.hit_rate,
         ),
@@ -146,6 +149,12 @@ def evaluate_retrieval_ablation(
         best_by_target_coverage=max(
             rows,
             key=lambda row: (row.evaluation.target_coverage_at_k, row.evaluation.recall_at_k),
+        ).mode.name
+        if rows
+        else None,
+        best_by_target_ndcg=max(
+            rows,
+            key=lambda row: (row.evaluation.mean_target_ndcg_at_k, row.evaluation.recall_at_k),
         ).mode.name
         if rows
         else None,
@@ -195,6 +204,7 @@ def build_qdrant_vector_ablation_report(
         key=lambda row: (
             row.evaluation.recall_at_k,
             row.evaluation.target_coverage_at_k,
+            row.evaluation.mean_target_ndcg_at_k,
             row.evaluation.mrr,
             row.evaluation.hit_rate,
         ),
@@ -206,6 +216,12 @@ def build_qdrant_vector_ablation_report(
         best_by_target_coverage=max(
             rows,
             key=lambda row: (row.evaluation.target_coverage_at_k, row.evaluation.recall_at_k),
+        ).mode.name
+        if rows
+        else None,
+        best_by_target_ndcg=max(
+            rows,
+            key=lambda row: (row.evaluation.mean_target_ndcg_at_k, row.evaluation.recall_at_k),
         ).mode.name
         if rows
         else None,
