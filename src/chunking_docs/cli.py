@@ -19,6 +19,7 @@ from chunking_docs.pipeline import (
     build_processing_package,
     load_processing_package,
     rebuild_search_artifacts,
+    write_embedding_artifacts,
     write_split_chunks,
 )
 from chunking_docs.retrieval.local_hybrid import LocalHybridSearcher
@@ -164,6 +165,85 @@ def qdrant_upsert_package(
             "upserted": total,
             "stored_count": store.count(),
             "named_vectors": sorted(named_vectors),
+        }
+    )
+
+
+@app.command(name="embed-package")
+def embed_package_command(
+    package_dir: Path = Path("outputs/package"),
+    collection: str = "planning_chunks",
+    text_backend: str = "sentence-transformers",
+    caption_backend: str = "same-as-text",
+    image_backend: str = "clip",
+    text_model: str = "BAAI/bge-m3",
+    caption_model: str = "",
+    image_model: str = "openai/clip-vit-large-patch14",
+    device: str = "cuda",
+    text_device: str = "",
+    image_device: str = "",
+    hashing_dim: int = 384,
+    text_batch_size: int = 16,
+    caption_batch_size: int = 16,
+    image_batch_size: int = 8,
+):
+    """Rebuild Qdrant records with concrete dense/image embedding models."""
+    chunks = read_jsonl(package_dir / "chunks.jsonl", DocumentChunk)
+    assets = read_jsonl(package_dir / "assets.jsonl", VisualAsset)
+
+    text_embedder, text_note = build_text_embedder(
+        backend=text_backend,
+        model_name=text_model,
+        device=text_device or device,
+        hashing_dim=hashing_dim,
+        vector_name="text_dense",
+    )
+    caption_embedder, caption_note = build_caption_embedder(
+        backend=caption_backend,
+        model_name=caption_model or text_model,
+        device=text_device or device,
+        hashing_dim=hashing_dim,
+        text_embedder=text_embedder,
+        text_note=text_note,
+    )
+    image_embedder, image_note = build_image_embedder(
+        backend=image_backend,
+        model_name=image_model,
+        device=image_device or device,
+        hashing_dim=hashing_dim,
+    )
+
+    if text_embedder is None and caption_embedder is None and image_embedder is None:
+        raise typer.BadParameter("At least one backend must be enabled")
+
+    notes = {}
+    if text_note:
+        notes["text_dense"] = text_note
+    if caption_note:
+        notes["caption_dense"] = caption_note
+    if image_note:
+        notes["image_dense"] = image_note
+
+    result = write_embedding_artifacts(
+        output_dir=package_dir,
+        chunks=chunks,
+        assets=assets,
+        text_embedder=text_embedder,
+        caption_embedder=caption_embedder,
+        image_embedder=image_embedder,
+        collection=collection,
+        text_batch_size=text_batch_size,
+        caption_batch_size=caption_batch_size,
+        image_batch_size=image_batch_size,
+        vector_notes=notes,
+    )
+    print(
+        {
+            **result,
+            "package_dir": str(package_dir),
+            "text_backend": text_backend,
+            "caption_backend": caption_backend,
+            "image_backend": image_backend,
         }
     )
 
@@ -442,3 +522,84 @@ def eval_retrieval_command(
 
 def print_json(payload: dict):
     print(json.dumps(payload, ensure_ascii=False, indent=2))
+
+
+def build_text_embedder(
+    backend: str,
+    model_name: str,
+    device: str,
+    hashing_dim: int,
+    vector_name: str,
+):
+    normalized = normalize_backend(backend)
+    if normalized == "none":
+        return None, ""
+    if normalized == "hashing":
+        from chunking_docs.embeddings.interfaces import HashingTextEmbedder
+
+        return (
+            HashingTextEmbedder(embedding_dim=hashing_dim),
+            f"HashingTextEmbedder deterministic fallback for {vector_name}.",
+        )
+    if normalized in {"sentence-transformers", "sentence_transformers", "st"}:
+        from chunking_docs.embeddings.sentence_transformers import SentenceTransformerTextEmbedder
+
+        return (
+            SentenceTransformerTextEmbedder(model_name=model_name, device=device or None),
+            f"SentenceTransformerTextEmbedder model={model_name} device={device or 'auto'}.",
+        )
+    raise typer.BadParameter(
+        "text backend must be one of: none, hashing, sentence-transformers"
+    )
+
+
+def build_caption_embedder(
+    backend: str,
+    model_name: str,
+    device: str,
+    hashing_dim: int,
+    text_embedder,
+    text_note: str,
+):
+    normalized = normalize_backend(backend)
+    if normalized in {"same-as-text", "same_as_text", "same"}:
+        if text_embedder is None:
+            raise typer.BadParameter("--caption-backend same-as-text requires text backend")
+        return text_embedder, f"Same model as text_dense. {text_note}"
+    return build_text_embedder(
+        backend=backend,
+        model_name=model_name,
+        device=device,
+        hashing_dim=hashing_dim,
+        vector_name="caption_dense",
+    )
+
+
+def build_image_embedder(
+    backend: str,
+    model_name: str,
+    device: str,
+    hashing_dim: int,
+):
+    normalized = normalize_backend(backend)
+    if normalized == "none":
+        return None, ""
+    if normalized == "hashing":
+        from chunking_docs.embeddings.interfaces import HashingImageEmbedder
+
+        return (
+            HashingImageEmbedder(embedding_dim=hashing_dim),
+            "HashingImageEmbedder deterministic fallback for image_dense.",
+        )
+    if normalized in {"clip", "transformers"}:
+        from chunking_docs.embeddings.clip import TransformersImageEmbedder
+
+        return (
+            TransformersImageEmbedder(model_name=model_name, device=device),
+            f"TransformersImageEmbedder model={model_name} device={device}.",
+        )
+    raise typer.BadParameter("image backend must be one of: none, hashing, clip")
+
+
+def normalize_backend(value: str) -> str:
+    return value.strip().lower()

@@ -78,6 +78,21 @@ chunking-docs annotate-assets \
 
 `--in-place`와 기본 `--rebuild-search`를 함께 쓰면 OCR/VLM 결과가 `chunks.jsonl`, `bm25_tokens.json`, `qdrant_text_records.jsonl`에 반영된다.
 
+실제 dense/image 모델로 Qdrant 레코드를 다시 만들 때:
+
+```bash
+chunking-docs embed-package \
+  --package-dir outputs/package \
+  --text-backend sentence-transformers \
+  --text-model BAAI/bge-m3 \
+  --caption-backend same-as-text \
+  --image-backend clip \
+  --image-model openai/clip-vit-large-patch14 \
+  --device cuda
+```
+
+이 명령은 `qdrant_*_records.jsonl`와 `qdrant_collection.json`을 실제 모델 차원에 맞춰 재생성한다. 모델 다운로드 없이 경로만 검증하려면 `--text-backend hashing --caption-backend same-as-text --image-backend hashing`을 사용할 수 있다.
+
 외부 VLM 또는 사람이 검수한 주석을 JSONL로 반영할 수도 있다.
 
 ```bash
@@ -122,8 +137,3 @@ chunking-docs postgres-upsert "postgresql://user:password@localhost:5432/chunkin
 
 - [문서 관찰 메모](docs/seoul_plan_observations.md)
 - [아키텍처](docs/architecture.md)
-
-## 저장소 상태
-
-`JMTdongsan/chunking_docs` 원격 저장소가 아직 존재하지 않거나 현재 환경에서 생성 권한을 확인할 수 없다.
-이 디렉터리는 독립 로컬 Git 저장소로 초기화해 사용할 수 있다.
