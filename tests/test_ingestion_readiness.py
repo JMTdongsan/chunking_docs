@@ -1,3 +1,4 @@
+import hashlib
 import json
 from pathlib import Path
 
@@ -200,6 +201,7 @@ def write_ready_package(tmp_path: Path):
             )
         ],
     )
+    record_content = (package_dir / "qdrant_text_records.jsonl").read_bytes()
     (package_dir / "embedding_manifest.json").write_text(
         json.dumps(
             {
@@ -211,8 +213,8 @@ def write_ready_package(tmp_path: Path):
                         "dimension": 2,
                         "distance": "Cosine",
                         "exists": True,
-                        "bytes": 1,
-                        "sha256": "a" * 64,
+                        "bytes": len(record_content),
+                        "sha256": hashlib.sha256(record_content).hexdigest(),
                     }
                 },
                 "payload_indexes": [{"field": "doc_id", "schema": "keyword"}],

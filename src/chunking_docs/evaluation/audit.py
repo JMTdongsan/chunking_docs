@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from collections import Counter
 from pathlib import Path
@@ -32,6 +33,7 @@ class PackageAudit(BaseModel):
     pages_requiring_ocr: list[int]
     pages_requiring_vlm: list[int]
     qdrant_collection: dict[str, Any] = Field(default_factory=dict)
+    embedding_manifest: dict[str, Any] = Field(default_factory=dict)
     qdrant_record_counts: dict[str, int] = Field(default_factory=dict)
     qdrant_vector_sizes: dict[str, int] = Field(default_factory=dict)
     issues: list[AuditIssue] = Field(default_factory=list)
@@ -112,7 +114,7 @@ def audit_package(
     chunks_with_visual_annotations = sum(
         1 for chunk in chunks if chunk.metadata.get("has_visual_annotations")
     )
-    qdrant_collection, qdrant_record_counts, qdrant_vector_sizes = audit_qdrant_artifacts(
+    qdrant_collection, embedding_manifest, qdrant_record_counts, qdrant_vector_sizes = audit_qdrant_artifacts(
         package_dir=package_dir,
         issues=issues,
         require_qdrant_records=require_qdrant_records,
@@ -131,6 +133,7 @@ def audit_package(
         pages_requiring_ocr=pages_requiring_ocr,
         pages_requiring_vlm=pages_requiring_vlm,
         qdrant_collection=qdrant_collection,
+        embedding_manifest=embedding_manifest,
         qdrant_record_counts=qdrant_record_counts,
         qdrant_vector_sizes=qdrant_vector_sizes,
         issues=issues,
@@ -141,14 +144,14 @@ def audit_qdrant_artifacts(
     package_dir: Path | None,
     issues: list[AuditIssue],
     require_qdrant_records: bool = False,
-) -> tuple[dict[str, Any], dict[str, int], dict[str, int]]:
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, int], dict[str, int]]:
     if package_dir is None:
-        return {}, {}, {}
+        return {}, {}, {}, {}
     collection_path = package_dir / "qdrant_collection.json"
     embedding_manifest_path = package_dir / "embedding_manifest.json"
     record_files = sorted(package_dir.glob("qdrant_*_records.jsonl"))
     if not collection_path.exists():
-        if record_files or require_qdrant_records:
+        if record_files or require_qdrant_records or embedding_manifest_path.exists():
             issues.append(
                 AuditIssue(
                     severity="error",
@@ -157,9 +160,10 @@ def audit_qdrant_artifacts(
                     metadata={"record_files": [path.name for path in record_files]},
                 )
             )
-        return {}, {}, {}
+        return {}, {}, {}, {}
 
     collection_config = json.loads(collection_path.read_text(encoding="utf-8"))
+    embedding_manifest = {}
     if record_files and not embedding_manifest_path.exists():
         issues.append(
             AuditIssue(
@@ -169,6 +173,18 @@ def audit_qdrant_artifacts(
                 metadata={"record_files": [path.name for path in record_files]},
             )
         )
+    elif embedding_manifest_path.exists():
+        try:
+            embedding_manifest = json.loads(embedding_manifest_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            issues.append(
+                AuditIssue(
+                    severity="error",
+                    code="invalid_embedding_manifest",
+                    message="embedding_manifest.json is not valid JSON.",
+                    metadata={"error": str(exc)},
+                )
+            )
     named_vectors = {
         name: int(config["size"])
         for name, config in collection_config.get("named_vectors", {}).items()
@@ -210,7 +226,213 @@ def audit_qdrant_artifacts(
             observed_sizes.setdefault(record.vector_name, len(record.vector))
             validate_qdrant_record(record, record_file.name, named_vectors, issues)
 
-    return collection_config, record_counts, observed_sizes
+    if embedding_manifest:
+        validate_embedding_manifest(
+            embedding_manifest=embedding_manifest,
+            package_dir=package_dir,
+            collection_config=collection_config,
+            record_counts=record_counts,
+            observed_sizes=observed_sizes,
+            issues=issues,
+        )
+
+    return collection_config, embedding_manifest, record_counts, observed_sizes
+
+
+def validate_embedding_manifest(
+    embedding_manifest: dict[str, Any],
+    package_dir: Path,
+    collection_config: dict[str, Any],
+    record_counts: dict[str, int],
+    observed_sizes: dict[str, int],
+    issues: list[AuditIssue],
+) -> None:
+    manifest_collection = embedding_manifest.get("collection")
+    expected_collection = collection_config.get("collection")
+    if manifest_collection and expected_collection and manifest_collection != expected_collection:
+        issues.append(
+            AuditIssue(
+                severity="error",
+                code="embedding_manifest_collection_mismatch",
+                message="embedding_manifest.json collection does not match qdrant_collection.json.",
+                metadata={"expected": expected_collection, "actual": manifest_collection},
+            )
+        )
+
+    vectors = embedding_manifest.get("vectors")
+    if not isinstance(vectors, dict):
+        issues.append(
+            AuditIssue(
+                severity="error",
+                code="invalid_embedding_manifest_vectors",
+                message="embedding_manifest.json must contain a vectors object.",
+            )
+        )
+        return
+
+    named_vectors = collection_config.get("named_vectors", {})
+    missing_manifest_vectors = sorted(set(record_counts) - set(vectors))
+    if missing_manifest_vectors:
+        issues.append(
+            AuditIssue(
+                severity="error",
+                code="embedding_manifest_missing_vectors",
+                message="Some Qdrant record vectors are missing from embedding_manifest.json.",
+                metadata={"vector_names": missing_manifest_vectors},
+            )
+        )
+
+    for vector_name, vector_payload in sorted(vectors.items()):
+        if not isinstance(vector_payload, dict):
+            issues.append(
+                AuditIssue(
+                    severity="error",
+                    code="invalid_embedding_manifest_vector",
+                    message="Each embedding manifest vector entry must be an object.",
+                    metadata={"vector_name": vector_name},
+                )
+            )
+            continue
+        validate_embedding_manifest_vector(
+            vector_name=str(vector_name),
+            vector_payload=vector_payload,
+            package_dir=package_dir,
+            named_vectors=named_vectors,
+            record_counts=record_counts,
+            observed_sizes=observed_sizes,
+            issues=issues,
+        )
+
+
+def validate_embedding_manifest_vector(
+    vector_name: str,
+    vector_payload: dict[str, Any],
+    package_dir: Path,
+    named_vectors: dict[str, Any],
+    record_counts: dict[str, int],
+    observed_sizes: dict[str, int],
+    issues: list[AuditIssue],
+) -> None:
+    if vector_name not in named_vectors:
+        issues.append(
+            AuditIssue(
+                severity="error",
+                code="embedding_manifest_unknown_vector",
+                message="embedding_manifest.json includes a vector not configured in qdrant_collection.json.",
+                metadata={"vector_name": vector_name},
+            )
+        )
+
+    record_file_name = vector_payload.get("file")
+    if not record_file_name:
+        issues.append(
+            AuditIssue(
+                severity="error",
+                code="embedding_manifest_missing_file",
+                message="An embedding manifest vector entry is missing the record file name.",
+                metadata={"vector_name": vector_name},
+            )
+        )
+        return
+    record_file = package_dir / str(record_file_name)
+    if not record_file.exists():
+        issues.append(
+            AuditIssue(
+                severity="error",
+                code="embedding_manifest_file_missing",
+                message="An embedding manifest vector file does not exist.",
+                metadata={"vector_name": vector_name, "file": str(record_file_name)},
+            )
+        )
+        return
+
+    actual_summary = file_summary(record_file)
+    compare_manifest_value(
+        issues,
+        code="embedding_manifest_record_count_mismatch",
+        message="embedding_manifest.json record_count does not match the record file.",
+        vector_name=vector_name,
+        field="record_count",
+        expected=record_counts.get(vector_name, 0),
+        actual=vector_payload.get("record_count"),
+    )
+    expected_dimension = vector_config_size(named_vectors.get(vector_name))
+    if expected_dimension is not None:
+        compare_manifest_value(
+            issues,
+            code="embedding_manifest_dimension_mismatch",
+            message="embedding_manifest.json dimension does not match qdrant_collection.json.",
+            vector_name=vector_name,
+            field="dimension",
+            expected=expected_dimension,
+            actual=vector_payload.get("dimension"),
+        )
+    observed_dimension = observed_sizes.get(vector_name)
+    if observed_dimension is not None and vector_payload.get("dimension") != observed_dimension:
+        issues.append(
+            AuditIssue(
+                severity="error",
+                code="embedding_manifest_observed_dimension_mismatch",
+                message="embedding_manifest.json dimension does not match the observed record vectors.",
+                metadata={
+                    "vector_name": vector_name,
+                    "expected": observed_dimension,
+                    "actual": vector_payload.get("dimension"),
+                },
+            )
+        )
+    compare_manifest_value(
+        issues,
+        code="embedding_manifest_bytes_mismatch",
+        message="embedding_manifest.json byte count does not match the record file.",
+        vector_name=vector_name,
+        field="bytes",
+        expected=actual_summary["bytes"],
+        actual=vector_payload.get("bytes"),
+    )
+    compare_manifest_value(
+        issues,
+        code="embedding_manifest_sha256_mismatch",
+        message="embedding_manifest.json sha256 does not match the record file.",
+        vector_name=vector_name,
+        field="sha256",
+        expected=actual_summary["sha256"],
+        actual=vector_payload.get("sha256"),
+    )
+
+
+def compare_manifest_value(
+    issues: list[AuditIssue],
+    code: str,
+    message: str,
+    vector_name: str,
+    field: str,
+    expected: Any,
+    actual: Any,
+) -> None:
+    if actual != expected:
+        issues.append(
+            AuditIssue(
+                severity="error",
+                code=code,
+                message=message,
+                metadata={"vector_name": vector_name, "field": field, "expected": expected, "actual": actual},
+            )
+        )
+
+
+def vector_config_size(config: Any) -> int | None:
+    if isinstance(config, dict) and "size" in config:
+        return int(config["size"])
+    return None
+
+
+def file_summary(path: Path) -> dict[str, Any]:
+    content = path.read_bytes()
+    return {
+        "bytes": len(content),
+        "sha256": hashlib.sha256(content).hexdigest(),
+    }
 
 
 def validate_qdrant_record(

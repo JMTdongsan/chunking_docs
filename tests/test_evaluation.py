@@ -1,3 +1,4 @@
+import hashlib
 import json
 import math
 
@@ -136,6 +137,192 @@ def test_audit_package_validates_qdrant_artifacts(tmp_path):
     assert "qdrant_missing_payload" in codes
     assert "missing_qdrant_payload_indexes" in codes
     assert "missing_embedding_manifest" in codes
+
+
+def test_audit_package_validates_embedding_manifest_contract(tmp_path):
+    profiles = [
+        PageProfile(
+            doc_id="doc",
+            page_no=1,
+            width=1,
+            height=1,
+            char_count=10,
+            line_count=1,
+            text_block_count=1,
+            image_block_count=0,
+            embedded_image_count=0,
+            drawing_count=0,
+            text_quality=TextQuality.GOOD,
+        )
+    ]
+    chunks = [
+        DocumentChunk(
+            chunk_id="chunk",
+            doc_id="doc",
+            page_start=1,
+            page_end=1,
+            kind=ChunkKind.TEXT,
+            text="retrieval benchmark",
+        )
+    ]
+    (tmp_path / "qdrant_collection.json").write_text(
+        json.dumps(
+            {
+                "collection": "documents",
+                "named_vectors": {"text_dense": {"size": 3}},
+                "payload_indexes": [
+                    {"field": "doc_id", "schema": "keyword"},
+                    {"field": "chunk_id", "schema": "keyword"},
+                    {"field": "kind", "schema": "keyword"},
+                    {"field": "page_start", "schema": "integer"},
+                    {"field": "page_end", "schema": "integer"},
+                    {"field": "page_no", "schema": "integer"},
+                    {"field": "asset_id", "schema": "keyword"},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    write_jsonl(
+        tmp_path / "qdrant_text_records.jsonl",
+        [
+            EmbeddingRecord(
+                point_id="point",
+                chunk_id="chunk",
+                doc_id="doc",
+                vector_name="text_dense",
+                vector=[1.0, 2.0, 3.0],
+                payload={
+                    "chunk_id": "chunk",
+                    "doc_id": "doc",
+                    "page_start": 1,
+                    "page_end": 1,
+                    "kind": "text",
+                    "text": "retrieval benchmark",
+                },
+            )
+        ],
+    )
+    (tmp_path / "embedding_manifest.json").write_text(
+        json.dumps(
+            {
+                "collection": "wrong_collection",
+                "vectors": {
+                    "text_dense": {
+                        "file": "qdrant_text_records.jsonl",
+                        "record_count": 2,
+                        "dimension": 4,
+                        "distance": "Cosine",
+                        "bytes": 1,
+                        "sha256": "0" * 64,
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    audit = audit_package(profiles, chunks, [], [], package_dir=tmp_path)
+    codes = {issue.code for issue in audit.issues}
+
+    assert audit.embedding_manifest["collection"] == "wrong_collection"
+    assert "embedding_manifest_collection_mismatch" in codes
+    assert "embedding_manifest_record_count_mismatch" in codes
+    assert "embedding_manifest_dimension_mismatch" in codes
+    assert "embedding_manifest_observed_dimension_mismatch" in codes
+    assert "embedding_manifest_bytes_mismatch" in codes
+    assert "embedding_manifest_sha256_mismatch" in codes
+
+
+def test_audit_package_accepts_matching_embedding_manifest(tmp_path):
+    profiles = [
+        PageProfile(
+            doc_id="doc",
+            page_no=1,
+            width=1,
+            height=1,
+            char_count=10,
+            line_count=1,
+            text_block_count=1,
+            image_block_count=0,
+            embedded_image_count=0,
+            drawing_count=0,
+            text_quality=TextQuality.GOOD,
+        )
+    ]
+    chunks = [
+        DocumentChunk(
+            chunk_id="chunk",
+            doc_id="doc",
+            page_start=1,
+            page_end=1,
+            kind=ChunkKind.TEXT,
+            text="retrieval benchmark",
+        )
+    ]
+    (tmp_path / "qdrant_collection.json").write_text(
+        json.dumps(
+            {
+                "collection": "documents",
+                "named_vectors": {"text_dense": {"size": 3}},
+                "payload_indexes": [
+                    {"field": "doc_id", "schema": "keyword"},
+                    {"field": "chunk_id", "schema": "keyword"},
+                    {"field": "kind", "schema": "keyword"},
+                    {"field": "page_start", "schema": "integer"},
+                    {"field": "page_end", "schema": "integer"},
+                    {"field": "page_no", "schema": "integer"},
+                    {"field": "asset_id", "schema": "keyword"},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    write_jsonl(
+        tmp_path / "qdrant_text_records.jsonl",
+        [
+            EmbeddingRecord(
+                point_id="point",
+                chunk_id="chunk",
+                doc_id="doc",
+                vector_name="text_dense",
+                vector=[1.0, 2.0, 3.0],
+                payload={
+                    "chunk_id": "chunk",
+                    "doc_id": "doc",
+                    "page_start": 1,
+                    "page_end": 1,
+                    "kind": "text",
+                    "text": "retrieval benchmark",
+                },
+            )
+        ],
+    )
+    record_content = (tmp_path / "qdrant_text_records.jsonl").read_bytes()
+    (tmp_path / "embedding_manifest.json").write_text(
+        json.dumps(
+            {
+                "collection": "documents",
+                "vectors": {
+                    "text_dense": {
+                        "file": "qdrant_text_records.jsonl",
+                        "record_count": 1,
+                        "dimension": 3,
+                        "distance": "Cosine",
+                        "bytes": len(record_content),
+                        "sha256": hashlib.sha256(record_content).hexdigest(),
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    audit = audit_package(profiles, chunks, [], [], package_dir=tmp_path)
+    codes = {issue.code for issue in audit.issues}
+
+    assert audit.passed
+    assert not any(code.startswith("embedding_manifest_") for code in codes)
 
 
 def test_evaluate_retrieval_hit_rate():

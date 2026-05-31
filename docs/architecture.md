@@ -211,7 +211,7 @@ Chunking changes should be judged by retrieval behavior, not only by successful 
 
 Recommended checks:
 
-- `audit-package`: structural completeness, orphan checks, OCR/VLM gaps, Qdrant vector dimensions, required payload fields, and payload index definitions.
+- `audit-package`: structural completeness, orphan checks, OCR/VLM gaps, Qdrant vector dimensions, required payload fields, payload index definitions, and embedding manifest count/checksum consistency.
 - `qdrant-check-collection`: live Qdrant collection contract validation for named-vector dimensions and payload indexes.
 - `postgres-check-schema`: live PostgreSQL schema contract validation for required extensions, tables, columns, and column types.
 - `eval-chunking`: page coverage, chunk size distribution, section coverage, visual linkage, annotation coverage, retrieval recall@k, MRR, target coverage@k, target nDCG@k, precision@k, latency, failed queries, and aggregate quality score.
