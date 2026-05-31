@@ -102,6 +102,7 @@ DEFAULT_ARTIFACT_GLOBS = [
     "visual_asset_gate*.json",
     "visual_gate*.json",
     "visual_quality*.json",
+    "visual_run_comparison*.json",
 ]
 
 SUMMARY_METRIC_KEYS = {
@@ -127,6 +128,13 @@ SUMMARY_METRIC_KEYS = {
     "passed_count",
     "failed_count",
     "failed_query_count",
+    "run_count",
+    "union_job_count",
+    "shared_job_count",
+    "job_set_mismatch",
+    "best_quality_score",
+    "best_triples_per_vlm_job",
+    "fastest_total_mean_latency_ms",
     "completion_rate",
     "ocr_text_coverage",
     "vlm_summary_coverage",
@@ -263,6 +271,8 @@ def validation_artifact_summaries_for_path(
         return []
     payload = read_json(path)
     summaries = []
+    if is_visual_run_comparison_payload(payload):
+        return [visual_run_comparison_summary(path, payload, root=root)]
     if not is_validation_payload(payload):
         return component_validation_summaries(path, payload, root=root)
     display_path = display_artifact_path(path, root)
@@ -315,6 +325,45 @@ def component_validation_summaries(
     return summaries
 
 
+def is_visual_run_comparison_payload(payload: dict[str, Any]) -> bool:
+    return isinstance(payload.get("rows"), list) and (
+        "best_by_quality" in payload
+        or "best_by_triple_density" in payload
+        or "job_set_mismatch" in payload
+    )
+
+
+def visual_run_comparison_summary(
+    path: Path,
+    payload: dict[str, Any],
+    root: Path | None = None,
+) -> ValidationSummary:
+    rows = [row for row in payload.get("rows", []) if isinstance(row, dict)]
+    best_by_quality = payload.get("best_by_quality")
+    best_row = next((row for row in rows if row.get("name") == best_by_quality), {})
+    fastest_name = payload.get("fastest_by_total_latency")
+    fastest_row = next((row for row in rows if row.get("name") == fastest_name), {})
+    mismatch = bool(payload.get("job_set_mismatch", False))
+    return ValidationSummary(
+        path=display_artifact_path(path, root),
+        kind="visual_run_comparison",
+        passed=not mismatch,
+        failed_checks=["job_set_mismatch"] if mismatch else [],
+        candidate=best_by_quality if isinstance(best_by_quality, str) else None,
+        metrics={
+            "run_count": float(len(rows)),
+            "union_job_count": numeric_metric(payload.get("union_job_count")),
+            "shared_job_count": numeric_metric(payload.get("shared_job_count")),
+            "job_set_mismatch": 1.0 if mismatch else 0.0,
+            "best_quality_score": numeric_metric(best_row.get("quality_score")),
+            "best_triples_per_vlm_job": numeric_metric(best_row.get("triples_per_vlm_job")),
+            "fastest_total_mean_latency_ms": numeric_metric(
+                fastest_row.get("total_mean_latency_ms")
+            ),
+        },
+    )
+
+
 def is_validation_payload(payload: dict[str, Any]) -> bool:
     return any(
         key in payload
@@ -363,7 +412,7 @@ def summary_metrics(value: Any) -> dict[str, float]:
     return {
         key: float(metric)
         for key, metric in value.items()
-        if key in SUMMARY_METRIC_KEYS and isinstance(metric, int | float)
+        if key in SUMMARY_METRIC_KEYS and isinstance(metric, int | float) and not isinstance(metric, bool)
     }
 
 
@@ -372,6 +421,14 @@ def validation_summary_metrics(payload: dict[str, Any]) -> dict[str, float]:
     nested_metrics = payload.get("metrics")
     metrics.update(summary_metrics(nested_metrics))
     return metrics
+
+
+def numeric_metric(value: Any) -> float:
+    if isinstance(value, bool):
+        return 1.0 if value else 0.0
+    if isinstance(value, int | float):
+        return float(value)
+    return 0.0
 
 
 def read_json(path: Path) -> dict[str, Any]:

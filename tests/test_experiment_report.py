@@ -39,6 +39,7 @@ def test_build_experiment_report_summarizes_artifacts_and_candidates(tmp_path):
     assert artifacts["qdrant_eval.final.json"].exists is True
     assert artifacts["graph_audit.final.json"].exists is True
     assert artifacts["visual_gate.final.json"].exists is True
+    assert artifacts["visual_run_comparison.json"].exists is True
     validations = {validation.path: validation for validation in report.validation_summaries}
     assert validations["ingestion_readiness.final.json"].passed is True
     assert validations["ingestion_readiness.final.json#retrieval_gate"].metrics["recall_at_k"] == 1.0
@@ -50,6 +51,12 @@ def test_build_experiment_report_summarizes_artifacts_and_candidates(tmp_path):
     assert validations["qdrant_eval.final.json"].metrics["case_count"] == 1.0
     assert validations["graph_audit.final.json"].metrics["orphan_count"] == 0.0
     assert validations["visual_gate.final.json"].metrics["vlm_summary_coverage"] == 1.0
+    assert validations["visual_run_comparison.json"].passed is True
+    assert validations["visual_run_comparison.json"].candidate == "structured"
+    assert validations["visual_run_comparison.json"].metrics["run_count"] == 2.0
+    assert validations["visual_run_comparison.json"].metrics["shared_job_count"] == 1.0
+    assert validations["visual_run_comparison.json"].metrics["job_set_mismatch"] == 0.0
+    assert validations["visual_run_comparison.json"].metrics["best_quality_score"] == 0.92
     assert report.qdrant_collection["collection"] == "document_chunks"
     assert report.bm25_tokenizer["strategy"] == "mixed"
     assert report.candidate_files == {"current": str(package_dir / "chunks.jsonl")}
@@ -213,6 +220,34 @@ def write_minimal_package(tmp_path):
                 "failed_checks": [],
                 "vlm_summary_coverage": 1.0,
                 "ocr_text_coverage": 1.0,
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    (package_dir / "visual_run_comparison.json").write_text(
+        json.dumps(
+            {
+                "best_by_quality": "structured",
+                "fastest_by_total_latency": "raw",
+                "best_by_triple_density": "structured",
+                "union_job_count": 1,
+                "shared_job_count": 1,
+                "job_set_mismatch": False,
+                "rows": [
+                    {
+                        "name": "structured",
+                        "quality_score": 0.92,
+                        "triples_per_vlm_job": 1.0,
+                        "total_mean_latency_ms": 42.0,
+                    },
+                    {
+                        "name": "raw",
+                        "quality_score": 0.55,
+                        "triples_per_vlm_job": 0.0,
+                        "total_mean_latency_ms": 18.0,
+                    },
+                ],
             },
             indent=2,
         ),
