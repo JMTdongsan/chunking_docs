@@ -253,6 +253,12 @@ def context_assets(
     max_chars_per_asset_text: int,
 ) -> list[RAGContextAsset]:
     asset_ids = {asset_id for chunk in chunks for asset_id in chunk.asset_ids}
+    asset_ids.update(
+        asset_id
+        for chunk in chunks
+        for asset_id in chunk.metadata.get("retrieved_asset_ids", [])
+        if isinstance(asset_id, str)
+    )
     selected = []
     seen = set()
     for asset in assets:

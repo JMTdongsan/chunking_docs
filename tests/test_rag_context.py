@@ -226,6 +226,8 @@ def test_build_context_bundle_records_retrieved_visual_asset_refs():
         }
     ]
     assert "caption" not in bundle.chunks[0].metadata["retrieval_payload_refs"][0]
+    assert [asset.asset_id for asset in bundle.assets] == ["asset-2"]
+    assert bundle.metadata["asset_count"] == 1
     assert bundle.metadata["retrieved_asset_ids"] == ["asset-2"]
     assert bundle.metadata["retrieved_asset_count"] == 1
 

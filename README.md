@@ -340,7 +340,7 @@ chunking-docs build-rag-context "station access corridor" \
 ```
 
 The bundle contains retrieved chunks, optional neighboring chunks, hierarchical evidence chunks, linked visual assets, and graph triples so downstream RAG services can pass structured context to an answer generator.
-When Qdrant visual vectors retrieve a linked asset, chunk metadata records compact retrieval references such as asset ID, page, kind, and document ID without copying full payload text into metadata.
+When Qdrant visual vectors retrieve a linked asset, chunk metadata records compact retrieval references such as asset ID, page, kind, and document ID without copying full payload text into metadata. The referenced asset is also included in the bundle assets so its bounded caption, OCR, and VLM text remain available for answer generation.
 Chunk text and visual asset text can be bounded independently with `--max-chars-per-chunk` and `--max-chars-per-asset-text`. Asset metadata records original and context character counts plus truncated fields, which keeps OCR/VLM evidence usable without silently overflowing the answer context.
 
 Use the Qdrant path when validating production retrieval:
