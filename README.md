@@ -34,6 +34,17 @@ pip install -e ".[embeddings,vision]"   # SentenceTransformer, CLIP, VLM backend
 pip install -e ".[ocr]"                 # PaddleOCR backend
 ```
 
+Check local runtime capabilities before GPU-backed OCR, VLM, embedding, or storage work:
+
+```bash
+chunking-docs doctor \
+  --require-gpu \
+  --require-qdrant \
+  --require-embeddings \
+  --require-vision \
+  --require-ocr
+```
+
 ## Basic Pipeline
 
 ```bash

@@ -4,6 +4,11 @@
 
 ## Pipeline
 
+0. **Runtime Preflight**
+   - Inspect optional dependencies for Qdrant, PostgreSQL, text embeddings, OCR, and VLM backends.
+   - Detect visible NVIDIA GPUs and Torch CUDA availability when GPU-backed runs are required.
+   - Fail early when requested runtime capabilities are missing.
+
 1. **Document Intake**
    - Download or load a PDF.
    - Generate a stable `doc_id` from file content.

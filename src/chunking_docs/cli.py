@@ -56,6 +56,7 @@ from chunking_docs.retrieval.rerank import (
     LexicalOverlapReranker,
     SentenceTransformerCrossEncoderReranker,
 )
+from chunking_docs.runtime import inspect_runtime
 from chunking_docs.storage.records import EmbeddingRecord
 from chunking_docs.vision.annotate import annotate_assets, merge_asset_annotations_into_chunks
 from chunking_docs.vision.assets import (
@@ -97,6 +98,45 @@ def profile(pdf: Path, output_dir: Path = Path("outputs/profile")):
     profiles = profile_pdf(pdf, document.doc_id)
     write_profile_outputs(profiles, output_dir)
     print_json(summarize_profiles(profiles))
+
+
+@app.command(name="doctor")
+def doctor_command(
+    output: Path | None = None,
+    require_gpu: bool = False,
+    require_qdrant: bool = False,
+    require_postgres: bool = False,
+    require_embeddings: bool = False,
+    require_ocr: bool = False,
+    require_vision: bool = False,
+    fail: bool = typer.Option(
+        True,
+        "--fail/--no-fail",
+        help="Exit with status 1 when required runtime checks fail.",
+    ),
+):
+    """Inspect optional runtime dependencies for storage, embedding, OCR, VLM, and GPU work."""
+    report = inspect_runtime(
+        require_gpu=require_gpu,
+        require_qdrant=require_qdrant,
+        require_postgres=require_postgres,
+        require_embeddings=require_embeddings,
+        require_ocr=require_ocr,
+        require_vision=require_vision,
+    )
+    payload = report.model_dump()
+    if output is not None:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(report.model_dump_json(indent=2), encoding="utf-8")
+        payload = {
+            "output": str(output),
+            "passed": report.passed,
+            "gpu_count": len(report.gpus),
+            "failed_checks": [check.name for check in report.checks if not check.passed],
+        }
+    print(payload)
+    if fail and not report.passed:
+        raise typer.Exit(1)
 
 
 @app.command()
