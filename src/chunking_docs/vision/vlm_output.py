@@ -14,6 +14,9 @@ class ParsedVLMOutput(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+DERIVED_VISUAL_TRIPLE_LIMIT = 12
+
+
 def parse_vlm_output(text: str) -> ParsedVLMOutput:
     payload = extract_json_payload(text)
     repaired = False
@@ -38,7 +41,7 @@ def parse_vlm_output(text: str) -> ParsedVLMOutput:
         )
 
     caption = first_string(payload, ["title", "caption", "name"])
-    triples = normalize_triples(payload.get("triples") or payload.get("relationships") or [])
+    triples = visual_triples_from_payload(payload)
     metadata = object_metadata(payload, repaired=repaired)
     return ParsedVLMOutput(
         caption=caption,
@@ -191,19 +194,10 @@ def summary_from_payload(payload: dict[str, Any]) -> str:
         if isinstance(value, str) and value.strip():
             parts.append(value.strip())
             break
-    key_points = payload.get("key_points")
-    if isinstance(key_points, list):
-        parts.extend(str(item).strip() for item in key_points if str(item).strip())
-    visual_elements = payload.get("visual_elements")
-    if isinstance(visual_elements, str) and visual_elements.strip():
-        parts.append(visual_elements.strip())
-    elif isinstance(visual_elements, list):
-        parts.extend(str(item).strip() for item in visual_elements if str(item).strip())
-    entities = payload.get("entities")
-    if isinstance(entities, str) and entities.strip():
-        parts.append(entities.strip())
-    elif isinstance(entities, list):
-        parts.extend(str(item).strip() for item in entities if str(item).strip())
+    parts.extend(normalize_text_items(payload.get("key_points"), limit=5))
+    parts.extend(normalize_text_items(payload.get("visual_elements"), limit=6))
+    parts.extend(normalize_text_items(payload.get("entities"), limit=8))
+    parts.extend(object_summary_lines(visual_objects_from_payload(payload)))
     parts.extend(triple_summary_lines(normalize_triples(payload.get("triples") or payload.get("relationships") or [])))
     return "\n".join(parts).strip() or json.dumps(payload, ensure_ascii=False)
 
@@ -214,6 +208,113 @@ def first_string(payload: dict[str, Any], keys: list[str]) -> str | None:
         if isinstance(value, str) and value.strip():
             return value.strip()
     return None
+
+
+def normalize_text_items(value: Any, limit: int) -> list[str]:
+    if isinstance(value, str):
+        return dedupe_preserve_order([value], limit=limit)
+    if not isinstance(value, list):
+        return []
+
+    items = []
+    for item in value:
+        if isinstance(item, str):
+            items.append(item)
+        elif isinstance(item, dict):
+            label = first_string(item, ["label", "name", "title", "entity", "object", "type", "category"])
+            description = first_string(item, ["description", "summary", "text"])
+            if label and description and description != label:
+                items.append(f"{label}: {description}")
+            elif label:
+                items.append(label)
+            elif description:
+                items.append(description)
+        else:
+            item_text = str(item).strip()
+            if item_text:
+                items.append(item_text)
+    return dedupe_preserve_order(items, limit=limit)
+
+
+def visual_objects_from_payload(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    objects = []
+    for key in ["objects", "detected_objects", "visual_objects"]:
+        objects.extend(normalize_visual_objects(payload.get(key), limit=8))
+    return dedupe_visual_objects(objects, limit=8)
+
+
+def normalize_visual_objects(value: Any, limit: int) -> list[dict[str, Any]]:
+    if isinstance(value, str):
+        value = [value]
+    if not isinstance(value, list):
+        return []
+
+    objects: list[dict[str, Any]] = []
+    for item in value:
+        if isinstance(item, str):
+            label = item.strip()
+            if label:
+                objects.append({"label": label})
+        elif isinstance(item, dict):
+            label = first_string(item, ["label", "name", "title", "object", "type", "category"])
+            if not label:
+                continue
+            normalized: dict[str, Any] = {"label": label}
+            attributes = normalize_text_items(
+                item.get("attributes") or item.get("features") or item.get("descriptors"),
+                limit=6,
+            )
+            description = first_string(item, ["description", "summary", "text"])
+            if description and description not in attributes:
+                attributes.append(description)
+            if attributes:
+                normalized["attributes"] = attributes[:6]
+            bbox = normalize_bbox(item.get("bbox") or item.get("box") or item.get("bounding_box"))
+            if bbox is not None:
+                normalized["bbox"] = bbox
+            confidence = normalize_confidence(item.get("confidence") or item.get("score"))
+            if confidence is not None:
+                normalized["confidence"] = confidence
+            objects.append(normalized)
+        if len(objects) >= limit:
+            break
+    return objects
+
+
+def dedupe_visual_objects(objects: list[dict[str, Any]], limit: int) -> list[dict[str, Any]]:
+    deduped = []
+    seen = set()
+    for item in objects:
+        key = (
+            str(item.get("label", "")).casefold(),
+            tuple(str(value).casefold() for value in item.get("attributes", [])),
+        )
+        if not key[0] or key in seen:
+            continue
+        seen.add(key)
+        deduped.append(item)
+        if len(deduped) >= limit:
+            break
+    return deduped
+
+
+def normalize_bbox(value: Any) -> list[float] | None:
+    if not isinstance(value, list) or len(value) != 4:
+        return None
+    try:
+        return [float(item) for item in value]
+    except (TypeError, ValueError):
+        return None
+
+
+def normalize_confidence(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        confidence = float(value)
+    except (TypeError, ValueError):
+        return None
+    return max(0.0, min(1.0, confidence))
 
 
 def normalize_triples(value: Any) -> list[dict[str, Any]]:
@@ -239,6 +340,106 @@ def normalize_triples(value: Any) -> list[dict[str, Any]]:
     return triples
 
 
+def visual_triples_from_payload(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    explicit = normalize_triples(payload.get("triples") or payload.get("relationships") or [])
+    return merge_triples(explicit, derived_visual_triples(payload, explicit))
+
+
+def derived_visual_triples(payload: dict[str, Any], existing: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    subject = first_string(payload, ["title", "caption", "name"]) or "visual_asset"
+    triples = []
+    seen = {triple_key(triple) for triple in existing}
+
+    for entity in normalize_text_items(payload.get("entities"), limit=8):
+        add_derived_triple(
+            triples,
+            seen,
+            subject=subject,
+            predicate="mentions_entity",
+            object_=entity,
+            source_field="entities",
+            confidence=0.62,
+        )
+    for element in normalize_text_items(payload.get("visual_elements"), limit=6):
+        add_derived_triple(
+            triples,
+            seen,
+            subject=subject,
+            predicate="contains_visual_element",
+            object_=element,
+            source_field="visual_elements",
+            confidence=0.58,
+        )
+    for visual_object in visual_objects_from_payload(payload):
+        add_derived_triple(
+            triples,
+            seen,
+            subject=subject,
+            predicate="contains_object",
+            object_=str(visual_object["label"]),
+            source_field="objects",
+            confidence=float(visual_object.get("confidence", 0.6)),
+            extra={
+                key: value
+                for key, value in visual_object.items()
+                if key in {"attributes", "bbox"}
+            },
+        )
+    return triples
+
+
+def add_derived_triple(
+    triples: list[dict[str, Any]],
+    seen: set[tuple[str, str, str]],
+    subject: str,
+    predicate: str,
+    object_: str,
+    source_field: str,
+    confidence: float,
+    extra: dict[str, Any] | None = None,
+) -> None:
+    if len(triples) >= DERIVED_VISUAL_TRIPLE_LIMIT:
+        return
+    object_text = object_.strip()
+    if not object_text:
+        return
+    triple = {
+        "subject": subject,
+        "predicate": predicate,
+        "object": object_text,
+        "source_field": source_field,
+        "derived_from_vlm_field": True,
+        "confidence": normalize_confidence(confidence) or confidence,
+    }
+    if extra:
+        triple.update(extra)
+    key = triple_key(triple)
+    if key in seen:
+        return
+    seen.add(key)
+    triples.append(triple)
+
+
+def merge_triples(left: list[dict[str, Any]], right: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    merged = []
+    seen = set()
+    for triple in [*left, *right]:
+        key = triple_key(triple)
+        if key in seen:
+            continue
+        seen.add(key)
+        merged.append(triple)
+    return merged
+
+
+def triple_key(triple: dict[str, Any]) -> tuple[str, str, str]:
+    return (
+        str(triple.get("subject", "")).casefold(),
+        str(triple.get("predicate", "")).casefold(),
+        str(triple.get("object", "")).casefold(),
+    )
+
+
 def triple_summary_lines(triples: list[dict[str, Any]]) -> list[str]:
     lines = []
     for triple in triples:
@@ -250,15 +451,36 @@ def triple_summary_lines(triples: list[dict[str, Any]]) -> list[str]:
     return lines
 
 
-def selected_metadata(payload: dict[str, Any], keys: list[str]) -> dict[str, Any]:
-    return {key: payload[key] for key in keys if key in payload}
+def object_summary_lines(objects: list[dict[str, Any]]) -> list[str]:
+    lines = []
+    for item in objects:
+        label = str(item.get("label", "")).strip()
+        if not label:
+            continue
+        attributes = [str(value).strip() for value in item.get("attributes", []) if str(value).strip()]
+        if attributes:
+            lines.append(f"{label}: {', '.join(attributes)}")
+        else:
+            lines.append(label)
+    return lines
 
 
 def object_metadata(payload: dict[str, Any], repaired: bool = False) -> dict[str, Any]:
     metadata = {
         "vlm_parse_status": "json_repaired" if repaired else "json_object",
-        **selected_metadata(payload, ["page_type", "entities", "visual_elements"]),
     }
+    page_type = first_string(payload, ["page_type"])
+    if page_type:
+        metadata["page_type"] = page_type
+    entities = normalize_text_items(payload.get("entities"), limit=8)
+    if entities:
+        metadata["entities"] = entities
+    visual_elements = normalize_text_items(payload.get("visual_elements"), limit=6)
+    if visual_elements:
+        metadata["visual_elements"] = visual_elements
+    objects = visual_objects_from_payload(payload)
+    if objects:
+        metadata["objects"] = objects
     if repaired:
         metadata["vlm_parse_repaired"] = True
     return metadata

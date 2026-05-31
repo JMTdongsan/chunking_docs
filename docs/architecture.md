@@ -48,7 +48,8 @@
    - Prioritize maps, tables, charts, figures, and pages with empty text.
    - Filter jobs by page range or asset kind to run bounded OCR/VLM batches.
    - Run jobs in bounded batches and store `visual_job_results.jsonl` plus `visual_annotations.jsonl`.
-   - Parse structured VLM JSON into captions, summaries, metadata, and triple candidates.
+   - Parse structured VLM JSON into captions, summaries, metadata, object detections, and triple candidates.
+   - Lift entities, visual elements, and detected objects into derived graph triples when explicit relationships are missing.
    - Attach asset, page, job, source, and prompt provenance to visual-derived triples.
    - Record OCR language, backend configuration, VLM prompt name, prompt hash, latency, output size, parse status, and triple count.
    - Summarize visual job results by status, backend latency, output size, VLM prompt usage, parse status, and triple count.

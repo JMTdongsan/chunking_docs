@@ -65,4 +65,5 @@ def test_apply_asset_annotations_updates_assets_chunks_and_triples():
     assert visual_triple.qualifiers["page_no"] == 12
     assert visual_triple.qualifiers["asset_kind"] == "map"
     assert visual_triple.qualifiers["visual_job_id"] == "job-1"
-    assert visual_triple.qualifiers["confidence"] == 0.8
+    assert "confidence" not in visual_triple.qualifiers
+    assert visual_triple.confidence == 0.8

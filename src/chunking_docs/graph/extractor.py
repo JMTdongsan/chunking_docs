@@ -35,7 +35,7 @@ def triples_from_vlm_json(
         if not subject or not predicate or not object_:
             continue
         triple_qualifiers = {
-            k: v for k, v in triple.items() if k not in {"subject", "predicate", "object"}
+            k: v for k, v in triple.items() if k not in {"subject", "predicate", "object", "confidence"}
         }
         results.append(
             GraphTriple(
@@ -46,6 +46,17 @@ def triples_from_vlm_json(
                 predicate=predicate,
                 object=object_,
                 qualifiers={**triple_qualifiers, **base_qualifiers},
+                confidence=coerce_confidence(triple.get("confidence")),
             )
         )
     return results
+
+
+def coerce_confidence(value) -> float | None:
+    if value is None:
+        return None
+    try:
+        confidence = float(value)
+    except (TypeError, ValueError):
+        return None
+    return max(0.0, min(1.0, confidence))

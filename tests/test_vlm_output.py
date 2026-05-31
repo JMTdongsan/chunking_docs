@@ -29,6 +29,52 @@ def test_parse_vlm_output_from_json_object():
     assert parsed.metadata["vlm_parse_status"] == "json_object"
 
 
+def test_parse_vlm_output_derives_visual_field_triples_and_objects():
+    parsed = parse_vlm_output(
+        """
+        {
+          "title": "Access Diagram",
+          "summary": "Shows a route and station marker.",
+          "visual_elements": ["blue route arrow", "station symbol"],
+          "objects": [
+            {
+              "label": "station marker",
+              "attributes": ["red circle", "north side"],
+              "bbox": [0.1, 0.2, 0.3, 0.4],
+              "confidence": 0.91
+            }
+          ],
+          "entities": ["station", "route"]
+        }
+        """
+    )
+
+    assert "station marker: red circle, north side" in parsed.summary
+    assert parsed.metadata["objects"] == [
+        {
+            "label": "station marker",
+            "attributes": ["red circle", "north side"],
+            "bbox": [0.1, 0.2, 0.3, 0.4],
+            "confidence": 0.91,
+        }
+    ]
+    assert {
+        (triple["predicate"], triple["object"])
+        for triple in parsed.triples
+        if triple.get("derived_from_vlm_field")
+    } == {
+        ("mentions_entity", "station"),
+        ("mentions_entity", "route"),
+        ("contains_visual_element", "blue route arrow"),
+        ("contains_visual_element", "station symbol"),
+        ("contains_object", "station marker"),
+    }
+    object_triple = next(triple for triple in parsed.triples if triple["predicate"] == "contains_object")
+    assert object_triple["attributes"] == ["red circle", "north side"]
+    assert object_triple["bbox"] == [0.1, 0.2, 0.3, 0.4]
+    assert object_triple["confidence"] == 0.91
+
+
 def test_parse_vlm_output_falls_back_to_raw_text():
     parsed = parse_vlm_output("plain visual summary")
 
