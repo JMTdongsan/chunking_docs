@@ -126,6 +126,8 @@ docker compose -f docker-compose.qdrant.yml up -d
 chunking-docs qdrant-upsert-package --package-dir outputs/package
 ```
 
+The package collection config includes payload index definitions for document IDs, chunk IDs, asset IDs, page fields, and section fields. `qdrant-upsert-package`, `qdrant-search-package`, and Qdrant hybrid evaluation create those indexes when the target Qdrant server supports them.
+
 Without Docker, validate the upsert path with qdrant-client local mode:
 
 ```bash

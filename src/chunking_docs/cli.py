@@ -193,7 +193,8 @@ def qdrant_upsert_package(
         location=location or None,
         path=path or None,
     )
-    store.ensure_collection(named_vectors)
+    payload_indexes = collection_config.get("payload_indexes", [])
+    store.ensure_collection(named_vectors, payload_indexes=payload_indexes)
 
     total = 0
     files = sorted(package_dir.glob("qdrant_*_records.jsonl"))
@@ -209,6 +210,7 @@ def qdrant_upsert_package(
             "upserted": total,
             "stored_count": store.count(),
             "named_vectors": sorted(named_vectors),
+            "payload_indexes": payload_indexes,
         }
     )
 
@@ -244,7 +246,7 @@ def qdrant_search_package(
         location=location or None,
         path=path or None,
     )
-    store.ensure_collection(named_vectors)
+    store.ensure_collection(named_vectors, payload_indexes=collection_config.get("payload_indexes", []))
     upserted = upsert_package_records(store, package_dir)
 
     embedder, _ = build_text_embedder(
@@ -1612,7 +1614,7 @@ def prepare_qdrant_hybrid_search(
         location=location or None,
         path=path or None,
     )
-    store.ensure_collection(named_vectors)
+    store.ensure_collection(named_vectors, payload_indexes=collection_config.get("payload_indexes", []))
     upserted = upsert_package_records(store, package_dir)
     embedder, _ = build_text_embedder(
         backend=text_backend,

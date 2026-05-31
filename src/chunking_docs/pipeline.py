@@ -42,15 +42,15 @@ QDRANT_RECORD_FILES = {
 }
 
 QDRANT_PAYLOAD_INDEXES = [
-    "doc_id",
-    "chunk_id",
-    "asset_id",
-    "kind",
-    "page_no",
-    "page_start",
-    "page_end",
-    "section.chapter",
-    "section.issue",
+    {"field": "doc_id", "schema": "keyword"},
+    {"field": "chunk_id", "schema": "keyword"},
+    {"field": "asset_id", "schema": "keyword"},
+    {"field": "kind", "schema": "keyword"},
+    {"field": "page_no", "schema": "integer"},
+    {"field": "page_start", "schema": "integer"},
+    {"field": "page_end", "schema": "integer"},
+    {"field": "section.chapter", "schema": "keyword"},
+    {"field": "section.issue", "schema": "keyword"},
 ]
 
 

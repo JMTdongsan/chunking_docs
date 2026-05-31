@@ -69,6 +69,8 @@ def test_write_embedding_artifacts_writes_selected_vectors_and_config(tmp_path):
     assert config["named_vectors"]["text_dense"]["size"] == 3
     assert config["named_vectors"]["text_dense"]["note"] == "text model"
     assert config["named_vectors"]["caption_dense"]["size"] == 4
+    assert {"field": "doc_id", "schema": "keyword"} in config["payload_indexes"]
+    assert {"field": "page_no", "schema": "integer"} in config["payload_indexes"]
     assert "image_dense" not in config["named_vectors"]
 
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import warnings
 from typing import Any
 from typing import Iterable
 
@@ -19,7 +20,15 @@ class QdrantChunkStore:
     ):
         try:
             from qdrant_client import QdrantClient
-            from qdrant_client.models import Distance, FieldCondition, Filter, MatchValue, PointStruct, VectorParams
+            from qdrant_client.models import (
+                Distance,
+                FieldCondition,
+                Filter,
+                MatchValue,
+                PayloadSchemaType,
+                PointStruct,
+                VectorParams,
+            )
         except ImportError as exc:
             raise RuntimeError("Install chunking-docs[qdrant] to use QdrantChunkStore") from exc
 
@@ -36,19 +45,59 @@ class QdrantChunkStore:
         self._filter = Filter
         self._field_condition = FieldCondition
         self._match_value = MatchValue
+        self._payload_schema_type = PayloadSchemaType
 
-    def ensure_collection(self, named_vectors: dict[str, int]) -> None:
+    def ensure_collection(
+        self,
+        named_vectors: dict[str, int],
+        payload_indexes: list[str | dict[str, str]] | None = None,
+    ) -> None:
         collections = self.client.get_collections().collections
-        if any(collection.name == self.collection_name for collection in collections):
-            return
+        exists = any(collection.name == self.collection_name for collection in collections)
+        if not exists:
+            self.client.create_collection(
+                collection_name=self.collection_name,
+                vectors_config={
+                    name: self._vector_params(size=size, distance=self._distance.COSINE)
+                    for name, size in named_vectors.items()
+                },
+            )
+        self.ensure_payload_indexes(payload_indexes or [])
 
-        self.client.create_collection(
-            collection_name=self.collection_name,
-            vectors_config={
-                name: self._vector_params(size=size, distance=self._distance.COSINE)
-                for name, size in named_vectors.items()
-            },
-        )
+    def ensure_payload_indexes(self, payload_indexes: list[str | dict[str, str]]) -> list[str]:
+        created = []
+        existing = self._existing_payload_indexes()
+        for index in payload_indexes:
+            field_name, schema = self._normalize_payload_index(index)
+            if not field_name or field_name in existing:
+                continue
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", message="Payload indexes have no effect.*")
+                self.client.create_payload_index(
+                    collection_name=self.collection_name,
+                    field_name=field_name,
+                    field_schema=schema,
+                    wait=True,
+                )
+            created.append(field_name)
+        return created
+
+    def _existing_payload_indexes(self) -> set[str]:
+        try:
+            info = self.client.get_collection(collection_name=self.collection_name)
+        except Exception:
+            return set()
+        payload_schema = getattr(info, "payload_schema", {}) or {}
+        return set(payload_schema.keys())
+
+    def _normalize_payload_index(self, index: str | dict[str, str]):
+        if isinstance(index, str):
+            field_name = index
+            schema_name = default_payload_schema(index)
+        else:
+            field_name = str(index.get("field") or index.get("field_name") or "").strip()
+            schema_name = str(index.get("schema") or default_payload_schema(field_name)).strip().lower()
+        return field_name, getattr(self._payload_schema_type, schema_name.upper())
 
     def upsert(self, records: Iterable[EmbeddingRecord]) -> UpsertResult:
         points = [
@@ -114,3 +163,9 @@ class QdrantChunkStore:
                 for key, value in must_payload.items()
             ]
         )
+
+
+def default_payload_schema(field_name: str) -> str:
+    if field_name in {"page_no", "page_start", "page_end"}:
+        return "integer"
+    return "keyword"
