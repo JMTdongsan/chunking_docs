@@ -97,7 +97,10 @@ class HuggingFaceVLMBackend:
         elif torch_dtype == "float32":
             dtype = torch.float32
 
-        self.processor = AutoProcessor.from_pretrained(model_name, trust_remote_code=True)
+        try:
+            self.processor = AutoProcessor.from_pretrained(model_name, trust_remote_code=True)
+        except ImportError as exc:
+            raise RuntimeError(hf_vlm_dependency_error_message()) from exc
         model_kwargs = {
             "device_map": device_map,
             "torch_dtype": dtype,
@@ -105,12 +108,15 @@ class HuggingFaceVLMBackend:
         }
         if attn_implementation:
             model_kwargs["attn_implementation"] = attn_implementation
-        self.model = load_hf_vlm_model(
-            transformers_module=transformers,
-            model_name=model_name,
-            model_kwargs=model_kwargs,
-            model_class=model_class,
-        )
+        try:
+            self.model = load_hf_vlm_model(
+                transformers_module=transformers,
+                model_name=model_name,
+                model_kwargs=model_kwargs,
+                model_class=model_class,
+            )
+        except ImportError as exc:
+            raise RuntimeError(hf_vlm_dependency_error_message()) from exc
 
     def metadata(self) -> dict:
         return {
@@ -172,6 +178,13 @@ def load_hf_vlm_model(
     if last_error is not None:
         raise RuntimeError(f"Unable to load Hugging Face VLM model '{model_name}'") from last_error
     raise RuntimeError(f"No supported Hugging Face VLM loader is available for model_class={model_class!r}")
+
+
+def hf_vlm_dependency_error_message() -> str:
+    return (
+        "Hugging Face VLM runtime dependencies are incomplete. "
+        "Install chunking-docs[vision] and verify `chunking-docs doctor --require-vision` passes."
+    )
 
 
 def hf_vlm_model_loaders(transformers_module, model_class: str):

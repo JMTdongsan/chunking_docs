@@ -23,6 +23,7 @@ def test_runtime_report_checks_requested_capabilities():
         "pgvector": dep("pgvector", False),
         "sentence_transformers": dep("sentence_transformers", True),
         "torch": dep("torch", True),
+        "torchvision": dep("torchvision", False),
         "transformers": dep("transformers", False),
         "accelerate": dep("accelerate", True),
         "paddleocr": dep("paddleocr", False),
@@ -51,6 +52,7 @@ def test_runtime_report_checks_requested_capabilities():
     assert report.passed is False
     assert "dependency:postgres" in failed
     assert "dependency:pgvector" in failed
+    assert "dependency:torchvision" in failed
     assert "dependency:transformers" in failed
     assert "dependency:paddleocr" in failed
     assert "dependency:paddlepaddle" in failed

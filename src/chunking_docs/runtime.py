@@ -47,6 +47,7 @@ DEPENDENCIES = {
     "pgvector": ("pgvector", "pgvector"),
     "sentence_transformers": ("sentence_transformers", "sentence-transformers"),
     "torch": ("torch", "torch"),
+    "torchvision": ("torchvision", "torchvision"),
     "transformers": ("transformers", "transformers"),
     "accelerate": ("accelerate", "accelerate"),
     "paddleocr": ("paddleocr", "paddleocr"),
@@ -110,7 +111,7 @@ def build_runtime_report(
     if require_ocr:
         checks.extend(dependency_checks(dependencies, ["paddleocr", "paddlepaddle"]))
     if require_vision:
-        checks.extend(dependency_checks(dependencies, ["torch", "transformers", "accelerate"]))
+        checks.extend(dependency_checks(dependencies, ["torch", "torchvision", "transformers", "accelerate"]))
 
     torch_cuda_available, torch_cuda_device_count = torch_cuda
     paddle_cuda_available, paddle_cuda_device_count = paddle_cuda

@@ -2,6 +2,7 @@ import pytest
 
 from chunking_docs.vision.hf_vlm import (
     get_vlm_model_profile,
+    hf_vlm_dependency_error_message,
     hf_vlm_model_loaders,
     load_hf_vlm_model,
 )
@@ -62,3 +63,10 @@ def test_load_hf_vlm_model_auto_falls_back_to_next_loader():
 def test_hf_vlm_model_loaders_rejects_unknown_model_class():
     with pytest.raises(ValueError, match="model_class must be one of"):
         hf_vlm_model_loaders(FakeTransformers, "unknown")
+
+
+def test_hf_vlm_dependency_error_message_points_to_vision_extra():
+    message = hf_vlm_dependency_error_message()
+
+    assert "chunking-docs[vision]" in message
+    assert "doctor --require-vision" in message
