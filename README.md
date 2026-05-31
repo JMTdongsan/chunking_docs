@@ -139,6 +139,7 @@ The summary groups completion counts, backend latency, output size, VLM prompt u
 ## Structured Tables
 
 The package command extracts detected PDF tables by default and stores each table as both a `table` chunk and a `table` visual asset. Table text is serialized as Markdown so dense embeddings, BM25, caption vectors, and downstream RAG context can all use the same structured content.
+Detected tables with noisy encoded text are skipped so broken PDF text layers do not create misleading table chunks. Use OCR/VLM visual jobs for those pages instead.
 
 Run table extraction on an existing package:
 

@@ -32,6 +32,7 @@
 
 6. **Structured Tables**
    - Detect PDF tables with the document text/layout layer when available.
+   - Reject table text with excessive control-character noise from broken encodings.
    - Store each detected table as a `table` chunk with Markdown table text.
    - Store each detected table as a `table` visual asset with bbox, rendered clip, and caption text.
    - Keep table extraction generic so document-specific schemas remain external data.

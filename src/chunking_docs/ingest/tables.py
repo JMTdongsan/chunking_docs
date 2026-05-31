@@ -3,6 +3,7 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import io
+import unicodedata
 from pathlib import Path
 from typing import Any
 
@@ -40,6 +41,7 @@ def extract_pdf_tables(
     pages: set[int] | None = None,
     min_rows: int = 2,
     min_cols: int = 2,
+    max_control_char_ratio: float = 0.02,
     zoom: float = 2.0,
 ) -> tuple[list[VisualAsset], list[DocumentChunk]]:
     assets: list[VisualAsset] = []
@@ -56,7 +58,14 @@ def extract_pdf_tables(
             section = section_for_page(page_no, section_ranges)
             for table_index, table in enumerate(find_tables(page), start=1):
                 cells = normalize_table_cells(table.extract())
-                if not useful_table(cells, min_rows=min_rows, min_cols=min_cols):
+                quality = table_text_quality(cells)
+                if not useful_table(
+                    cells,
+                    min_rows=min_rows,
+                    min_cols=min_cols,
+                    max_control_char_ratio=max_control_char_ratio,
+                    quality=quality,
+                ):
                     continue
 
                 bbox = normalize_bbox(table.bbox)
@@ -76,6 +85,7 @@ def extract_pdf_tables(
                     "table_index": table_index,
                     "table_rows": len(cells),
                     "table_cols": max((len(row) for row in cells), default=0),
+                    "table_text_quality": quality,
                     "bbox": bbox,
                     "section_label": section.label(),
                     "requires_ocr": False,
@@ -143,12 +153,37 @@ def trim_empty_edges(rows: list[list[str]]) -> list[list[str]]:
     return [[row[index] for index in keep_cols] for row in padded]
 
 
-def useful_table(cells: list[list[str]], min_rows: int = 2, min_cols: int = 2) -> bool:
+def useful_table(
+    cells: list[list[str]],
+    min_rows: int = 2,
+    min_cols: int = 2,
+    max_control_char_ratio: float = 0.02,
+    quality: dict[str, Any] | None = None,
+) -> bool:
     if len(cells) < min_rows:
         return False
     if max((len(row) for row in cells), default=0) < min_cols:
         return False
-    return sum(1 for row in cells for cell in row if cell) >= min_rows * min_cols
+    if sum(1 for row in cells for cell in row if cell) < min_rows * min_cols:
+        return False
+    quality = quality or table_text_quality(cells)
+    return float(quality["control_char_ratio"]) <= max_control_char_ratio
+
+
+def table_text_quality(cells: list[list[str]]) -> dict[str, Any]:
+    chars = [
+        char
+        for row in cells
+        for cell in row
+        for char in cell
+        if not char.isspace()
+    ]
+    control_count = sum(1 for char in chars if unicodedata.category(char).startswith("C"))
+    return {
+        "char_count": len(chars),
+        "control_char_count": control_count,
+        "control_char_ratio": control_count / len(chars) if chars else 0.0,
+    }
 
 
 def table_to_markdown(cells: list[list[str]]) -> str:

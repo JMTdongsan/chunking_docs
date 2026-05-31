@@ -6,7 +6,12 @@ from typer.testing import CliRunner
 
 from chunking_docs.cli import app
 from chunking_docs.ingest.pdf_loader import stable_doc_id
-from chunking_docs.ingest.tables import extract_pdf_tables, table_to_markdown
+from chunking_docs.ingest.tables import (
+    extract_pdf_tables,
+    table_text_quality,
+    table_to_markdown,
+    useful_table,
+)
 from chunking_docs.io import read_jsonl
 from chunking_docs.models import AssetKind, ChunkKind, DocumentChunk, GraphTriple, VisualAsset
 from chunking_docs.pipeline import build_processing_package
@@ -17,6 +22,15 @@ def test_table_to_markdown_escapes_cells():
 
     assert markdown.splitlines()[0] == "| Name | Value |"
     assert "Alpha\\|Beta" in markdown
+
+
+def test_useful_table_rejects_control_character_noise():
+    cells = [["Name", "Value"], ["Alpha", "10"], ["\x11\x12\x13", "20"]]
+    quality = table_text_quality(cells)
+
+    assert quality["control_char_count"] == 3
+    assert useful_table(cells, quality=quality) is False
+    assert useful_table([["Name", "Value"], ["Alpha", "10"]]) is True
 
 
 def test_extract_pdf_tables_builds_table_asset_and_chunk(tmp_path):
@@ -35,6 +49,7 @@ def test_extract_pdf_tables_builds_table_asset_and_chunk(tmp_path):
     assert assets[0].path is not None and assets[0].path.exists()
     assert assets[0].metadata["source"] == "pdf_table_detection"
     assert assets[0].metadata["table_rows"] == 3
+    assert assets[0].metadata["table_text_quality"]["control_char_count"] == 0
     assert chunks[0].kind == ChunkKind.TABLE
     assert chunks[0].asset_ids == [assets[0].asset_id]
     assert "| Alpha | 10 |" in chunks[0].text
