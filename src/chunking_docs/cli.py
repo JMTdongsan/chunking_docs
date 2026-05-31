@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import builtins
 import json
 from pathlib import Path
 from time import perf_counter
@@ -1876,7 +1877,12 @@ def normalize_graph_triples_command(
 ):
     """Normalize graph triple labels and optionally rebuild graph JSONL artifacts."""
     from chunking_docs.graph.export import export_graph
-    from chunking_docs.graph.quality import audit_graph_triples, normalize_graph_triples
+    from chunking_docs.graph.quality import (
+        audit_graph_triples,
+        graph_triple_has_required_fields,
+        normalize_graph_triple,
+        normalize_graph_triples,
+    )
 
     triples_path = package_dir / "triples.jsonl"
     if not triples_path.exists():
@@ -1885,6 +1891,11 @@ def normalize_graph_triples_command(
     chunks = read_jsonl(chunks_path, DocumentChunk) if chunks_path.exists() else []
     triples = read_jsonl(triples_path, GraphTriple)
     before = audit_graph_triples(triples, chunks=chunks if chunks_path.exists() else None)
+    valid_normalized = [
+        triple
+        for triple in (normalize_graph_triple(triple) for triple in triples)
+        if graph_triple_has_required_fields(triple)
+    ]
     normalized = normalize_graph_triples(triples, dedupe=dedupe)
     output_path = package_dir / "triples.jsonl" if in_place else output
     if output_path is None:
@@ -1907,7 +1918,8 @@ def normalize_graph_triples_command(
             "input_triples": len(triples),
             "output_triples": len(normalized),
             "normalized_triples": before.normalized_count,
-            "removed_duplicates": len(triples) - len(normalized),
+            "removed_invalid": len(triples) - len(valid_normalized),
+            "removed_duplicates": len(valid_normalized) - len(normalized),
             "dedupe": dedupe,
             "graph_nodes_output": str(graph_nodes_output) if graph_nodes_output else None,
             "graph_edges_output": str(graph_edges_output) if graph_edges_output else None,
@@ -2924,7 +2936,7 @@ def write_experiment_report_command(
 
 
 def print_json(payload: dict):
-    print(json.dumps(payload, ensure_ascii=False, indent=2))
+    builtins.print(json.dumps(payload, ensure_ascii=False, indent=2))
 
 
 def parse_page_numbers(value: str) -> set[int]:

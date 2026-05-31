@@ -26,6 +26,7 @@ STRUCTURED_VISUAL_JSON_CONTRACT_KO = """
 - 불확실한 정보는 만들지 말고 배열을 비워 두세요.
 - key_points는 최대 5개, visual_elements는 최대 6개, entities는 최대 8개로 제한하세요.
 - triples는 검색과 그래프 확장에 쓸 수 있는 관계 후보만 최대 3개 넣으세요.
+- predicate는 관계를 설명하는 단어로 쓰고, `=`, `-`, `:` 같은 기호만 단독으로 쓰지 마세요.
 - evidence는 30자 안팎의 짧은 근거 문구로 쓰세요.
 - confidence는 0.0 이상 1.0 이하 숫자로 쓰세요.
 - 모든 문자열은 한국어로 쓰되, 이미지에 영어 고유명이 있으면 원문을 유지하세요.

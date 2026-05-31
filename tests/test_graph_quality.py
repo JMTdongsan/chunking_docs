@@ -61,6 +61,32 @@ def test_normalize_graph_triples_dedupes_semantic_duplicates():
     assert normalized[0].qualifiers["deduped_duplicate_count"] == 1
 
 
+def test_normalize_graph_triples_drops_empty_normalized_fields():
+    triples = [
+        GraphTriple(
+            triple_id="invalid",
+            doc_id="doc",
+            chunk_id="chunk-1",
+            subject="Index",
+            predicate="=",
+            object="value expression",
+        ),
+        GraphTriple(
+            triple_id="valid",
+            doc_id="doc",
+            chunk_id="chunk-1",
+            subject="Index",
+            predicate="defined_as",
+            object="value expression",
+        ),
+    ]
+
+    normalized = normalize_graph_triples(triples)
+
+    assert len(normalized) == 1
+    assert normalized[0].triple_id != "invalid"
+
+
 def test_audit_graph_triples_reports_quality_issues():
     chunk = make_chunk("chunk-1")
     triples = [
@@ -119,6 +145,22 @@ def test_graph_quality_cli_writes_normalized_triples_and_report(tmp_path):
                 subject="  Transit Hub ",
                 predicate="Related To",
                 object="Blue Line",
+            ),
+            GraphTriple(
+                triple_id="duplicate",
+                doc_id="doc",
+                chunk_id="chunk-1",
+                subject="Transit Hub",
+                predicate="related_to",
+                object="Blue Line",
+            ),
+            GraphTriple(
+                triple_id="invalid",
+                doc_id="doc",
+                chunk_id="chunk-1",
+                subject="Index",
+                predicate="=",
+                object="value expression",
             )
         ],
     )
@@ -137,7 +179,11 @@ def test_graph_quality_cli_writes_normalized_triples_and_report(tmp_path):
     )
 
     assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["removed_invalid"] == 1
+    assert payload["removed_duplicates"] == 1
     normalized = read_jsonl(output, GraphTriple)
+    assert len(normalized) == 1
     assert normalized[0].predicate == "related_to"
     assert (package_dir / "graph_nodes.jsonl").exists()
     assert (package_dir / "graph_edges.jsonl").exists()
@@ -156,8 +202,9 @@ def test_graph_quality_cli_writes_normalized_triples_and_report(tmp_path):
 
     assert result.exit_code == 0, result.output
     payload = json.loads(report_output.read_text(encoding="utf-8"))
-    assert payload["triple_count"] == 1
-    assert payload["normalized_count"] == 1
+    assert payload["triple_count"] == 3
+    assert payload["empty_field_count"] == 1
+    assert payload["duplicate_count"] == 1
 
 
 def make_chunk(chunk_id: str) -> DocumentChunk:

@@ -84,7 +84,11 @@ def normalize_graph_triples(
     triples: list[GraphTriple],
     dedupe: bool = True,
 ) -> list[GraphTriple]:
-    normalized = [normalize_graph_triple(triple) for triple in triples]
+    normalized = [
+        triple
+        for triple in (normalize_graph_triple(triple) for triple in triples)
+        if graph_triple_has_required_fields(triple)
+    ]
     if not dedupe:
         return normalized
 
@@ -111,6 +115,10 @@ def normalize_graph_triples(
             triple = triple.model_copy(update={"qualifiers": qualifiers})
         results.append(triple)
     return results
+
+
+def graph_triple_has_required_fields(triple: GraphTriple) -> bool:
+    return bool(triple.subject and triple.predicate and triple.object)
 
 
 def audit_graph_triples(
