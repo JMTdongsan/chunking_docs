@@ -20,7 +20,10 @@ from chunking_docs.evaluation.chunking_gate import (
     ChunkingComparisonGateReport,
     gate_chunking_comparison,
 )
-from chunking_docs.evaluation.chunking_quality import visual_text_coverage_stats
+from chunking_docs.evaluation.chunking_quality import (
+    standalone_visual_text_stats,
+    visual_text_coverage_stats,
+)
 from chunking_docs.evaluation.compare import ChunkingComparison
 from chunking_docs.evaluation.gate import RetrievalGateReport, gate_retrieval_evaluation
 from chunking_docs.evaluation.retrieval import RetrievalCase, RetrievalEvaluation
@@ -657,6 +660,7 @@ def visual_text_coverage_component(
     min_coverage_ratio: float,
 ) -> ReadinessComponent:
     stats = visual_text_coverage_stats(manifest.chunks, manifest.assets)
+    standalone_stats = standalone_visual_text_stats(manifest.chunks, manifest.assets)
     coverage_ratio = float(stats["coverage_ratio"])
     asset_count = int(stats["asset_count"])
     passed = coverage_ratio >= min_coverage_ratio
@@ -674,6 +678,9 @@ def visual_text_coverage_component(
             "visual_text_covered_asset_count": int(stats["covered_asset_count"]),
             "visual_text_coverage_ratio": coverage_ratio,
             "missing_asset_ids": list(stats["missing_asset_ids"])[:50],
+            "standalone_visual_chunk_count": int(standalone_stats["chunk_count"]),
+            "standalone_visual_text_asset_count": int(standalone_stats["asset_count"]),
+            "standalone_visual_text_asset_ids": list(standalone_stats["asset_ids"])[:50],
         },
     )
 

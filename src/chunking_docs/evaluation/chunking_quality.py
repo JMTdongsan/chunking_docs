@@ -48,6 +48,9 @@ class ChunkingQualityReport(BaseModel):
     visual_text_covered_asset_count: int = 0
     visual_text_coverage_ratio: float = 1.0
     visual_text_missing_asset_ids: list[str] = Field(default_factory=list)
+    standalone_visual_chunk_count: int = 0
+    standalone_visual_text_asset_count: int = 0
+    standalone_visual_text_asset_ids: list[str] = Field(default_factory=list)
     retrieval: RetrievalEvaluation | None = None
     quality_score: float
     issues: list[QualityIssue] = Field(default_factory=list)
@@ -83,6 +86,7 @@ def evaluate_chunking_quality(
     visual_linkage = ratio(chunks_with_assets, len(chunks))
     visual_annotation = ratio(sum(1 for asset in assets if asset.ocr_text or asset.vlm_summary), len(assets))
     visual_text_coverage = visual_text_coverage_stats(chunks, assets)
+    standalone_visual_text = standalone_visual_text_stats(chunks, assets)
     retrieval = None
     if retrieval_cases:
         retrieval = evaluate_retrieval(
@@ -134,6 +138,9 @@ def evaluate_chunking_quality(
         visual_text_covered_asset_count=visual_text_coverage["covered_asset_count"],
         visual_text_coverage_ratio=visual_text_coverage["coverage_ratio"],
         visual_text_missing_asset_ids=visual_text_coverage["missing_asset_ids"],
+        standalone_visual_chunk_count=standalone_visual_text["chunk_count"],
+        standalone_visual_text_asset_count=standalone_visual_text["asset_count"],
+        standalone_visual_text_asset_ids=standalone_visual_text["asset_ids"],
         retrieval=retrieval,
         quality_score=quality_score,
         issues=issues,
@@ -328,6 +335,30 @@ def visual_text_coverage_stats(
         "covered_asset_count": covered_count,
         "coverage_ratio": ratio(covered_count, asset_count) if asset_count else 1.0,
         "missing_asset_ids": sorted(missing_asset_ids),
+    }
+
+
+def standalone_visual_text_stats(
+    chunks: list[DocumentChunk],
+    assets: list[VisualAsset],
+) -> dict[str, int | list[str]]:
+    text_asset_ids = {asset.asset_id for asset in assets if asset_text_parts(asset)}
+    standalone_chunk_count = 0
+    standalone_asset_ids: list[str] = []
+    seen = set()
+    for chunk in chunks:
+        if not chunk.metadata.get("visual_asset_unlinked"):
+            continue
+        standalone_chunk_count += 1
+        for asset_id in chunk_asset_ids(chunk):
+            if asset_id not in text_asset_ids or asset_id in seen:
+                continue
+            standalone_asset_ids.append(asset_id)
+            seen.add(asset_id)
+    return {
+        "chunk_count": standalone_chunk_count,
+        "asset_count": len(standalone_asset_ids),
+        "asset_ids": sorted(standalone_asset_ids),
     }
 
 

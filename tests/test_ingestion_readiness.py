@@ -141,6 +141,47 @@ def test_ingestion_readiness_can_gate_package_visual_text_coverage(tmp_path):
     assert component.metadata["missing_asset_ids"] == ["asset-1"]
 
 
+def test_ingestion_readiness_reports_standalone_visual_text_chunks(tmp_path):
+    package_dir, manifest = write_ready_package(tmp_path)
+    standalone_chunk = DocumentChunk(
+        chunk_id="visual-1",
+        doc_id="doc",
+        page_start=1,
+        page_end=1,
+        kind=ChunkKind.MAP,
+        text="standalone visual evidence",
+        asset_ids=["asset-2"],
+        source_refs=["asset:asset-2"],
+        metadata={
+            "chunking_strategy": "visual_asset_text",
+            "visual_asset_unlinked": True,
+        },
+    )
+    standalone_asset = VisualAsset(
+        asset_id="asset-2",
+        doc_id="doc",
+        page_no=1,
+        kind=AssetKind.MAP,
+        caption="standalone visual evidence",
+    )
+    manifest.chunks.append(standalone_chunk)
+    manifest.assets.append(standalone_asset)
+    write_jsonl(package_dir / "chunks.jsonl", manifest.chunks)
+    write_jsonl(package_dir / "assets.jsonl", manifest.assets)
+    write_bm25_manifest(package_dir, manifest.chunks, manifest.assets)
+
+    report = build_ingestion_readiness_report(
+        package_dir,
+        manifest,
+        min_visual_text_coverage_ratio=0.5,
+    )
+
+    component = next(component for component in report.components if component.name == "visual_text_coverage")
+    assert component.metadata["standalone_visual_chunk_count"] == 1
+    assert component.metadata["standalone_visual_text_asset_count"] == 1
+    assert component.metadata["standalone_visual_text_asset_ids"] == ["asset-2"]
+
+
 def test_ingestion_readiness_includes_retrieval_cases_and_chunking_gate(tmp_path):
     package_dir, manifest = write_ready_package(tmp_path)
     cases = [

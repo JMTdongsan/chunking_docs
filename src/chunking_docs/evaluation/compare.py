@@ -29,6 +29,8 @@ class ChunkingComparisonRow(BaseModel):
     visual_text_asset_count: int = 0
     visual_text_covered_asset_count: int = 0
     visual_text_coverage_ratio: float = 1.0
+    standalone_visual_chunk_count: int = 0
+    standalone_visual_text_asset_count: int = 0
     chunks_under_min_chars: int
     chunks_over_max_chars: int
     issue_codes: list[str]
@@ -75,6 +77,8 @@ def compare_chunking_reports(
                 visual_text_asset_count=report.visual_text_asset_count,
                 visual_text_covered_asset_count=report.visual_text_covered_asset_count,
                 visual_text_coverage_ratio=report.visual_text_coverage_ratio,
+                standalone_visual_chunk_count=report.standalone_visual_chunk_count,
+                standalone_visual_text_asset_count=report.standalone_visual_text_asset_count,
                 chunks_under_min_chars=report.chunks_under_min_chars,
                 chunks_over_max_chars=report.chunks_over_max_chars,
                 issue_codes=[issue.code for issue in report.issues],

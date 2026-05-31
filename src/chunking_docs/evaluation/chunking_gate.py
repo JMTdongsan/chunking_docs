@@ -278,6 +278,8 @@ def row_metrics(row: ChunkingComparisonRow) -> dict[str, float | None]:
         "visual_text_asset_count": float(row.visual_text_asset_count),
         "visual_text_covered_asset_count": float(row.visual_text_covered_asset_count),
         "visual_text_coverage_ratio": row.visual_text_coverage_ratio,
+        "standalone_visual_chunk_count": float(row.standalone_visual_chunk_count),
+        "standalone_visual_text_asset_count": float(row.standalone_visual_text_asset_count),
         "chunks_under_min_chars": float(row.chunks_under_min_chars),
         "chunks_over_max_chars": float(row.chunks_over_max_chars),
     }

@@ -173,3 +173,43 @@ def test_evaluate_chunking_quality_counts_source_ref_visual_links():
     assert report.visual_asset_linkage_ratio == 1.0
     assert report.visual_text_covered_asset_count == 1
     assert report.visual_text_coverage_ratio == 1.0
+
+
+def test_evaluate_chunking_quality_reports_standalone_visual_chunks():
+    chunks = [
+        DocumentChunk(
+            chunk_id="visual-1",
+            doc_id="doc",
+            page_start=1,
+            page_end=1,
+            kind=ChunkKind.MAP,
+            text="standalone visual evidence",
+            asset_ids=["asset-1"],
+            source_refs=["asset:asset-1"],
+            metadata={
+                "chunking_strategy": "visual_asset_text",
+                "visual_asset_unlinked": True,
+            },
+        )
+    ]
+    assets = [
+        VisualAsset(
+            asset_id="asset-1",
+            doc_id="doc",
+            page_no=1,
+            kind=AssetKind.MAP,
+            caption="standalone visual evidence",
+        )
+    ]
+
+    report = evaluate_chunking_quality(
+        chunks=chunks,
+        profiles=[],
+        assets=assets,
+        triples=[],
+    )
+
+    assert report.visual_text_coverage_ratio == 1.0
+    assert report.standalone_visual_chunk_count == 1
+    assert report.standalone_visual_text_asset_count == 1
+    assert report.standalone_visual_text_asset_ids == ["asset-1"]
