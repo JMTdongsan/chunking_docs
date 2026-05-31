@@ -970,6 +970,11 @@ def gate_qdrant_vector_ablation_command(
     max_failed_queries: int | None = None,
     max_mean_latency_ms: float | None = None,
     max_p95_latency_ms: float | None = None,
+    min_target_type_coverage: list[str] = typer.Option(
+        None,
+        "--min-target-type-coverage",
+        help="Require target-type coverage such as asset=1.0. Repeat for multiple types.",
+    ),
     min_source_family_target_coverage: list[str] = typer.Option(
         None,
         "--min-source-family-target-coverage",
@@ -993,6 +998,10 @@ def gate_qdrant_vector_ablation_command(
         min_source_family_target_coverage,
         "source family target coverage",
     )
+    target_type_thresholds = parse_named_float_thresholds(
+        min_target_type_coverage,
+        "target type coverage",
+    )
     try:
         gate_report = gate_qdrant_vector_ablation(
             parsed_report,
@@ -1005,6 +1014,7 @@ def gate_qdrant_vector_ablation_command(
             max_failed_queries=max_failed_queries,
             max_mean_latency_ms=max_mean_latency_ms,
             max_p95_latency_ms=max_p95_latency_ms,
+            min_target_type_coverage=target_type_thresholds,
             min_source_family_target_coverage=source_family_thresholds,
             require_best_by_recall=require_best_by_recall,
             require_best_by_target_coverage=require_best_by_target_coverage,
@@ -1025,6 +1035,7 @@ def gate_qdrant_vector_ablation_command(
             "vector_names": gate_report.vector_names,
             "failed_checks": gate_report.failed_checks,
             "metrics": gate_report.metrics,
+            "target_metrics": gate_report.target_metrics,
             "source_family_metrics": gate_report.source_family_metrics,
         }
     print(payload)
@@ -2244,6 +2255,11 @@ def ingestion_readiness_command(
     max_qdrant_vector_failed_queries: int | None = None,
     max_qdrant_vector_mean_latency_ms: float | None = None,
     max_qdrant_vector_p95_latency_ms: float | None = None,
+    min_qdrant_vector_target_type_coverage: list[str] = typer.Option(
+        None,
+        "--min-qdrant-vector-target-type-coverage",
+        help="Require selected Qdrant vector target-type coverage such as asset=1.0.",
+    ),
     min_qdrant_vector_source_family_target_coverage: list[str] = typer.Option(
         None,
         "--min-qdrant-vector-source-family-target-coverage",
@@ -2275,6 +2291,10 @@ def ingestion_readiness_command(
     qdrant_vector_source_family_thresholds = parse_named_float_thresholds(
         min_qdrant_vector_source_family_target_coverage,
         "Qdrant vector source family target coverage",
+    )
+    qdrant_vector_target_type_thresholds = parse_named_float_thresholds(
+        min_qdrant_vector_target_type_coverage,
+        "Qdrant vector target type coverage",
     )
     retrieval_source_family_thresholds = parse_named_float_thresholds(
         min_retrieval_source_family_target_coverage,
@@ -2347,6 +2367,7 @@ def ingestion_readiness_command(
             "max_failed_queries": max_qdrant_vector_failed_queries,
             "max_mean_latency_ms": max_qdrant_vector_mean_latency_ms,
             "max_p95_latency_ms": max_qdrant_vector_p95_latency_ms,
+            "min_target_type_coverage": qdrant_vector_target_type_thresholds,
             "min_source_family_target_coverage": qdrant_vector_source_family_thresholds,
             "require_best_by_recall": require_qdrant_vector_best_by_recall,
             "require_best_by_target_coverage": require_qdrant_vector_best_by_target_coverage,

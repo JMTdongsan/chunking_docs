@@ -83,6 +83,7 @@ def test_ingestion_readiness_includes_qdrant_vector_ablation_gate(tmp_path):
             "min_recall_at_k": 1.0,
             "min_target_coverage_at_k": 1.0,
             "max_failed_queries": 0,
+            "min_target_type_coverage": {"asset": 1.0},
             "min_source_family_target_coverage": {"dense_text": 1.0},
             "require_best_by_recall": True,
         },
@@ -92,6 +93,7 @@ def test_ingestion_readiness_includes_qdrant_vector_ablation_gate(tmp_path):
     assert report.qdrant_vector_ablation_gate is not None
     assert report.qdrant_vector_ablation_gate.mode == "text"
     assert report.qdrant_vector_ablation_gate.metrics["failed_query_count"] == 0.0
+    assert report.qdrant_vector_ablation_gate.target_metrics["asset"]["coverage_at_k"] == 1.0
     assert (
         report.qdrant_vector_ablation_gate.source_family_metrics["dense_text"][
             "target_coverage_at_k"
@@ -308,6 +310,8 @@ def test_ingestion_readiness_cli_can_gate_qdrant_vector_ablation(tmp_path):
             "1.0",
             "--max-qdrant-vector-failed-queries",
             "0",
+            "--min-qdrant-vector-target-type-coverage",
+            "asset=1.0",
             "--min-qdrant-vector-source-family-target-coverage",
             "dense_text=1.0",
             "--require-qdrant-vector-best-by-recall",
@@ -326,6 +330,7 @@ def test_ingestion_readiness_cli_can_gate_qdrant_vector_ablation(tmp_path):
     )
     assert component["metadata"]["mode"] == "text"
     assert component["metadata"]["metrics"]["recall_at_k"] == 1.0
+    assert component["metadata"]["target_metrics"]["asset"]["coverage_at_k"] == 1.0
     assert component["metadata"]["source_family_metrics"]["dense_text"]["target_coverage_at_k"] == 1.0
 
 

@@ -8,8 +8,11 @@ from chunking_docs.evaluation.gate import (
     maximum_check,
     minimum_check,
     retrieval_source_family_metrics,
+    retrieval_target_metrics,
     source_family_metric_key,
     source_family_target_coverage_checks,
+    target_type_coverage_checks,
+    target_type_metric_key,
 )
 from chunking_docs.evaluation.retrieval import RetrievalCase, RetrievalEvaluation, evaluate_retrieval
 from chunking_docs.models import DocumentChunk, GraphTriple
@@ -63,6 +66,7 @@ class QdrantVectorAblationGateReport(BaseModel):
     vector_names: list[str] = Field(default_factory=list)
     graph_expand: bool = False
     metrics: dict[str, float]
+    target_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
     source_family_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
     best_by_recall: str | None = None
     best_by_target_coverage: str | None = None
@@ -267,6 +271,7 @@ def gate_qdrant_vector_ablation(
     max_failed_queries: int | None = None,
     max_mean_latency_ms: float | None = None,
     max_p95_latency_ms: float | None = None,
+    min_target_type_coverage: dict[str, float] | None = None,
     min_source_family_target_coverage: dict[str, float] | None = None,
     require_best_by_recall: bool = False,
     require_best_by_target_coverage: bool = False,
@@ -277,8 +282,9 @@ def gate_qdrant_vector_ablation(
     if row is None:
         raise ValueError(f"Qdrant vector ablation mode not found: {mode}")
 
+    target_metrics = retrieval_target_metrics(row.evaluation)
     source_family_metrics = retrieval_source_family_metrics(row.evaluation)
-    metrics = qdrant_vector_ablation_metrics(row.evaluation, source_family_metrics)
+    metrics = qdrant_vector_ablation_metrics(row.evaluation, target_metrics, source_family_metrics)
     checks = [
         minimum_check("min_recall_at_k", "recall_at_k", metrics, min_recall_at_k),
         minimum_check(
@@ -324,6 +330,12 @@ def gate_qdrant_vector_ablation(
             )
         )
     checks.extend(
+        target_type_coverage_checks(
+            metrics,
+            min_target_type_coverage or {},
+        )
+    )
+    checks.extend(
         source_family_target_coverage_checks(
             metrics,
             min_source_family_target_coverage or {},
@@ -363,6 +375,7 @@ def gate_qdrant_vector_ablation(
         vector_names=row.mode.vector_names,
         graph_expand=row.mode.graph_expand,
         metrics=metrics,
+        target_metrics=target_metrics,
         source_family_metrics=source_family_metrics,
         best_by_recall=report.best_by_recall,
         best_by_target_coverage=report.best_by_target_coverage,
@@ -386,6 +399,7 @@ def qdrant_vector_ablation_row(
 
 def qdrant_vector_ablation_metrics(
     evaluation: RetrievalEvaluation,
+    target_metrics: dict[str, dict[str, float]] | None = None,
     source_family_metrics: dict[str, dict[str, float]] | None = None,
 ) -> dict[str, float]:
     metrics = {
@@ -399,6 +413,9 @@ def qdrant_vector_ablation_metrics(
         "p95_latency_ms": evaluation.p95_latency_ms,
         "failed_query_count": float(evaluation.failed_count),
     }
+    for target_type, target_type_metrics in (target_metrics or {}).items():
+        for key, value in target_type_metrics.items():
+            metrics[target_type_metric_key(target_type, key)] = value
     for family, family_metrics in (source_family_metrics or {}).items():
         for key, value in family_metrics.items():
             metrics[source_family_metric_key(family, key)] = value
