@@ -11,6 +11,7 @@ from chunking_docs.models import AssetKind, VisualAsset
 from chunking_docs.vision.annotate import prompt_for_asset
 from chunking_docs.vision.interfaces import OCRBackend, VLMBackend
 from chunking_docs.vision.manual_annotations import AssetAnnotation
+from chunking_docs.vision.vlm_output import parse_vlm_output
 
 VisualOperation = Literal["ocr", "vlm"]
 VisualJobStatus = Literal["pending", "completed", "failed", "skipped"]
@@ -173,17 +174,26 @@ def run_one_visual_job(
 ) -> AssetAnnotation:
     ocr_text = None
     vlm_summary = None
+    caption = None
+    triples = []
+    vlm_metadata: dict[str, Any] = {}
     if "ocr" in job.operations and ocr_backend is not None:
         ocr_text = ocr_backend.recognize(job.asset_path, language=ocr_language)
     if "vlm" in job.operations and vlm_backend is not None:
-        vlm_summary = vlm_backend.summarize(job.asset_path, prompt=prompt_for_asset(asset))
+        parsed = parse_vlm_output(vlm_backend.summarize(job.asset_path, prompt=prompt_for_asset(asset)))
+        vlm_summary = parsed.summary
+        caption = parsed.caption
+        triples = parsed.triples
+        vlm_metadata = parsed.metadata
 
     return AssetAnnotation(
         asset_id=job.asset_id,
         page_no=job.page_no,
         kind=asset.kind,
+        caption=caption,
         ocr_text=ocr_text,
         vlm_summary=vlm_summary,
+        triples=triples,
         metadata={
             "annotation_source": "visual_job",
             "visual_job_id": job.job_id,
@@ -191,6 +201,7 @@ def run_one_visual_job(
             "priority": job.priority,
             "ocr_backend": ocr_backend_name,
             "vlm_backend": vlm_backend_name,
+            **vlm_metadata,
         },
     )
 

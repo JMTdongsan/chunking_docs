@@ -14,6 +14,19 @@ class FakeVLM:
         return f"vlm:{image_path.name}:{prompt[:4]}"
 
 
+class JsonVLM:
+    def summarize(self, image_path: Path, prompt: str):
+        return """
+        {
+          "title": "River Corridor Diagram",
+          "summary": "Shows connected hubs.",
+          "triples": [
+            {"subject": "corridor", "predicate": "connects", "object": "hub"}
+          ]
+        }
+        """
+
+
 def test_plan_visual_jobs_prioritizes_maps_and_missing_annotations(tmp_path):
     map_path = tmp_path / "map.png"
     page_path = tmp_path / "page.png"
@@ -66,3 +79,26 @@ def test_run_visual_jobs_returns_asset_annotations(tmp_path):
     assert annotations[0].asset_id == "map"
     assert annotations[0].ocr_text.startswith("ocr:")
     assert annotations[0].vlm_summary.startswith("vlm:")
+
+
+def test_run_visual_jobs_parses_json_vlm_triples(tmp_path):
+    image_path = tmp_path / "map.png"
+    image_path.write_bytes(b"map")
+    assets = [
+        VisualAsset(
+            asset_id="map",
+            doc_id="doc",
+            page_no=2,
+            kind=AssetKind.MAP,
+            path=image_path,
+            metadata={"requires_ocr": False, "requires_vlm": True},
+        )
+    ]
+    jobs = plan_visual_jobs(assets, include_ocr=False)
+
+    results = run_visual_jobs(jobs, assets, vlm_backend=JsonVLM())
+    annotation = completed_annotations(results)[0]
+
+    assert annotation.caption == "River Corridor Diagram"
+    assert annotation.triples[0]["predicate"] == "connects"
+    assert annotation.metadata["vlm_parse_status"] == "json_object"

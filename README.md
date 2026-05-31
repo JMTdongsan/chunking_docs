@@ -90,6 +90,8 @@ chunking-docs run-visual-jobs \
 
 The command writes `visual_annotations.jsonl` and `visual_job_results.jsonl`. With `--apply`, annotations are merged into `assets.jsonl`, `chunks.jsonl`, `triples.jsonl`, BM25, and Qdrant record files.
 
+VLM responses may be plain text or JSON. When JSON includes `title`, `summary`, `key_points`, `visual_elements`, or `triples`, the runner converts those fields into captions, searchable VLM summaries, and graph triple candidates.
+
 ## Embeddings
 
 The default package command writes deterministic hashing vectors so the pipeline can be tested without downloading models. Rebuild model-backed records with:

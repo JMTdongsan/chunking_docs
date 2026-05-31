@@ -33,6 +33,7 @@
    - Build `visual_jobs.jsonl` from missing OCR/VLM annotations.
    - Prioritize maps, tables, charts, figures, and pages with empty text.
    - Run jobs in bounded batches and store `visual_job_results.jsonl` plus `visual_annotations.jsonl`.
+   - Parse structured VLM JSON into captions, summaries, metadata, and triple candidates.
    - Apply annotations back into chunks, assets, graph triples, BM25, and Qdrant records.
 
 7. **Semantic Splitting**
@@ -62,7 +63,7 @@
 
 11. **Graph Triples**
     - Section metadata creates baseline graph relationships.
-    - OCR/VLM or external annotations can add `subject, predicate, object` triples.
+    - OCR/VLM JSON or external annotations can add `subject, predicate, object` triples.
     - Graph terms are used for query expansion and relationship browsing.
 
 12. **Storage**
