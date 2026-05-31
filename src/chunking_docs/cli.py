@@ -17,6 +17,7 @@ from chunking_docs.evaluation.chunking_quality import evaluate_chunking_quality
 from chunking_docs.evaluation.compare import compare_chunking_reports
 from chunking_docs.evaluation.experiment import build_experiment_report
 from chunking_docs.evaluation.retrieval import evaluate_retrieval, load_retrieval_cases
+from chunking_docs.evaluation.sweep import run_chunking_sweep
 from chunking_docs.graph.repair import remap_triples_to_available_chunks
 from chunking_docs.ingest.pdf_loader import load_source_document, render_pages
 from chunking_docs.io import read_jsonl, write_jsonl
@@ -983,6 +984,96 @@ def compare_chunking_command(
     print(compare_chunking_reports(reports).model_dump())
 
 
+@app.command(name="sweep-chunking")
+def sweep_chunking_command(
+    package_dir: Path = Path("outputs/package"),
+    output: Path | None = None,
+    candidates_dir: Path | None = None,
+    strategies: str = "semantic,multimodal,hierarchical",
+    max_chars: list[int] = typer.Option(
+        None,
+        "--max-chars",
+        help="Repeat to evaluate multiple max chunk sizes.",
+    ),
+    overlap_chars: list[int] = typer.Option(
+        None,
+        "--overlap-chars",
+        help="Repeat to evaluate multiple overlap sizes.",
+    ),
+    min_chars: int = 180,
+    parent_max_chars: list[int] = typer.Option(
+        None,
+        "--parent-max-chars",
+        help="Repeat to evaluate hierarchical parent summary sizes.",
+    ),
+    visual_context_chars: list[int] = typer.Option(
+        None,
+        "--visual-context-chars",
+        help="Repeat to evaluate hierarchical visual context sizes.",
+    ),
+    cases: Path | None = None,
+    top_k: int = 5,
+    collapse_hierarchical: bool = True,
+    write_candidates: bool = True,
+    lexical_tokenizer: TokenizerStrategy = "mixed",
+    ngram_min: int = 2,
+    ngram_max: int = 4,
+    ngram_cjk_only: bool = True,
+):
+    """Generate and evaluate a grid of chunking strategy candidates."""
+    manifest = load_processing_package(package_dir)
+    retrieval_cases = load_retrieval_cases(cases) if cases is not None else None
+    tokenizer_config = build_tokenizer_config(
+        lexical_tokenizer,
+        ngram_min=ngram_min,
+        ngram_max=ngram_max,
+        ngram_cjk_only=ngram_cjk_only,
+    )
+    candidate_output_dir = candidates_dir or package_dir / "chunking_sweep"
+    report = run_chunking_sweep(
+        chunks=manifest.chunks,
+        assets=manifest.assets,
+        profiles=manifest.profiles,
+        triples=manifest.triples,
+        strategies=parse_strategy_list(strategies),
+        max_chars_values=max_chars or [1200, 1600],
+        overlap_chars_values=overlap_chars or [120, 180],
+        min_chars=min_chars,
+        parent_max_chars_values=parent_max_chars or [700, 900],
+        visual_context_chars_values=visual_context_chars or [500, 700],
+        retrieval_cases=retrieval_cases,
+        top_k=top_k,
+        tokenizer_config=tokenizer_config,
+        collapse_hierarchical=collapse_hierarchical,
+        output_dir=candidate_output_dir,
+        write_candidates=write_candidates,
+    )
+    output_path = output or package_dir / "chunking_sweep.json"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(report.model_dump_json(indent=2), encoding="utf-8")
+    print(
+        {
+            "output": str(output_path),
+            "candidate_files_dir": str(candidate_output_dir) if write_candidates else None,
+            "candidate_count": len(report.candidates),
+            "best_by_quality": report.comparison.best_by_quality,
+            "best_by_retrieval": report.comparison.best_by_retrieval,
+            "top_candidates": [
+                {
+                    "name": candidate.name,
+                    "quality_score": round(candidate.report.quality_score, 6),
+                    "recall_at_k": candidate.report.retrieval.recall_at_k
+                    if candidate.report.retrieval
+                    else None,
+                    "mrr": candidate.report.retrieval.mrr if candidate.report.retrieval else None,
+                    "chunks_file": candidate.chunks_file,
+                }
+                for candidate in report.candidates[:5]
+            ],
+        }
+    )
+
+
 @app.command(name="write-experiment-report")
 def write_experiment_report_command(
     package_dir: Path = Path("outputs/package"),
@@ -1185,6 +1276,17 @@ def parse_candidates(values: list[str] | None, package_dir: Path) -> dict[str, P
             candidate_path = package_dir / candidate_path
         parsed[name] = candidate_path
     return parsed
+
+
+def parse_strategy_list(value: str) -> list[ChunkStrategy]:
+    allowed = {"page", "semantic", "multimodal", "hierarchical"}
+    strategies = [item.strip() for item in value.split(",") if item.strip()]
+    if not strategies:
+        raise typer.BadParameter("--strategies must include at least one strategy")
+    invalid = sorted(set(strategies) - allowed)
+    if invalid:
+        raise typer.BadParameter(f"Unsupported strategies: {', '.join(invalid)}")
+    return strategies
 
 
 def upsert_package_records(store, package_dir: Path) -> int:

@@ -7,10 +7,13 @@ from .retrieval import (
     evaluate_retrieval,
     load_retrieval_cases,
 )
+from .sweep import ChunkingSweepCandidate, ChunkingSweepReport, run_chunking_sweep
 
 __all__ = [
     "AuditIssue",
     "ArtifactSummary",
+    "ChunkingSweepCandidate",
+    "ChunkingSweepReport",
     "ExperimentReport",
     "PackageAudit",
     "RetrievalCase",
@@ -21,4 +24,5 @@ __all__ = [
     "degraded_page_ratio",
     "evaluate_retrieval",
     "load_retrieval_cases",
+    "run_chunking_sweep",
 ]

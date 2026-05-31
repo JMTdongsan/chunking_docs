@@ -47,6 +47,7 @@
    - `multimodal`: semantic chunks plus visual asset text chunks from captions, OCR, and VLM summaries.
    - `hierarchical`: coarse parent chunks plus fine child chunks that share page, section, and visual context.
    - `compare-chunking` evaluates candidate files with the same benchmark cases.
+   - `sweep-chunking` generates a strategy and parameter grid, writes candidate chunk files, and ranks the results.
 
 9. **Embedding Artifacts**
    - `text_dense`: chunk text, OCR text, and VLM summaries.
@@ -96,6 +97,8 @@ Additional processing commands may create:
 - `chunks.semantic.jsonl`
 - `chunks.multimodal.jsonl`
 - `chunks.hierarchical.jsonl`
+- `chunking_sweep.json`
+- `chunking_sweep/chunks.*.jsonl`
 - `graph_nodes.jsonl`
 - `graph_edges.jsonl`
 - `experiment_report.json`
@@ -142,6 +145,7 @@ Recommended checks:
 - `eval-chunking`: page coverage, chunk size distribution, section coverage, visual linkage, annotation coverage, retrieval recall@k, MRR, failed queries, and aggregate quality score.
 - `eval-retrieval`: focused top-k retrieval benchmark cases.
 - `compare-chunking`: side-by-side strategy comparison by quality score, recall@k, MRR, and failed queries.
+- `sweep-chunking`: parameter grid generation for max size, overlap, parent size, and visual context size.
 - `write-experiment-report`: reproducible package report with artifact checksums, record counts, tokenizer settings, Qdrant configuration, and candidate comparison metrics.
 - Qdrant local mode upsert: validates named vector records and payloads.
 

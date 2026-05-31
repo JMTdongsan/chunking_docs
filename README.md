@@ -224,6 +224,27 @@ chunking-docs compare-chunking \
 
 The `multimodal` strategy keeps semantic text chunks and adds visual asset text chunks from captions, OCR, and VLM summaries. The `hierarchical` strategy emits coarse parent chunks plus fine child chunks with shared visual context, which supports experiments where broad queries should find a page or section while precise queries should retrieve a smaller evidence span. `--collapse-hierarchical` reports the parent as the final hit while preserving matched child chunks as evidence. Comparison output includes recall@k, MRR, failed queries, chunk size issues, and the best candidate by quality and retrieval behavior.
 
+Run a parameter sweep when choosing defaults:
+
+```bash
+chunking-docs sweep-chunking \
+  --package-dir outputs/package \
+  --strategies semantic,multimodal,hierarchical \
+  --max-chars 1000 \
+  --max-chars 1600 \
+  --overlap-chars 100 \
+  --overlap-chars 180 \
+  --parent-max-chars 700 \
+  --parent-max-chars 900 \
+  --visual-context-chars 500 \
+  --visual-context-chars 700 \
+  --collapse-hierarchical \
+  --cases examples/retrieval_cases.jsonl \
+  --output outputs/package/chunking_sweep.json
+```
+
+The sweep writes candidate chunk files under `outputs/package/chunking_sweep/` and ranks them with the same quality, recall@k, MRR, and failed-query metrics used by `compare-chunking`.
+
 Write a reproducible experiment report for a package:
 
 ```bash

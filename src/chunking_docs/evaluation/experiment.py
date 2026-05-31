@@ -51,6 +51,7 @@ DEFAULT_ARTIFACTS = [
     "qdrant_image_records.jsonl",
     "graph_nodes.jsonl",
     "graph_edges.jsonl",
+    "chunking_sweep.json",
 ]
 
 
