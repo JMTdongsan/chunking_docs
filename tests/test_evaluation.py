@@ -1097,6 +1097,14 @@ def test_eval_qdrant_retrieval_cli_writes_report(monkeypatch, tmp_path):
             "collection_name": "documents",
             "selected_vectors": ["text_dense"],
             "query_encoders": {"text_dense": "default_text"},
+            "query_encoder_details": {
+                "text_dense": {
+                    "encoder": "default text query encoder",
+                    "backend": "sentence-transformers",
+                    "model": "BAAI/bge-m3",
+                    "dimension": 1024,
+                }
+            },
             "upserted": 1,
             "triples": [],
         }
@@ -1123,6 +1131,8 @@ def test_eval_qdrant_retrieval_cli_writes_report(monkeypatch, tmp_path):
     payload = json.loads(output.read_text(encoding="utf-8"))
     assert payload["metadata"]["backend"] == "qdrant_hybrid"
     assert payload["metadata"]["collection"] == "documents"
+    assert payload["metadata"]["query_encoder_details"]["text_dense"]["model"] == "BAAI/bge-m3"
+    assert payload["metadata"]["query_encoder_details"]["text_dense"]["dimension"] == 1024
     assert payload["repeat"] == 2
     assert payload["recall_at_k"] == 1.0
     assert payload["results"][0]["matched_asset_id"] == "asset-1"
@@ -1182,6 +1192,20 @@ def test_eval_qdrant_vector_ablation_cli_writes_report(monkeypatch, tmp_path):
                 "text_dense": "default_text",
                 "caption_dense": "default_text",
             },
+            "query_encoder_details": {
+                "text_dense": {
+                    "encoder": "default text query encoder",
+                    "backend": "sentence-transformers",
+                    "model": "BAAI/bge-m3",
+                    "dimension": 1024,
+                },
+                "caption_dense": {
+                    "encoder": "default text query encoder",
+                    "backend": "sentence-transformers",
+                    "model": "BAAI/bge-m3",
+                    "dimension": 1024,
+                },
+            },
             "upserted": 1,
             "triples": [],
         }
@@ -1215,6 +1239,14 @@ def test_eval_qdrant_vector_ablation_cli_writes_report(monkeypatch, tmp_path):
     assert rows["caption"]["evaluation"]["target_coverage_at_k"] == 1.0
     assert rows["caption"]["evaluation"]["source_family_metrics"]["visual"]["target_coverage_at_k"] == 1.0
     assert rows["caption"]["evaluation"]["metadata"]["vector_names"] == ["caption_dense"]
+    assert rows["caption"]["evaluation"]["metadata"]["query_encoder_details"] == {
+        "caption_dense": {
+            "encoder": "default text query encoder",
+            "backend": "sentence-transformers",
+            "model": "BAAI/bge-m3",
+            "dimension": 1024,
+        }
+    }
     assert calls.count((("caption_dense",), False)) == 2
 
 

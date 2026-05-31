@@ -522,6 +522,7 @@ def qdrant_hybrid_search(
             "collection": prepared["collection_name"],
             "vector_names": prepared["selected_vectors"],
             "query_encoders": prepared["query_encoders"],
+            "query_encoder_details": prepared.get("query_encoder_details", {}),
             "upserted": prepared["upserted"],
             "stored_count": prepared["store"].count(),
             "filters": build_payload_filter(doc_id=doc_id, filter_specs=payload_filter),
@@ -660,6 +661,7 @@ def qdrant_rag_context_command(
             "collection": prepared["collection_name"],
             "vector_names": prepared["selected_vectors"],
             "query_encoders": prepared["query_encoders"],
+            "query_encoder_details": prepared.get("query_encoder_details", {}),
             "upserted": prepared["upserted"],
             "stored_count": prepared["store"].count(),
             "filters": build_payload_filter(doc_id=doc_id, filter_specs=payload_filter),
@@ -776,6 +778,7 @@ def eval_qdrant_retrieval_command(
             "collection": prepared["collection_name"],
             "vector_names": prepared["selected_vectors"],
             "query_encoders": prepared["query_encoders"],
+            "query_encoder_details": prepared.get("query_encoder_details", {}),
             "upserted": prepared["upserted"],
             "stored_count": prepared["store"].count(),
             "filters": build_payload_filter(doc_id=doc_id, filter_specs=payload_filter),
@@ -903,6 +906,10 @@ def eval_qdrant_vector_ablation_command(
                 "graph_expand": mode.graph_expand,
                 "query_encoders": {
                     name: prepared["query_encoders"].get(name, "unknown")
+                    for name in mode.vector_names
+                },
+                "query_encoder_details": {
+                    name: prepared.get("query_encoder_details", {}).get(name, {})
                     for name in mode.vector_names
                 },
                 "upserted": prepared["upserted"],
@@ -3498,6 +3505,54 @@ def qdrant_query_encoder_label(
     return f"{vector_name} query encoder"
 
 
+def qdrant_query_encoder_details(
+    selected_vectors: list[str],
+    vector_embedders: dict,
+    default_embedder,
+    text_backend: str,
+    text_model: str,
+    image_query_backend: str,
+    image_query_model: str,
+) -> dict[str, dict[str, object]]:
+    details = {}
+    for vector_name in selected_vectors:
+        embedder = vector_embedders.get(vector_name, default_embedder)
+        uses_default_text = embedder is default_embedder
+        backend = normalize_backend(text_backend) if uses_default_text else normalize_backend(image_query_backend)
+        details[vector_name] = {
+            "encoder": qdrant_query_encoder_label(
+                vector_name,
+                vector_embedders=vector_embedders,
+                default_embedder=default_embedder,
+                image_query_backend=image_query_backend,
+            ),
+            "backend": backend,
+            "model": qdrant_query_encoder_model(
+                backend=backend,
+                text_model=text_model,
+                image_query_model=image_query_model,
+                uses_default_text=uses_default_text,
+            ),
+            "dimension": getattr(embedder, "embedding_dim", None),
+        }
+    return details
+
+
+def qdrant_query_encoder_model(
+    backend: str,
+    text_model: str,
+    image_query_model: str,
+    uses_default_text: bool,
+) -> str | None:
+    if uses_default_text:
+        if backend in {"sentence-transformers", "sentence_transformers", "st"}:
+            return text_model
+        return None
+    if backend in {"clip", "transformers"}:
+        return image_query_model
+    return None
+
+
 def build_payload_filter(
     doc_id: str = "",
     filter_specs: list[str] | None = None,
@@ -3704,6 +3759,15 @@ def prepare_qdrant_hybrid_search(
             vector_embedders=vector_embedders,
             default_embedder=embedder,
             image_query_backend=image_query_backend,
+        ),
+        "query_encoder_details": qdrant_query_encoder_details(
+            selected_vectors,
+            vector_embedders=vector_embedders,
+            default_embedder=embedder,
+            text_backend=text_backend,
+            text_model=text_model,
+            image_query_backend=image_query_backend,
+            image_query_model=image_query_model,
         ),
         "upserted": upserted,
         "chunks": chunks,

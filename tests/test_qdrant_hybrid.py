@@ -6,6 +6,7 @@ from chunking_docs.cli import (
     build_qdrant_query_embedders,
     build_reranker,
     parse_fusion_weights,
+    qdrant_query_encoder_details,
     validate_qdrant_query_encoder_dimensions,
 )
 from chunking_docs.embeddings.interfaces import HashingTextEmbedder
@@ -327,6 +328,36 @@ def test_validate_qdrant_query_encoder_dimensions_rejects_image_query_mismatch()
     assert "image_dense expects 768 dimensions" in message
     assert "clip image query encoder produces 512" in message
     assert "--image-query-backend" in message
+
+
+def test_qdrant_query_encoder_details_records_backend_model_and_dimension():
+    default = RecordingTextEmbedder(embedding_dim=1024)
+    image = RecordingTextEmbedder(embedding_dim=768)
+
+    details = qdrant_query_encoder_details(
+        selected_vectors=["text_dense", "caption_dense", "image_dense"],
+        vector_embedders={"image_dense": image},
+        default_embedder=default,
+        text_backend="sentence-transformers",
+        text_model="BAAI/bge-m3",
+        image_query_backend="clip",
+        image_query_model="openai/clip-vit-large-patch14",
+    )
+
+    assert details["text_dense"] == {
+        "encoder": "default text query encoder",
+        "backend": "sentence-transformers",
+        "model": "BAAI/bge-m3",
+        "dimension": 1024,
+    }
+    assert details["caption_dense"]["model"] == "BAAI/bge-m3"
+    assert details["caption_dense"]["dimension"] == 1024
+    assert details["image_dense"] == {
+        "encoder": "clip image query encoder",
+        "backend": "clip",
+        "model": "openai/clip-vit-large-patch14",
+        "dimension": 768,
+    }
 
 
 def test_build_payload_filter_parses_exact_and_range_filters():

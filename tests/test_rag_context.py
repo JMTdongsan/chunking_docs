@@ -233,6 +233,14 @@ def test_qdrant_rag_context_cli_writes_bundle(monkeypatch, tmp_path):
             "collection_name": "documents",
             "selected_vectors": ["text_dense"],
             "query_encoders": {"text_dense": "default_text"},
+            "query_encoder_details": {
+                "text_dense": {
+                    "encoder": "default text query encoder",
+                    "backend": "sentence-transformers",
+                    "model": "BAAI/bge-m3",
+                    "dimension": 1024,
+                }
+            },
             "upserted": 1,
             "chunks": [chunk],
             "assets": [asset],
@@ -259,6 +267,8 @@ def test_qdrant_rag_context_cli_writes_bundle(monkeypatch, tmp_path):
     payload = json.loads(output.read_text(encoding="utf-8"))
     assert payload["metadata"]["collection"] == "documents"
     assert payload["metadata"]["source_family_counts"] == {"dense_text": 1}
+    assert payload["metadata"]["query_encoder_details"]["text_dense"]["model"] == "BAAI/bge-m3"
+    assert payload["metadata"]["query_encoder_details"]["text_dense"]["dimension"] == 1024
     assert payload["metadata"]["has_dense_text_context"] is True
     assert payload["metadata"]["has_visual_context"] is True
     assert payload["chunks"][0]["sources"] == ["qdrant:text_dense"]

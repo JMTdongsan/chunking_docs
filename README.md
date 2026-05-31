@@ -365,6 +365,8 @@ chunking-docs qdrant-rag-context "station access corridor" \
   --output outputs/package/rag_context.qdrant.json
 ```
 
+Qdrant search, evaluation, ablation, and RAG context outputs include `query_encoder_details` so each selected vector records the query backend, model, and embedding dimension used for the run.
+
 ## PostgreSQL
 
 PostgreSQL is intended for source metadata, page profiles, chunks, assets, graph triples, and embedding artifact provenance. Vector search is handled by Qdrant by default, while PostgreSQL stores vector file names, dimensions, counts, checksums, and collection names so embedding runs remain auditable.
