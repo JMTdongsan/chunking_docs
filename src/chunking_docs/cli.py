@@ -19,8 +19,10 @@ from chunking_docs.evaluation.audit import audit_package
 from chunking_docs.evaluation.ablation import (
     QdrantVectorAblationReport,
     QdrantVectorAblationRow,
+    RetrievalAblationReport,
     build_qdrant_vector_ablation_report,
     evaluate_retrieval_ablation,
+    gate_retrieval_ablation,
     gate_qdrant_vector_ablation,
     parse_ablation_modes,
     parse_qdrant_vector_ablation_modes,
@@ -2760,6 +2762,113 @@ def eval_retrieval_ablation_command(
             ],
         }
     print(payload)
+
+
+@app.command(name="gate-retrieval-ablation")
+def gate_retrieval_ablation_command(
+    report: Path,
+    mode: str = typer.Option(
+        ...,
+        "--mode",
+        help="Ablation mode to gate, such as bm25_visual or hybrid_graph.",
+    ),
+    baseline_mode: str | None = typer.Option(
+        None,
+        "--baseline-mode",
+        help="Optional baseline mode for lift or latency-ratio checks.",
+    ),
+    output: Path | None = None,
+    min_recall_at_k: float = 0.0,
+    min_target_coverage_at_k: float = 0.0,
+    min_target_ndcg_at_k: float = 0.0,
+    min_mrr: float = 0.0,
+    min_precision_at_k: float = 0.0,
+    max_failed_queries: int | None = None,
+    max_mean_latency_ms: float | None = None,
+    max_p95_latency_ms: float | None = None,
+    min_target_type_coverage: list[str] = typer.Option(
+        None,
+        "--min-target-type-coverage",
+        help="Require selected mode target-type coverage such as asset=1.0.",
+    ),
+    min_source_family_target_coverage: list[str] = typer.Option(
+        None,
+        "--min-source-family-target-coverage",
+        help="Require selected mode source-family target coverage such as lexical=0.8.",
+    ),
+    min_recall_lift: float | None = None,
+    min_target_coverage_lift: float | None = None,
+    min_target_ndcg_lift: float | None = None,
+    min_mrr_lift: float | None = None,
+    min_precision_lift: float | None = None,
+    max_mean_latency_ratio: float | None = None,
+    max_p95_latency_ratio: float | None = None,
+    require_best_by_recall: bool = False,
+    require_best_by_target_coverage: bool = False,
+    require_best_by_target_ndcg: bool = False,
+    require_fastest_by_mean_latency: bool = False,
+    fail: bool = typer.Option(
+        True,
+        "--fail/--no-fail",
+        help="Exit with status 1 when the retrieval ablation gate fails.",
+    ),
+):
+    """Fail a retrieval ablation mode when absolute metrics or baseline lift are too weak."""
+    parsed_report = RetrievalAblationReport.model_validate_json(report.read_text(encoding="utf-8"))
+    source_family_thresholds = parse_named_float_thresholds(
+        min_source_family_target_coverage,
+        "source family target coverage",
+    )
+    target_type_thresholds = parse_named_float_thresholds(
+        min_target_type_coverage,
+        "target type coverage",
+    )
+    try:
+        gate_report = gate_retrieval_ablation(
+            parsed_report,
+            mode=mode,
+            baseline_mode=baseline_mode,
+            min_recall_at_k=min_recall_at_k,
+            min_target_coverage_at_k=min_target_coverage_at_k,
+            min_target_ndcg_at_k=min_target_ndcg_at_k,
+            min_mrr=min_mrr,
+            min_precision_at_k=min_precision_at_k,
+            max_failed_queries=max_failed_queries,
+            max_mean_latency_ms=max_mean_latency_ms,
+            max_p95_latency_ms=max_p95_latency_ms,
+            min_target_type_coverage=target_type_thresholds,
+            min_source_family_target_coverage=source_family_thresholds,
+            min_recall_lift=min_recall_lift,
+            min_target_coverage_lift=min_target_coverage_lift,
+            min_target_ndcg_lift=min_target_ndcg_lift,
+            min_mrr_lift=min_mrr_lift,
+            min_precision_lift=min_precision_lift,
+            max_mean_latency_ratio=max_mean_latency_ratio,
+            max_p95_latency_ratio=max_p95_latency_ratio,
+            require_best_by_recall=require_best_by_recall,
+            require_best_by_target_coverage=require_best_by_target_coverage,
+            require_best_by_target_ndcg=require_best_by_target_ndcg,
+            require_fastest_by_mean_latency=require_fastest_by_mean_latency,
+        )
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+    payload = gate_report.model_dump()
+    if output is not None:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(gate_report.model_dump_json(indent=2), encoding="utf-8")
+        payload = {
+            "output": str(output),
+            "passed": gate_report.passed,
+            "mode": gate_report.mode,
+            "baseline_mode": gate_report.baseline_mode,
+            "failed_checks": gate_report.failed_checks,
+            "metrics": gate_report.metrics,
+            "baseline_metrics": gate_report.baseline_metrics,
+        }
+    print(payload)
+    if fail and not gate_report.passed:
+        raise typer.Exit(1)
 
 
 @app.command(name="diagnose-retrieval")

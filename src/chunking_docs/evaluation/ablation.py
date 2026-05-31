@@ -41,6 +41,25 @@ class RetrievalAblationReport(BaseModel):
     fastest_by_mean_latency: str | None
 
 
+class RetrievalAblationGateReport(BaseModel):
+    passed: bool
+    mode: str
+    baseline_mode: str | None = None
+    metrics: dict[str, float]
+    baseline_metrics: dict[str, float] = Field(default_factory=dict)
+    target_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
+    source_family_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
+    baseline_target_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
+    baseline_source_family_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
+    best_by_recall: str | None = None
+    best_by_target_coverage: str | None = None
+    best_by_target_ndcg: str | None = None
+    best_by_mrr: str | None = None
+    fastest_by_mean_latency: str | None = None
+    failed_checks: list[str] = Field(default_factory=list)
+    checks: list[RetrievalGateCheck] = Field(default_factory=list)
+
+
 class QdrantVectorAblationMode(BaseModel):
     name: str
     vector_names: list[str] = Field(default_factory=list)
@@ -254,6 +273,249 @@ def parse_ablation_modes(value: str) -> list[RetrievalAblationMode]:
     if unknown:
         raise ValueError(f"Unsupported ablation modes: {', '.join(unknown)}")
     return [DEFAULT_ABLATION_MODES[name] for name in names]
+
+
+def gate_retrieval_ablation(
+    report: RetrievalAblationReport,
+    mode: str,
+    baseline_mode: str | None = None,
+    min_recall_at_k: float = 0.0,
+    min_target_coverage_at_k: float = 0.0,
+    min_target_ndcg_at_k: float = 0.0,
+    min_mrr: float = 0.0,
+    min_precision_at_k: float = 0.0,
+    max_failed_queries: int | None = None,
+    max_mean_latency_ms: float | None = None,
+    max_p95_latency_ms: float | None = None,
+    min_target_type_coverage: dict[str, float] | None = None,
+    min_source_family_target_coverage: dict[str, float] | None = None,
+    min_recall_lift: float | None = None,
+    min_target_coverage_lift: float | None = None,
+    min_target_ndcg_lift: float | None = None,
+    min_mrr_lift: float | None = None,
+    min_precision_lift: float | None = None,
+    max_mean_latency_ratio: float | None = None,
+    max_p95_latency_ratio: float | None = None,
+    require_best_by_recall: bool = False,
+    require_best_by_target_coverage: bool = False,
+    require_best_by_target_ndcg: bool = False,
+    require_fastest_by_mean_latency: bool = False,
+) -> RetrievalAblationGateReport:
+    row = retrieval_ablation_row(report, mode)
+    if row is None:
+        raise ValueError(f"Retrieval ablation mode not found: {mode}")
+
+    baseline_row = None
+    if baseline_mode is not None:
+        baseline_row = retrieval_ablation_row(report, baseline_mode)
+        if baseline_row is None:
+            raise ValueError(f"Baseline retrieval ablation mode not found: {baseline_mode}")
+    elif requires_baseline(
+        min_recall_lift,
+        min_target_coverage_lift,
+        min_target_ndcg_lift,
+        min_mrr_lift,
+        min_precision_lift,
+        max_mean_latency_ratio,
+        max_p95_latency_ratio,
+    ):
+        raise ValueError("A baseline mode is required for lift or latency-ratio checks.")
+
+    target_metrics = retrieval_target_metrics(row.evaluation)
+    source_family_metrics = retrieval_source_family_metrics(row.evaluation)
+    metrics = qdrant_vector_ablation_metrics(row.evaluation, target_metrics, source_family_metrics)
+    baseline_target_metrics = retrieval_target_metrics(baseline_row.evaluation) if baseline_row else {}
+    baseline_source_family_metrics = (
+        retrieval_source_family_metrics(baseline_row.evaluation) if baseline_row else {}
+    )
+    baseline_metrics = (
+        qdrant_vector_ablation_metrics(
+            baseline_row.evaluation,
+            baseline_target_metrics,
+            baseline_source_family_metrics,
+        )
+        if baseline_row
+        else {}
+    )
+    checks = [
+        minimum_check("min_recall_at_k", "recall_at_k", metrics, min_recall_at_k),
+        minimum_check(
+            "min_target_coverage_at_k",
+            "target_coverage_at_k",
+            metrics,
+            min_target_coverage_at_k,
+        ),
+        minimum_check(
+            "min_target_ndcg_at_k",
+            "mean_target_ndcg_at_k",
+            metrics,
+            min_target_ndcg_at_k,
+        ),
+        minimum_check("min_mrr", "mrr", metrics, min_mrr),
+        minimum_check("min_precision_at_k", "mean_precision_at_k", metrics, min_precision_at_k),
+    ]
+    if max_failed_queries is not None:
+        checks.append(
+            maximum_check(
+                "max_failed_queries",
+                "failed_query_count",
+                metrics,
+                float(max_failed_queries),
+            )
+        )
+    if max_mean_latency_ms is not None:
+        checks.append(maximum_check("max_mean_latency_ms", "mean_latency_ms", metrics, max_mean_latency_ms))
+    if max_p95_latency_ms is not None:
+        checks.append(maximum_check("max_p95_latency_ms", "p95_latency_ms", metrics, max_p95_latency_ms))
+    checks.extend(target_type_coverage_checks(metrics, min_target_type_coverage or {}))
+    checks.extend(
+        source_family_target_coverage_checks(metrics, min_source_family_target_coverage or {})
+    )
+    if baseline_row is not None:
+        checks.extend(
+            baseline_lift_checks(
+                metrics,
+                baseline_metrics,
+                {
+                    "recall_at_k": min_recall_lift,
+                    "target_coverage_at_k": min_target_coverage_lift,
+                    "mean_target_ndcg_at_k": min_target_ndcg_lift,
+                    "mrr": min_mrr_lift,
+                    "mean_precision_at_k": min_precision_lift,
+                },
+            )
+        )
+        checks.extend(
+            latency_ratio_checks(
+                metrics,
+                baseline_metrics,
+                {
+                    "mean_latency_ms": max_mean_latency_ratio,
+                    "p95_latency_ms": max_p95_latency_ratio,
+                },
+            )
+        )
+    if require_best_by_recall:
+        checks.append(best_mode_check("require_best_by_recall", mode, report.best_by_recall))
+    if require_best_by_target_coverage:
+        checks.append(
+            best_mode_check(
+                "require_best_by_target_coverage",
+                mode,
+                report.best_by_target_coverage,
+            )
+        )
+    if require_best_by_target_ndcg:
+        checks.append(
+            best_mode_check(
+                "require_best_by_target_ndcg",
+                mode,
+                report.best_by_target_ndcg,
+            )
+        )
+    if require_fastest_by_mean_latency:
+        checks.append(
+            best_mode_check(
+                "require_fastest_by_mean_latency",
+                mode,
+                report.fastest_by_mean_latency,
+            )
+        )
+
+    failed_checks = [check.name for check in checks if not check.passed]
+    return RetrievalAblationGateReport(
+        passed=not failed_checks,
+        mode=mode,
+        baseline_mode=baseline_mode,
+        metrics=metrics,
+        baseline_metrics=baseline_metrics,
+        target_metrics=target_metrics,
+        source_family_metrics=source_family_metrics,
+        baseline_target_metrics=baseline_target_metrics,
+        baseline_source_family_metrics=baseline_source_family_metrics,
+        best_by_recall=report.best_by_recall,
+        best_by_target_coverage=report.best_by_target_coverage,
+        best_by_target_ndcg=report.best_by_target_ndcg,
+        best_by_mrr=report.best_by_mrr,
+        fastest_by_mean_latency=report.fastest_by_mean_latency,
+        failed_checks=failed_checks,
+        checks=checks,
+    )
+
+
+def retrieval_ablation_row(
+    report: RetrievalAblationReport,
+    mode: str,
+) -> RetrievalAblationRow | None:
+    for row in report.rows:
+        if row.mode.name == mode:
+            return row
+    return None
+
+
+def requires_baseline(*thresholds: float | None) -> bool:
+    return any(threshold is not None for threshold in thresholds)
+
+
+def baseline_lift_checks(
+    metrics: dict[str, float],
+    baseline_metrics: dict[str, float],
+    thresholds: dict[str, float | None],
+) -> list[RetrievalGateCheck]:
+    checks = []
+    for metric, threshold in thresholds.items():
+        if threshold is None:
+            continue
+        actual = metrics[metric]
+        baseline = baseline_metrics[metric]
+        delta = actual - baseline
+        checks.append(
+            RetrievalGateCheck(
+                name=f"min_{metric}_lift",
+                metric=metric,
+                operator="actual-baseline>=",
+                actual=actual,
+                baseline=baseline,
+                delta=delta,
+                threshold=threshold,
+                passed=delta >= threshold,
+            )
+        )
+    return checks
+
+
+def latency_ratio_checks(
+    metrics: dict[str, float],
+    baseline_metrics: dict[str, float],
+    thresholds: dict[str, float | None],
+) -> list[RetrievalGateCheck]:
+    checks = []
+    for metric, threshold in thresholds.items():
+        if threshold is None:
+            continue
+        actual = metrics[metric]
+        baseline = baseline_metrics[metric]
+        ratio = safe_ratio(actual, baseline)
+        checks.append(
+            RetrievalGateCheck(
+                name=f"max_{metric}_ratio",
+                metric=metric,
+                operator="actual/baseline<=",
+                actual=actual,
+                baseline=baseline,
+                ratio=ratio,
+                delta=actual - baseline,
+                threshold=threshold,
+                passed=ratio is not None and ratio <= threshold,
+            )
+        )
+    return checks
+
+
+def safe_ratio(actual: float, baseline: float) -> float | None:
+    if baseline <= 0:
+        return None
+    return actual / baseline
 
 
 def parse_qdrant_vector_ablation_modes(value: str) -> list[QdrantVectorAblationMode]:

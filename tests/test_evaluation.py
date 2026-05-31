@@ -13,6 +13,7 @@ from chunking_docs.evaluation.ablation import (
     QdrantVectorAblationReport,
     QdrantVectorAblationRow,
     evaluate_retrieval_ablation,
+    gate_retrieval_ablation,
     gate_qdrant_vector_ablation,
     parse_ablation_modes,
     parse_qdrant_vector_ablation_modes,
@@ -1026,6 +1027,54 @@ def test_evaluate_retrieval_ablation_compares_modes():
 
 
 def test_evaluate_retrieval_ablation_can_measure_visual_lexical_gain():
+    report = visual_lexical_ablation_report()
+    rows = {row.mode.name: row for row in report.rows}
+
+    assert rows["bm25_text"].evaluation.recall_at_k == 0.0
+    assert rows["bm25_visual"].evaluation.recall_at_k == 1.0
+    assert rows["bm25_text"].evaluation.metadata["include_asset_text"] is False
+    assert rows["bm25_visual"].evaluation.metadata["include_asset_text"] is True
+    assert report.best_by_recall == "bm25_visual"
+
+
+def test_gate_retrieval_ablation_can_require_visual_lift():
+    report = visual_lexical_ablation_report()
+
+    gate = gate_retrieval_ablation(
+        report,
+        mode="bm25_visual",
+        baseline_mode="bm25_text",
+        min_recall_at_k=1.0,
+        min_target_type_coverage={"asset": 1.0},
+        min_source_family_target_coverage={"lexical": 1.0},
+        min_recall_lift=1.0,
+        min_target_coverage_lift=1.0,
+        require_best_by_recall=True,
+    )
+
+    assert gate.passed is True
+    assert gate.mode == "bm25_visual"
+    assert gate.baseline_mode == "bm25_text"
+    assert gate.metrics["recall_at_k"] == 1.0
+    assert gate.baseline_metrics["recall_at_k"] == 0.0
+    assert gate.failed_checks == []
+
+
+def test_gate_retrieval_ablation_reports_failed_lift():
+    report = visual_lexical_ablation_report()
+
+    gate = gate_retrieval_ablation(
+        report,
+        mode="bm25_visual",
+        baseline_mode="bm25_text",
+        min_recall_lift=1.1,
+    )
+
+    assert gate.passed is False
+    assert "min_recall_at_k_lift" in gate.failed_checks
+
+
+def visual_lexical_ablation_report():
     chunks = [
         DocumentChunk(
             chunk_id="chunk-1",
@@ -1047,21 +1096,13 @@ def test_evaluate_retrieval_ablation_can_measure_visual_lexical_gain():
         )
     ]
     cases = [RetrievalCase(query="north river corridor diagram", expected_asset_ids=["asset-1"])]
-
-    report = evaluate_retrieval_ablation(
+    return evaluate_retrieval_ablation(
         chunks,
         [],
         cases,
         assets=assets,
         modes=parse_ablation_modes("bm25_text,bm25_visual"),
     )
-    rows = {row.mode.name: row for row in report.rows}
-
-    assert rows["bm25_text"].evaluation.recall_at_k == 0.0
-    assert rows["bm25_visual"].evaluation.recall_at_k == 1.0
-    assert rows["bm25_text"].evaluation.metadata["include_asset_text"] is False
-    assert rows["bm25_visual"].evaluation.metadata["include_asset_text"] is True
-    assert report.best_by_recall == "bm25_visual"
 
 
 def test_eval_retrieval_cli_writes_latency_report(tmp_path):
@@ -1568,3 +1609,43 @@ def test_eval_retrieval_ablation_cli_compares_visual_lexical_modes(tmp_path):
     assert rows["bm25_text"]["evaluation"]["recall_at_k"] == 0.0
     assert rows["bm25_visual"]["evaluation"]["recall_at_k"] == 1.0
     assert payload["best_by_recall"] == "bm25_visual"
+
+
+def test_gate_retrieval_ablation_cli_writes_lift_report(tmp_path):
+    report_path = tmp_path / "ablation.json"
+    output = tmp_path / "ablation_gate.json"
+    report_path.write_text(
+        visual_lexical_ablation_report().model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "gate-retrieval-ablation",
+            str(report_path),
+            "--mode",
+            "bm25_visual",
+            "--baseline-mode",
+            "bm25_text",
+            "--min-recall-at-k",
+            "1.0",
+            "--min-recall-lift",
+            "1.0",
+            "--min-target-type-coverage",
+            "asset=1.0",
+            "--min-source-family-target-coverage",
+            "lexical=1.0",
+            "--require-best-by-recall",
+            "--output",
+            str(output),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["passed"] is True
+    assert payload["mode"] == "bm25_visual"
+    assert payload["baseline_mode"] == "bm25_text"
+    assert payload["metrics"]["recall_at_k"] == 1.0
+    assert payload["baseline_metrics"]["recall_at_k"] == 0.0

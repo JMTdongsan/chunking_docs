@@ -1,8 +1,10 @@
 from .ablation import (
     RetrievalAblationMode,
+    RetrievalAblationGateReport,
     RetrievalAblationReport,
     RetrievalAblationRow,
     evaluate_retrieval_ablation,
+    gate_retrieval_ablation,
     parse_ablation_modes,
 )
 from .audit import AuditIssue, PackageAudit, audit_package, degraded_page_ratio
@@ -52,6 +54,7 @@ __all__ = [
     "PackageDeltaReport",
     "ReadinessComponent",
     "RetrievalAblationMode",
+    "RetrievalAblationGateReport",
     "RetrievalAblationReport",
     "RetrievalAblationRow",
     "RetrievalCaseAuditCheck",
@@ -76,6 +79,7 @@ __all__ = [
     "evaluate_search_results",
     "generate_retrieval_case_skeleton",
     "gate_chunking_comparison",
+    "gate_retrieval_ablation",
     "gate_retrieval_evaluation",
     "load_chunking_comparison",
     "load_retrieval_evaluation",
