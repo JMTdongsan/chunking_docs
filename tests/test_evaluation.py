@@ -9,7 +9,11 @@ import chunking_docs.cli as cli_module
 from chunking_docs.cli import app
 from chunking_docs.evaluation.audit import audit_package, degraded_page_ratio
 from chunking_docs.evaluation.ablation import (
+    QdrantVectorAblationMode,
+    QdrantVectorAblationReport,
+    QdrantVectorAblationRow,
     evaluate_retrieval_ablation,
+    gate_qdrant_vector_ablation,
     parse_ablation_modes,
     parse_qdrant_vector_ablation_modes,
     qdrant_vector_names_for_modes,
@@ -1212,6 +1216,169 @@ def test_eval_qdrant_vector_ablation_cli_writes_report(monkeypatch, tmp_path):
     assert rows["caption"]["evaluation"]["source_family_metrics"]["visual"]["target_coverage_at_k"] == 1.0
     assert rows["caption"]["evaluation"]["metadata"]["vector_names"] == ["caption_dense"]
     assert calls.count((("caption_dense",), False)) == 2
+
+
+def qdrant_vector_ablation_report_for_gate():
+    chunk = DocumentChunk(
+        chunk_id="chunk-1",
+        doc_id="doc",
+        page_start=1,
+        page_end=1,
+        kind=ChunkKind.TEXT,
+        text="visual evidence",
+        asset_ids=["asset-1"],
+    )
+    cases = [RetrievalCase(query="visual evidence", expected_asset_ids=["asset-1"])]
+    caption_image_eval = evaluate_search_results(
+        cases=cases,
+        search_fn=lambda case, graph_expand: [
+            HybridSearchHit(
+                chunk=chunk,
+                score=0.9,
+                sources=["qdrant:caption_dense", "qdrant:image_dense"],
+            )
+        ],
+        top_k=5,
+    )
+    image_eval = evaluate_search_results(
+        cases=cases,
+        search_fn=lambda case, graph_expand: [],
+        top_k=5,
+    )
+    return QdrantVectorAblationReport(
+        rows=[
+            QdrantVectorAblationRow(
+                mode=QdrantVectorAblationMode(
+                    name="caption_image",
+                    vector_names=["caption_dense", "image_dense"],
+                ),
+                evaluation=caption_image_eval,
+            ),
+            QdrantVectorAblationRow(
+                mode=QdrantVectorAblationMode(
+                    name="image",
+                    vector_names=["image_dense"],
+                ),
+                evaluation=image_eval,
+            ),
+        ],
+        best_by_recall="caption_image",
+        best_by_target_coverage="caption_image",
+        best_by_target_ndcg="caption_image",
+        best_by_mrr="caption_image",
+        fastest_by_mean_latency="image",
+    )
+
+
+def test_gate_qdrant_vector_ablation_passes_required_mode():
+    report = qdrant_vector_ablation_report_for_gate()
+
+    gate = gate_qdrant_vector_ablation(
+        report,
+        mode="caption_image",
+        min_recall_at_k=1.0,
+        min_target_coverage_at_k=1.0,
+        min_target_ndcg_at_k=1.0,
+        max_failed_queries=0,
+        require_best_by_recall=True,
+        require_best_by_target_coverage=True,
+    )
+
+    assert gate.passed
+    assert gate.mode == "caption_image"
+    assert gate.vector_names == ["caption_dense", "image_dense"]
+    assert gate.metrics["failed_query_count"] == 0.0
+    assert gate.failed_checks == []
+
+
+def test_gate_qdrant_vector_ablation_reports_failed_checks():
+    report = qdrant_vector_ablation_report_for_gate()
+
+    gate = gate_qdrant_vector_ablation(
+        report,
+        mode="image",
+        min_recall_at_k=1.0,
+        max_failed_queries=0,
+        require_best_by_recall=True,
+    )
+
+    assert not gate.passed
+    assert gate.metrics["failed_query_count"] == 1.0
+    assert set(gate.failed_checks) == {
+        "min_recall_at_k",
+        "max_failed_queries",
+        "require_best_by_recall",
+    }
+
+
+def test_gate_qdrant_vector_ablation_cli_writes_report(tmp_path):
+    report_path = tmp_path / "qdrant_vector_ablation.json"
+    output = tmp_path / "qdrant_vector_ablation_gate.json"
+    report_path.write_text(
+        qdrant_vector_ablation_report_for_gate().model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "gate-qdrant-vector-ablation",
+            str(report_path),
+            "--mode",
+            "caption_image",
+            "--min-recall-at-k",
+            "1.0",
+            "--min-target-coverage-at-k",
+            "1.0",
+            "--max-failed-queries",
+            "0",
+            "--require-best-by-recall",
+            "--output",
+            str(output),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["passed"] is True
+    assert payload["mode"] == "caption_image"
+    assert payload["vector_names"] == ["caption_dense", "image_dense"]
+
+
+def test_gate_qdrant_vector_ablation_cli_can_report_without_failing(tmp_path):
+    report_path = tmp_path / "qdrant_vector_ablation.json"
+    output = tmp_path / "qdrant_vector_ablation_gate.json"
+    report_path.write_text(
+        qdrant_vector_ablation_report_for_gate().model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "gate-qdrant-vector-ablation",
+            str(report_path),
+            "--mode",
+            "image",
+            "--min-recall-at-k",
+            "1.0",
+            "--max-failed-queries",
+            "0",
+            "--require-best-by-recall",
+            "--no-fail",
+            "--output",
+            str(output),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["passed"] is False
+    assert set(payload["failed_checks"]) == {
+        "min_recall_at_k",
+        "max_failed_queries",
+        "require_best_by_recall",
+    }
 
 
 def test_eval_retrieval_ablation_cli_writes_report(tmp_path):

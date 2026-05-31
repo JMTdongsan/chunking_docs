@@ -17,9 +17,11 @@ from chunking_docs.chunking.section_map import load_section_ranges
 from chunking_docs.embeddings.tokenizers import LexicalTokenizerConfig, TokenizerStrategy
 from chunking_docs.evaluation.audit import audit_package
 from chunking_docs.evaluation.ablation import (
+    QdrantVectorAblationReport,
     QdrantVectorAblationRow,
     build_qdrant_vector_ablation_report,
     evaluate_retrieval_ablation,
+    gate_qdrant_vector_ablation,
     parse_ablation_modes,
     parse_qdrant_vector_ablation_modes,
     qdrant_vector_names_for_modes,
@@ -949,6 +951,74 @@ def eval_qdrant_vector_ablation_command(
         )
         return
     print(report.model_dump())
+
+
+@app.command(name="gate-qdrant-vector-ablation")
+def gate_qdrant_vector_ablation_command(
+    report: Path,
+    mode: str = typer.Option(
+        ...,
+        "--mode",
+        help="Ablation mode to gate, such as image or caption_image.",
+    ),
+    output: Path | None = None,
+    min_recall_at_k: float = 0.0,
+    min_target_coverage_at_k: float = 0.0,
+    min_target_ndcg_at_k: float = 0.0,
+    min_mrr: float = 0.0,
+    min_precision_at_k: float = 0.0,
+    max_failed_queries: int | None = None,
+    max_mean_latency_ms: float | None = None,
+    max_p95_latency_ms: float | None = None,
+    require_best_by_recall: bool = False,
+    require_best_by_target_coverage: bool = False,
+    require_best_by_target_ndcg: bool = False,
+    require_fastest_by_mean_latency: bool = False,
+    fail: bool = typer.Option(
+        True,
+        "--fail/--no-fail",
+        help="Exit with status 1 when the vector ablation gate fails.",
+    ),
+):
+    """Fail a Qdrant vector ablation mode when retrieval metrics are below thresholds."""
+    parsed_report = QdrantVectorAblationReport.model_validate_json(
+        report.read_text(encoding="utf-8")
+    )
+    try:
+        gate_report = gate_qdrant_vector_ablation(
+            parsed_report,
+            mode=mode,
+            min_recall_at_k=min_recall_at_k,
+            min_target_coverage_at_k=min_target_coverage_at_k,
+            min_target_ndcg_at_k=min_target_ndcg_at_k,
+            min_mrr=min_mrr,
+            min_precision_at_k=min_precision_at_k,
+            max_failed_queries=max_failed_queries,
+            max_mean_latency_ms=max_mean_latency_ms,
+            max_p95_latency_ms=max_p95_latency_ms,
+            require_best_by_recall=require_best_by_recall,
+            require_best_by_target_coverage=require_best_by_target_coverage,
+            require_best_by_target_ndcg=require_best_by_target_ndcg,
+            require_fastest_by_mean_latency=require_fastest_by_mean_latency,
+        )
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+    payload = gate_report.model_dump()
+    if output is not None:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(gate_report.model_dump_json(indent=2), encoding="utf-8")
+        payload = {
+            "output": str(output),
+            "passed": gate_report.passed,
+            "mode": gate_report.mode,
+            "vector_names": gate_report.vector_names,
+            "failed_checks": gate_report.failed_checks,
+            "metrics": gate_report.metrics,
+        }
+    print(payload)
+    if fail and not gate_report.passed:
+        raise typer.Exit(1)
 
 
 @app.command(name="embed-package")

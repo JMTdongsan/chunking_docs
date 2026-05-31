@@ -3,6 +3,7 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 from chunking_docs.embeddings.tokenizers import LexicalTokenizerConfig
+from chunking_docs.evaluation.gate import RetrievalGateCheck, maximum_check, minimum_check
 from chunking_docs.evaluation.retrieval import RetrievalCase, RetrievalEvaluation, evaluate_retrieval
 from chunking_docs.models import DocumentChunk, GraphTriple
 
@@ -47,6 +48,21 @@ class QdrantVectorAblationReport(BaseModel):
     best_by_target_ndcg: str | None
     best_by_mrr: str | None
     fastest_by_mean_latency: str | None
+
+
+class QdrantVectorAblationGateReport(BaseModel):
+    passed: bool
+    mode: str
+    vector_names: list[str] = Field(default_factory=list)
+    graph_expand: bool = False
+    metrics: dict[str, float]
+    best_by_recall: str | None = None
+    best_by_target_coverage: str | None = None
+    best_by_target_ndcg: str | None = None
+    best_by_mrr: str | None = None
+    fastest_by_mean_latency: str | None = None
+    failed_checks: list[str] = Field(default_factory=list)
+    checks: list[RetrievalGateCheck] = Field(default_factory=list)
 
 
 DEFAULT_ABLATION_MODES = {
@@ -229,4 +245,149 @@ def build_qdrant_vector_ablation_report(
         fastest_by_mean_latency=min(rows, key=lambda row: row.evaluation.mean_latency_ms).mode.name
         if rows
         else None,
+    )
+
+
+def gate_qdrant_vector_ablation(
+    report: QdrantVectorAblationReport,
+    mode: str,
+    min_recall_at_k: float = 0.0,
+    min_target_coverage_at_k: float = 0.0,
+    min_target_ndcg_at_k: float = 0.0,
+    min_mrr: float = 0.0,
+    min_precision_at_k: float = 0.0,
+    max_failed_queries: int | None = None,
+    max_mean_latency_ms: float | None = None,
+    max_p95_latency_ms: float | None = None,
+    require_best_by_recall: bool = False,
+    require_best_by_target_coverage: bool = False,
+    require_best_by_target_ndcg: bool = False,
+    require_fastest_by_mean_latency: bool = False,
+) -> QdrantVectorAblationGateReport:
+    row = qdrant_vector_ablation_row(report, mode)
+    if row is None:
+        raise ValueError(f"Qdrant vector ablation mode not found: {mode}")
+
+    metrics = qdrant_vector_ablation_metrics(row.evaluation)
+    checks = [
+        minimum_check("min_recall_at_k", "recall_at_k", metrics, min_recall_at_k),
+        minimum_check(
+            "min_target_coverage_at_k",
+            "target_coverage_at_k",
+            metrics,
+            min_target_coverage_at_k,
+        ),
+        minimum_check(
+            "min_target_ndcg_at_k",
+            "mean_target_ndcg_at_k",
+            metrics,
+            min_target_ndcg_at_k,
+        ),
+        minimum_check("min_mrr", "mrr", metrics, min_mrr),
+        minimum_check("min_precision_at_k", "mean_precision_at_k", metrics, min_precision_at_k),
+    ]
+    if max_failed_queries is not None:
+        checks.append(
+            maximum_check(
+                "max_failed_queries",
+                "failed_query_count",
+                metrics,
+                float(max_failed_queries),
+            )
+        )
+    if max_mean_latency_ms is not None:
+        checks.append(
+            maximum_check(
+                "max_mean_latency_ms",
+                "mean_latency_ms",
+                metrics,
+                max_mean_latency_ms,
+            )
+        )
+    if max_p95_latency_ms is not None:
+        checks.append(
+            maximum_check(
+                "max_p95_latency_ms",
+                "p95_latency_ms",
+                metrics,
+                max_p95_latency_ms,
+            )
+        )
+    if require_best_by_recall:
+        checks.append(best_mode_check("require_best_by_recall", mode, report.best_by_recall))
+    if require_best_by_target_coverage:
+        checks.append(
+            best_mode_check(
+                "require_best_by_target_coverage",
+                mode,
+                report.best_by_target_coverage,
+            )
+        )
+    if require_best_by_target_ndcg:
+        checks.append(
+            best_mode_check(
+                "require_best_by_target_ndcg",
+                mode,
+                report.best_by_target_ndcg,
+            )
+        )
+    if require_fastest_by_mean_latency:
+        checks.append(
+            best_mode_check(
+                "require_fastest_by_mean_latency",
+                mode,
+                report.fastest_by_mean_latency,
+            )
+        )
+
+    failed_checks = [check.name for check in checks if not check.passed]
+    return QdrantVectorAblationGateReport(
+        passed=not failed_checks,
+        mode=mode,
+        vector_names=row.mode.vector_names,
+        graph_expand=row.mode.graph_expand,
+        metrics=metrics,
+        best_by_recall=report.best_by_recall,
+        best_by_target_coverage=report.best_by_target_coverage,
+        best_by_target_ndcg=report.best_by_target_ndcg,
+        best_by_mrr=report.best_by_mrr,
+        fastest_by_mean_latency=report.fastest_by_mean_latency,
+        failed_checks=failed_checks,
+        checks=checks,
+    )
+
+
+def qdrant_vector_ablation_row(
+    report: QdrantVectorAblationReport,
+    mode: str,
+) -> QdrantVectorAblationRow | None:
+    for row in report.rows:
+        if row.mode.name == mode:
+            return row
+    return None
+
+
+def qdrant_vector_ablation_metrics(evaluation: RetrievalEvaluation) -> dict[str, float]:
+    return {
+        "hit_rate": evaluation.hit_rate,
+        "recall_at_k": evaluation.recall_at_k,
+        "mrr": evaluation.mrr,
+        "target_coverage_at_k": evaluation.target_coverage_at_k,
+        "mean_target_ndcg_at_k": evaluation.mean_target_ndcg_at_k,
+        "mean_precision_at_k": evaluation.mean_precision_at_k,
+        "mean_latency_ms": evaluation.mean_latency_ms,
+        "p95_latency_ms": evaluation.p95_latency_ms,
+        "failed_query_count": float(evaluation.failed_count),
+    }
+
+
+def best_mode_check(name: str, mode: str, actual_best: str | None) -> RetrievalGateCheck:
+    actual = 1.0 if actual_best == mode else 0.0
+    return RetrievalGateCheck(
+        name=name,
+        metric=name,
+        operator="==",
+        actual=actual,
+        threshold=1.0,
+        passed=actual_best == mode,
     )

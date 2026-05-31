@@ -155,6 +155,7 @@ Additional processing commands may create:
 - `qdrant_collection_contract.json`
 - `qdrant_retrieval_eval.json`
 - `qdrant_vector_ablation.json`
+- `qdrant_vector_ablation_gate.json`
 - `retrieval_case_audit.json`
 - `retrieval_diagnostics.json`
 - `retrieval_gate.json`
@@ -222,6 +223,7 @@ Recommended checks:
 - `diagnose-retrieval`: failure, partial-coverage, low-ranking, and low-precision analysis for retrieval evaluation JSON outputs.
 - `eval-qdrant-retrieval`: the same benchmark cases against Qdrant named vectors plus BM25 and optional graph expansion.
 - `eval-qdrant-vector-ablation`: Qdrant text, visual caption, optional image, and graph-expanded vector comparison on the same cases.
+- `gate-qdrant-vector-ablation`: pass/fail checks for a selected Qdrant vector mode using recall, target coverage, target nDCG, precision, failed-query count, latency, and optional best-mode requirements.
 - `compare-visual-runs`: OCR/VLM run comparison by coverage, structured parse rate, graph triple density, and latency.
 - `plan-vlm-experiments`: reproducible profile-by-profile command recipes for running the same visual job set through multiple VLMs.
 - `eval-retrieval-ablation`: dense-only, BM25-only, graph-only, hybrid, and graph-expanded hybrid comparison on the same cases, including target coverage@k, target nDCG@k, and latency.
