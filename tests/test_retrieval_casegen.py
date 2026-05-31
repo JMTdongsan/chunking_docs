@@ -253,6 +253,43 @@ def test_generate_retrieval_case_skeleton_dedupes_queries_by_default():
     assert cases[0].expected_chunk_ids == ["chunk-1", "chunk-2"]
 
 
+def test_generate_retrieval_case_skeleton_can_create_visual_lexical_probes():
+    chunk = DocumentChunk(
+        chunk_id="chunk-1",
+        doc_id="doc",
+        page_start=1,
+        page_end=1,
+        kind=ChunkKind.TEXT,
+        text="Transit corridor station access evidence.",
+        asset_ids=["asset-1"],
+    )
+    asset = VisualAsset(
+        asset_id="asset-1",
+        doc_id="doc",
+        page_no=1,
+        kind=AssetKind.MAP,
+        caption="Station access map legend signal",
+    )
+
+    cases = generate_retrieval_case_skeleton(
+        [chunk],
+        [asset],
+        [],
+        include_pages=False,
+        include_assets=False,
+        include_triples=False,
+        visual_probe_limit=1,
+    )
+
+    assert len(cases) == 1
+    assert cases[0].query == "map legend signal"
+    assert cases[0].expected_pages == [1]
+    assert cases[0].expected_asset_ids == ["asset-1"]
+    assert cases[0].metadata["case_source"] == "visual_lexical_probe"
+    assert cases[0].metadata["linked_chunk_ids"] == ["chunk-1"]
+    assert cases[0].metadata["query_terms"] == ["map", "legend", "signal"]
+
+
 def test_generate_retrieval_cases_cli_writes_jsonl(tmp_path):
     package_dir = write_case_package(tmp_path)
     output = tmp_path / "cases.jsonl"
@@ -285,6 +322,33 @@ def test_generate_retrieval_cases_cli_writes_jsonl(tmp_path):
     assert rows[0]["metadata"]["query_mode"] == "salient_terms"
     assert rows[1]["expected_asset_ids"] == ["asset-1"]
     assert rows[2]["expected_triple_ids"] == ["triple-1"]
+
+
+def test_generate_retrieval_cases_cli_writes_visual_probe_cases(tmp_path):
+    package_dir = write_case_package(tmp_path)
+    output = tmp_path / "cases.jsonl"
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "generate-retrieval-cases",
+            "--package-dir",
+            str(package_dir),
+            "--output",
+            str(output),
+            "--no-include-pages",
+            "--no-include-assets",
+            "--no-include-triples",
+            "--visual-probe-limit",
+            "1",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    rows = [json.loads(line) for line in output.read_text(encoding="utf-8").splitlines()]
+    assert len(rows) == 1
+    assert rows[0]["query"] == "map legend signal"
+    assert rows[0]["metadata"]["case_source"] == "visual_lexical_probe"
 
 
 def test_generate_retrieval_cases_cli_accepts_candidate_chunks(tmp_path):
@@ -362,7 +426,7 @@ def write_case_package(tmp_path: Path) -> Path:
         doc_id="doc",
         page_no=1,
         kind=AssetKind.MAP,
-        caption="Station access map",
+        caption="Station access map legend signal",
     )
     triple = GraphTriple(
         triple_id="triple-1",

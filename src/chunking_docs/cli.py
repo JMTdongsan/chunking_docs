@@ -2585,6 +2585,7 @@ def generate_retrieval_cases_command(
     min_query_terms: int = 3,
     max_query_terms: int = 8,
     dedupe_queries: bool = True,
+    visual_probe_limit: int = 0,
 ):
     """Generate retrieval benchmark JSONL drafts from package chunks, assets, and triples."""
     manifest = load_processing_package(package_dir)
@@ -2607,6 +2608,7 @@ def generate_retrieval_cases_command(
             min_query_terms=min_query_terms,
             max_query_terms=max_query_terms,
             dedupe_queries=dedupe_queries,
+            visual_probe_limit=visual_probe_limit,
         )
     except ValueError as exc:
         raise typer.BadParameter(str(exc)) from exc
@@ -2619,6 +2621,7 @@ def generate_retrieval_cases_command(
             "page_limit": page_limit,
             "asset_limit": asset_limit,
             "triple_limit": triple_limit,
+            "visual_probe_limit": visual_probe_limit,
             "include_todo": include_todo,
             "query_mode": query_mode,
             "selection_strategy": selection_strategy,

@@ -92,6 +92,7 @@ def generate_retrieval_case_skeleton(
     min_query_terms: int = 3,
     max_query_terms: int = 8,
     dedupe_queries: bool = True,
+    visual_probe_limit: int = 0,
 ) -> list[RetrievalCase]:
     validate_casegen_options(query_mode, selection_strategy, min_query_terms, max_query_terms)
     corpus_texts = case_source_texts(chunks, assets, triples)
@@ -118,6 +119,21 @@ def generate_retrieval_case_skeleton(
                 assets,
                 limit=asset_limit,
                 include_todo=include_todo,
+                query_max_chars=query_max_chars,
+                query_mode=query_mode,
+                selection_strategy=selection_strategy,
+                term_df=term_df,
+                document_count=len(corpus_texts),
+                min_query_terms=min_query_terms,
+                max_query_terms=max_query_terms,
+            )
+        )
+    if visual_probe_limit > 0:
+        cases.extend(
+            visual_lexical_probe_cases(
+                chunks,
+                assets,
+                limit=visual_probe_limit,
                 query_max_chars=query_max_chars,
                 query_mode=query_mode,
                 selection_strategy=selection_strategy,
@@ -240,6 +256,138 @@ def asset_cases(
             )
         )
     return select_candidates(merge_case_candidates_by_query(candidates), limit, selection_strategy)
+
+
+def visual_lexical_probe_cases(
+    chunks: list[DocumentChunk],
+    assets: list[VisualAsset],
+    limit: int,
+    query_max_chars: int,
+    query_mode: QueryMode = "snippet",
+    selection_strategy: SelectionStrategy = "document_order",
+    term_df: dict[str, int] | None = None,
+    document_count: int = 0,
+    min_query_terms: int = 3,
+    max_query_terms: int = 8,
+) -> list[RetrievalCase]:
+    candidates: list[CaseCandidate] = []
+    chunks_by_asset = chunks_by_asset_id(chunks)
+    for asset in sorted(assets, key=lambda item: (asset_priority(item), item.page_no, item.asset_id)):
+        linked_chunks = chunks_by_asset.get(asset.asset_id, [])
+        if not linked_chunks:
+            continue
+        draft = visual_probe_query_from_asset(
+            asset,
+            linked_chunks,
+            max_chars=query_max_chars,
+            mode=query_mode,
+            term_df=term_df or {},
+            document_count=document_count,
+            min_query_terms=min_query_terms,
+            max_query_terms=max_query_terms,
+        )
+        if not draft.query:
+            continue
+        case = with_case_metadata(
+            RetrievalCase(
+                query=draft.query,
+                expected_pages=[asset.page_no],
+                expected_asset_ids=[asset.asset_id],
+            ),
+            case_source="visual_lexical_probe",
+            query_mode=query_mode,
+            draft=draft,
+        )
+        case = case.model_copy(
+            update={
+                "metadata": {
+                    **case.metadata,
+                    "linked_chunk_ids": [chunk.chunk_id for chunk in linked_chunks],
+                }
+            }
+        )
+        candidates.append(
+            CaseCandidate(
+                case=case,
+                score=draft.score,
+                order=(asset_priority(asset), asset.page_no, asset.asset_id),
+            )
+        )
+    return select_candidates(merge_case_candidates_by_query(candidates), limit, selection_strategy)
+
+
+def visual_probe_query_from_asset(
+    asset: VisualAsset,
+    linked_chunks: list[DocumentChunk],
+    max_chars: int,
+    mode: QueryMode,
+    term_df: dict[str, int],
+    document_count: int,
+    min_query_terms: int,
+    max_query_terms: int,
+) -> QueryDraft:
+    visual_text = meaningful_query_text(asset_text(asset))
+    if not visual_text:
+        return QueryDraft(query="")
+    linked_term_keys = {
+        key
+        for chunk in linked_chunks
+        for _, _, key in extracted_terms(meaningful_query_text(chunk.text))
+    }
+    scored_terms = [
+        (term_score(key, term_df=term_df, document_count=document_count), position, term, key)
+        for position, term, key in extracted_terms(visual_text)
+        if key not in linked_term_keys
+    ]
+    if mode == "salient_terms":
+        selected = select_salient_terms(
+            scored_terms,
+            min_query_terms=min_query_terms,
+            max_query_terms=max_query_terms,
+        )
+    else:
+        selected = first_distinct_terms(
+            scored_terms,
+            min_query_terms=min_query_terms,
+            max_query_terms=max_query_terms,
+        )
+    if len(selected) < min_query_terms:
+        return QueryDraft(query="")
+    selected_by_position = sorted(selected, key=lambda item: item[1])
+    query_terms = [term for _, _, term, _ in selected_by_position]
+    return QueryDraft(
+        query=trim_query(" ".join(query_terms), max_chars=max_chars),
+        score=sum(score for score, _, _, _ in selected),
+        terms=tuple(query_terms),
+    )
+
+
+def first_distinct_terms(
+    scored_terms: list[tuple[float, int, str, str]],
+    min_query_terms: int,
+    max_query_terms: int,
+) -> list[tuple[float, int, str, str]]:
+    selected = []
+    selected_keys: set[str] = set()
+    for item in sorted(scored_terms, key=lambda item: item[1]):
+        _, _, _, key = item
+        if len(selected) >= max_query_terms:
+            break
+        if any(key in selected_key or selected_key in key for selected_key in selected_keys):
+            continue
+        selected.append(item)
+        selected_keys.add(key)
+    if len(selected) < min_query_terms:
+        return []
+    return selected
+
+
+def chunks_by_asset_id(chunks: list[DocumentChunk]) -> dict[str, list[DocumentChunk]]:
+    indexed: dict[str, list[DocumentChunk]] = {}
+    for chunk in chunks:
+        for asset_id in chunk.asset_ids:
+            indexed.setdefault(asset_id, []).append(chunk)
+    return indexed
 
 
 def triple_cases(

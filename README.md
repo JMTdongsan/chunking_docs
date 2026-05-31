@@ -495,11 +495,12 @@ chunking-docs generate-retrieval-cases \
   --chunks outputs/package/chunks.multimodal.jsonl \
   --query-mode salient_terms \
   --selection-strategy salience \
+  --visual-probe-limit 20 \
   --include-todo \
   --output outputs/package/retrieval_cases.skeleton.jsonl
 ```
 
-`--chunks` can point at a candidate chunk file so the same benchmark drafting logic can be run against semantic, multimodal, or hierarchical candidates. `--query-mode snippet` drafts queries from source text snippets. `--query-mode salient_terms` drafts harder keyword-style queries from document-frequency-weighted terms, and `--selection-strategy salience` prioritizes targets with more distinctive text. Duplicate query strings are merged by default so repeated tables, section labels, or graph triples become one case with multiple acceptable targets; use `--no-dedupe-queries` only when auditing duplicate behavior. Treat generated cases as reviewable drafts before using them as a benchmark gate.
+`--chunks` can point at a candidate chunk file so the same benchmark drafting logic can be run against semantic, multimodal, or hierarchical candidates. `--query-mode snippet` drafts queries from source text snippets. `--query-mode salient_terms` drafts harder keyword-style queries from document-frequency-weighted terms, and `--selection-strategy salience` prioritizes targets with more distinctive text. `--visual-probe-limit` adds asset-targeted probe cases whose query terms come from linked visual captions, OCR text, or VLM summaries after removing terms already present in the linked chunk text; these cases are useful for measuring whether visual text actually improves retrieval. Duplicate query strings are merged by default so repeated tables, section labels, or graph triples become one case with multiple acceptable targets; use `--no-dedupe-queries` only when auditing duplicate behavior. Treat generated cases as reviewable drafts before using them as a benchmark gate.
 
 ```jsonl
 {"query":"policy corridor near river","expected_pages":[12],"graph_expand":true}
