@@ -1,0 +1,39 @@
+[build-system]
+requires = ["hatchling>=1.26"]
+build-backend = "hatchling.build"
+
+[project]
+name = "chunking-docs"
+version = "0.1.0"
+description = "Document chunking and multimodal embedding pipeline for urban planning PDFs."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "pydantic>=2.10,<3.0",
+  "pymupdf>=1.27,<2.0",
+  "pillow>=11.0,<13.0",
+  "typer>=0.15,<1.0",
+  "rich>=13.9,<15.0",
+  "httpx>=0.28,<1.0",
+  "numpy>=2.0,<3.0",
+  "rank-bm25>=0.2,<1.0",
+]
+
+[project.optional-dependencies]
+qdrant = ["qdrant-client>=1.12,<2.0"]
+postgres = ["psycopg[binary,pool]>=3.2,<4.0", "pgvector>=0.3,<1.0"]
+vision = ["transformers>=4.48,<5.0", "accelerate>=1.2,<2.0", "torch>=2.5"]
+dev = ["pytest>=8.3,<9.0", "ruff>=0.8,<1.0"]
+
+[project.scripts]
+chunking-docs = "chunking_docs.cli:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/chunking_docs"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
