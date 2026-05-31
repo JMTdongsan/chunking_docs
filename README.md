@@ -73,6 +73,8 @@ chunking-docs characterize-package \
   --output outputs/package/document_characteristics.json
 ```
 
+The report includes observations and processing recommendations for visual annotation, multimodal embeddings, graph signals, and retrieval benchmark coverage.
+
 ## Document Structure
 
 Document-specific structure should be supplied as data, not hardcoded in the library.

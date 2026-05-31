@@ -2087,6 +2087,7 @@ def characterize_package_command(
             "degraded_or_empty_ratio": report.text_layer.degraded_or_empty_ratio,
             "asset_kind_counts": report.visual.asset_kind_counts,
             "observations": [observation.code for observation in report.observations],
+            "recommendations": [recommendation.code for recommendation in report.recommendations],
         }
     print(payload)
 

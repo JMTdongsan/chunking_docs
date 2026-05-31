@@ -17,6 +17,15 @@ class CharacteristicObservation(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class ProcessingRecommendation(BaseModel):
+    code: str
+    area: str
+    priority: str
+    message: str
+    commands: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
 class TextLayerCharacteristics(BaseModel):
     page_count: int
     quality_counts: dict[str, int]
@@ -65,6 +74,7 @@ class PackageCharacteristics(BaseModel):
     graph: GraphCharacteristics
     artifacts: ArtifactCharacteristics = Field(default_factory=ArtifactCharacteristics)
     observations: list[CharacteristicObservation] = Field(default_factory=list)
+    recommendations: list[ProcessingRecommendation] = Field(default_factory=list)
 
 
 def characterize_package(
@@ -87,6 +97,7 @@ def characterize_package(
         graph=graph,
         artifacts=artifacts,
         observations=observations(text_layer, visual, chunk_summary, graph, artifacts),
+        recommendations=recommendations(text_layer, visual, chunk_summary, graph, artifacts),
     )
 
 
@@ -252,6 +263,157 @@ def observations(
                 message="Chunks are not linked to visual assets; multimodal context assembly will be limited.",
             )
         )
+    return result
+
+
+def recommendations(
+    text_layer: TextLayerCharacteristics,
+    visual: VisualCharacteristics,
+    chunks: ChunkCharacteristics,
+    graph: GraphCharacteristics,
+    artifacts: ArtifactCharacteristics,
+) -> list[ProcessingRecommendation]:
+    result = []
+    if (
+        text_layer.degraded_or_empty_ratio > 0
+        or visual.pages_requiring_ocr_count
+        or visual.pages_requiring_vlm_count
+    ):
+        result.append(
+            ProcessingRecommendation(
+                code="prioritize_visual_annotations",
+                area="vision",
+                priority="required",
+                message=(
+                    "Run prioritized OCR/VLM jobs for degraded text pages and visual-heavy assets before final "
+                    "retrieval evaluation."
+                ),
+                commands=[
+                    "chunking-docs plan-visual-jobs --package-dir outputs/package",
+                    "chunking-docs run-visual-jobs --package-dir outputs/package --jobs outputs/package/visual_jobs.jsonl --apply",
+                    "chunking-docs gate-visual-results --results outputs/package/visual_job_results.jsonl",
+                ],
+                metadata={
+                    "low_text_pages": text_layer.low_text_pages,
+                    "visual_heavy_pages": visual.visual_heavy_pages,
+                    "pages_requiring_ocr_count": visual.pages_requiring_ocr_count,
+                    "pages_requiring_vlm_count": visual.pages_requiring_vlm_count,
+                },
+            )
+        )
+    if visual.asset_kind_counts.get("map", 0) or visual.asset_kind_counts.get("chart", 0):
+        result.append(
+            ProcessingRecommendation(
+                code="evaluate_visual_vectors",
+                area="embeddings",
+                priority="required",
+                message=(
+                    "Compare text, caption, image, and graph-expanded Qdrant modes so visual evidence can be "
+                    "measured instead of assumed."
+                ),
+                commands=[
+                    "chunking-docs embed-package --package-dir outputs/package --image-backend clip",
+                    "chunking-docs eval-qdrant-vector-ablation examples/retrieval_cases.jsonl --package-dir outputs/package --modes text,caption,text_caption,all_graph",
+                ],
+                metadata={"asset_kind_counts": visual.asset_kind_counts},
+            )
+        )
+    if visual.asset_kind_counts.get("table", 0) or chunks.table_chunk_count:
+        result.append(
+            ProcessingRecommendation(
+                code="preserve_table_structure",
+                area="chunking",
+                priority="recommended",
+                message=(
+                    "Keep table chunks and table assets separate from prose chunks, then include table-specific "
+                    "targets in retrieval cases."
+                ),
+                commands=[
+                    "chunking-docs audit-package --package-dir outputs/package --require-qdrant-records",
+                    "chunking-docs generate-retrieval-cases --package-dir outputs/package",
+                ],
+                metadata={"table_assets": visual.asset_kind_counts.get("table", 0), "table_chunks": chunks.table_chunk_count},
+            )
+        )
+    if chunks.chunks_with_assets or visual.asset_kind_counts:
+        result.append(
+            ProcessingRecommendation(
+                code="compare_multimodal_hierarchical_chunking",
+                area="chunking",
+                priority="required",
+                message=(
+                    "Compare semantic, multimodal, and hierarchical chunk candidates with the same benchmark cases "
+                    "before changing default chunking settings."
+                ),
+                commands=[
+                    "chunking-docs compare-chunking --package-dir outputs/package --candidate semantic=outputs/package/chunks.semantic.jsonl --candidate multimodal=outputs/package/chunks.multimodal.jsonl",
+                    "chunking-docs gate-chunking-comparison outputs/package/chunking_comparison.json",
+                ],
+                metadata={
+                    "chunks_with_assets": chunks.chunks_with_assets,
+                    "asset_kind_counts": visual.asset_kind_counts,
+                },
+            )
+        )
+    if graph.triple_count == 0 or graph.visual_triple_count == 0:
+        result.append(
+            ProcessingRecommendation(
+                code="add_graph_signals",
+                area="graph",
+                priority="recommended",
+                message=(
+                    "Add section-derived or visual-annotation triples and evaluate graph-expanded retrieval against "
+                    "non-graph baselines."
+                ),
+                commands=[
+                    "chunking-docs normalize-graph-triples --package-dir outputs/package --export-graph",
+                    "chunking-docs eval-retrieval-ablation examples/retrieval_cases.jsonl --package-dir outputs/package --modes dense,bm25,hybrid,hybrid_graph",
+                ],
+                metadata={
+                    "triple_count": graph.triple_count,
+                    "visual_triple_count": graph.visual_triple_count,
+                },
+            )
+        )
+    if not artifacts.embedding_manifest or not artifacts.qdrant_record_files:
+        result.append(
+            ProcessingRecommendation(
+                code="build_embedding_artifacts",
+                area="storage",
+                priority="required",
+                message=(
+                    "Build embedding records with manifest provenance before loading Qdrant or comparing retrieval "
+                    "runs."
+                ),
+                commands=["chunking-docs embed-package --package-dir outputs/package"],
+                metadata={
+                    "embedding_manifest": artifacts.embedding_manifest,
+                    "qdrant_record_files": artifacts.qdrant_record_files,
+                },
+            )
+        )
+    result.append(
+        ProcessingRecommendation(
+            code="maintain_retrieval_benchmark",
+            area="evaluation",
+            priority="required",
+            message=(
+                "Maintain benchmark cases with page, chunk, asset, and graph targets; use gates to decide whether "
+                "a chunking strategy is an improvement."
+            ),
+            commands=[
+                "chunking-docs audit-retrieval-cases examples/retrieval_cases.jsonl --package-dir outputs/package",
+                "chunking-docs eval-retrieval examples/retrieval_cases.jsonl --package-dir outputs/package --repeat 3",
+                "chunking-docs gate-retrieval outputs/package/retrieval_eval.json",
+            ],
+            metadata={
+                "page_count": text_layer.page_count,
+                "chunk_count": chunks.chunk_count,
+                "asset_count": sum(visual.asset_kind_counts.values()),
+                "triple_count": graph.triple_count,
+            },
+        )
+    )
     return result
 
 

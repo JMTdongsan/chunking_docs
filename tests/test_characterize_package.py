@@ -31,6 +31,7 @@ def test_characterize_package_reports_strategy_observations(tmp_path):
     )
 
     observation_codes = {observation.code for observation in report.observations}
+    recommendation_codes = {recommendation.code for recommendation in report.recommendations}
     assert report.text_layer.degraded_or_empty_ratio == 0.5
     assert report.visual.asset_kind_counts["map"] == 1
     assert report.visual.pages_requiring_ocr_count == 1
@@ -39,6 +40,10 @@ def test_characterize_package_reports_strategy_observations(tmp_path):
     assert "visual_retrieval_required" in observation_codes
     assert "visual_annotation_pending" in observation_codes
     assert "graph_triples_missing" not in observation_codes
+    assert "prioritize_visual_annotations" in recommendation_codes
+    assert "evaluate_visual_vectors" in recommendation_codes
+    assert "compare_multimodal_hierarchical_chunking" in recommendation_codes
+    assert "maintain_retrieval_benchmark" in recommendation_codes
 
 
 def test_characterize_package_cli_writes_json(tmp_path):
@@ -62,6 +67,7 @@ def test_characterize_package_cli_writes_json(tmp_path):
     payload = json.loads(output.read_text(encoding="utf-8"))
     assert payload["visual"]["asset_kind_counts"]["map"] == 1
     assert any(item["code"] == "visual_retrieval_required" for item in payload["observations"])
+    assert any(item["code"] == "evaluate_visual_vectors" for item in payload["recommendations"])
 
 
 def make_characteristic_package(tmp_path: Path):

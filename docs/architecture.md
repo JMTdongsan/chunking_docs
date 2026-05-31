@@ -18,7 +18,7 @@
    - Measure page size, text length, text blocks, image blocks, embedded images, and drawing count.
    - Classify the text layer as `good`, `degraded`, or `empty`.
    - Use the profile to decide which pages need OCR, VLM summaries, or visual embeddings.
-   - Summarize package characteristics that guide chunking, OCR/VLM, graph, and retrieval strategy.
+   - Summarize package characteristics and recommended next processing steps for chunking, OCR/VLM, graph, embeddings, and retrieval benchmarks.
 
 3. **Section Mapping**
    - Accept optional section ranges as JSON or JSONL.
