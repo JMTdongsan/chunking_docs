@@ -37,6 +37,8 @@ def test_gate_chunking_comparison_passes_selected_candidate_against_baseline():
     assert report.metrics["retrieval_recall_at_k"] == 0.9
     assert report.metrics["target_type.asset.coverage_at_k"] == 0.85
     assert report.metrics["source_family.lexical.target_coverage_at_k"] == 0.9
+    assert report.target_metrics["asset"]["coverage_at_k"] == 0.85
+    assert report.source_family_metrics["lexical"]["target_coverage_at_k"] == 0.9
 
 
 def test_gate_chunking_comparison_flags_retrieval_regressions():
@@ -110,6 +112,8 @@ def test_gate_chunking_comparison_cli_writes_json_and_fails(tmp_path):
     assert "min_recall_at_k" in payload["failed_checks"]
     assert "min_target_type_coverage:asset" in payload["failed_checks"]
     assert "min_source_family_target_coverage:lexical" in payload["failed_checks"]
+    assert payload["target_metrics"]["asset"]["coverage_at_k"] == 0.2
+    assert payload["source_family_metrics"]["lexical"]["target_coverage_at_k"] == 0.1
     assert "max_recall_at_k_drop" in payload["failed_checks"]
 
 

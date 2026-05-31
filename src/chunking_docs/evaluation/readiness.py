@@ -213,6 +213,8 @@ def build_ingestion_readiness_report(
                     "baseline_candidate": chunking_comparison_gate.baseline_candidate,
                     "failed_checks": chunking_comparison_gate.failed_checks,
                     "metrics": chunking_comparison_gate.metrics,
+                    "target_metrics": chunking_comparison_gate.target_metrics,
+                    "source_family_metrics": chunking_comparison_gate.source_family_metrics,
                 },
             )
         )

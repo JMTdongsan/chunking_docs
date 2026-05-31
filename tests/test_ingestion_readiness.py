@@ -73,6 +73,10 @@ def test_ingestion_readiness_includes_retrieval_cases_and_chunking_gate(tmp_path
     assert report.chunking_comparison_gate.metrics["target_type.asset.coverage_at_k"] == 0.9
     assert report.chunking_comparison_gate.metrics["target_type.triple.coverage_at_k"] == 0.9
     assert report.chunking_comparison_gate.metrics["source_family.lexical.target_coverage_at_k"] == 0.9
+    assert report.chunking_comparison_gate.target_metrics["asset"]["coverage_at_k"] == 0.9
+    assert report.chunking_comparison_gate.source_family_metrics["lexical"][
+        "target_coverage_at_k"
+    ] == 0.9
     assert report.failed_components == []
 
 
@@ -385,6 +389,8 @@ def test_ingestion_readiness_cli_can_gate_chunking_target_coverage(tmp_path):
     assert component["metadata"]["metrics"]["target_type.asset.coverage_at_k"] == 0.9
     assert component["metadata"]["metrics"]["target_type.triple.coverage_at_k"] == 0.9
     assert component["metadata"]["metrics"]["source_family.lexical.target_coverage_at_k"] == 0.9
+    assert component["metadata"]["target_metrics"]["asset"]["coverage_at_k"] == 0.9
+    assert component["metadata"]["source_family_metrics"]["lexical"]["target_coverage_at_k"] == 0.9
 
 
 def write_ready_package(tmp_path: Path):

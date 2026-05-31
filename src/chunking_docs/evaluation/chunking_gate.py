@@ -28,6 +28,8 @@ class ChunkingComparisonGateReport(BaseModel):
     candidate: str
     baseline_candidate: str | None = None
     metrics: dict[str, float | None]
+    target_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
+    source_family_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
     baseline_metrics: dict[str, float | None] = Field(default_factory=dict)
     failed_checks: list[str] = Field(default_factory=list)
     checks: list[ChunkingComparisonGateCheck] = Field(default_factory=list)
@@ -222,6 +224,8 @@ def gate_chunking_comparison(
         candidate=selected_name,
         baseline_candidate=baseline_candidate,
         metrics=metrics,
+        target_metrics=selected_row.target_metrics,
+        source_family_metrics=selected_row.source_family_metrics,
         baseline_metrics=baseline_metrics,
         failed_checks=failed_checks,
         checks=checks,
@@ -471,5 +475,7 @@ def chunking_gate_summary_payload(report: ChunkingComparisonGateReport) -> dict:
         "baseline_candidate": report.baseline_candidate,
         "failed_checks": report.failed_checks,
         "metrics": report.metrics,
+        "target_metrics": report.target_metrics,
+        "source_family_metrics": report.source_family_metrics,
         "baseline_metrics": report.baseline_metrics,
     }
