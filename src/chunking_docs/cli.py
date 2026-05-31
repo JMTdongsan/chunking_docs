@@ -79,7 +79,7 @@ from chunking_docs.vision.assets import (
     build_page_tile_assets,
     merge_visual_assets,
 )
-from chunking_docs.vision.compare import compare_visual_runs
+from chunking_docs.vision.compare import VisualRunComparison, compare_visual_runs
 from chunking_docs.vision.experiments import build_vlm_experiment_plan, parse_profile_list
 from chunking_docs.vision.interfaces import OCRBackend, VLMBackend
 from chunking_docs.vision.jobs import (
@@ -2251,6 +2251,13 @@ def ingestion_readiness_command(
     min_vlm_summary_coverage: float = 0.0,
     min_vlm_json_parse_rate: float = 0.0,
     max_visual_failed_count: int | None = None,
+    visual_run_comparison: Path | None = None,
+    require_visual_run_comparison: bool = False,
+    min_visual_run_count: int = 2,
+    require_visual_run_same_jobs: bool = False,
+    min_visual_run_shared_jobs: int = 0,
+    visual_run_best_by_quality: str | None = None,
+    visual_run_best_by_triple_density: str | None = None,
     retrieval_cases: Path | None = None,
     require_retrieval_cases: bool = False,
     min_case_count: int = 1,
@@ -2364,6 +2371,13 @@ def ingestion_readiness_command(
     """Check whether a package is ready for Qdrant/PostgreSQL ingestion and RAG evaluation."""
     manifest = load_processing_package(package_dir)
     parsed_visual_results = read_jsonl(visual_results, VisualJobRunResult) if visual_results else None
+    parsed_visual_run_comparison = (
+        VisualRunComparison.model_validate_json(
+            visual_run_comparison.read_text(encoding="utf-8")
+        )
+        if visual_run_comparison
+        else None
+    )
     parsed_retrieval_cases = load_retrieval_cases(retrieval_cases) if retrieval_cases else None
     parsed_retrieval = load_retrieval_evaluation(retrieval_evaluation) if retrieval_evaluation else None
     parsed_chunking_comparison = load_chunking_comparison(chunking_comparison) if chunking_comparison else None
@@ -2429,6 +2443,15 @@ def ingestion_readiness_command(
             "min_vlm_summary_coverage": min_vlm_summary_coverage,
             "min_vlm_json_parse_rate": min_vlm_json_parse_rate,
             "max_failed_count": max_visual_failed_count,
+        },
+        visual_run_comparison=parsed_visual_run_comparison,
+        require_visual_run_comparison=require_visual_run_comparison,
+        visual_run_comparison_options={
+            "min_run_count": min_visual_run_count,
+            "require_same_jobs": require_visual_run_same_jobs,
+            "min_shared_job_count": min_visual_run_shared_jobs,
+            "expected_best_by_quality": visual_run_best_by_quality,
+            "expected_best_by_triple_density": visual_run_best_by_triple_density,
         },
         retrieval_cases=parsed_retrieval_cases,
         require_retrieval_cases=require_retrieval_cases,

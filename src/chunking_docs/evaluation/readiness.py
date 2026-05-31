@@ -27,6 +27,7 @@ from chunking_docs.embeddings.bm25 import asset_text_parts, chunk_lexical_texts
 from chunking_docs.embeddings.tokenizers import LexicalTokenizer, LexicalTokenizerConfig
 from chunking_docs.models import ProcessingManifest
 from chunking_docs.storage.postgres_store import manifest_rows
+from chunking_docs.vision.compare import VisualRunComparison
 from chunking_docs.vision.jobs import VisualJobRunResult
 from chunking_docs.vision.quality import (
     VisualQualityReport,
@@ -51,6 +52,7 @@ class IngestionReadinessReport(BaseModel):
     postgres_row_counts: dict[str, int] = Field(default_factory=dict)
     audit: PackageAudit
     visual_quality: VisualQualityReport | None = None
+    visual_run_comparison: VisualRunComparison | None = None
     retrieval_case_audit: RetrievalCaseAuditReport | None = None
     retrieval_gate: RetrievalGateReport | None = None
     chunking_comparison_gate: ChunkingComparisonGateReport | None = None
@@ -71,6 +73,9 @@ def build_ingestion_readiness_report(
     visual_results: list[VisualJobRunResult] | None = None,
     require_visual_quality: bool = False,
     visual_quality_options: dict[str, Any] | None = None,
+    visual_run_comparison: VisualRunComparison | None = None,
+    require_visual_run_comparison: bool = False,
+    visual_run_comparison_options: dict[str, Any] | None = None,
     retrieval_cases: list[RetrievalCase] | None = None,
     require_retrieval_cases: bool = False,
     retrieval_case_options: dict[str, Any] | None = None,
@@ -149,6 +154,22 @@ def build_ingestion_readiness_report(
                     "vlm_summary_coverage": visual_quality.vlm_summary_coverage,
                     "vlm_json_parse_rate": visual_quality.vlm_json_parse_rate,
                 },
+            )
+        )
+
+    if visual_run_comparison is not None:
+        components.append(
+            visual_run_comparison_component(
+                visual_run_comparison,
+                **(visual_run_comparison_options or {}),
+            )
+        )
+    elif require_visual_run_comparison:
+        components.append(
+            ReadinessComponent(
+                name="visual_run_comparison",
+                passed=False,
+                message="Visual run comparison is required but was not supplied.",
             )
         )
 
@@ -379,6 +400,7 @@ def build_ingestion_readiness_report(
         postgres_row_counts=postgres_row_counts,
         audit=audit,
         visual_quality=visual_quality,
+        visual_run_comparison=visual_run_comparison,
         retrieval_case_audit=retrieval_case_audit,
         retrieval_gate=retrieval_gate,
         chunking_comparison_gate=chunking_comparison_gate,
@@ -416,6 +438,54 @@ def required_artifact_component(
         passed=artifact_presence.get(filename, False),
         message=f"Required package artifact exists: {filename}.",
         metadata={"file": filename},
+    )
+
+
+def visual_run_comparison_component(
+    comparison: VisualRunComparison,
+    min_run_count: int = 2,
+    require_same_jobs: bool = False,
+    min_shared_job_count: int = 0,
+    expected_best_by_quality: str | None = None,
+    expected_best_by_triple_density: str | None = None,
+) -> ReadinessComponent:
+    failed_checks = []
+    run_count = len(comparison.rows)
+    if run_count < min_run_count:
+        failed_checks.append("min_run_count")
+    if require_same_jobs and comparison.job_set_mismatch:
+        failed_checks.append("same_job_set")
+    if comparison.shared_job_count < min_shared_job_count:
+        failed_checks.append("min_shared_job_count")
+    if expected_best_by_quality and comparison.best_by_quality != expected_best_by_quality:
+        failed_checks.append("expected_best_by_quality")
+    if (
+        expected_best_by_triple_density
+        and comparison.best_by_triple_density != expected_best_by_triple_density
+    ):
+        failed_checks.append("expected_best_by_triple_density")
+
+    return ReadinessComponent(
+        name="visual_run_comparison",
+        passed=not failed_checks,
+        message="Visual OCR/VLM comparison uses a comparable job set and meets selection checks.",
+        metadata={
+            "failed_checks": failed_checks,
+            "run_count": run_count,
+            "min_run_count": min_run_count,
+            "best_by_quality": comparison.best_by_quality,
+            "expected_best_by_quality": expected_best_by_quality,
+            "fastest_by_total_latency": comparison.fastest_by_total_latency,
+            "best_by_triple_density": comparison.best_by_triple_density,
+            "expected_best_by_triple_density": expected_best_by_triple_density,
+            "job_set_mismatch": comparison.job_set_mismatch,
+            "require_same_jobs": require_same_jobs,
+            "union_job_count": comparison.union_job_count,
+            "shared_job_count": comparison.shared_job_count,
+            "min_shared_job_count": min_shared_job_count,
+            "run_job_counts": comparison.run_job_counts,
+            "missing_job_ids_by_run": comparison.missing_job_ids_by_run,
+        },
     )
 
 

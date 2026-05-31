@@ -30,6 +30,9 @@ from chunking_docs.models import (
 )
 from chunking_docs.retrieval.local_hybrid import HybridSearchHit
 from chunking_docs.storage.records import EmbeddingRecord
+from chunking_docs.vision.compare import compare_visual_runs
+from chunking_docs.vision.jobs import VisualJobRunResult
+from chunking_docs.vision.manual_annotations import AssetAnnotation
 
 
 def test_ingestion_readiness_passes_ready_package(tmp_path):
@@ -269,6 +272,61 @@ def test_ingestion_readiness_can_gate_visual_quality_from_assets(tmp_path):
     assert visual_component.metadata["source"] == "assets"
 
 
+def test_ingestion_readiness_can_gate_visual_run_comparison(tmp_path):
+    package_dir, manifest = write_ready_package(tmp_path)
+    comparison = compare_visual_runs(
+        {
+            "raw": visual_run_results("raw_text", triple=False),
+            "structured": visual_run_results("json_object", triple=True),
+        }
+    )
+
+    report = build_ingestion_readiness_report(
+        package_dir,
+        manifest,
+        visual_run_comparison=comparison,
+        visual_run_comparison_options={
+            "require_same_jobs": True,
+            "min_run_count": 2,
+            "min_shared_job_count": 1,
+            "expected_best_by_quality": "structured",
+        },
+    )
+
+    component = next(
+        component for component in report.components if component.name == "visual_run_comparison"
+    )
+    assert report.passed is True
+    assert report.visual_run_comparison is not None
+    assert component.metadata["job_set_mismatch"] is False
+    assert component.metadata["best_by_quality"] == "structured"
+
+
+def test_ingestion_readiness_flags_visual_run_job_mismatch(tmp_path):
+    package_dir, manifest = write_ready_package(tmp_path)
+    comparison = compare_visual_runs(
+        {
+            "raw": visual_run_results("raw_text", triple=False, job_id="job-1"),
+            "structured": visual_run_results("json_object", triple=True, job_id="job-2"),
+        }
+    )
+
+    report = build_ingestion_readiness_report(
+        package_dir,
+        manifest,
+        visual_run_comparison=comparison,
+        visual_run_comparison_options={"require_same_jobs": True},
+    )
+
+    component = next(
+        component for component in report.components if component.name == "visual_run_comparison"
+    )
+    assert report.passed is False
+    assert "visual_run_comparison" in report.failed_components
+    assert component.metadata["failed_checks"] == ["same_job_set"]
+    assert component.metadata["job_set_mismatch"] is True
+
+
 def test_ingestion_readiness_cli_reports_missing_required_artifact(tmp_path):
     package_dir, _ = write_ready_package(tmp_path)
     (package_dir / "bm25_tokens.json").unlink()
@@ -366,6 +424,50 @@ def test_ingestion_readiness_cli_can_gate_visual_quality_from_assets(tmp_path):
         component for component in payload["components"] if component["name"] == "visual_quality"
     )
     assert visual_component["metadata"]["source"] == "assets"
+
+
+def test_ingestion_readiness_cli_can_gate_visual_run_comparison(tmp_path):
+    package_dir, _ = write_ready_package(tmp_path)
+    comparison_path = tmp_path / "visual_run_comparison.json"
+    output = tmp_path / "readiness.json"
+    comparison = compare_visual_runs(
+        {
+            "raw": visual_run_results("raw_text", triple=False),
+            "structured": visual_run_results("json_object", triple=True),
+        }
+    )
+    comparison_path.write_text(comparison.model_dump_json(indent=2), encoding="utf-8")
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "ingestion-readiness",
+            "--package-dir",
+            str(package_dir),
+            "--visual-run-comparison",
+            str(comparison_path),
+            "--require-visual-run-same-jobs",
+            "--min-visual-run-count",
+            "2",
+            "--min-visual-run-shared-jobs",
+            "1",
+            "--visual-run-best-by-quality",
+            "structured",
+            "--output",
+            str(output),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    component = next(
+        component
+        for component in payload["components"]
+        if component["name"] == "visual_run_comparison"
+    )
+    assert payload["passed"] is True
+    assert component["metadata"]["job_set_mismatch"] is False
+    assert component["metadata"]["best_by_quality"] == "structured"
 
 
 def test_ingestion_readiness_cli_can_gate_qdrant_vector_ablation(tmp_path):
@@ -786,3 +888,37 @@ def qdrant_vector_ablation_report():
         best_by_mrr="text",
         fastest_by_mean_latency="caption",
     )
+
+
+def visual_run_results(
+    parse_status: str,
+    triple: bool,
+    job_id: str = "job-1",
+) -> list[VisualJobRunResult]:
+    triples = (
+        [{"subject": "subject", "predicate": "relates_to", "object": "object"}]
+        if triple
+        else []
+    )
+    return [
+        VisualJobRunResult(
+            job_id=job_id,
+            asset_id="asset-1",
+            page_no=1,
+            status="completed",
+            annotation=AssetAnnotation(
+                asset_id="asset-1",
+                page_no=1,
+                ocr_text="recognized visual text",
+                vlm_summary="structured visual evidence" if triple else "plain visual evidence",
+                triples=triples,
+                metadata={"vlm_parse_status": parse_status},
+            ),
+            metadata={
+                "operations": ["ocr", "vlm"],
+                "ocr_text_chars": 22,
+                "vlm_parse_status": parse_status,
+                "total_duration_ms": 40.0 if triple else 20.0,
+            },
+        )
+    ]
