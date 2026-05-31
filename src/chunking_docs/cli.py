@@ -2212,6 +2212,21 @@ def ingestion_readiness_command(
     max_chunking_failed_queries: int | None = 0,
     max_chunking_recall_drop: float | None = None,
     max_chunking_mean_latency_ratio: float | None = None,
+    qdrant_vector_ablation: Path | None = None,
+    require_qdrant_vector_ablation: bool = False,
+    qdrant_vector_mode: str | None = None,
+    min_qdrant_vector_recall_at_k: float = 0.0,
+    min_qdrant_vector_target_coverage_at_k: float = 0.0,
+    min_qdrant_vector_target_ndcg_at_k: float = 0.0,
+    min_qdrant_vector_mrr: float = 0.0,
+    min_qdrant_vector_precision_at_k: float = 0.0,
+    max_qdrant_vector_failed_queries: int | None = None,
+    max_qdrant_vector_mean_latency_ms: float | None = None,
+    max_qdrant_vector_p95_latency_ms: float | None = None,
+    require_qdrant_vector_best_by_recall: bool = False,
+    require_qdrant_vector_best_by_target_coverage: bool = False,
+    require_qdrant_vector_best_by_target_ndcg: bool = False,
+    require_qdrant_vector_fastest_by_mean_latency: bool = False,
     fail: bool = typer.Option(
         True,
         "--fail/--no-fail",
@@ -2224,6 +2239,13 @@ def ingestion_readiness_command(
     parsed_retrieval_cases = load_retrieval_cases(retrieval_cases) if retrieval_cases else None
     parsed_retrieval = load_retrieval_evaluation(retrieval_evaluation) if retrieval_evaluation else None
     parsed_chunking_comparison = load_chunking_comparison(chunking_comparison) if chunking_comparison else None
+    parsed_qdrant_vector_ablation = (
+        QdrantVectorAblationReport.model_validate_json(
+            qdrant_vector_ablation.read_text(encoding="utf-8")
+        )
+        if qdrant_vector_ablation
+        else None
+    )
     report = build_ingestion_readiness_report(
         package_dir=package_dir,
         manifest=manifest,
@@ -2272,6 +2294,23 @@ def ingestion_readiness_command(
             "max_failed_queries": max_chunking_failed_queries,
             "max_recall_drop": max_chunking_recall_drop,
             "max_mean_latency_ratio": max_chunking_mean_latency_ratio,
+        },
+        qdrant_vector_ablation=parsed_qdrant_vector_ablation,
+        require_qdrant_vector_ablation=require_qdrant_vector_ablation,
+        qdrant_vector_ablation_mode=qdrant_vector_mode,
+        qdrant_vector_ablation_gate_options={
+            "min_recall_at_k": min_qdrant_vector_recall_at_k,
+            "min_target_coverage_at_k": min_qdrant_vector_target_coverage_at_k,
+            "min_target_ndcg_at_k": min_qdrant_vector_target_ndcg_at_k,
+            "min_mrr": min_qdrant_vector_mrr,
+            "min_precision_at_k": min_qdrant_vector_precision_at_k,
+            "max_failed_queries": max_qdrant_vector_failed_queries,
+            "max_mean_latency_ms": max_qdrant_vector_mean_latency_ms,
+            "max_p95_latency_ms": max_qdrant_vector_p95_latency_ms,
+            "require_best_by_recall": require_qdrant_vector_best_by_recall,
+            "require_best_by_target_coverage": require_qdrant_vector_best_by_target_coverage,
+            "require_best_by_target_ndcg": require_qdrant_vector_best_by_target_ndcg,
+            "require_fastest_by_mean_latency": require_qdrant_vector_fastest_by_mean_latency,
         },
     )
     payload = report.model_dump()

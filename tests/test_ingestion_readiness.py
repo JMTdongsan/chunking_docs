@@ -5,9 +5,14 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 from chunking_docs.cli import app
+from chunking_docs.evaluation.ablation import (
+    QdrantVectorAblationMode,
+    QdrantVectorAblationReport,
+    QdrantVectorAblationRow,
+)
 from chunking_docs.evaluation.compare import ChunkingComparison, ChunkingComparisonRow
 from chunking_docs.evaluation.readiness import build_ingestion_readiness_report
-from chunking_docs.evaluation.retrieval import RetrievalCase
+from chunking_docs.evaluation.retrieval import RetrievalCase, evaluate_search_results
 from chunking_docs.io import write_jsonl
 from chunking_docs.models import (
     AssetKind,
@@ -19,6 +24,7 @@ from chunking_docs.models import (
     TextQuality,
     VisualAsset,
 )
+from chunking_docs.retrieval.local_hybrid import HybridSearchHit
 from chunking_docs.storage.records import EmbeddingRecord
 
 
@@ -63,6 +69,42 @@ def test_ingestion_readiness_includes_retrieval_cases_and_chunking_gate(tmp_path
     assert report.chunking_comparison_gate is not None
     assert report.chunking_comparison_gate.candidate == "candidate"
     assert report.failed_components == []
+
+
+def test_ingestion_readiness_includes_qdrant_vector_ablation_gate(tmp_path):
+    package_dir, manifest = write_ready_package(tmp_path)
+
+    report = build_ingestion_readiness_report(
+        package_dir,
+        manifest,
+        qdrant_vector_ablation=qdrant_vector_ablation_report(),
+        qdrant_vector_ablation_mode="text",
+        qdrant_vector_ablation_gate_options={
+            "min_recall_at_k": 1.0,
+            "min_target_coverage_at_k": 1.0,
+            "max_failed_queries": 0,
+            "require_best_by_recall": True,
+        },
+    )
+
+    assert report.passed is True
+    assert report.qdrant_vector_ablation_gate is not None
+    assert report.qdrant_vector_ablation_gate.mode == "text"
+    assert report.qdrant_vector_ablation_gate.metrics["failed_query_count"] == 0.0
+    assert report.failed_components == []
+
+
+def test_ingestion_readiness_requires_qdrant_vector_ablation(tmp_path):
+    package_dir, manifest = write_ready_package(tmp_path)
+
+    report = build_ingestion_readiness_report(
+        package_dir,
+        manifest,
+        require_qdrant_vector_ablation=True,
+    )
+
+    assert report.passed is False
+    assert "qdrant_vector_ablation_gate" in report.failed_components
 
 
 def test_ingestion_readiness_can_gate_visual_quality_from_assets(tmp_path):
@@ -194,6 +236,49 @@ def test_ingestion_readiness_cli_can_gate_visual_quality_from_assets(tmp_path):
         component for component in payload["components"] if component["name"] == "visual_quality"
     )
     assert visual_component["metadata"]["source"] == "assets"
+
+
+def test_ingestion_readiness_cli_can_gate_qdrant_vector_ablation(tmp_path):
+    package_dir, _ = write_ready_package(tmp_path)
+    ablation_path = tmp_path / "qdrant_vector_ablation.json"
+    output = tmp_path / "readiness.json"
+    ablation_path.write_text(
+        qdrant_vector_ablation_report().model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "ingestion-readiness",
+            "--package-dir",
+            str(package_dir),
+            "--qdrant-vector-ablation",
+            str(ablation_path),
+            "--qdrant-vector-mode",
+            "text",
+            "--min-qdrant-vector-recall-at-k",
+            "1.0",
+            "--min-qdrant-vector-target-coverage-at-k",
+            "1.0",
+            "--max-qdrant-vector-failed-queries",
+            "0",
+            "--require-qdrant-vector-best-by-recall",
+            "--output",
+            str(output),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["passed"] is True
+    component = next(
+        component
+        for component in payload["components"]
+        if component["name"] == "qdrant_vector_ablation_gate"
+    )
+    assert component["metadata"]["mode"] == "text"
+    assert component["metadata"]["metrics"]["recall_at_k"] == 1.0
 
 
 def write_ready_package(tmp_path: Path):
@@ -341,4 +426,53 @@ def chunking_row(name: str, quality_score: float, recall: float):
         chunks_under_min_chars=0,
         chunks_over_max_chars=0,
         issue_codes=[],
+    )
+
+
+def qdrant_vector_ablation_report():
+    chunk = DocumentChunk(
+        chunk_id="chunk-1",
+        doc_id="doc",
+        page_start=1,
+        page_end=1,
+        kind=ChunkKind.TEXT,
+        text="reference retrieval evidence",
+        asset_ids=["asset-1"],
+    )
+    cases = [RetrievalCase(query="reference evidence", expected_asset_ids=["asset-1"])]
+    passing_evaluation = evaluate_search_results(
+        cases=cases,
+        search_fn=lambda case, graph_expand: [
+            HybridSearchHit(
+                chunk=chunk,
+                score=0.9,
+                sources=["qdrant:text_dense"],
+            )
+        ],
+        top_k=5,
+    )
+    failing_evaluation = evaluate_search_results(
+        cases=cases,
+        search_fn=lambda case, graph_expand: [],
+        top_k=5,
+    )
+    return QdrantVectorAblationReport(
+        rows=[
+            QdrantVectorAblationRow(
+                mode=QdrantVectorAblationMode(name="text", vector_names=["text_dense"]),
+                evaluation=passing_evaluation,
+            ),
+            QdrantVectorAblationRow(
+                mode=QdrantVectorAblationMode(
+                    name="caption",
+                    vector_names=["caption_dense"],
+                ),
+                evaluation=failing_evaluation,
+            ),
+        ],
+        best_by_recall="text",
+        best_by_target_coverage="text",
+        best_by_target_ndcg="text",
+        best_by_mrr="text",
+        fastest_by_mean_latency="caption",
     )

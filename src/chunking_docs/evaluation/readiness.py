@@ -6,6 +6,11 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from chunking_docs.evaluation.audit import PackageAudit, audit_package
+from chunking_docs.evaluation.ablation import (
+    QdrantVectorAblationGateReport,
+    QdrantVectorAblationReport,
+    gate_qdrant_vector_ablation,
+)
 from chunking_docs.evaluation.case_audit import RetrievalCaseAuditReport, audit_retrieval_cases
 from chunking_docs.evaluation.chunking_gate import (
     ChunkingComparisonGateReport,
@@ -43,6 +48,7 @@ class IngestionReadinessReport(BaseModel):
     retrieval_case_audit: RetrievalCaseAuditReport | None = None
     retrieval_gate: RetrievalGateReport | None = None
     chunking_comparison_gate: ChunkingComparisonGateReport | None = None
+    qdrant_vector_ablation_gate: QdrantVectorAblationGateReport | None = None
     components: list[ReadinessComponent] = Field(default_factory=list)
     failed_components: list[str] = Field(default_factory=list)
 
@@ -67,6 +73,10 @@ def build_ingestion_readiness_report(
     chunking_comparison: ChunkingComparison | None = None,
     require_chunking_comparison: bool = False,
     chunking_gate_options: dict[str, Any] | None = None,
+    qdrant_vector_ablation: QdrantVectorAblationReport | None = None,
+    require_qdrant_vector_ablation: bool = False,
+    qdrant_vector_ablation_mode: str | None = None,
+    qdrant_vector_ablation_gate_options: dict[str, Any] | None = None,
 ) -> IngestionReadinessReport:
     artifact_presence = package_artifact_presence(package_dir)
     audit = audit_package(
@@ -215,6 +225,58 @@ def build_ingestion_readiness_report(
             )
         )
 
+    qdrant_vector_ablation_gate = None
+    if qdrant_vector_ablation is not None:
+        if qdrant_vector_ablation_mode is None:
+            components.append(
+                ReadinessComponent(
+                    name="qdrant_vector_ablation_gate",
+                    passed=False,
+                    message="Qdrant vector ablation report was supplied but no mode was selected.",
+                )
+            )
+        else:
+            try:
+                qdrant_vector_ablation_gate = gate_qdrant_vector_ablation(
+                    qdrant_vector_ablation,
+                    mode=qdrant_vector_ablation_mode,
+                    **(qdrant_vector_ablation_gate_options or {}),
+                )
+                components.append(
+                    ReadinessComponent(
+                        name="qdrant_vector_ablation_gate",
+                        passed=qdrant_vector_ablation_gate.passed,
+                        message="Selected Qdrant vector ablation mode meets configured retrieval thresholds.",
+                        metadata={
+                            "mode": qdrant_vector_ablation_gate.mode,
+                            "vector_names": qdrant_vector_ablation_gate.vector_names,
+                            "failed_checks": qdrant_vector_ablation_gate.failed_checks,
+                            "metrics": qdrant_vector_ablation_gate.metrics,
+                            "best_by_recall": qdrant_vector_ablation_gate.best_by_recall,
+                            "best_by_target_coverage": qdrant_vector_ablation_gate.best_by_target_coverage,
+                            "best_by_target_ndcg": qdrant_vector_ablation_gate.best_by_target_ndcg,
+                            "fastest_by_mean_latency": qdrant_vector_ablation_gate.fastest_by_mean_latency,
+                        },
+                    )
+                )
+            except ValueError as exc:
+                components.append(
+                    ReadinessComponent(
+                        name="qdrant_vector_ablation_gate",
+                        passed=False,
+                        message="Qdrant vector ablation gate could not be evaluated.",
+                        metadata={"error": str(exc), "mode": qdrant_vector_ablation_mode},
+                    )
+                )
+    elif require_qdrant_vector_ablation:
+        components.append(
+            ReadinessComponent(
+                name="qdrant_vector_ablation_gate",
+                passed=False,
+                message="Qdrant vector ablation gate is required but no report was supplied.",
+            )
+        )
+
     failed_components = [
         component.name
         for component in components
@@ -236,6 +298,7 @@ def build_ingestion_readiness_report(
         retrieval_case_audit=retrieval_case_audit,
         retrieval_gate=retrieval_gate,
         chunking_comparison_gate=chunking_comparison_gate,
+        qdrant_vector_ablation_gate=qdrant_vector_ablation_gate,
         components=components,
         failed_components=failed_components,
     )

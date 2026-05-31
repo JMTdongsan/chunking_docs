@@ -382,10 +382,15 @@ chunking-docs ingestion-readiness \
   --retrieval-cases examples/retrieval_cases.jsonl \
   --retrieval-evaluation outputs/package/retrieval_eval.json \
   --chunking-comparison outputs/package/chunking_comparison.json \
+  --qdrant-vector-ablation outputs/package/qdrant_vector_ablation.json \
+  --qdrant-vector-mode text_caption \
+  --min-qdrant-vector-recall-at-k 0.8 \
+  --min-qdrant-vector-target-coverage-at-k 0.75 \
+  --max-qdrant-vector-failed-queries 0 \
   --output outputs/package/ingestion_readiness.json
 ```
 
-The report combines package audit results, required BM25 and embedding artifacts, Qdrant record checks, PostgreSQL row conversion, retrieval case audit, chunking comparison gates, and optional visual or retrieval gates. When `--require-visual-quality` is used without `--visual-results`, readiness evaluates the final OCR/VLM annotations currently stored in `assets.jsonl`.
+The report combines package audit results, required BM25 and embedding artifacts, Qdrant record checks, PostgreSQL row conversion, retrieval case audit, chunking comparison gates, selected Qdrant vector ablation gates, and optional visual or retrieval gates. When `--require-visual-quality` is used without `--visual-results`, readiness evaluates the final OCR/VLM annotations currently stored in `assets.jsonl`.
 
 ## Evaluation
 
