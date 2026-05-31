@@ -51,6 +51,11 @@ def test_build_experiment_report_summarizes_artifacts_and_candidates(tmp_path):
     assert validations["qdrant_eval.final.json"].metrics["case_count"] == 1.0
     assert validations["graph_audit.final.json"].metrics["orphan_count"] == 0.0
     assert validations["visual_gate.final.json"].metrics["vlm_summary_coverage"] == 1.0
+    assert (
+        validations["ingestion_readiness.final.json#visual_text_coverage"]
+        .metrics["visual_text_coverage_ratio"]
+        == 1.0
+    )
     assert validations["visual_run_comparison.json"].passed is True
     assert validations["visual_run_comparison.json"].candidate == "structured"
     assert validations["visual_run_comparison.json"].metrics["run_count"] == 2.0
@@ -62,6 +67,7 @@ def test_build_experiment_report_summarizes_artifacts_and_candidates(tmp_path):
     assert report.candidate_files == {"current": str(package_dir / "chunks.jsonl")}
     assert report.comparison is not None
     assert report.comparison.best_by_retrieval == "current"
+    assert report.comparison.rows[0].visual_text_coverage_ratio == 1.0
 
 
 def test_write_experiment_report_cli_writes_json(tmp_path):
@@ -171,6 +177,15 @@ def write_minimal_package(tmp_path):
                                 "recall_at_k": 1.0,
                                 "target_type.asset.coverage_at_k": 1.0,
                             },
+                        },
+                    },
+                    {
+                        "name": "visual_text_coverage",
+                        "passed": True,
+                        "metadata": {
+                            "visual_text_asset_count": 1,
+                            "visual_text_covered_asset_count": 1,
+                            "visual_text_coverage_ratio": 1.0,
                         },
                     }
                 ],
