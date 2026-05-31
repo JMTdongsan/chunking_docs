@@ -60,6 +60,7 @@ def build_context_bundle(
     assets: list[VisualAsset] | None = None,
     triples: list[GraphTriple] | None = None,
     max_chars_per_chunk: int = 1400,
+    max_chars_per_asset_text: int = 1400,
     include_evidence: bool = True,
     neighbor_window: int = 0,
     include_assets: bool = True,
@@ -119,7 +120,11 @@ def build_context_bundle(
     selected_chunk_ids = {chunk.chunk_id for chunk in context_chunks}
     selected_assets = []
     if include_assets and assets:
-        selected_assets = context_assets(assets, context_chunks)
+        selected_assets = context_assets(
+            assets,
+            context_chunks,
+            max_chars_per_asset_text=max_chars_per_asset_text,
+        )
 
     selected_triples = []
     if include_triples and triples:
@@ -135,6 +140,7 @@ def build_context_bundle(
             selected_assets,
             selected_triples,
             max_chars_per_chunk=max_chars_per_chunk,
+            max_chars_per_asset_text=max_chars_per_asset_text,
             neighbor_window=neighbor_window,
         ),
     )
@@ -231,7 +237,11 @@ def safe_int(value) -> int:
         return 0
 
 
-def context_assets(assets: list[VisualAsset], chunks: list[RAGContextChunk]) -> list[RAGContextAsset]:
+def context_assets(
+    assets: list[VisualAsset],
+    chunks: list[RAGContextChunk],
+    max_chars_per_asset_text: int,
+) -> list[RAGContextAsset]:
     asset_ids = {asset_id for chunk in chunks for asset_id in chunk.asset_ids}
     selected = []
     seen = set()
@@ -239,16 +249,20 @@ def context_assets(assets: list[VisualAsset], chunks: list[RAGContextChunk]) -> 
         if asset.asset_id not in asset_ids or asset.asset_id in seen:
             continue
         seen.add(asset.asset_id)
+        caption, ocr_text, vlm_summary, text_metadata = context_asset_text_fields(
+            asset,
+            max_chars_per_asset_text=max_chars_per_asset_text,
+        )
         selected.append(
             RAGContextAsset(
                 asset_id=asset.asset_id,
                 page_no=asset.page_no,
                 kind=str(asset.kind),
-                caption=asset.caption,
-                ocr_text=asset.ocr_text,
-                vlm_summary=asset.vlm_summary,
+                caption=caption,
+                ocr_text=ocr_text,
+                vlm_summary=vlm_summary,
                 path=str(asset.path) if asset.path else None,
-                metadata=asset.metadata,
+                metadata={**asset.metadata, "context_text": text_metadata},
             )
         )
     return selected
@@ -280,6 +294,7 @@ def context_bundle_metadata(
     assets: list[RAGContextAsset],
     triples: list[RAGContextTriple],
     max_chars_per_chunk: int,
+    max_chars_per_asset_text: int,
     neighbor_window: int,
 ) -> dict[str, Any]:
     role_counts = count_values(chunk.role for chunk in chunks)
@@ -289,6 +304,7 @@ def context_bundle_metadata(
     )
     kind_counts = count_values(chunk.kind for chunk in chunks)
     pages = context_pages(chunks)
+    asset_text = context_asset_text_summary(assets)
     return {
         "hit_count": len(chunks),
         "chunk_count": len(chunks),
@@ -310,6 +326,11 @@ def context_bundle_metadata(
         "has_visual_context": bool(assets) or source_family_counts.get("visual", 0) > 0,
         "has_graph_context": bool(triples) or source_family_counts.get("graph", 0) > 0,
         "max_chars_per_chunk": max_chars_per_chunk,
+        "max_chars_per_asset_text": max_chars_per_asset_text,
+        "asset_text_char_count": asset_text["char_count"],
+        "asset_context_char_count": asset_text["context_char_count"],
+        "asset_text_truncated_count": asset_text["truncated_count"],
+        "asset_text_truncated_fields": asset_text["truncated_fields"],
         "neighbor_window": max(0, neighbor_window),
     }
 
@@ -353,8 +374,88 @@ def count_values(values) -> dict[str, int]:
     return dict(sorted(Counter(values).items()))
 
 
+def context_asset_text_fields(
+    asset: VisualAsset,
+    max_chars_per_asset_text: int,
+) -> tuple[str | None, str | None, str | None, dict[str, Any]]:
+    raw_values = {
+        "caption": asset.caption,
+        "ocr_text": asset.ocr_text,
+        "vlm_summary": asset.vlm_summary,
+    }
+    trimmed_values = {
+        field: trim_optional_text(value, max_chars_per_asset_text)
+        for field, value in raw_values.items()
+    }
+    char_counts = {
+        field: len(normalize_text(value))
+        for field, value in raw_values.items()
+        if normalize_text(value)
+    }
+    context_char_counts = {
+        field: len(normalize_text(value))
+        for field, value in trimmed_values.items()
+        if normalize_text(value)
+    }
+    truncated_fields = [
+        field
+        for field, value in raw_values.items()
+        if is_text_truncated(value, max_chars_per_asset_text)
+    ]
+    return (
+        trimmed_values["caption"],
+        trimmed_values["ocr_text"],
+        trimmed_values["vlm_summary"],
+        {
+            "max_chars_per_field": max_chars_per_asset_text,
+            "char_counts": char_counts,
+            "context_char_counts": context_char_counts,
+            "truncated_fields": truncated_fields,
+        },
+    )
+
+
+def context_asset_text_summary(assets: list[RAGContextAsset]) -> dict[str, Any]:
+    char_count = 0
+    context_char_count = 0
+    truncated_count = 0
+    truncated_fields = Counter()
+    for asset in assets:
+        text_metadata = asset.metadata.get("context_text", {})
+        char_count += sum(text_metadata.get("char_counts", {}).values())
+        context_char_count += sum(text_metadata.get("context_char_counts", {}).values())
+        fields = text_metadata.get("truncated_fields", [])
+        if fields:
+            truncated_count += 1
+        truncated_fields.update(fields)
+    return {
+        "char_count": char_count,
+        "context_char_count": context_char_count,
+        "truncated_count": truncated_count,
+        "truncated_fields": dict(sorted(truncated_fields.items())),
+    }
+
+
+def trim_optional_text(text: str | None, max_chars: int) -> str | None:
+    normalized = normalize_text(text)
+    if not normalized:
+        return None
+    return trim_text(normalized, max_chars)
+
+
+def is_text_truncated(text: str | None, max_chars: int) -> bool:
+    normalized = normalize_text(text)
+    return max_chars > 0 and len(normalized) > max_chars
+
+
+def normalize_text(text: str | None) -> str:
+    return text.strip() if text else ""
+
+
 def trim_text(text: str, max_chars: int) -> str:
     normalized = text.strip()
     if max_chars <= 0 or len(normalized) <= max_chars:
         return normalized
-    return normalized[: max_chars - 1].rstrip() + "..."
+    if max_chars <= 3:
+        return "." * max_chars
+    return normalized[: max_chars - 3].rstrip() + "..."

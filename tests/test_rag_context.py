@@ -55,6 +55,7 @@ def test_build_context_bundle_includes_evidence_assets_and_triples(tmp_path):
 
     assert [chunk.role for chunk in bundle.chunks] == ["hit", "evidence"]
     assert bundle.chunks[1].text.endswith("...")
+    assert len(bundle.chunks[1].text) <= 80
     assert bundle.assets[0].asset_id == "asset-1"
     assert bundle.triples[0].triple_id == "triple-1"
     assert bundle.metadata["asset_count"] == 1
@@ -127,6 +128,54 @@ def test_build_context_bundle_adds_neighbor_chunks():
     assert bundle.metadata["has_lexical_context"] is True
 
 
+def test_build_context_bundle_trims_visual_asset_text_with_metadata():
+    chunk = DocumentChunk(
+        chunk_id="chunk-1",
+        doc_id="doc",
+        page_start=2,
+        page_end=2,
+        kind=ChunkKind.TEXT,
+        text="visual evidence",
+        asset_ids=["asset-1"],
+    )
+    asset = VisualAsset(
+        asset_id="asset-1",
+        doc_id="doc",
+        page_no=2,
+        kind=AssetKind.FIGURE,
+        caption="short caption",
+        ocr_text="long ocr text " * 8,
+        vlm_summary="long vlm summary " * 8,
+    )
+    hit = HybridSearchHit(chunk=chunk, score=0.7, sources=["dense"])
+
+    bundle = build_context_bundle(
+        query="visual evidence",
+        hits=[hit],
+        assets=[asset],
+        max_chars_per_asset_text=40,
+    )
+
+    context_asset = bundle.assets[0]
+    assert context_asset.caption == "short caption"
+    assert context_asset.ocr_text.endswith("...")
+    assert context_asset.vlm_summary.endswith("...")
+    assert len(context_asset.ocr_text) <= 40
+    assert len(context_asset.vlm_summary) <= 40
+    assert context_asset.metadata["context_text"]["max_chars_per_field"] == 40
+    assert context_asset.metadata["context_text"]["truncated_fields"] == [
+        "ocr_text",
+        "vlm_summary",
+    ]
+    assert bundle.metadata["max_chars_per_asset_text"] == 40
+    assert bundle.metadata["asset_text_truncated_count"] == 1
+    assert bundle.metadata["asset_text_truncated_fields"] == {
+        "ocr_text": 1,
+        "vlm_summary": 1,
+    }
+    assert bundle.metadata["asset_context_char_count"] < bundle.metadata["asset_text_char_count"]
+
+
 def test_build_rag_context_cli_writes_bundle(tmp_path):
     package_dir = tmp_path / "package"
     package_dir.mkdir()
@@ -149,6 +198,7 @@ def test_build_rag_context_cli_writes_bundle(tmp_path):
             page_no=1,
             kind=AssetKind.FIGURE,
             caption="station access diagram",
+            ocr_text="station access diagram ocr text " * 10,
         )
     ]
     triples = [
@@ -174,6 +224,8 @@ def test_build_rag_context_cli_writes_bundle(tmp_path):
             str(package_dir),
             "--neighbor-window",
             "0",
+            "--max-chars-per-asset-text",
+            "50",
             "--output",
             str(output),
         ],
@@ -184,7 +236,11 @@ def test_build_rag_context_cli_writes_bundle(tmp_path):
     assert payload["query"] == "station access"
     assert payload["chunks"][0]["chunk_id"] == "chunk-1"
     assert payload["assets"][0]["asset_id"] == "asset-1"
+    assert payload["assets"][0]["ocr_text"].endswith("...")
+    assert payload["assets"][0]["metadata"]["context_text"]["truncated_fields"] == ["ocr_text"]
     assert payload["triples"][0]["triple_id"] == "triple-1"
+    assert payload["metadata"]["max_chars_per_asset_text"] == 50
+    assert payload["metadata"]["asset_text_truncated_count"] == 1
     assert payload["metadata"]["source_family_counts"] == {"dense_text": 1, "lexical": 1}
     assert payload["metadata"]["has_visual_context"] is True
     assert payload["metadata"]["has_graph_context"] is True
