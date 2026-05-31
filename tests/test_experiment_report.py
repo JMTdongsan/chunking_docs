@@ -36,10 +36,16 @@ def test_build_experiment_report_summarizes_artifacts_and_candidates(tmp_path):
     assert artifacts["chunks.jsonl"].sha256 is not None
     assert artifacts["ingestion_readiness.final.json"].exists is True
     assert artifacts["retrieval_gate.final.json"].exists is True
+    assert artifacts["qdrant_eval.final.json"].exists is True
+    assert artifacts["graph_audit.final.json"].exists is True
+    assert artifacts["visual_gate.final.json"].exists is True
     validations = {validation.path: validation for validation in report.validation_summaries}
     assert validations["ingestion_readiness.final.json"].passed is True
     assert validations["ingestion_readiness.final.json#retrieval_gate"].metrics["recall_at_k"] == 1.0
     assert validations["retrieval_gate.final.json"].metrics["recall_at_k"] == 1.0
+    assert validations["qdrant_eval.final.json"].metrics["target_coverage_at_k"] == 1.0
+    assert validations["graph_audit.final.json"].metrics["orphan_count"] == 0.0
+    assert validations["visual_gate.final.json"].metrics["vlm_summary_coverage"] == 1.0
     assert report.qdrant_collection["collection"] == "document_chunks"
     assert report.bm25_tokenizer["strategy"] == "mixed"
     assert report.candidate_files == {"current": str(package_dir / "chunks.jsonl")}
@@ -168,6 +174,33 @@ def write_minimal_package(tmp_path):
                 "passed": True,
                 "failed_checks": [],
                 "metrics": {"recall_at_k": 1.0, "target_type.asset.coverage_at_k": 1.0},
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    (package_dir / "qdrant_eval.final.json").write_text(
+        json.dumps(
+            {
+                "recall_at_k": 1.0,
+                "target_coverage_at_k": 1.0,
+                "mean_target_ndcg_at_k": 1.0,
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    (package_dir / "graph_audit.final.json").write_text(
+        json.dumps({"triple_count": 0, "orphan_count": 0, "duplicate_count": 0}, indent=2),
+        encoding="utf-8",
+    )
+    (package_dir / "visual_gate.final.json").write_text(
+        json.dumps(
+            {
+                "passed": True,
+                "failed_checks": [],
+                "vlm_summary_coverage": 1.0,
+                "ocr_text_coverage": 1.0,
             },
             indent=2,
         ),

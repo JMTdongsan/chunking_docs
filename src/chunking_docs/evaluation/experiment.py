@@ -87,10 +87,21 @@ DEFAULT_ARTIFACT_GLOBS = [
     "ingestion_readiness*.json",
     "chunking_comparison*.json",
     "chunking_gate*.json",
+    "graph_audit*.json",
+    "package_delta*.json",
+    "qdrant_collection_contract*.json",
+    "qdrant_eval*.json",
     "retrieval_gate*.json",
+    "retrieval_eval*.json",
+    "retrieval_ablation*.json",
+    "retrieval_case_audit*.json",
+    "retrieval_diagnostics*.json",
     "qdrant_retrieval_eval*.json",
     "qdrant_vector_ablation*.json",
     "qdrant_vector_ablation_gate*.json",
+    "visual_asset_gate*.json",
+    "visual_gate*.json",
+    "visual_quality*.json",
 ]
 
 SUMMARY_METRIC_KEYS = {
@@ -103,6 +114,16 @@ SUMMARY_METRIC_KEYS = {
     "mean_precision_at_k",
     "retrieval_mean_precision_at_k",
     "failed_query_count",
+    "completion_rate",
+    "ocr_text_coverage",
+    "vlm_summary_coverage",
+    "vlm_json_parse_rate",
+    "annotation_rate",
+    "triple_count",
+    "orphan_count",
+    "duplicate_count",
+    "empty_field_count",
+    "invalid_confidence_count",
     "target_type.asset.coverage_at_k",
     "target_type.triple.coverage_at_k",
     "source_family.lexical.target_coverage_at_k",
@@ -241,7 +262,7 @@ def validation_artifact_summaries_for_path(
             failed_components=string_list(payload.get("failed_components")),
             candidate=payload.get("candidate") if isinstance(payload.get("candidate"), str) else None,
             mode=payload.get("mode") if isinstance(payload.get("mode"), str) else None,
-            metrics=summary_metrics(payload.get("metrics")),
+            metrics=validation_summary_metrics(payload),
         )
     )
     summaries.extend(component_validation_summaries(path, payload, root=root))
@@ -275,14 +296,23 @@ def component_validation_summaries(
                 failed_components=string_list(metadata.get("failed_components")),
                 candidate=metadata.get("candidate") if isinstance(metadata.get("candidate"), str) else None,
                 mode=metadata.get("mode") if isinstance(metadata.get("mode"), str) else None,
-                metrics=summary_metrics(metadata.get("metrics")),
+                metrics=validation_summary_metrics(metadata),
             )
         )
     return summaries
 
 
 def is_validation_payload(payload: dict[str, Any]) -> bool:
-    return any(key in payload for key in ("passed", "failed_checks", "failed_components", "metrics"))
+    return any(
+        key in payload
+        for key in (
+            "passed",
+            "failed_checks",
+            "failed_components",
+            "metrics",
+            *SUMMARY_METRIC_KEYS,
+        )
+    )
 
 
 def validation_kind(path: Path) -> str:
@@ -290,8 +320,12 @@ def validation_kind(path: Path) -> str:
     for prefix in (
         "ingestion_readiness",
         "chunking_gate",
+        "graph_audit",
         "retrieval_gate",
+        "retrieval_eval",
+        "qdrant_eval",
         "qdrant_vector_ablation_gate",
+        "visual_asset_gate",
         "visual_gate",
         "visual_quality",
     ):
@@ -318,6 +352,13 @@ def summary_metrics(value: Any) -> dict[str, float]:
         for key, metric in value.items()
         if key in SUMMARY_METRIC_KEYS and isinstance(metric, int | float)
     }
+
+
+def validation_summary_metrics(payload: dict[str, Any]) -> dict[str, float]:
+    metrics = summary_metrics(payload)
+    nested_metrics = payload.get("metrics")
+    metrics.update(summary_metrics(nested_metrics))
+    return metrics
 
 
 def read_json(path: Path) -> dict[str, Any]:
