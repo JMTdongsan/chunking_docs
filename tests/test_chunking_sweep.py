@@ -43,6 +43,8 @@ def test_run_chunking_sweep_writes_candidates_and_comparison(tmp_path):
     assert report.selection.ranking[0].score >= report.selection.ranking[-1].score
     assert report.selection.ranking[0].metrics["mean_target_rank"] is not None
     assert report.selection.ranking[0].metrics["target_rank_efficiency"] is not None
+    assert report.selection.ranking[0].metrics["total_chunk_chars"] is not None
+    assert report.selection.ranking[0].metrics["embedding_text_kchars"] is not None
     assert report.selection.eligible_count == 2
     assert report.selection.rejected_count == 0
     assert all(row.eligible for row in report.selection.ranking)
@@ -99,6 +101,34 @@ def test_sweep_selection_constraints_filter_recommendation(tmp_path):
     rejected = next(row for row in report.selection.ranking if not row.eligible)
     assert rejected.failed_constraints == ["max_chunk_count"]
     assert report.candidates[0].name == report.selection.recommended
+
+
+def test_sweep_selection_constraints_filter_embedding_text_budget(tmp_path):
+    manifest = make_manifest(tmp_path)
+
+    report = run_chunking_sweep(
+        chunks=manifest.chunks,
+        assets=manifest.assets,
+        profiles=manifest.profiles,
+        triples=manifest.triples,
+        strategies=["semantic", "hierarchical"],
+        max_chars_values=[140],
+        overlap_chars_values=[20],
+        min_chars=40,
+        parent_max_chars_values=[90],
+        visual_context_chars_values=[120],
+        retrieval_cases=[RetrievalCase(query="capital investment table", expected_pages=[1])],
+        selection_constraints={"max_total_chunk_chars": 250},
+    )
+
+    assert report.selection.constraints == {"max_total_chunk_chars": 250.0}
+    assert report.selection.recommended == "semantic-max140-ov20-min40"
+    assert report.selection.eligible_count == 1
+    assert report.selection.rejected_count == 1
+    assert report.selection.ranking[0].metrics["total_chunk_chars"] == 194.0
+    rejected = next(row for row in report.selection.ranking if not row.eligible)
+    assert rejected.failed_constraints == ["max_total_chunk_chars"]
+    assert rejected.metrics["total_chunk_chars"] == 494.0
 
 
 def test_sweep_selection_reports_no_recommendation_when_constraints_all_fail(tmp_path):
@@ -270,8 +300,8 @@ def test_sweep_chunking_cli_writes_report(tmp_path):
             str(output_path),
             "--candidates-dir",
             str(candidates_dir),
-            "--selection-max-chunk-count",
-            "2",
+            "--selection-max-total-chunk-chars",
+            "250",
             "--selection-min-target-type-coverage",
             "asset=1.0",
             "--selection-min-case-group-target-coverage",
@@ -284,7 +314,7 @@ def test_sweep_chunking_cli_writes_report(tmp_path):
     assert payload["comparison"]["best_by_retrieval"] is not None
     assert payload["selection"]["recommended"] == "semantic-max140-ov20-min40"
     assert payload["selection"]["constraints"] == {
-        "max_chunk_count": 2.0,
+        "max_total_chunk_chars": 250.0,
         "min_target_type_coverage:asset": 1.0,
         "min_case_group_target_coverage:case_source:visual_object_probe": 1.0,
     }
@@ -292,6 +322,7 @@ def test_sweep_chunking_cli_writes_report(tmp_path):
     assert payload["selection"]["rejected_count"] == 1
     assert payload["selection"]["ranking"][0]["eligible"] is True
     assert payload["selection"]["ranking"][-1]["eligible"] is False
+    assert payload["selection"]["ranking"][0]["metrics"]["total_chunk_chars"] == 194.0
     assert len(payload["candidates"]) == 2
     assert payload["candidates"][0]["name"] == payload["selection"]["recommended"]
     assert any(candidates_dir.glob("chunks.semantic-*.jsonl"))

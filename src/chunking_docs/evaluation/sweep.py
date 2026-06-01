@@ -89,6 +89,11 @@ MAX_SELECTION_CONSTRAINTS = {
     "max_p95_target_rank": "p95_target_rank",
     "max_mean_latency_ms": "mean_latency_ms",
     "max_chunk_count": "chunk_count",
+    "max_total_chunk_chars": "total_chunk_chars",
+    "max_mean_chunk_chars": "mean_chunk_chars",
+    "max_p95_chunk_chars": "p95_chunk_chars",
+    "max_embedding_text_kchars": "embedding_text_kchars",
+    "max_standalone_visual_chunk_count": "standalone_visual_chunk_count",
 }
 
 DYNAMIC_MIN_SELECTION_PREFIXES = {
@@ -324,6 +329,7 @@ def selection_metrics(candidate: ChunkingSweepCandidate) -> dict[str, float | No
     rank_metrics = retrieval_rank_metrics(retrieval) if retrieval else {}
     mean_target_rank = rank_metrics.get("mean_target_rank")
     p95_target_rank = rank_metrics.get("p95_target_rank")
+    total_chunk_chars = candidate.report.char_count.count * candidate.report.char_count.mean
     metrics = {
         "retrieval_recall_at_k": retrieval.recall_at_k if retrieval else None,
         "target_coverage_at_k": retrieval.target_coverage_at_k if retrieval else None,
@@ -340,6 +346,11 @@ def selection_metrics(candidate: ChunkingSweepCandidate) -> dict[str, float | No
         "visual_text_coverage_ratio": candidate.report.visual_text_coverage_ratio,
         "chunk_count": float(candidate.chunk_count),
         "chunk_count_efficiency": 1.0 / candidate.chunk_count if candidate.chunk_count > 0 else 0.0,
+        "total_chunk_chars": total_chunk_chars,
+        "mean_chunk_chars": candidate.report.char_count.mean,
+        "p95_chunk_chars": candidate.report.char_count.p95,
+        "embedding_text_kchars": total_chunk_chars / 1000.0,
+        "standalone_visual_chunk_count": float(candidate.report.standalone_visual_chunk_count),
     }
     add_retrieval_breakdown_metrics(metrics, retrieval)
     return metrics

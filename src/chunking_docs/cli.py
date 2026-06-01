@@ -4170,6 +4170,31 @@ def sweep_chunking_command(
         "--selection-max-chunk-count",
         help="Only recommend sweep candidates at or below this chunk count.",
     ),
+    selection_max_total_chunk_chars: float | None = typer.Option(
+        None,
+        "--selection-max-total-chunk-chars",
+        help="Only recommend sweep candidates at or below this total chunk text size.",
+    ),
+    selection_max_mean_chunk_chars: float | None = typer.Option(
+        None,
+        "--selection-max-mean-chunk-chars",
+        help="Only recommend sweep candidates at or below this mean chunk text size.",
+    ),
+    selection_max_p95_chunk_chars: float | None = typer.Option(
+        None,
+        "--selection-max-p95-chunk-chars",
+        help="Only recommend sweep candidates at or below this p95 chunk text size.",
+    ),
+    selection_max_embedding_text_kchars: float | None = typer.Option(
+        None,
+        "--selection-max-embedding-text-kchars",
+        help="Only recommend sweep candidates at or below this estimated embedding text volume.",
+    ),
+    selection_max_standalone_visual_chunk_count: float | None = typer.Option(
+        None,
+        "--selection-max-standalone-visual-chunk-count",
+        help="Only recommend sweep candidates at or below this standalone visual chunk count.",
+    ),
     lexical_tokenizer: TokenizerStrategy = "mixed",
     ngram_min: int = 2,
     ngram_max: int = 4,
@@ -4201,6 +4226,13 @@ def sweep_chunking_command(
         "max_p95_target_rank": selection_max_p95_target_rank,
         "max_mean_latency_ms": selection_max_mean_latency_ms,
         "max_chunk_count": selection_max_chunk_count,
+        "max_total_chunk_chars": selection_max_total_chunk_chars,
+        "max_mean_chunk_chars": selection_max_mean_chunk_chars,
+        "max_p95_chunk_chars": selection_max_p95_chunk_chars,
+        "max_embedding_text_kchars": selection_max_embedding_text_kchars,
+        "max_standalone_visual_chunk_count": (
+            selection_max_standalone_visual_chunk_count
+        ),
     }
     selection_constraints.update(
         {
