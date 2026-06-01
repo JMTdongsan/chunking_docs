@@ -1246,6 +1246,7 @@ def test_gate_retrieval_ablation_can_require_visual_lift():
         baseline_mode="bm25_text",
         min_recall_at_k=1.0,
         min_target_type_coverage={"asset": 1.0},
+        min_source_target_coverage={"bm25": 1.0},
         min_source_family_target_coverage={"lexical": 1.0},
         min_case_group_target_coverage={"case_source:visual_lexical_probe": 1.0},
         max_mean_target_rank=1.0,
@@ -1267,6 +1268,9 @@ def test_gate_retrieval_ablation_can_require_visual_lift():
     assert gate.metrics["mean_target_rank"] == 1.0
     assert gate.baseline_metrics["recall_at_k"] == 0.0
     assert gate.baseline_metrics["mean_target_rank"] == 6.0
+    assert gate.metrics["source.bm25.target_coverage_at_k"] == 1.0
+    assert gate.source_metrics["bm25"]["target_coverage_at_k"] == 1.0
+    assert "bm25" not in gate.baseline_source_metrics
     assert gate.metrics["chunk_strategy.visual_asset_text.target_coverage_at_k"] == 1.0
     assert gate.metrics["retrieval_role.child.target_coverage_at_k"] == 1.0
     assert gate.metrics[
@@ -1729,6 +1733,10 @@ def test_gate_qdrant_vector_ablation_passes_required_mode():
         min_target_ndcg_at_k=1.0,
         max_failed_queries=0,
         min_target_type_coverage={"asset": 1.0},
+        min_source_target_coverage={
+            "qdrant:caption_dense": 1.0,
+            "qdrant:image_dense": 1.0,
+        },
         min_source_family_target_coverage={"visual": 1.0},
         min_case_group_target_coverage={"case_source:visual_object_probe": 1.0},
         max_mean_target_rank=1.0,
@@ -1766,6 +1774,9 @@ def test_gate_qdrant_vector_ablation_passes_required_mode():
     }
     assert gate.metrics["target_type.asset.coverage_at_k"] == 1.0
     assert gate.target_metrics["asset"]["coverage_at_k"] == 1.0
+    assert gate.metrics["source.qdrant:caption_dense.target_coverage_at_k"] == 1.0
+    assert gate.metrics["source.qdrant:image_dense.target_coverage_at_k"] == 1.0
+    assert gate.source_metrics["qdrant:image_dense"]["target_coverage_at_k"] == 1.0
     assert gate.metrics["source_family.visual.target_coverage_at_k"] == 1.0
     assert gate.source_family_metrics["visual"]["target_coverage_at_k"] == 1.0
     assert gate.metrics[
@@ -1790,6 +1801,7 @@ def test_gate_qdrant_vector_ablation_reports_failed_checks():
         min_recall_at_k=1.0,
         max_failed_queries=0,
         min_target_type_coverage={"asset": 1.0},
+        min_source_target_coverage={"qdrant:image_dense": 1.0},
         min_source_family_target_coverage={"visual": 1.0},
         min_case_group_target_coverage={"case_source:visual_object_probe": 1.0},
         max_mean_target_rank=5.0,
@@ -1805,6 +1817,7 @@ def test_gate_qdrant_vector_ablation_reports_failed_checks():
         "min_recall_at_k",
         "max_failed_queries",
         "min_target_type_coverage:asset",
+        "min_source_target_coverage:qdrant:image_dense",
         "min_source_family_target_coverage:visual",
         "min_case_group_target_coverage:case_source:visual_object_probe",
         "max_mean_target_rank",
@@ -1848,6 +1861,8 @@ def test_gate_qdrant_vector_ablation_cli_writes_report(tmp_path):
             "0",
             "--min-target-type-coverage",
             "asset=1.0",
+            "--min-source-target-coverage",
+            "qdrant:image_dense=1.0",
             "--min-source-family-target-coverage",
             "visual=1.0",
             "--min-case-group-target-coverage",
@@ -1880,6 +1895,8 @@ def test_gate_qdrant_vector_ablation_cli_writes_report(tmp_path):
     assert payload["pairwise_metrics"]["pairwise_candidate_win_rate"] == 1.0
     assert payload["pairwise_metrics"]["pairwise_mean_target_rank_delta"] == -5.0
     assert payload["target_metrics"]["asset"]["coverage_at_k"] == 1.0
+    assert payload["source_metrics"]["qdrant:image_dense"]["target_coverage_at_k"] == 1.0
+    assert payload["metrics"]["source.qdrant:image_dense.target_coverage_at_k"] == 1.0
     assert payload["source_family_metrics"]["visual"]["target_coverage_at_k"] == 1.0
     assert payload["case_group_metrics"]["case_source"]["visual_object_probe"][
         "target_coverage_at_k"
@@ -2064,6 +2081,8 @@ def test_gate_retrieval_ablation_cli_writes_lift_report(tmp_path):
             "1.0",
             "--min-target-type-coverage",
             "asset=1.0",
+            "--min-source-target-coverage",
+            "bm25=1.0",
             "--min-source-family-target-coverage",
             "lexical=1.0",
             "--min-case-group-target-coverage",
@@ -2096,6 +2115,8 @@ def test_gate_retrieval_ablation_cli_writes_lift_report(tmp_path):
     assert payload["pairwise_metrics"]["pairwise_candidate_win_rate"] == 1.0
     assert payload["pairwise_metrics"]["pairwise_mean_target_coverage_delta"] == 1.0
     assert payload["pairwise_metrics"]["pairwise_mean_target_rank_delta"] == -5.0
+    assert payload["source_metrics"]["bm25"]["target_coverage_at_k"] == 1.0
+    assert payload["metrics"]["source.bm25.target_coverage_at_k"] == 1.0
     assert payload["case_group_metrics"]["case_source"]["visual_lexical_probe"][
         "target_coverage_at_k"
     ] == 1.0

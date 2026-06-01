@@ -22,6 +22,7 @@ def make_evaluation(
     mean_latency: float = 12.0,
     p95_latency: float = 20.0,
     target_type_coverage: dict[str, float] | None = None,
+    source_coverage: dict[str, float] | None = None,
     source_family_coverage: dict[str, float] | None = None,
     chunk_strategy_coverage: dict[str, float] | None = None,
     retrieval_role_coverage: dict[str, float] | None = None,
@@ -44,6 +45,10 @@ def make_evaluation(
         target_metrics={
             target_type: target_type_metric(coverage)
             for target_type, coverage in (target_type_coverage or {}).items()
+        },
+        source_metrics={
+            source: source_family_metric(coverage)
+            for source, coverage in (source_coverage or {}).items()
         },
         source_family_metrics={
             family: source_family_metric(coverage)
@@ -161,6 +166,29 @@ def test_retrieval_gate_checks_source_family_target_coverage():
 
     assert failed.passed is False
     assert failed.failed_checks == ["min_source_family_target_coverage:visual"]
+
+
+def test_retrieval_gate_checks_exact_source_target_coverage():
+    evaluation = make_evaluation(
+        source_coverage={"qdrant:caption_dense": 1.0, "qdrant:image_dense": 0.5}
+    )
+
+    report = gate_retrieval_evaluation(
+        evaluation,
+        min_source_target_coverage={"qdrant:caption_dense": 1.0},
+    )
+
+    assert report.passed is True
+    assert report.metrics["source.qdrant:caption_dense.target_coverage_at_k"] == 1.0
+    assert report.source_metrics["qdrant:image_dense"]["target_coverage_at_k"] == 0.5
+
+    failed = gate_retrieval_evaluation(
+        evaluation,
+        min_source_target_coverage={"qdrant:image_dense": 0.75},
+    )
+
+    assert failed.passed is False
+    assert failed.failed_checks == ["min_source_target_coverage:qdrant:image_dense"]
 
 
 def test_retrieval_gate_checks_chunk_strategy_and_role_coverage():
@@ -292,6 +320,33 @@ def test_gate_retrieval_cli_checks_source_family_target_coverage(tmp_path):
     assert "min_source_family_target_coverage:visual" in result.output
     payload = output.read_text(encoding="utf-8")
     assert "source_family.visual.target_coverage_at_k" in payload
+
+
+def test_gate_retrieval_cli_checks_exact_source_target_coverage(tmp_path):
+    evaluation_path = tmp_path / "retrieval_eval.json"
+    output = tmp_path / "retrieval_gate.json"
+    evaluation_path.write_text(
+        make_evaluation(source_coverage={"qdrant:image_dense": 0.5}).model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "gate-retrieval",
+            str(evaluation_path),
+            "--min-source-target-coverage",
+            "qdrant:image_dense=0.8",
+            "--output",
+            str(output),
+            "--no-fail",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "min_source_target_coverage:qdrant:image_dense" in result.output
+    payload = output.read_text(encoding="utf-8")
+    assert "source.qdrant:image_dense.target_coverage_at_k" in payload
 
 
 def test_gate_retrieval_cli_checks_chunk_strategy_target_coverage(tmp_path):

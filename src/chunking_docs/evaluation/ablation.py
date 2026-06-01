@@ -26,8 +26,11 @@ from chunking_docs.evaluation.gate import (
     retrieval_rank_metrics,
     retrieval_role_metric_key,
     retrieval_role_metrics_payload,
+    retrieval_source_metrics,
     retrieval_source_family_metrics,
     retrieval_target_metrics,
+    source_metric_key,
+    source_target_coverage_checks,
     source_family_metric_key,
     source_family_target_coverage_checks,
     target_type_coverage_checks,
@@ -111,11 +114,13 @@ class RetrievalAblationGateReport(BaseModel):
     metrics: dict[str, float]
     baseline_metrics: dict[str, float] = Field(default_factory=dict)
     target_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
+    source_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
     source_family_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
     chunk_strategy_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
     retrieval_role_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
     case_group_metrics: dict[str, dict[str, dict[str, float]]] = Field(default_factory=dict)
     baseline_target_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
+    baseline_source_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
     baseline_source_family_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
     baseline_chunk_strategy_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
     baseline_retrieval_role_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
@@ -170,6 +175,7 @@ class QdrantVectorAblationGateReport(BaseModel):
     metrics: dict[str, float]
     baseline_metrics: dict[str, float] = Field(default_factory=dict)
     target_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
+    source_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
     source_family_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
     chunk_strategy_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
     retrieval_role_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
@@ -385,6 +391,7 @@ def gate_retrieval_ablation(
     max_mean_latency_ms: float | None = None,
     max_p95_latency_ms: float | None = None,
     min_target_type_coverage: dict[str, float] | None = None,
+    min_source_target_coverage: dict[str, float] | None = None,
     min_source_family_target_coverage: dict[str, float] | None = None,
     min_case_group_target_coverage: dict[str, float] | None = None,
     min_recall_lift: float | None = None,
@@ -450,6 +457,7 @@ def gate_retrieval_ablation(
         raise ValueError("A baseline mode is required for lift, latency-ratio, or pairwise checks.")
 
     target_metrics = retrieval_target_metrics(row.evaluation)
+    source_metrics = retrieval_source_metrics(row.evaluation)
     source_family_metrics = retrieval_source_family_metrics(row.evaluation)
     chunk_strategy_metrics = retrieval_chunk_strategy_metrics(row.evaluation)
     retrieval_role_metrics = retrieval_role_metrics_payload(row.evaluation)
@@ -457,12 +465,14 @@ def gate_retrieval_ablation(
     metrics = qdrant_vector_ablation_metrics(
         row.evaluation,
         target_metrics,
+        source_metrics,
         source_family_metrics,
         chunk_strategy_metrics,
         retrieval_role_metrics,
         case_group_metrics,
     )
     baseline_target_metrics = retrieval_target_metrics(baseline_row.evaluation) if baseline_row else {}
+    baseline_source_metrics = retrieval_source_metrics(baseline_row.evaluation) if baseline_row else {}
     baseline_source_family_metrics = (
         retrieval_source_family_metrics(baseline_row.evaluation) if baseline_row else {}
     )
@@ -479,6 +489,7 @@ def gate_retrieval_ablation(
         qdrant_vector_ablation_metrics(
             baseline_row.evaluation,
             baseline_target_metrics,
+            baseline_source_metrics,
             baseline_source_family_metrics,
             baseline_chunk_strategy_metrics,
             baseline_retrieval_role_metrics,
@@ -536,6 +547,7 @@ def gate_retrieval_ablation(
         )
     )
     checks.extend(target_type_coverage_checks(metrics, min_target_type_coverage or {}))
+    checks.extend(source_target_coverage_checks(metrics, min_source_target_coverage or {}))
     checks.extend(
         source_family_target_coverage_checks(metrics, min_source_family_target_coverage or {})
     )
@@ -625,11 +637,13 @@ def gate_retrieval_ablation(
         metrics=metrics,
         baseline_metrics=baseline_metrics,
         target_metrics=target_metrics,
+        source_metrics=source_metrics,
         source_family_metrics=source_family_metrics,
         chunk_strategy_metrics=chunk_strategy_metrics,
         retrieval_role_metrics=retrieval_role_metrics,
         case_group_metrics=case_group_metrics,
         baseline_target_metrics=baseline_target_metrics,
+        baseline_source_metrics=baseline_source_metrics,
         baseline_source_family_metrics=baseline_source_family_metrics,
         baseline_chunk_strategy_metrics=baseline_chunk_strategy_metrics,
         baseline_retrieval_role_metrics=baseline_retrieval_role_metrics,
@@ -1262,6 +1276,7 @@ def gate_qdrant_vector_ablation(
     max_mean_latency_ms: float | None = None,
     max_p95_latency_ms: float | None = None,
     min_target_type_coverage: dict[str, float] | None = None,
+    min_source_target_coverage: dict[str, float] | None = None,
     min_source_family_target_coverage: dict[str, float] | None = None,
     min_case_group_target_coverage: dict[str, float] | None = None,
     min_pairwise_shared_queries: int | None = None,
@@ -1313,6 +1328,7 @@ def gate_qdrant_vector_ablation(
         raise ValueError("A baseline mode is required for pairwise checks.")
 
     target_metrics = retrieval_target_metrics(row.evaluation)
+    source_metrics = retrieval_source_metrics(row.evaluation)
     source_family_metrics = retrieval_source_family_metrics(row.evaluation)
     chunk_strategy_metrics = retrieval_chunk_strategy_metrics(row.evaluation)
     retrieval_role_metrics = retrieval_role_metrics_payload(row.evaluation)
@@ -1320,6 +1336,7 @@ def gate_qdrant_vector_ablation(
     metrics = qdrant_vector_ablation_metrics(
         row.evaluation,
         target_metrics,
+        source_metrics,
         source_family_metrics,
         chunk_strategy_metrics,
         retrieval_role_metrics,
@@ -1330,6 +1347,7 @@ def gate_qdrant_vector_ablation(
         baseline_metrics = qdrant_vector_ablation_metrics(
             baseline_row.evaluation,
             retrieval_target_metrics(baseline_row.evaluation),
+            retrieval_source_metrics(baseline_row.evaluation),
             retrieval_source_family_metrics(baseline_row.evaluation),
             retrieval_chunk_strategy_metrics(baseline_row.evaluation),
             retrieval_role_metrics_payload(baseline_row.evaluation),
@@ -1397,6 +1415,7 @@ def gate_qdrant_vector_ablation(
             min_target_type_coverage or {},
         )
     )
+    checks.extend(source_target_coverage_checks(metrics, min_source_target_coverage or {}))
     checks.extend(
         source_family_target_coverage_checks(
             metrics,
@@ -1468,6 +1487,7 @@ def gate_qdrant_vector_ablation(
         metrics=metrics,
         baseline_metrics=baseline_metrics,
         target_metrics=target_metrics,
+        source_metrics=source_metrics,
         source_family_metrics=source_family_metrics,
         chunk_strategy_metrics=chunk_strategy_metrics,
         retrieval_role_metrics=retrieval_role_metrics,
@@ -1497,6 +1517,7 @@ def qdrant_vector_ablation_row(
 def qdrant_vector_ablation_metrics(
     evaluation: RetrievalEvaluation,
     target_metrics: dict[str, dict[str, float]] | None = None,
+    source_metrics: dict[str, dict[str, float]] | None = None,
     source_family_metrics: dict[str, dict[str, float]] | None = None,
     chunk_strategy_metrics: dict[str, dict[str, float]] | None = None,
     retrieval_role_metrics: dict[str, dict[str, float]] | None = None,
@@ -1514,6 +1535,9 @@ def qdrant_vector_ablation_metrics(
         "failed_query_count": float(evaluation.failed_count),
     }
     metrics.update(retrieval_rank_metrics(evaluation))
+    for source, source_metric_values in (source_metrics or {}).items():
+        for key, value in source_metric_values.items():
+            metrics[source_metric_key(source, key)] = value
     for target_type, target_type_metrics in (target_metrics or {}).items():
         for key, value in target_type_metrics.items():
             metrics[target_type_metric_key(target_type, key)] = value

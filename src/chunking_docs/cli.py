@@ -1025,6 +1025,14 @@ def gate_qdrant_vector_ablation_command(
         "--min-target-type-coverage",
         help="Require target-type coverage such as asset=1.0. Repeat for multiple types.",
     ),
+    min_source_target_coverage: list[str] = typer.Option(
+        None,
+        "--min-source-target-coverage",
+        help=(
+            "Require exact retrieval-source target coverage such as "
+            "qdrant:image_dense=0.5. Repeat for multiple sources."
+        ),
+    ),
     min_source_family_target_coverage: list[str] = typer.Option(
         None,
         "--min-source-family-target-coverage",
@@ -1071,6 +1079,10 @@ def gate_qdrant_vector_ablation_command(
         min_source_family_target_coverage,
         "source family target coverage",
     )
+    source_thresholds = parse_named_float_thresholds(
+        min_source_target_coverage,
+        "source target coverage",
+    )
     target_type_thresholds = parse_named_float_thresholds(
         min_target_type_coverage,
         "target type coverage",
@@ -1097,6 +1109,7 @@ def gate_qdrant_vector_ablation_command(
             max_mean_latency_ms=max_mean_latency_ms,
             max_p95_latency_ms=max_p95_latency_ms,
             min_target_type_coverage=target_type_thresholds,
+            min_source_target_coverage=source_thresholds,
             min_source_family_target_coverage=source_family_thresholds,
             min_case_group_target_coverage=case_group_thresholds,
             min_pairwise_shared_queries=min_pairwise_shared_queries,
@@ -3495,6 +3508,11 @@ def gate_retrieval_ablation_command(
         "--min-target-type-coverage",
         help="Require selected mode target-type coverage such as asset=1.0.",
     ),
+    min_source_target_coverage: list[str] = typer.Option(
+        None,
+        "--min-source-target-coverage",
+        help="Require selected mode exact-source target coverage such as bm25=1.0.",
+    ),
     min_source_family_target_coverage: list[str] = typer.Option(
         None,
         "--min-source-family-target-coverage",
@@ -3546,6 +3564,10 @@ def gate_retrieval_ablation_command(
         min_source_family_target_coverage,
         "source family target coverage",
     )
+    source_thresholds = parse_named_float_thresholds(
+        min_source_target_coverage,
+        "source target coverage",
+    )
     target_type_thresholds = parse_named_float_thresholds(
         min_target_type_coverage,
         "target type coverage",
@@ -3572,6 +3594,7 @@ def gate_retrieval_ablation_command(
             max_mean_latency_ms=max_mean_latency_ms,
             max_p95_latency_ms=max_p95_latency_ms,
             min_target_type_coverage=target_type_thresholds,
+            min_source_target_coverage=source_thresholds,
             min_source_family_target_coverage=source_family_thresholds,
             min_case_group_target_coverage=case_group_thresholds,
             min_recall_lift=min_recall_lift,
@@ -3696,6 +3719,11 @@ def gate_retrieval_command(
         "--min-target-type-coverage",
         help="Require target-type coverage such as asset=1.0 or triple=1.0. Repeat for multiple types.",
     ),
+    min_source_target_coverage: list[str] = typer.Option(
+        None,
+        "--min-source-target-coverage",
+        help="Require exact retrieval-source target coverage such as qdrant:caption_dense=0.8.",
+    ),
     min_source_family_target_coverage: list[str] = typer.Option(
         None,
         "--min-source-family-target-coverage",
@@ -3735,6 +3763,10 @@ def gate_retrieval_command(
         min_source_family_target_coverage,
         "source family target coverage",
     )
+    source_thresholds = parse_named_float_thresholds(
+        min_source_target_coverage,
+        "source target coverage",
+    )
     target_type_thresholds = parse_named_float_thresholds(
         min_target_type_coverage,
         "target type coverage",
@@ -3766,6 +3798,7 @@ def gate_retrieval_command(
         max_mean_latency_ms=max_mean_latency_ms,
         max_p95_latency_ms=max_p95_latency_ms,
         min_target_type_coverage=target_type_thresholds,
+        min_source_target_coverage=source_thresholds,
         min_source_family_target_coverage=source_family_thresholds,
         min_chunk_strategy_target_coverage=chunk_strategy_thresholds,
         min_retrieval_role_target_coverage=retrieval_role_thresholds,
