@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import random
+
 from pydantic import BaseModel, Field
 
 from chunking_docs.evaluation.chunking_quality import ChunkingQualityReport
@@ -57,6 +59,22 @@ class ChunkingPairwiseComparison(BaseModel):
     mean_target_ndcg_delta: float = 0.0
     mean_precision_delta: float = 0.0
     mean_latency_delta_ms: float | None = None
+    bootstrap_samples: int = 0
+    confidence_level: float = 0.95
+    reciprocal_rank_delta_ci_low: float | None = None
+    reciprocal_rank_delta_ci_high: float | None = None
+    target_coverage_delta_ci_low: float | None = None
+    target_coverage_delta_ci_high: float | None = None
+    target_ndcg_delta_ci_low: float | None = None
+    target_ndcg_delta_ci_high: float | None = None
+    precision_delta_ci_low: float | None = None
+    precision_delta_ci_high: float | None = None
+    latency_delta_ci_low_ms: float | None = None
+    latency_delta_ci_high_ms: float | None = None
+
+
+PAIRWISE_BOOTSTRAP_SAMPLES = 1000
+PAIRWISE_CONFIDENCE_LEVEL = 0.95
 
 
 class ChunkingComparison(BaseModel):
@@ -219,6 +237,11 @@ def compare_retrieval_results_pairwise(
         latency_deltas.append(candidate_result.latency_ms - baseline_result.latency_ms)
 
     shared_count = len(shared_queries)
+    reciprocal_rank_ci = bootstrap_mean_interval(reciprocal_rank_deltas, seed=stable_seed(candidate_name, baseline_name, "mrr"))
+    target_coverage_ci = bootstrap_mean_interval(target_coverage_deltas, seed=stable_seed(candidate_name, baseline_name, "coverage"))
+    target_ndcg_ci = bootstrap_mean_interval(target_ndcg_deltas, seed=stable_seed(candidate_name, baseline_name, "ndcg"))
+    precision_ci = bootstrap_mean_interval(precision_deltas, seed=stable_seed(candidate_name, baseline_name, "precision"))
+    latency_ci = bootstrap_mean_interval(latency_deltas, seed=stable_seed(candidate_name, baseline_name, "latency"))
     return ChunkingPairwiseComparison(
         candidate=candidate_name,
         baseline=baseline_name,
@@ -233,6 +256,18 @@ def compare_retrieval_results_pairwise(
         mean_target_ndcg_delta=mean(target_ndcg_deltas),
         mean_precision_delta=mean(precision_deltas),
         mean_latency_delta_ms=mean(latency_deltas),
+        bootstrap_samples=PAIRWISE_BOOTSTRAP_SAMPLES,
+        confidence_level=PAIRWISE_CONFIDENCE_LEVEL,
+        reciprocal_rank_delta_ci_low=reciprocal_rank_ci[0],
+        reciprocal_rank_delta_ci_high=reciprocal_rank_ci[1],
+        target_coverage_delta_ci_low=target_coverage_ci[0],
+        target_coverage_delta_ci_high=target_coverage_ci[1],
+        target_ndcg_delta_ci_low=target_ndcg_ci[0],
+        target_ndcg_delta_ci_high=target_ndcg_ci[1],
+        precision_delta_ci_low=precision_ci[0],
+        precision_delta_ci_high=precision_ci[1],
+        latency_delta_ci_low_ms=latency_ci[0],
+        latency_delta_ci_high_ms=latency_ci[1],
     )
 
 
@@ -261,3 +296,31 @@ def case_score(result: RetrievalCaseResult) -> tuple[float, float, float, float]
 
 def mean(values: list[float]) -> float:
     return sum(values) / len(values) if values else 0.0
+
+
+def bootstrap_mean_interval(
+    values: list[float],
+    samples: int = PAIRWISE_BOOTSTRAP_SAMPLES,
+    confidence_level: float = PAIRWISE_CONFIDENCE_LEVEL,
+    seed: int = 0,
+) -> tuple[float | None, float | None]:
+    if not values:
+        return None, None
+    if len(values) == 1:
+        return values[0], values[0]
+    rng = random.Random(seed)
+    sample_count = max(1, samples)
+    sample_means = []
+    value_count = len(values)
+    for _ in range(sample_count):
+        sample_means.append(mean([values[rng.randrange(value_count)] for _ in range(value_count)]))
+    sample_means.sort()
+    alpha = max(0.0, min(1.0, 1.0 - confidence_level))
+    low_index = int((alpha / 2) * (sample_count - 1))
+    high_index = int((1.0 - alpha / 2) * (sample_count - 1))
+    return sample_means[low_index], sample_means[high_index]
+
+
+def stable_seed(*parts: str) -> int:
+    raw = "|".join(parts)
+    return sum((index + 1) * ord(character) for index, character in enumerate(raw))

@@ -96,6 +96,10 @@ def gate_chunking_comparison(
     min_pairwise_target_ndcg_lift: float | None = None,
     min_pairwise_mrr_lift: float | None = None,
     min_pairwise_precision_lift: float | None = None,
+    min_pairwise_target_coverage_ci_low: float | None = None,
+    min_pairwise_target_ndcg_ci_low: float | None = None,
+    min_pairwise_mrr_ci_low: float | None = None,
+    min_pairwise_precision_ci_low: float | None = None,
     max_pairwise_mean_latency_delta_ms: float | None = None,
 ) -> ChunkingComparisonGateReport:
     selected_name = select_candidate_name(comparison, candidate)
@@ -285,6 +289,10 @@ def gate_chunking_comparison(
                 min_pairwise_target_ndcg_lift,
                 min_pairwise_mrr_lift,
                 min_pairwise_precision_lift,
+                min_pairwise_target_coverage_ci_low,
+                min_pairwise_target_ndcg_ci_low,
+                min_pairwise_mrr_ci_low,
+                min_pairwise_precision_ci_low,
                 max_pairwise_mean_latency_delta_ms,
             ]
         ):
@@ -336,6 +344,34 @@ def gate_chunking_comparison(
                         "pairwise_mean_precision_delta",
                         pairwise_metrics,
                         min_pairwise_precision_lift,
+                    ),
+                    optional_minimum_check(
+                        "min_pairwise_target_coverage_ci_low",
+                        selected_name,
+                        "pairwise_target_coverage_delta_ci_low",
+                        pairwise_metrics,
+                        min_pairwise_target_coverage_ci_low,
+                    ),
+                    optional_minimum_check(
+                        "min_pairwise_target_ndcg_ci_low",
+                        selected_name,
+                        "pairwise_target_ndcg_delta_ci_low",
+                        pairwise_metrics,
+                        min_pairwise_target_ndcg_ci_low,
+                    ),
+                    optional_minimum_check(
+                        "min_pairwise_mrr_ci_low",
+                        selected_name,
+                        "pairwise_reciprocal_rank_delta_ci_low",
+                        pairwise_metrics,
+                        min_pairwise_mrr_ci_low,
+                    ),
+                    optional_minimum_check(
+                        "min_pairwise_precision_ci_low",
+                        selected_name,
+                        "pairwise_precision_delta_ci_low",
+                        pairwise_metrics,
+                        min_pairwise_precision_ci_low,
                     ),
                     optional_maximum_check(
                         "max_pairwise_mean_latency_delta_ms",
@@ -455,6 +491,18 @@ def pairwise_comparison_metrics(
             "pairwise_mean_target_ndcg_delta": None,
             "pairwise_mean_precision_delta": None,
             "pairwise_mean_latency_delta_ms": None,
+            "pairwise_bootstrap_samples": None,
+            "pairwise_confidence_level": None,
+            "pairwise_reciprocal_rank_delta_ci_low": None,
+            "pairwise_reciprocal_rank_delta_ci_high": None,
+            "pairwise_target_coverage_delta_ci_low": None,
+            "pairwise_target_coverage_delta_ci_high": None,
+            "pairwise_target_ndcg_delta_ci_low": None,
+            "pairwise_target_ndcg_delta_ci_high": None,
+            "pairwise_precision_delta_ci_low": None,
+            "pairwise_precision_delta_ci_high": None,
+            "pairwise_latency_delta_ci_low_ms": None,
+            "pairwise_latency_delta_ci_high_ms": None,
         }
     return {
         "pairwise_shared_query_count": float(pairwise.shared_query_count),
@@ -468,6 +516,18 @@ def pairwise_comparison_metrics(
         "pairwise_mean_target_ndcg_delta": pairwise.mean_target_ndcg_delta,
         "pairwise_mean_precision_delta": pairwise.mean_precision_delta,
         "pairwise_mean_latency_delta_ms": pairwise.mean_latency_delta_ms,
+        "pairwise_bootstrap_samples": float(pairwise.bootstrap_samples),
+        "pairwise_confidence_level": pairwise.confidence_level,
+        "pairwise_reciprocal_rank_delta_ci_low": pairwise.reciprocal_rank_delta_ci_low,
+        "pairwise_reciprocal_rank_delta_ci_high": pairwise.reciprocal_rank_delta_ci_high,
+        "pairwise_target_coverage_delta_ci_low": pairwise.target_coverage_delta_ci_low,
+        "pairwise_target_coverage_delta_ci_high": pairwise.target_coverage_delta_ci_high,
+        "pairwise_target_ndcg_delta_ci_low": pairwise.target_ndcg_delta_ci_low,
+        "pairwise_target_ndcg_delta_ci_high": pairwise.target_ndcg_delta_ci_high,
+        "pairwise_precision_delta_ci_low": pairwise.precision_delta_ci_low,
+        "pairwise_precision_delta_ci_high": pairwise.precision_delta_ci_high,
+        "pairwise_latency_delta_ci_low_ms": pairwise.latency_delta_ci_low_ms,
+        "pairwise_latency_delta_ci_high_ms": pairwise.latency_delta_ci_high_ms,
     }
 
 

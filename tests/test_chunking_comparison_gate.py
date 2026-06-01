@@ -109,6 +109,10 @@ def test_gate_chunking_comparison_checks_pairwise_lift():
         min_pairwise_target_ndcg_lift=0.2,
         min_pairwise_mrr_lift=0.2,
         min_pairwise_precision_lift=0.2,
+        min_pairwise_target_coverage_ci_low=0.1,
+        min_pairwise_target_ndcg_ci_low=0.1,
+        min_pairwise_mrr_ci_low=0.1,
+        min_pairwise_precision_ci_low=0.1,
         max_pairwise_mean_latency_delta_ms=10.0,
     )
 
@@ -116,6 +120,8 @@ def test_gate_chunking_comparison_checks_pairwise_lift():
     assert report.pairwise_metrics["pairwise_shared_query_count"] == 10.0
     assert report.pairwise_metrics["pairwise_candidate_win_rate"] == 0.7
     assert report.pairwise_metrics["pairwise_mean_target_ndcg_delta"] == 0.25
+    assert report.pairwise_metrics["pairwise_target_coverage_delta_ci_low"] == 0.12
+    assert report.pairwise_metrics["pairwise_bootstrap_samples"] == 1000.0
 
 
 def test_gate_chunking_comparison_flags_missing_pairwise_lift():
@@ -128,6 +134,8 @@ def test_gate_chunking_comparison_flags_missing_pairwise_lift():
         min_pairwise_win_rate=0.6,
         min_pairwise_target_coverage_lift=0.0,
         min_pairwise_target_ndcg_lift=0.0,
+        min_pairwise_target_coverage_ci_low=0.0,
+        min_pairwise_target_ndcg_ci_low=0.0,
         max_pairwise_mean_latency_delta_ms=0.0,
     )
 
@@ -136,6 +144,8 @@ def test_gate_chunking_comparison_flags_missing_pairwise_lift():
     assert "min_pairwise_win_rate" in report.failed_checks
     assert "min_pairwise_target_coverage_lift" in report.failed_checks
     assert "min_pairwise_target_ndcg_lift" in report.failed_checks
+    assert "min_pairwise_target_coverage_ci_low" in report.failed_checks
+    assert "min_pairwise_target_ndcg_ci_low" in report.failed_checks
     assert "max_pairwise_mean_latency_delta_ms" in report.failed_checks
 
 
@@ -182,6 +192,8 @@ def test_gate_chunking_comparison_cli_writes_json_and_fails(tmp_path):
             "0.1",
             "--min-pairwise-win-rate",
             "0.6",
+            "--min-pairwise-target-coverage-ci-low",
+            "0.0",
             "--output",
             str(output_path),
         ],
@@ -209,6 +221,7 @@ def test_gate_chunking_comparison_cli_writes_json_and_fails(tmp_path):
     ] == 0.2
     assert "max_recall_at_k_drop" in payload["failed_checks"]
     assert "min_pairwise_win_rate" in payload["failed_checks"]
+    assert "min_pairwise_target_coverage_ci_low" in payload["failed_checks"]
     assert payload["pairwise_metrics"]["pairwise_candidate_win_rate"] == 0.2
 
 
@@ -272,6 +285,18 @@ def comparison_report() -> ChunkingComparison:
                 mean_target_ndcg_delta=0.25,
                 mean_precision_delta=0.2,
                 mean_latency_delta_ms=-18.0,
+                bootstrap_samples=1000,
+                confidence_level=0.95,
+                reciprocal_rank_delta_ci_low=0.11,
+                reciprocal_rank_delta_ci_high=0.39,
+                target_coverage_delta_ci_low=0.12,
+                target_coverage_delta_ci_high=0.48,
+                target_ndcg_delta_ci_low=0.1,
+                target_ndcg_delta_ci_high=0.4,
+                precision_delta_ci_low=0.1,
+                precision_delta_ci_high=0.32,
+                latency_delta_ci_low_ms=-24.0,
+                latency_delta_ci_high_ms=-10.0,
             ),
             ChunkingPairwiseComparison(
                 candidate="weak",
@@ -287,6 +312,18 @@ def comparison_report() -> ChunkingComparison:
                 mean_target_ndcg_delta=-0.25,
                 mean_precision_delta=-0.2,
                 mean_latency_delta_ms=18.0,
+                bootstrap_samples=1000,
+                confidence_level=0.95,
+                reciprocal_rank_delta_ci_low=-0.39,
+                reciprocal_rank_delta_ci_high=-0.11,
+                target_coverage_delta_ci_low=-0.48,
+                target_coverage_delta_ci_high=-0.12,
+                target_ndcg_delta_ci_low=-0.4,
+                target_ndcg_delta_ci_high=-0.1,
+                precision_delta_ci_low=-0.32,
+                precision_delta_ci_high=-0.1,
+                latency_delta_ci_low_ms=10.0,
+                latency_delta_ci_high_ms=24.0,
             ),
         ],
     )

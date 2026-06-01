@@ -84,5 +84,8 @@ def test_compare_chunking_reports_ranks_by_retrieval_then_quality():
     assert pairwise.candidate_win_rate == 1.0
     assert pairwise.mean_target_coverage_delta > 0.0
     assert pairwise.mean_target_ndcg_delta > 0.0
+    assert pairwise.bootstrap_samples == 1000
+    assert pairwise.target_coverage_delta_ci_low == pairwise.mean_target_coverage_delta
+    assert pairwise.target_ndcg_delta_ci_high == pairwise.mean_target_ndcg_delta
     assert comparison.rows[-1].failed_queries == ["river corridor"]
     assert comparison.rows[-1].visual_text_coverage_ratio == 0.0

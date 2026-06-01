@@ -3446,6 +3446,10 @@ def gate_chunking_comparison_command(
     min_pairwise_target_ndcg_lift: float | None = None,
     min_pairwise_mrr_lift: float | None = None,
     min_pairwise_precision_lift: float | None = None,
+    min_pairwise_target_coverage_ci_low: float | None = None,
+    min_pairwise_target_ndcg_ci_low: float | None = None,
+    min_pairwise_mrr_ci_low: float | None = None,
+    min_pairwise_precision_ci_low: float | None = None,
     max_pairwise_mean_latency_delta_ms: float | None = None,
     fail: bool = typer.Option(
         True,
@@ -3512,6 +3516,10 @@ def gate_chunking_comparison_command(
         min_pairwise_target_ndcg_lift=min_pairwise_target_ndcg_lift,
         min_pairwise_mrr_lift=min_pairwise_mrr_lift,
         min_pairwise_precision_lift=min_pairwise_precision_lift,
+        min_pairwise_target_coverage_ci_low=min_pairwise_target_coverage_ci_low,
+        min_pairwise_target_ndcg_ci_low=min_pairwise_target_ndcg_ci_low,
+        min_pairwise_mrr_ci_low=min_pairwise_mrr_ci_low,
+        min_pairwise_precision_ci_low=min_pairwise_precision_ci_low,
         max_pairwise_mean_latency_delta_ms=max_pairwise_mean_latency_delta_ms,
     )
     payload = report.model_dump()
