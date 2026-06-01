@@ -1836,6 +1836,10 @@ def test_ingestion_readiness_cli_can_gate_qdrant_vector_ablation(tmp_path):
             "dense_text=1.0",
             "--min-qdrant-vector-case-group-target-coverage",
             "case_source:visual_object_probe=1.0",
+            "--min-qdrant-vector-case-group-source-target-coverage",
+            "case_source:visual_object_probe:qdrant:text_dense=1.0",
+            "--min-qdrant-vector-case-group-source-family-target-coverage",
+            "case_source:visual_object_probe:dense_text=1.0",
             "--require-qdrant-vector-best-by-recall",
             "--output",
             str(output),
@@ -1860,6 +1864,12 @@ def test_ingestion_readiness_cli_can_gate_qdrant_vector_ablation(tmp_path):
     assert component["metadata"]["case_group_metrics"]["case_source"]["visual_object_probe"][
         "target_coverage_at_k"
     ] == 1.0
+    assert component["metadata"]["case_group_source_metrics"]["case_source"][
+        "visual_object_probe"
+    ]["qdrant:text_dense"]["target_coverage_at_k"] == 1.0
+    assert component["metadata"]["case_group_source_family_metrics"]["case_source"][
+        "visual_object_probe"
+    ]["dense_text"]["target_coverage_at_k"] == 1.0
 
 
 def test_ingestion_readiness_cli_can_gate_qdrant_reranker_ablation(tmp_path):
@@ -1891,6 +1901,10 @@ def test_ingestion_readiness_cli_can_gate_qdrant_reranker_ablation(tmp_path):
             "rerank:lexical=1.0",
             "--min-qdrant-reranker-case-group-target-coverage",
             "case_source:visual_object_probe=1.0",
+            "--min-qdrant-reranker-case-group-source-target-coverage",
+            "case_source:visual_object_probe:rerank:lexical=1.0",
+            "--min-qdrant-reranker-case-group-source-family-target-coverage",
+            "case_source:visual_object_probe:lexical=1.0",
             "--min-qdrant-reranker-pairwise-win-rate",
             "1.0",
             "--max-qdrant-reranker-pairwise-mean-target-rank-delta",
@@ -1917,6 +1931,12 @@ def test_ingestion_readiness_cli_can_gate_qdrant_reranker_ablation(tmp_path):
     assert component["metadata"]["source_metrics"]["rerank:lexical"][
         "target_coverage_at_k"
     ] == 1.0
+    assert component["metadata"]["case_group_source_metrics"]["case_source"][
+        "visual_object_probe"
+    ]["rerank:lexical"]["target_coverage_at_k"] == 1.0
+    assert component["metadata"]["case_group_source_family_metrics"]["case_source"][
+        "visual_object_probe"
+    ]["lexical"]["target_coverage_at_k"] == 1.0
     assert component["metadata"]["pairwise_metrics"]["pairwise_candidate_win_rate"] == 1.0
 
 
@@ -2080,6 +2100,10 @@ def test_ingestion_readiness_cli_can_gate_retrieval_ablation_lift(tmp_path):
             "lexical=1.0",
             "--min-retrieval-ablation-case-group-target-coverage",
             "case_source:visual_lexical_probe=1.0",
+            "--min-retrieval-ablation-case-group-source-target-coverage",
+            "case_source:visual_lexical_probe:bm25=1.0",
+            "--min-retrieval-ablation-case-group-source-family-target-coverage",
+            "case_source:visual_lexical_probe:lexical=1.0",
             "--require-retrieval-ablation-best-by-recall",
             "--output",
             str(output),
@@ -2102,6 +2126,12 @@ def test_ingestion_readiness_cli_can_gate_retrieval_ablation_lift(tmp_path):
     assert component["metadata"]["case_group_metrics"]["case_source"]["visual_lexical_probe"][
         "target_coverage_at_k"
     ] == 1.0
+    assert component["metadata"]["case_group_source_metrics"]["case_source"][
+        "visual_lexical_probe"
+    ]["bm25"]["target_coverage_at_k"] == 1.0
+    assert component["metadata"]["case_group_source_family_metrics"]["case_source"][
+        "visual_lexical_probe"
+    ]["lexical"]["target_coverage_at_k"] == 1.0
 
 
 def test_ingestion_readiness_cli_can_gate_chunking_target_coverage(tmp_path):

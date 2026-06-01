@@ -442,6 +442,12 @@ def build_ingestion_readiness_report(
                             "chunk_strategy_metrics": retrieval_ablation_gate.chunk_strategy_metrics,
                             "retrieval_role_metrics": retrieval_ablation_gate.retrieval_role_metrics,
                             "case_group_metrics": retrieval_ablation_gate.case_group_metrics,
+                            "case_group_source_metrics": (
+                                retrieval_ablation_gate.case_group_source_metrics
+                            ),
+                            "case_group_source_family_metrics": (
+                                retrieval_ablation_gate.case_group_source_family_metrics
+                            ),
                             "pairwise_metrics": retrieval_ablation_gate.pairwise_metrics,
                             "case_group_best_modes": (
                                 retrieval_ablation_gate.case_group_best_modes
@@ -522,6 +528,12 @@ def build_ingestion_readiness_report(
                             "case_group_metrics": (
                                 qdrant_vector_ablation_gate.case_group_metrics
                             ),
+                            "case_group_source_metrics": (
+                                qdrant_vector_ablation_gate.case_group_source_metrics
+                            ),
+                            "case_group_source_family_metrics": (
+                                qdrant_vector_ablation_gate.case_group_source_family_metrics
+                            ),
                             "pairwise_metrics": qdrant_vector_ablation_gate.pairwise_metrics,
                             "case_group_best_modes": (
                                 qdrant_vector_ablation_gate.case_group_best_modes
@@ -594,6 +606,12 @@ def build_ingestion_readiness_report(
                             ),
                             "case_group_metrics": (
                                 qdrant_reranker_ablation_gate.case_group_metrics
+                            ),
+                            "case_group_source_metrics": (
+                                qdrant_reranker_ablation_gate.case_group_source_metrics
+                            ),
+                            "case_group_source_family_metrics": (
+                                qdrant_reranker_ablation_gate.case_group_source_family_metrics
                             ),
                             "pairwise_metrics": qdrant_reranker_ablation_gate.pairwise_metrics,
                             "case_group_best_modes": (

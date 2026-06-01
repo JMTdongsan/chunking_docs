@@ -1818,6 +1818,14 @@ def eval_qdrant_vector_ablation_command(
                         ),
                         "retrieval_role_metrics": retrieval_role_metrics_payload(row.evaluation),
                         "case_group_metrics": retrieval_case_group_metrics_payload(row.evaluation),
+                        "case_group_source_metrics": retrieval_case_group_source_metrics_payload(
+                            row.evaluation
+                        ),
+                        "case_group_source_family_metrics": (
+                            retrieval_case_group_source_family_metrics_payload(
+                                row.evaluation
+                            )
+                        ),
                         "failed_queries": row.evaluation.failed_queries,
                     }
                     for row in report.rows
@@ -2030,6 +2038,14 @@ def eval_qdrant_reranker_ablation_command(
                         ),
                         "retrieval_role_metrics": retrieval_role_metrics_payload(row.evaluation),
                         "case_group_metrics": retrieval_case_group_metrics_payload(row.evaluation),
+                        "case_group_source_metrics": retrieval_case_group_source_metrics_payload(
+                            row.evaluation
+                        ),
+                        "case_group_source_family_metrics": (
+                            retrieval_case_group_source_family_metrics_payload(
+                                row.evaluation
+                            )
+                        ),
                         "failed_queries": row.evaluation.failed_queries,
                     }
                     for row in report.rows
@@ -2642,6 +2658,22 @@ def gate_qdrant_vector_ablation_command(
             "case_source:visual_object_probe=0.7."
         ),
     ),
+    min_case_group_source_target_coverage: list[str] = typer.Option(
+        None,
+        "--min-case-group-source-target-coverage",
+        help=(
+            "Require case-group exact-source target coverage such as "
+            "case_source:visual_object_probe:qdrant:object_dense=0.3."
+        ),
+    ),
+    min_case_group_source_family_target_coverage: list[str] = typer.Option(
+        None,
+        "--min-case-group-source-family-target-coverage",
+        help=(
+            "Require case-group source-family target coverage such as "
+            "case_source:visual_object_probe:visual=0.3."
+        ),
+    ),
     min_pairwise_shared_queries: int | None = None,
     min_pairwise_win_rate: float | None = None,
     min_pairwise_target_coverage_lift: float | None = None,
@@ -2703,6 +2735,14 @@ def gate_qdrant_vector_ablation_command(
         min_case_group_target_coverage,
         "case group target coverage",
     )
+    case_group_source_thresholds = parse_named_float_thresholds(
+        min_case_group_source_target_coverage,
+        "case group source target coverage",
+    )
+    case_group_source_family_thresholds = parse_named_float_thresholds(
+        min_case_group_source_family_target_coverage,
+        "case group source family target coverage",
+    )
     try:
         gate_report = gate_qdrant_vector_ablation(
             parsed_report,
@@ -2731,6 +2771,10 @@ def gate_qdrant_vector_ablation_command(
             max_chunk_strategy_excluded_target_hit_rate=chunk_strategy_excluded_thresholds,
             max_retrieval_role_excluded_target_hit_rate=retrieval_role_excluded_thresholds,
             min_case_group_target_coverage=case_group_thresholds,
+            min_case_group_source_target_coverage=case_group_source_thresholds,
+            min_case_group_source_family_target_coverage=(
+                case_group_source_family_thresholds
+            ),
             min_pairwise_shared_queries=min_pairwise_shared_queries,
             min_pairwise_win_rate=min_pairwise_win_rate,
             min_pairwise_target_coverage_lift=min_pairwise_target_coverage_lift,
@@ -2777,6 +2821,8 @@ def gate_qdrant_vector_ablation_command(
             "chunk_strategy_metrics": gate_report.chunk_strategy_metrics,
             "retrieval_role_metrics": gate_report.retrieval_role_metrics,
             "case_group_metrics": gate_report.case_group_metrics,
+            "case_group_source_metrics": gate_report.case_group_source_metrics,
+            "case_group_source_family_metrics": gate_report.case_group_source_family_metrics,
             "pairwise_metrics": gate_report.pairwise_metrics,
             "case_group_best_modes": gate_report.case_group_best_modes,
         }
@@ -2878,6 +2924,22 @@ def gate_qdrant_reranker_ablation_command(
             "case_source:visual_object_probe=0.7."
         ),
     ),
+    min_case_group_source_target_coverage: list[str] = typer.Option(
+        None,
+        "--min-case-group-source-target-coverage",
+        help=(
+            "Require case-group exact-source target coverage such as "
+            "case_source:visual_object_probe:rerank:lexical=0.7."
+        ),
+    ),
+    min_case_group_source_family_target_coverage: list[str] = typer.Option(
+        None,
+        "--min-case-group-source-family-target-coverage",
+        help=(
+            "Require case-group source-family target coverage such as "
+            "case_source:visual_object_probe:lexical=0.7."
+        ),
+    ),
     min_pairwise_shared_queries: int | None = None,
     min_pairwise_win_rate: float | None = None,
     min_pairwise_target_coverage_lift: float | None = None,
@@ -2939,6 +3001,14 @@ def gate_qdrant_reranker_ablation_command(
         min_case_group_target_coverage,
         "case group target coverage",
     )
+    case_group_source_thresholds = parse_named_float_thresholds(
+        min_case_group_source_target_coverage,
+        "case group source target coverage",
+    )
+    case_group_source_family_thresholds = parse_named_float_thresholds(
+        min_case_group_source_family_target_coverage,
+        "case group source family target coverage",
+    )
     try:
         gate_report = gate_qdrant_reranker_ablation(
             parsed_report,
@@ -2967,6 +3037,10 @@ def gate_qdrant_reranker_ablation_command(
             max_chunk_strategy_excluded_target_hit_rate=chunk_strategy_excluded_thresholds,
             max_retrieval_role_excluded_target_hit_rate=retrieval_role_excluded_thresholds,
             min_case_group_target_coverage=case_group_thresholds,
+            min_case_group_source_target_coverage=case_group_source_thresholds,
+            min_case_group_source_family_target_coverage=(
+                case_group_source_family_thresholds
+            ),
             min_pairwise_shared_queries=min_pairwise_shared_queries,
             min_pairwise_win_rate=min_pairwise_win_rate,
             min_pairwise_target_coverage_lift=min_pairwise_target_coverage_lift,
@@ -3014,6 +3088,8 @@ def gate_qdrant_reranker_ablation_command(
             "chunk_strategy_metrics": gate_report.chunk_strategy_metrics,
             "retrieval_role_metrics": gate_report.retrieval_role_metrics,
             "case_group_metrics": gate_report.case_group_metrics,
+            "case_group_source_metrics": gate_report.case_group_source_metrics,
+            "case_group_source_family_metrics": gate_report.case_group_source_family_metrics,
             "pairwise_metrics": gate_report.pairwise_metrics,
             "case_group_best_modes": gate_report.case_group_best_modes,
         }
@@ -5036,6 +5112,24 @@ def ingestion_readiness_command(
             "case_source:visual_object_probe=0.7."
         ),
     ),
+    min_retrieval_ablation_case_group_source_target_coverage: list[str] = typer.Option(
+        None,
+        "--min-retrieval-ablation-case-group-source-target-coverage",
+        help=(
+            "Require selected retrieval ablation case-group exact-source coverage "
+            "such as case_source:visual_lexical_probe:bm25=0.7."
+        ),
+    ),
+    min_retrieval_ablation_case_group_source_family_target_coverage: list[
+        str
+    ] = typer.Option(
+        None,
+        "--min-retrieval-ablation-case-group-source-family-target-coverage",
+        help=(
+            "Require selected retrieval ablation case-group source-family coverage "
+            "such as case_source:visual_lexical_probe:lexical=0.7."
+        ),
+    ),
     min_retrieval_ablation_recall_lift: float | None = None,
     min_retrieval_ablation_target_coverage_lift: float | None = None,
     min_retrieval_ablation_target_ndcg_lift: float | None = None,
@@ -5116,6 +5210,24 @@ def ingestion_readiness_command(
             "case_source:visual_object_probe=0.7."
         ),
     ),
+    min_qdrant_vector_case_group_source_target_coverage: list[str] = typer.Option(
+        None,
+        "--min-qdrant-vector-case-group-source-target-coverage",
+        help=(
+            "Require selected Qdrant vector case-group exact-source coverage such as "
+            "case_source:visual_object_probe:qdrant:object_dense=0.3."
+        ),
+    ),
+    min_qdrant_vector_case_group_source_family_target_coverage: list[
+        str
+    ] = typer.Option(
+        None,
+        "--min-qdrant-vector-case-group-source-family-target-coverage",
+        help=(
+            "Require selected Qdrant vector case-group source-family coverage such as "
+            "case_source:visual_object_probe:visual=0.3."
+        ),
+    ),
     require_qdrant_vector_best_by_recall: bool = False,
     require_qdrant_vector_best_by_target_coverage: bool = False,
     require_qdrant_vector_best_by_target_ndcg: bool = False,
@@ -5172,6 +5284,24 @@ def ingestion_readiness_command(
         help=(
             "Require selected Qdrant reranker case-group coverage such as "
             "case_source:visual_object_probe=0.7."
+        ),
+    ),
+    min_qdrant_reranker_case_group_source_target_coverage: list[str] = typer.Option(
+        None,
+        "--min-qdrant-reranker-case-group-source-target-coverage",
+        help=(
+            "Require selected Qdrant reranker case-group exact-source coverage such as "
+            "case_source:visual_object_probe:rerank:lexical=0.7."
+        ),
+    ),
+    min_qdrant_reranker_case_group_source_family_target_coverage: list[
+        str
+    ] = typer.Option(
+        None,
+        "--min-qdrant-reranker-case-group-source-family-target-coverage",
+        help=(
+            "Require selected Qdrant reranker case-group source-family coverage such as "
+            "case_source:visual_object_probe:lexical=0.7."
         ),
     ),
     require_qdrant_reranker_best_by_recall: bool = False,
@@ -5249,6 +5379,14 @@ def ingestion_readiness_command(
         min_qdrant_vector_case_group_target_coverage,
         "Qdrant vector case group target coverage",
     )
+    qdrant_vector_case_group_source_thresholds = parse_named_float_thresholds(
+        min_qdrant_vector_case_group_source_target_coverage,
+        "Qdrant vector case group source target coverage",
+    )
+    qdrant_vector_case_group_source_family_thresholds = parse_named_float_thresholds(
+        min_qdrant_vector_case_group_source_family_target_coverage,
+        "Qdrant vector case group source family target coverage",
+    )
     qdrant_reranker_source_family_thresholds = parse_named_float_thresholds(
         min_qdrant_reranker_source_family_target_coverage,
         "Qdrant reranker source family target coverage",
@@ -5264,6 +5402,14 @@ def ingestion_readiness_command(
     qdrant_reranker_case_group_thresholds = parse_named_float_thresholds(
         min_qdrant_reranker_case_group_target_coverage,
         "Qdrant reranker case group target coverage",
+    )
+    qdrant_reranker_case_group_source_thresholds = parse_named_float_thresholds(
+        min_qdrant_reranker_case_group_source_target_coverage,
+        "Qdrant reranker case group source target coverage",
+    )
+    qdrant_reranker_case_group_source_family_thresholds = parse_named_float_thresholds(
+        min_qdrant_reranker_case_group_source_family_target_coverage,
+        "Qdrant reranker case group source family target coverage",
     )
     retrieval_source_family_thresholds = parse_named_float_thresholds(
         min_retrieval_source_family_target_coverage,
@@ -5348,6 +5494,14 @@ def ingestion_readiness_command(
     retrieval_ablation_case_group_thresholds = parse_named_float_thresholds(
         min_retrieval_ablation_case_group_target_coverage,
         "retrieval ablation case group target coverage",
+    )
+    retrieval_ablation_case_group_source_thresholds = parse_named_float_thresholds(
+        min_retrieval_ablation_case_group_source_target_coverage,
+        "retrieval ablation case group source target coverage",
+    )
+    retrieval_ablation_case_group_source_family_thresholds = parse_named_float_thresholds(
+        min_retrieval_ablation_case_group_source_family_target_coverage,
+        "retrieval ablation case group source family target coverage",
     )
     report = build_ingestion_readiness_report(
         package_dir=package_dir,
@@ -5558,6 +5712,12 @@ def ingestion_readiness_command(
             "min_source_target_coverage": retrieval_ablation_source_thresholds,
             "min_source_family_target_coverage": retrieval_ablation_source_family_thresholds,
             "min_case_group_target_coverage": retrieval_ablation_case_group_thresholds,
+            "min_case_group_source_target_coverage": (
+                retrieval_ablation_case_group_source_thresholds
+            ),
+            "min_case_group_source_family_target_coverage": (
+                retrieval_ablation_case_group_source_family_thresholds
+            ),
             "min_recall_lift": min_retrieval_ablation_recall_lift,
             "min_target_coverage_lift": min_retrieval_ablation_target_coverage_lift,
             "min_target_ndcg_lift": min_retrieval_ablation_target_ndcg_lift,
@@ -5667,6 +5827,12 @@ def ingestion_readiness_command(
             "min_source_target_coverage": qdrant_vector_source_thresholds,
             "min_source_family_target_coverage": qdrant_vector_source_family_thresholds,
             "min_case_group_target_coverage": qdrant_vector_case_group_thresholds,
+            "min_case_group_source_target_coverage": (
+                qdrant_vector_case_group_source_thresholds
+            ),
+            "min_case_group_source_family_target_coverage": (
+                qdrant_vector_case_group_source_family_thresholds
+            ),
             "require_best_by_recall": require_qdrant_vector_best_by_recall,
             "require_best_by_target_coverage": require_qdrant_vector_best_by_target_coverage,
             "require_best_by_target_ndcg": require_qdrant_vector_best_by_target_ndcg,
@@ -5726,6 +5892,12 @@ def ingestion_readiness_command(
             "min_source_target_coverage": qdrant_reranker_source_thresholds,
             "min_source_family_target_coverage": qdrant_reranker_source_family_thresholds,
             "min_case_group_target_coverage": qdrant_reranker_case_group_thresholds,
+            "min_case_group_source_target_coverage": (
+                qdrant_reranker_case_group_source_thresholds
+            ),
+            "min_case_group_source_family_target_coverage": (
+                qdrant_reranker_case_group_source_family_thresholds
+            ),
             "require_best_by_recall": require_qdrant_reranker_best_by_recall,
             "require_best_by_target_coverage": (
                 require_qdrant_reranker_best_by_target_coverage
@@ -6346,6 +6518,12 @@ def eval_retrieval_ablation_command(
                     ),
                     "retrieval_role_metrics": retrieval_role_metrics_payload(row.evaluation),
                     "case_group_metrics": retrieval_case_group_metrics_payload(row.evaluation),
+                    "case_group_source_metrics": retrieval_case_group_source_metrics_payload(
+                        row.evaluation
+                    ),
+                    "case_group_source_family_metrics": (
+                        retrieval_case_group_source_family_metrics_payload(row.evaluation)
+                    ),
                     "failed_queries": row.evaluation.failed_queries,
                 }
                 for row in report.rows
@@ -6441,6 +6619,22 @@ def gate_retrieval_ablation_command(
             "case_source:visual_object_probe=0.7."
         ),
     ),
+    min_case_group_source_target_coverage: list[str] = typer.Option(
+        None,
+        "--min-case-group-source-target-coverage",
+        help=(
+            "Require selected mode case-group exact-source target coverage such as "
+            "case_source:visual_lexical_probe:bm25=0.7."
+        ),
+    ),
+    min_case_group_source_family_target_coverage: list[str] = typer.Option(
+        None,
+        "--min-case-group-source-family-target-coverage",
+        help=(
+            "Require selected mode case-group source-family target coverage such as "
+            "case_source:visual_lexical_probe:lexical=0.7."
+        ),
+    ),
     min_recall_lift: float | None = None,
     min_target_coverage_lift: float | None = None,
     min_target_ndcg_lift: float | None = None,
@@ -6507,6 +6701,14 @@ def gate_retrieval_ablation_command(
         min_case_group_target_coverage,
         "case group target coverage",
     )
+    case_group_source_thresholds = parse_named_float_thresholds(
+        min_case_group_source_target_coverage,
+        "case group source target coverage",
+    )
+    case_group_source_family_thresholds = parse_named_float_thresholds(
+        min_case_group_source_family_target_coverage,
+        "case group source family target coverage",
+    )
     try:
         gate_report = gate_retrieval_ablation(
             parsed_report,
@@ -6535,6 +6737,10 @@ def gate_retrieval_ablation_command(
             max_chunk_strategy_excluded_target_hit_rate=chunk_strategy_excluded_thresholds,
             max_retrieval_role_excluded_target_hit_rate=retrieval_role_excluded_thresholds,
             min_case_group_target_coverage=case_group_thresholds,
+            min_case_group_source_target_coverage=case_group_source_thresholds,
+            min_case_group_source_family_target_coverage=(
+                case_group_source_family_thresholds
+            ),
             min_recall_lift=min_recall_lift,
             min_target_coverage_lift=min_target_coverage_lift,
             min_target_ndcg_lift=min_target_ndcg_lift,
@@ -6587,6 +6793,8 @@ def gate_retrieval_ablation_command(
             "chunk_strategy_metrics": gate_report.chunk_strategy_metrics,
             "retrieval_role_metrics": gate_report.retrieval_role_metrics,
             "case_group_metrics": gate_report.case_group_metrics,
+            "case_group_source_metrics": gate_report.case_group_source_metrics,
+            "case_group_source_family_metrics": gate_report.case_group_source_family_metrics,
             "pairwise_metrics": gate_report.pairwise_metrics,
             "case_group_best_modes": gate_report.case_group_best_modes,
         }

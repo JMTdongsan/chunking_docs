@@ -17,11 +17,16 @@ from chunking_docs.evaluation.compare import (
 from chunking_docs.evaluation.gate import (
     RetrievalGateCheck,
     case_group_metric_key,
+    case_group_source_family_metric_key,
+    case_group_source_metric_key,
+    case_group_source_target_coverage_checks,
     case_group_target_coverage_checks,
     chunk_strategy_metric_key,
     maximum_check,
     minimum_check,
     retrieval_case_group_metrics,
+    retrieval_case_group_source_family_metrics,
+    retrieval_case_group_source_metrics,
     retrieval_chunk_strategy_metrics,
     retrieval_rank_metrics,
     retrieval_role_metric_key,
@@ -122,6 +127,12 @@ class RetrievalAblationGateReport(BaseModel):
     chunk_strategy_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
     retrieval_role_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
     case_group_metrics: dict[str, dict[str, dict[str, float]]] = Field(default_factory=dict)
+    case_group_source_metrics: dict[
+        str, dict[str, dict[str, dict[str, float]]]
+    ] = Field(default_factory=dict)
+    case_group_source_family_metrics: dict[
+        str, dict[str, dict[str, dict[str, float]]]
+    ] = Field(default_factory=dict)
     baseline_target_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
     baseline_source_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
     baseline_source_family_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
@@ -130,6 +141,12 @@ class RetrievalAblationGateReport(BaseModel):
     baseline_case_group_metrics: dict[str, dict[str, dict[str, float]]] = Field(
         default_factory=dict
     )
+    baseline_case_group_source_metrics: dict[
+        str, dict[str, dict[str, dict[str, float]]]
+    ] = Field(default_factory=dict)
+    baseline_case_group_source_family_metrics: dict[
+        str, dict[str, dict[str, dict[str, float]]]
+    ] = Field(default_factory=dict)
     pairwise_metrics: dict[str, float | None] = Field(default_factory=dict)
     best_by_recall: str | None = None
     best_by_target_coverage: str | None = None
@@ -208,6 +225,12 @@ class QdrantRerankerAblationGateReport(BaseModel):
     chunk_strategy_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
     retrieval_role_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
     case_group_metrics: dict[str, dict[str, dict[str, float]]] = Field(default_factory=dict)
+    case_group_source_metrics: dict[
+        str, dict[str, dict[str, dict[str, float]]]
+    ] = Field(default_factory=dict)
+    case_group_source_family_metrics: dict[
+        str, dict[str, dict[str, dict[str, float]]]
+    ] = Field(default_factory=dict)
     pairwise_metrics: dict[str, float | None] = Field(default_factory=dict)
     best_by_recall: str | None = None
     best_by_target_coverage: str | None = None
@@ -236,6 +259,12 @@ class QdrantVectorAblationGateReport(BaseModel):
     chunk_strategy_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
     retrieval_role_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
     case_group_metrics: dict[str, dict[str, dict[str, float]]] = Field(default_factory=dict)
+    case_group_source_metrics: dict[
+        str, dict[str, dict[str, dict[str, float]]]
+    ] = Field(default_factory=dict)
+    case_group_source_family_metrics: dict[
+        str, dict[str, dict[str, dict[str, float]]]
+    ] = Field(default_factory=dict)
     pairwise_metrics: dict[str, float | None] = Field(default_factory=dict)
     best_by_recall: str | None = None
     best_by_target_coverage: str | None = None
@@ -526,6 +555,8 @@ def gate_retrieval_ablation(
     min_target_type_coverage: dict[str, float] | None = None,
     min_source_target_coverage: dict[str, float] | None = None,
     min_source_family_target_coverage: dict[str, float] | None = None,
+    min_case_group_source_target_coverage: dict[str, float] | None = None,
+    min_case_group_source_family_target_coverage: dict[str, float] | None = None,
     max_source_excluded_target_hit_rate: dict[str, float] | None = None,
     max_source_family_excluded_target_hit_rate: dict[str, float] | None = None,
     max_chunk_strategy_excluded_target_hit_rate: dict[str, float] | None = None,
@@ -599,6 +630,10 @@ def gate_retrieval_ablation(
     chunk_strategy_metrics = retrieval_chunk_strategy_metrics(row.evaluation)
     retrieval_role_metrics = retrieval_role_metrics_payload(row.evaluation)
     case_group_metrics = retrieval_case_group_metrics(row.evaluation)
+    case_group_source_metrics = retrieval_case_group_source_metrics(row.evaluation)
+    case_group_source_family_metrics = retrieval_case_group_source_family_metrics(
+        row.evaluation
+    )
     metrics = qdrant_vector_ablation_metrics(
         row.evaluation,
         target_metrics,
@@ -607,6 +642,8 @@ def gate_retrieval_ablation(
         chunk_strategy_metrics,
         retrieval_role_metrics,
         case_group_metrics,
+        case_group_source_metrics,
+        case_group_source_family_metrics,
     )
     baseline_target_metrics = retrieval_target_metrics(baseline_row.evaluation) if baseline_row else {}
     baseline_source_metrics = retrieval_source_metrics(baseline_row.evaluation) if baseline_row else {}
@@ -622,6 +659,14 @@ def gate_retrieval_ablation(
     baseline_case_group_metrics = (
         retrieval_case_group_metrics(baseline_row.evaluation) if baseline_row else {}
     )
+    baseline_case_group_source_metrics = (
+        retrieval_case_group_source_metrics(baseline_row.evaluation) if baseline_row else {}
+    )
+    baseline_case_group_source_family_metrics = (
+        retrieval_case_group_source_family_metrics(baseline_row.evaluation)
+        if baseline_row
+        else {}
+    )
     baseline_metrics = (
         qdrant_vector_ablation_metrics(
             baseline_row.evaluation,
@@ -631,6 +676,8 @@ def gate_retrieval_ablation(
             baseline_chunk_strategy_metrics,
             baseline_retrieval_role_metrics,
             baseline_case_group_metrics,
+            baseline_case_group_source_metrics,
+            baseline_case_group_source_family_metrics,
         )
         if baseline_row
         else {}
@@ -725,6 +772,20 @@ def gate_retrieval_ablation(
         )
     )
     checks.extend(case_group_target_coverage_checks(metrics, min_case_group_target_coverage or {}))
+    checks.extend(
+        case_group_source_target_coverage_checks(
+            metrics,
+            min_case_group_source_target_coverage or {},
+            family=False,
+        )
+    )
+    checks.extend(
+        case_group_source_target_coverage_checks(
+            metrics,
+            min_case_group_source_family_target_coverage or {},
+            family=True,
+        )
+    )
     if baseline_row is not None:
         checks.extend(
             baseline_lift_checks(
@@ -815,12 +876,16 @@ def gate_retrieval_ablation(
         chunk_strategy_metrics=chunk_strategy_metrics,
         retrieval_role_metrics=retrieval_role_metrics,
         case_group_metrics=case_group_metrics,
+        case_group_source_metrics=case_group_source_metrics,
+        case_group_source_family_metrics=case_group_source_family_metrics,
         baseline_target_metrics=baseline_target_metrics,
         baseline_source_metrics=baseline_source_metrics,
         baseline_source_family_metrics=baseline_source_family_metrics,
         baseline_chunk_strategy_metrics=baseline_chunk_strategy_metrics,
         baseline_retrieval_role_metrics=baseline_retrieval_role_metrics,
         baseline_case_group_metrics=baseline_case_group_metrics,
+        baseline_case_group_source_metrics=baseline_case_group_source_metrics,
+        baseline_case_group_source_family_metrics=baseline_case_group_source_family_metrics,
         pairwise_metrics=pairwise_metrics,
         best_by_recall=report.best_by_recall,
         best_by_target_coverage=report.best_by_target_coverage,
@@ -1514,6 +1579,8 @@ def gate_qdrant_vector_ablation(
     min_target_type_coverage: dict[str, float] | None = None,
     min_source_target_coverage: dict[str, float] | None = None,
     min_source_family_target_coverage: dict[str, float] | None = None,
+    min_case_group_source_target_coverage: dict[str, float] | None = None,
+    min_case_group_source_family_target_coverage: dict[str, float] | None = None,
     max_source_excluded_target_hit_rate: dict[str, float] | None = None,
     max_source_family_excluded_target_hit_rate: dict[str, float] | None = None,
     max_chunk_strategy_excluded_target_hit_rate: dict[str, float] | None = None,
@@ -1573,6 +1640,10 @@ def gate_qdrant_vector_ablation(
     chunk_strategy_metrics = retrieval_chunk_strategy_metrics(row.evaluation)
     retrieval_role_metrics = retrieval_role_metrics_payload(row.evaluation)
     case_group_metrics = retrieval_case_group_metrics(row.evaluation)
+    case_group_source_metrics = retrieval_case_group_source_metrics(row.evaluation)
+    case_group_source_family_metrics = retrieval_case_group_source_family_metrics(
+        row.evaluation
+    )
     metrics = qdrant_vector_ablation_metrics(
         row.evaluation,
         target_metrics,
@@ -1581,6 +1652,8 @@ def gate_qdrant_vector_ablation(
         chunk_strategy_metrics,
         retrieval_role_metrics,
         case_group_metrics,
+        case_group_source_metrics,
+        case_group_source_family_metrics,
     )
     baseline_metrics = {}
     if baseline_row is not None:
@@ -1592,6 +1665,8 @@ def gate_qdrant_vector_ablation(
             retrieval_chunk_strategy_metrics(baseline_row.evaluation),
             retrieval_role_metrics_payload(baseline_row.evaluation),
             retrieval_case_group_metrics(baseline_row.evaluation),
+            retrieval_case_group_source_metrics(baseline_row.evaluation),
+            retrieval_case_group_source_family_metrics(baseline_row.evaluation),
         )
     pairwise_metrics = ablation_pairwise_metrics(
         find_ablation_pairwise_comparison(report.pairwise, mode, baseline_mode)
@@ -1699,6 +1774,20 @@ def gate_qdrant_vector_ablation(
         )
     )
     checks.extend(case_group_target_coverage_checks(metrics, min_case_group_target_coverage or {}))
+    checks.extend(
+        case_group_source_target_coverage_checks(
+            metrics,
+            min_case_group_source_target_coverage or {},
+            family=False,
+        )
+    )
+    checks.extend(
+        case_group_source_target_coverage_checks(
+            metrics,
+            min_case_group_source_family_target_coverage or {},
+            family=True,
+        )
+    )
     if baseline_row is not None:
         checks.extend(
             pairwise_threshold_checks(
@@ -1768,6 +1857,8 @@ def gate_qdrant_vector_ablation(
         chunk_strategy_metrics=chunk_strategy_metrics,
         retrieval_role_metrics=retrieval_role_metrics,
         case_group_metrics=case_group_metrics,
+        case_group_source_metrics=case_group_source_metrics,
+        case_group_source_family_metrics=case_group_source_family_metrics,
         pairwise_metrics=pairwise_metrics,
         best_by_recall=report.best_by_recall,
         best_by_target_coverage=report.best_by_target_coverage,
@@ -1802,6 +1893,8 @@ def gate_qdrant_reranker_ablation(
     min_target_type_coverage: dict[str, float] | None = None,
     min_source_target_coverage: dict[str, float] | None = None,
     min_source_family_target_coverage: dict[str, float] | None = None,
+    min_case_group_source_target_coverage: dict[str, float] | None = None,
+    min_case_group_source_family_target_coverage: dict[str, float] | None = None,
     max_source_excluded_target_hit_rate: dict[str, float] | None = None,
     max_source_family_excluded_target_hit_rate: dict[str, float] | None = None,
     max_chunk_strategy_excluded_target_hit_rate: dict[str, float] | None = None,
@@ -1861,6 +1954,10 @@ def gate_qdrant_reranker_ablation(
     chunk_strategy_metrics = retrieval_chunk_strategy_metrics(row.evaluation)
     retrieval_role_metrics = retrieval_role_metrics_payload(row.evaluation)
     case_group_metrics = retrieval_case_group_metrics(row.evaluation)
+    case_group_source_metrics = retrieval_case_group_source_metrics(row.evaluation)
+    case_group_source_family_metrics = retrieval_case_group_source_family_metrics(
+        row.evaluation
+    )
     metrics = qdrant_vector_ablation_metrics(
         row.evaluation,
         target_metrics,
@@ -1869,6 +1966,8 @@ def gate_qdrant_reranker_ablation(
         chunk_strategy_metrics,
         retrieval_role_metrics,
         case_group_metrics,
+        case_group_source_metrics,
+        case_group_source_family_metrics,
     )
     baseline_metrics = {}
     if baseline_row is not None:
@@ -1880,6 +1979,8 @@ def gate_qdrant_reranker_ablation(
             retrieval_chunk_strategy_metrics(baseline_row.evaluation),
             retrieval_role_metrics_payload(baseline_row.evaluation),
             retrieval_case_group_metrics(baseline_row.evaluation),
+            retrieval_case_group_source_metrics(baseline_row.evaluation),
+            retrieval_case_group_source_family_metrics(baseline_row.evaluation),
         )
     pairwise_metrics = ablation_pairwise_metrics(
         find_ablation_pairwise_comparison(report.pairwise, mode, baseline_mode)
@@ -1982,6 +2083,20 @@ def gate_qdrant_reranker_ablation(
         )
     )
     checks.extend(case_group_target_coverage_checks(metrics, min_case_group_target_coverage or {}))
+    checks.extend(
+        case_group_source_target_coverage_checks(
+            metrics,
+            min_case_group_source_target_coverage or {},
+            family=False,
+        )
+    )
+    checks.extend(
+        case_group_source_target_coverage_checks(
+            metrics,
+            min_case_group_source_family_target_coverage or {},
+            family=True,
+        )
+    )
     if baseline_row is not None:
         checks.extend(
             pairwise_threshold_checks(
@@ -2051,6 +2166,8 @@ def gate_qdrant_reranker_ablation(
         chunk_strategy_metrics=chunk_strategy_metrics,
         retrieval_role_metrics=retrieval_role_metrics,
         case_group_metrics=case_group_metrics,
+        case_group_source_metrics=case_group_source_metrics,
+        case_group_source_family_metrics=case_group_source_family_metrics,
         pairwise_metrics=pairwise_metrics,
         best_by_recall=report.best_by_recall,
         best_by_target_coverage=report.best_by_target_coverage,
@@ -2091,6 +2208,14 @@ def qdrant_vector_ablation_metrics(
     chunk_strategy_metrics: dict[str, dict[str, float]] | None = None,
     retrieval_role_metrics: dict[str, dict[str, float]] | None = None,
     case_group_metrics: dict[str, dict[str, dict[str, float]]] | None = None,
+    case_group_source_metrics: dict[
+        str, dict[str, dict[str, dict[str, float]]]
+    ]
+    | None = None,
+    case_group_source_family_metrics: dict[
+        str, dict[str, dict[str, dict[str, float]]]
+    ]
+    | None = None,
 ) -> dict[str, float]:
     metrics = {
         "hit_rate": evaluation.hit_rate,
@@ -2129,6 +2254,30 @@ def qdrant_vector_ablation_metrics(
         for group_value, group_metrics in group_values.items():
             for key, value in group_metrics.items():
                 metrics[case_group_metric_key(group_name, group_value, key)] = value
+    for group_name, group_values in (case_group_source_metrics or {}).items():
+        for group_value, source_values in group_values.items():
+            for source, source_values_metrics in source_values.items():
+                for key, value in source_values_metrics.items():
+                    metrics[
+                        case_group_source_metric_key(
+                            group_name,
+                            group_value,
+                            source,
+                            key,
+                        )
+                    ] = value
+    for group_name, group_values in (case_group_source_family_metrics or {}).items():
+        for group_value, family_values in group_values.items():
+            for family, family_metrics in family_values.items():
+                for key, value in family_metrics.items():
+                    metrics[
+                        case_group_source_family_metric_key(
+                            group_name,
+                            group_value,
+                            family,
+                            key,
+                        )
+                    ] = value
     return metrics
 
 

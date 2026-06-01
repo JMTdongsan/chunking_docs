@@ -1831,6 +1831,12 @@ def test_gate_retrieval_ablation_can_require_visual_lift():
         min_source_target_coverage={"bm25": 1.0},
         min_source_family_target_coverage={"lexical": 1.0},
         min_case_group_target_coverage={"case_source:visual_lexical_probe": 1.0},
+        min_case_group_source_target_coverage={
+            "case_source:visual_lexical_probe:bm25": 1.0
+        },
+        min_case_group_source_family_target_coverage={
+            "case_source:visual_lexical_probe:lexical": 1.0
+        },
         max_mean_target_rank=1.0,
         min_recall_lift=1.0,
         min_target_coverage_lift=1.0,
@@ -1858,11 +1864,23 @@ def test_gate_retrieval_ablation_can_require_visual_lift():
     assert gate.metrics[
         "case_group.case_source.visual_lexical_probe.target_coverage_at_k"
     ] == 1.0
+    assert gate.metrics[
+        "case_group_source.case_source.visual_lexical_probe.bm25.target_coverage_at_k"
+    ] == 1.0
+    assert gate.metrics[
+        "case_group_source_family.case_source.visual_lexical_probe.lexical.target_coverage_at_k"
+    ] == 1.0
     assert gate.chunk_strategy_metrics["visual_asset_text"]["target_coverage_at_k"] == 1.0
     assert gate.retrieval_role_metrics["child"]["target_coverage_at_k"] == 1.0
     assert gate.case_group_metrics["case_source"]["visual_lexical_probe"][
         "target_coverage_at_k"
     ] == 1.0
+    assert gate.case_group_source_metrics["case_source"]["visual_lexical_probe"]["bm25"][
+        "target_coverage_at_k"
+    ] == 1.0
+    assert gate.case_group_source_family_metrics["case_source"]["visual_lexical_probe"][
+        "lexical"
+    ]["target_coverage_at_k"] == 1.0
     assert gate.case_group_best_modes["case_source"]["visual_lexical_probe"][
         "target_coverage_at_k"
     ].mode == "bm25_visual"
@@ -2585,6 +2603,12 @@ def test_gate_qdrant_reranker_ablation_passes_required_mode():
         min_source_target_coverage={"rerank:lexical": 1.0},
         min_source_family_target_coverage={"lexical": 1.0},
         min_case_group_target_coverage={"case_source:visual_object_probe": 1.0},
+        min_case_group_source_target_coverage={
+            "case_source:visual_object_probe:rerank:lexical": 1.0
+        },
+        min_case_group_source_family_target_coverage={
+            "case_source:visual_object_probe:lexical": 1.0
+        },
         min_pairwise_shared_queries=1,
         min_pairwise_win_rate=1.0,
         min_pairwise_target_coverage_lift=1.0,
@@ -2614,6 +2638,12 @@ def test_gate_qdrant_reranker_ablation_passes_required_mode():
         ]
         == 1.0
     )
+    assert gate.case_group_source_metrics["case_source"]["visual_object_probe"][
+        "rerank:lexical"
+    ]["target_coverage_at_k"] == 1.0
+    assert gate.case_group_source_family_metrics["case_source"]["visual_object_probe"][
+        "lexical"
+    ]["target_coverage_at_k"] == 1.0
 
 
 def test_gate_qdrant_reranker_ablation_cli_writes_report(tmp_path):
@@ -2639,6 +2669,10 @@ def test_gate_qdrant_reranker_ablation_cli_writes_report(tmp_path):
             "1.0",
             "--max-pairwise-mean-target-rank-delta",
             "0.0",
+            "--min-case-group-source-target-coverage",
+            "case_source:visual_object_probe:rerank:lexical=1.0",
+            "--min-case-group-source-family-target-coverage",
+            "case_source:visual_object_probe:lexical=1.0",
             "--require-best-by-target-ndcg",
             "--output",
             str(output),
@@ -2653,6 +2687,12 @@ def test_gate_qdrant_reranker_ablation_cli_writes_report(tmp_path):
     assert payload["reranker"] == "lexical"
     assert payload["rerank_top_k"] == 20
     assert payload["pairwise_metrics"]["pairwise_candidate_win_rate"] == 1.0
+    assert payload["case_group_source_metrics"]["case_source"]["visual_object_probe"][
+        "rerank:lexical"
+    ]["target_coverage_at_k"] == 1.0
+    assert payload["case_group_source_family_metrics"]["case_source"][
+        "visual_object_probe"
+    ]["lexical"]["target_coverage_at_k"] == 1.0
 
 
 def qdrant_vector_ablation_report_for_gate():
@@ -2805,6 +2845,12 @@ def test_gate_qdrant_vector_ablation_passes_required_mode():
         },
         min_source_family_target_coverage={"visual": 1.0},
         min_case_group_target_coverage={"case_source:visual_object_probe": 1.0},
+        min_case_group_source_target_coverage={
+            "case_source:visual_object_probe:qdrant:image_dense": 1.0
+        },
+        min_case_group_source_family_target_coverage={
+            "case_source:visual_object_probe:visual": 1.0
+        },
         max_mean_target_rank=1.0,
         min_pairwise_shared_queries=1,
         min_pairwise_win_rate=1.0,
@@ -2851,6 +2897,12 @@ def test_gate_qdrant_vector_ablation_passes_required_mode():
     assert gate.case_group_metrics["case_source"]["visual_object_probe"][
         "target_coverage_at_k"
     ] == 1.0
+    assert gate.case_group_source_metrics["case_source"]["visual_object_probe"][
+        "qdrant:image_dense"
+    ]["target_coverage_at_k"] == 1.0
+    assert gate.case_group_source_family_metrics["case_source"]["visual_object_probe"][
+        "visual"
+    ]["target_coverage_at_k"] == 1.0
     assert gate.metrics["chunk_strategy.visual_asset_text.target_coverage_at_k"] == 1.0
     assert gate.metrics["retrieval_role.child.target_coverage_at_k"] == 1.0
     assert gate.chunk_strategy_metrics["visual_asset_text"]["target_coverage_at_k"] == 1.0
@@ -2870,6 +2922,12 @@ def test_gate_qdrant_vector_ablation_reports_failed_checks():
         min_source_target_coverage={"qdrant:image_dense": 1.0},
         min_source_family_target_coverage={"visual": 1.0},
         min_case_group_target_coverage={"case_source:visual_object_probe": 1.0},
+        min_case_group_source_target_coverage={
+            "case_source:visual_object_probe:qdrant:image_dense": 1.0
+        },
+        min_case_group_source_family_target_coverage={
+            "case_source:visual_object_probe:visual": 1.0
+        },
         max_mean_target_rank=5.0,
         require_best_by_recall=True,
     )
@@ -2886,6 +2944,10 @@ def test_gate_qdrant_vector_ablation_reports_failed_checks():
         "min_source_target_coverage:qdrant:image_dense",
         "min_source_family_target_coverage:visual",
         "min_case_group_target_coverage:case_source:visual_object_probe",
+        "min_case_group_source_target_coverage:"
+        "case_source:visual_object_probe:qdrant:image_dense",
+        "min_case_group_source_family_target_coverage:"
+        "case_source:visual_object_probe:visual",
         "max_mean_target_rank",
         "require_best_by_recall",
     }
@@ -2980,6 +3042,10 @@ def test_gate_qdrant_vector_ablation_cli_writes_report(tmp_path):
             "visual=1.0",
             "--min-case-group-target-coverage",
             "case_source:visual_object_probe=1.0",
+            "--min-case-group-source-target-coverage",
+            "case_source:visual_object_probe:qdrant:image_dense=1.0",
+            "--min-case-group-source-family-target-coverage",
+            "case_source:visual_object_probe:visual=1.0",
             "--max-mean-target-rank",
             "1.0",
             "--min-pairwise-shared-queries",
@@ -3014,6 +3080,12 @@ def test_gate_qdrant_vector_ablation_cli_writes_report(tmp_path):
     assert payload["case_group_metrics"]["case_source"]["visual_object_probe"][
         "target_coverage_at_k"
     ] == 1.0
+    assert payload["case_group_source_metrics"]["case_source"]["visual_object_probe"][
+        "qdrant:image_dense"
+    ]["target_coverage_at_k"] == 1.0
+    assert payload["case_group_source_family_metrics"]["case_source"][
+        "visual_object_probe"
+    ]["visual"]["target_coverage_at_k"] == 1.0
     assert payload["case_group_best_modes"]["case_source"]["visual_object_probe"][
         "target_coverage_at_k"
     ]["mode"] == "caption_image"
@@ -3100,6 +3172,10 @@ def test_gate_qdrant_vector_ablation_cli_can_report_without_failing(tmp_path):
             "visual=1.0",
             "--min-case-group-target-coverage",
             "case_source:visual_object_probe=1.0",
+            "--min-case-group-source-target-coverage",
+            "case_source:visual_object_probe:qdrant:image_dense=1.0",
+            "--min-case-group-source-family-target-coverage",
+            "case_source:visual_object_probe:visual=1.0",
             "--max-mean-target-rank",
             "5.0",
             "--require-best-by-recall",
@@ -3118,6 +3194,10 @@ def test_gate_qdrant_vector_ablation_cli_can_report_without_failing(tmp_path):
         "min_target_type_coverage:asset",
         "min_source_family_target_coverage:visual",
         "min_case_group_target_coverage:case_source:visual_object_probe",
+        "min_case_group_source_target_coverage:"
+        "case_source:visual_object_probe:qdrant:image_dense",
+        "min_case_group_source_family_target_coverage:"
+        "case_source:visual_object_probe:visual",
         "max_mean_target_rank",
         "require_best_by_recall",
     }
@@ -3254,6 +3334,10 @@ def test_gate_retrieval_ablation_cli_writes_lift_report(tmp_path):
             "lexical=1.0",
             "--min-case-group-target-coverage",
             "case_source:visual_lexical_probe=1.0",
+            "--min-case-group-source-target-coverage",
+            "case_source:visual_lexical_probe:bm25=1.0",
+            "--min-case-group-source-family-target-coverage",
+            "case_source:visual_lexical_probe:lexical=1.0",
             "--max-mean-target-rank",
             "1.0",
             "--min-pairwise-shared-queries",
@@ -3287,6 +3371,12 @@ def test_gate_retrieval_ablation_cli_writes_lift_report(tmp_path):
     assert payload["case_group_metrics"]["case_source"]["visual_lexical_probe"][
         "target_coverage_at_k"
     ] == 1.0
+    assert payload["case_group_source_metrics"]["case_source"]["visual_lexical_probe"][
+        "bm25"
+    ]["target_coverage_at_k"] == 1.0
+    assert payload["case_group_source_family_metrics"]["case_source"][
+        "visual_lexical_probe"
+    ]["lexical"]["target_coverage_at_k"] == 1.0
     assert payload["case_group_best_modes"]["case_source"]["visual_lexical_probe"][
         "target_coverage_at_k"
     ]["mode"] == "bm25_visual"
