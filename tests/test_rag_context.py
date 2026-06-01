@@ -317,6 +317,71 @@ def test_build_context_bundle_includes_asset_provenance_triples_from_visual_hits
     assert bundle.metadata["has_graph_context"] is True
 
 
+def test_build_context_bundle_preserves_payload_triple_ids_from_vector_hits():
+    chunk = DocumentChunk(
+        chunk_id="resolved-chunk",
+        doc_id="doc",
+        page_start=6,
+        page_end=6,
+        kind=ChunkKind.TEXT,
+        text="base page text",
+    )
+    triple = GraphTriple(
+        triple_id="triple-map",
+        doc_id="doc",
+        chunk_id="visual-annotation-chunk",
+        subject="station access map",
+        predicate="shows",
+        object="transfer route",
+    )
+    secondary = GraphTriple(
+        triple_id="triple-route",
+        doc_id="doc",
+        chunk_id="visual-annotation-chunk",
+        subject="transfer route",
+        predicate="connects_to",
+        object="station platform",
+    )
+    unrelated = GraphTriple(
+        triple_id="unrelated-triple",
+        doc_id="doc",
+        chunk_id="other-chunk",
+        subject="other evidence",
+        predicate="shows",
+        object="other route",
+    )
+    hit = SimpleNamespace(
+        chunk=chunk,
+        score=0.9,
+        sources=["qdrant:triple_dense"],
+        payloads=[
+            {
+                "record_kind": "graph_triple",
+                "triple_id": "triple-map",
+                "triple_ids": ["triple-route", "triple-map"],
+                "chunk_id": "resolved-chunk",
+                "doc_id": "doc",
+                "page_start": 6,
+                "page_end": 6,
+            }
+        ],
+        evidence_chunks=[],
+    )
+
+    bundle = build_context_bundle(
+        query="station access map",
+        hits=[hit],
+        triples=[unrelated, secondary, triple],
+    )
+
+    assert bundle.chunks[0].metadata["retrieved_triple_ids"] == ["triple-map", "triple-route"]
+    assert [triple.triple_id for triple in bundle.triples] == ["triple-map", "triple-route"]
+    assert bundle.metadata["retrieved_triple_ids"] == ["triple-map", "triple-route"]
+    assert bundle.metadata["retrieved_triple_count"] == 2
+    assert bundle.metadata["source_family_counts"] == {"graph": 1}
+    assert bundle.metadata["has_graph_context"] is True
+
+
 def test_build_rag_context_cli_writes_bundle(tmp_path):
     package_dir = tmp_path / "package"
     package_dir.mkdir()

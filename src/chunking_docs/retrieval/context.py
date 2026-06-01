@@ -141,6 +141,7 @@ def build_context_bundle(
             triples,
             selected_chunk_ids,
             selected_asset_ids,
+            context_retrieved_triple_ids(context_chunks),
         )
 
     return RAGContextBundle(
@@ -183,6 +184,9 @@ def context_chunk(
         metadata["retrieval_payload_refs"] = retrieval_refs
     if retrieved_asset_ids:
         metadata["retrieved_asset_ids"] = retrieved_asset_ids
+    retrieved_triple_ids = retrieval_payload_triple_ids(payloads or [])
+    if retrieved_triple_ids:
+        metadata["retrieved_triple_ids"] = retrieved_triple_ids
     return RAGContextChunk(
         chunk_id=chunk.chunk_id,
         doc_id=chunk.doc_id,
@@ -306,26 +310,37 @@ def context_triples(
     triples: list[GraphTriple],
     chunk_ids: set[str],
     asset_ids: set[str] | None = None,
+    explicit_triple_ids: list[str] | None = None,
 ) -> list[RAGContextTriple]:
     asset_ids = asset_ids or set()
+    explicit_triple_ids = explicit_triple_ids or []
+    triples_by_id = {triple.triple_id: triple for triple in triples}
     selected = []
     seen = set()
+    for triple_id in explicit_triple_ids:
+        triple = triples_by_id.get(triple_id)
+        if triple is None or triple.triple_id in seen:
+            continue
+        seen.add(triple.triple_id)
+        selected.append(context_triple(triple))
     for triple in triples:
         if not triple_matches_context(triple, chunk_ids, asset_ids) or triple.triple_id in seen:
             continue
         seen.add(triple.triple_id)
-        selected.append(
-            RAGContextTriple(
-                triple_id=triple.triple_id,
-                chunk_id=triple.chunk_id,
-                subject=triple.subject,
-                predicate=triple.predicate,
-                object=triple.object,
-                confidence=triple.confidence,
-                qualifiers=triple.qualifiers,
-            )
-        )
+        selected.append(context_triple(triple))
     return selected
+
+
+def context_triple(triple: GraphTriple) -> RAGContextTriple:
+    return RAGContextTriple(
+        triple_id=triple.triple_id,
+        chunk_id=triple.chunk_id,
+        subject=triple.subject,
+        predicate=triple.predicate,
+        object=triple.object,
+        confidence=triple.confidence,
+        qualifiers=triple.qualifiers,
+    )
 
 
 def triple_matches_context(
@@ -338,6 +353,18 @@ def triple_matches_context(
     if not asset_ids:
         return False
     return bool(triple_asset_ids(triple) & asset_ids)
+
+
+def context_retrieved_triple_ids(chunks: list[RAGContextChunk]) -> list[str]:
+    triple_ids = []
+    seen = set()
+    for chunk in chunks:
+        for triple_id in string_values(chunk.metadata.get("retrieved_triple_ids")):
+            if triple_id in seen:
+                continue
+            seen.add(triple_id)
+            triple_ids.append(triple_id)
+    return triple_ids
 
 
 def context_bundle_metadata(
@@ -363,6 +390,7 @@ def context_bundle_metadata(
             for asset_id in chunk.metadata.get("retrieved_asset_ids", [])
         }
     )
+    retrieved_triple_ids = context_retrieved_triple_ids(chunks)
     return {
         "hit_count": len(chunks),
         "chunk_count": len(chunks),
@@ -372,6 +400,8 @@ def context_bundle_metadata(
         "asset_count": len(assets),
         "retrieved_asset_count": len(retrieved_asset_ids),
         "retrieved_asset_ids": retrieved_asset_ids,
+        "retrieved_triple_count": len(retrieved_triple_ids),
+        "retrieved_triple_ids": retrieved_triple_ids,
         "triple_count": len(triples),
         "page_count": len(pages),
         "pages": pages,
@@ -449,6 +479,21 @@ def retrieval_payload_refs(payloads: list[dict[str, Any]]) -> list[dict[str, Any
         seen.add(key)
         refs.append(ref)
     return refs
+
+
+def retrieval_payload_triple_ids(payloads: list[dict[str, Any]]) -> list[str]:
+    triple_ids = []
+    seen = set()
+    for payload in payloads:
+        if not isinstance(payload, dict):
+            continue
+        for key in ("triple_id", "triple_ids"):
+            for triple_id in string_values(payload.get(key)):
+                if triple_id in seen:
+                    continue
+                seen.add(triple_id)
+                triple_ids.append(triple_id)
+    return triple_ids
 
 
 def retrieval_payload_ref(payload: dict[str, Any]) -> dict[str, Any]:
