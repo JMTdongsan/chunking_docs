@@ -428,9 +428,11 @@ chunking-docs ingestion-readiness \
   --min-retrieval-target-type-coverage triple=0.9 \
   --min-retrieval-source-family-target-coverage lexical=0.75 \
   --chunking-comparison outputs/package/chunking_comparison.json \
+  --baseline-chunking-candidate baseline \
   --min-chunking-visual-text-coverage-ratio 0.8 \
   --min-chunking-visual-text-part-coverage-ratio 0.8 \
   --max-chunking-mean-target-rank 3 \
+  --max-chunking-pairwise-mean-target-rank-delta 0 \
   --min-chunking-target-type-coverage asset=0.9 \
   --min-chunking-target-type-coverage triple=0.9 \
   --min-chunking-source-family-target-coverage lexical=0.75 \
@@ -670,12 +672,14 @@ chunking-docs gate-chunking-comparison outputs/package/chunking_comparison.json 
   --max-target-ndcg-drop 0.05 \
   --min-pairwise-win-rate 0.55 \
   --min-pairwise-target-ndcg-lift 0.02 \
+  --max-pairwise-mean-target-rank-delta 0 \
+  --max-pairwise-target-rank-delta-ci-high 0 \
   --min-pairwise-target-ndcg-ci-low 0.0 \
   --max-mean-latency-ratio 1.5 \
   --output outputs/package/chunking_comparison_gate.json
 ```
 
-The `multimodal` strategy keeps semantic text chunks, appends bounded visual context from linked captions, OCR, VLM summaries, and structured VLM metadata, and adds separate visual asset text chunks. Visual links are resolved from both `asset_ids` and `asset:` source refs, so annotations can remain provenance-oriented while still contributing to embedding text. Text-bearing visual assets without a linked parent chunk are emitted as standalone visual chunks instead of being dropped. The `hierarchical` strategy emits coarse parent chunks plus fine child chunks with shared visual context, which supports experiments where broad queries should find a page or section while precise queries should retrieve a smaller evidence span. `--collapse-hierarchical` reports the parent as the final hit while preserving matched child chunks as evidence. Comparison output includes recall@k, MRR, target coverage@k, target nDCG@k, precision@k, target rank metrics, target-type coverage, source-family target coverage, chunking-strategy coverage, retrieval-role coverage, linked visual text asset coverage, linked visual text part coverage, latency, failed queries, chunk size issues, query-paired baseline deltas, paired bootstrap confidence intervals, and the best candidate by quality and retrieval behavior. Pairwise gate options such as `--min-pairwise-win-rate`, `--min-pairwise-target-coverage-lift`, `--min-pairwise-target-ndcg-lift`, `--min-pairwise-target-ndcg-ci-low`, and `--max-pairwise-mean-latency-delta-ms` help distinguish broad aggregate gains from stable wins on the same benchmark queries.
+The `multimodal` strategy keeps semantic text chunks, appends bounded visual context from linked captions, OCR, VLM summaries, and structured VLM metadata, and adds separate visual asset text chunks. Visual links are resolved from both `asset_ids` and `asset:` source refs, so annotations can remain provenance-oriented while still contributing to embedding text. Text-bearing visual assets without a linked parent chunk are emitted as standalone visual chunks instead of being dropped. The `hierarchical` strategy emits coarse parent chunks plus fine child chunks with shared visual context, which supports experiments where broad queries should find a page or section while precise queries should retrieve a smaller evidence span. `--collapse-hierarchical` reports the parent as the final hit while preserving matched child chunks as evidence. Comparison output includes recall@k, MRR, target coverage@k, target nDCG@k, precision@k, target rank metrics, target-type coverage, source-family target coverage, chunking-strategy coverage, retrieval-role coverage, linked visual text asset coverage, linked visual text part coverage, latency, failed queries, chunk size issues, query-paired baseline deltas, paired bootstrap confidence intervals, and the best candidate by quality and retrieval behavior. Pairwise gate options such as `--min-pairwise-win-rate`, `--min-pairwise-target-coverage-lift`, `--min-pairwise-target-ndcg-lift`, `--max-pairwise-mean-target-rank-delta`, `--max-pairwise-target-rank-delta-ci-high`, and `--max-pairwise-mean-latency-delta-ms` help distinguish broad aggregate gains from stable wins on the same benchmark queries.
 
 Run a parameter sweep when choosing defaults:
 

@@ -2483,6 +2483,10 @@ def ingestion_readiness_command(
     max_chunking_failed_queries: int | None = 0,
     max_chunking_recall_drop: float | None = None,
     max_chunking_mean_latency_ratio: float | None = None,
+    max_chunking_pairwise_mean_first_relevant_rank_delta: float | None = None,
+    max_chunking_pairwise_mean_target_rank_delta: float | None = None,
+    max_chunking_pairwise_first_relevant_rank_delta_ci_high: float | None = None,
+    max_chunking_pairwise_target_rank_delta_ci_high: float | None = None,
     min_chunking_target_type_coverage: list[str] = typer.Option(
         None,
         "--min-chunking-target-type-coverage",
@@ -2780,6 +2784,18 @@ def ingestion_readiness_command(
             "max_failed_queries": max_chunking_failed_queries,
             "max_recall_drop": max_chunking_recall_drop,
             "max_mean_latency_ratio": max_chunking_mean_latency_ratio,
+            "max_pairwise_mean_first_relevant_rank_delta": (
+                max_chunking_pairwise_mean_first_relevant_rank_delta
+            ),
+            "max_pairwise_mean_target_rank_delta": (
+                max_chunking_pairwise_mean_target_rank_delta
+            ),
+            "max_pairwise_first_relevant_rank_delta_ci_high": (
+                max_chunking_pairwise_first_relevant_rank_delta_ci_high
+            ),
+            "max_pairwise_target_rank_delta_ci_high": (
+                max_chunking_pairwise_target_rank_delta_ci_high
+            ),
             "min_target_type_coverage": chunking_target_type_thresholds,
             "min_source_family_target_coverage": chunking_source_family_thresholds,
             "min_case_group_target_coverage": chunking_case_group_thresholds,
@@ -3829,6 +3845,10 @@ def gate_chunking_comparison_command(
     min_pairwise_target_ndcg_ci_low: float | None = None,
     min_pairwise_mrr_ci_low: float | None = None,
     min_pairwise_precision_ci_low: float | None = None,
+    max_pairwise_mean_first_relevant_rank_delta: float | None = None,
+    max_pairwise_mean_target_rank_delta: float | None = None,
+    max_pairwise_first_relevant_rank_delta_ci_high: float | None = None,
+    max_pairwise_target_rank_delta_ci_high: float | None = None,
     max_pairwise_mean_latency_delta_ms: float | None = None,
     fail: bool = typer.Option(
         True,
@@ -3904,6 +3924,12 @@ def gate_chunking_comparison_command(
         min_pairwise_target_ndcg_ci_low=min_pairwise_target_ndcg_ci_low,
         min_pairwise_mrr_ci_low=min_pairwise_mrr_ci_low,
         min_pairwise_precision_ci_low=min_pairwise_precision_ci_low,
+        max_pairwise_mean_first_relevant_rank_delta=max_pairwise_mean_first_relevant_rank_delta,
+        max_pairwise_mean_target_rank_delta=max_pairwise_mean_target_rank_delta,
+        max_pairwise_first_relevant_rank_delta_ci_high=(
+            max_pairwise_first_relevant_rank_delta_ci_high
+        ),
+        max_pairwise_target_rank_delta_ci_high=max_pairwise_target_rank_delta_ci_high,
         max_pairwise_mean_latency_delta_ms=max_pairwise_mean_latency_delta_ms,
     )
     payload = report.model_dump()

@@ -14,7 +14,11 @@ from chunking_docs.evaluation.ablation import (
     RetrievalAblationReport,
     RetrievalAblationRow,
 )
-from chunking_docs.evaluation.compare import ChunkingComparison, ChunkingComparisonRow
+from chunking_docs.evaluation.compare import (
+    ChunkingComparison,
+    ChunkingComparisonRow,
+    ChunkingPairwiseComparison,
+)
 from chunking_docs.evaluation.readiness import build_ingestion_readiness_report, chunks_with_linked_asset_text
 from chunking_docs.evaluation.retrieval import RetrievalCase, evaluate_search_results
 from chunking_docs.io import read_jsonl, write_jsonl
@@ -248,6 +252,7 @@ def test_ingestion_readiness_includes_retrieval_cases_and_chunking_gate(tmp_path
             "min_visual_text_coverage_ratio": 0.8,
             "min_target_type_coverage": {"asset": 0.8, "triple": 0.8},
             "min_source_family_target_coverage": {"lexical": 0.8},
+            "max_pairwise_mean_target_rank_delta": 0.0,
             "max_recall_drop": 0.05,
         },
     )
@@ -273,6 +278,12 @@ def test_ingestion_readiness_includes_retrieval_cases_and_chunking_gate(tmp_path
     assert report.chunking_comparison_gate is not None
     assert report.chunking_comparison_gate.candidate == "candidate"
     assert report.chunking_comparison_gate.metrics["retrieval_mean_target_rank"] == 1.0
+    assert (
+        report.chunking_comparison_gate.pairwise_metrics[
+            "pairwise_mean_target_rank_delta"
+        ]
+        == -1.0
+    )
     assert report.chunking_comparison_gate.metrics["visual_text_coverage_ratio"] == 0.9
     assert report.chunking_comparison_gate.metrics["target_type.asset.coverage_at_k"] == 0.9
     assert report.chunking_comparison_gate.metrics["target_type.triple.coverage_at_k"] == 0.9
@@ -1134,6 +1145,8 @@ def test_ingestion_readiness_cli_can_gate_chunking_target_coverage(tmp_path):
             "triple=0.8",
             "--min-chunking-source-family-target-coverage",
             "lexical=0.8",
+            "--max-chunking-pairwise-mean-target-rank-delta",
+            "0.0",
             "--output",
             str(output),
         ],
@@ -1149,6 +1162,7 @@ def test_ingestion_readiness_cli_can_gate_chunking_target_coverage(tmp_path):
     )
     assert component["metadata"]["candidate"] == "candidate"
     assert component["metadata"]["metrics"]["retrieval_mean_target_rank"] == 1.0
+    assert component["metadata"]["pairwise_metrics"]["pairwise_mean_target_rank_delta"] == -1.0
     assert component["metadata"]["metrics"]["visual_text_coverage_ratio"] == 0.9
     assert component["metadata"]["metrics"]["target_type.asset.coverage_at_k"] == 0.9
     assert component["metadata"]["metrics"]["target_type.triple.coverage_at_k"] == 0.9
@@ -1292,6 +1306,19 @@ def chunking_comparison():
         best_by_quality="candidate",
         best_by_retrieval="candidate",
         fastest_by_mean_latency="candidate",
+        pairwise=[
+            ChunkingPairwiseComparison(
+                candidate="candidate",
+                baseline="baseline",
+                shared_query_count=2,
+                candidate_win_count=2,
+                baseline_win_count=0,
+                candidate_win_rate=1.0,
+                baseline_win_rate=0.0,
+                mean_target_rank_delta=-1.0,
+                target_rank_delta_ci_high=-1.0,
+            )
+        ],
     )
 
 

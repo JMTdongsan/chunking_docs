@@ -121,6 +121,10 @@ def test_gate_chunking_comparison_checks_pairwise_lift():
         min_pairwise_target_ndcg_ci_low=0.1,
         min_pairwise_mrr_ci_low=0.1,
         min_pairwise_precision_ci_low=0.1,
+        max_pairwise_mean_first_relevant_rank_delta=0.0,
+        max_pairwise_mean_target_rank_delta=0.0,
+        max_pairwise_first_relevant_rank_delta_ci_high=0.0,
+        max_pairwise_target_rank_delta_ci_high=0.0,
         max_pairwise_mean_latency_delta_ms=10.0,
     )
 
@@ -128,6 +132,8 @@ def test_gate_chunking_comparison_checks_pairwise_lift():
     assert report.pairwise_metrics["pairwise_shared_query_count"] == 10.0
     assert report.pairwise_metrics["pairwise_candidate_win_rate"] == 0.7
     assert report.pairwise_metrics["pairwise_mean_target_ndcg_delta"] == 0.25
+    assert report.pairwise_metrics["pairwise_mean_target_rank_delta"] == -2.0
+    assert report.pairwise_metrics["pairwise_target_rank_delta_ci_high"] == -0.5
     assert report.pairwise_metrics["pairwise_target_coverage_delta_ci_low"] == 0.12
     assert report.pairwise_metrics["pairwise_bootstrap_samples"] == 1000.0
 
@@ -144,6 +150,8 @@ def test_gate_chunking_comparison_flags_missing_pairwise_lift():
         min_pairwise_target_ndcg_lift=0.0,
         min_pairwise_target_coverage_ci_low=0.0,
         min_pairwise_target_ndcg_ci_low=0.0,
+        max_pairwise_mean_target_rank_delta=0.0,
+        max_pairwise_target_rank_delta_ci_high=0.0,
         max_pairwise_mean_latency_delta_ms=0.0,
     )
 
@@ -154,6 +162,8 @@ def test_gate_chunking_comparison_flags_missing_pairwise_lift():
     assert "min_pairwise_target_ndcg_lift" in report.failed_checks
     assert "min_pairwise_target_coverage_ci_low" in report.failed_checks
     assert "min_pairwise_target_ndcg_ci_low" in report.failed_checks
+    assert "max_pairwise_mean_target_rank_delta" in report.failed_checks
+    assert "max_pairwise_target_rank_delta_ci_high" in report.failed_checks
     assert "max_pairwise_mean_latency_delta_ms" in report.failed_checks
 
 
@@ -206,6 +216,8 @@ def test_gate_chunking_comparison_cli_writes_json_and_fails(tmp_path):
             "0.6",
             "--min-pairwise-target-coverage-ci-low",
             "0.0",
+            "--max-pairwise-mean-target-rank-delta",
+            "0.0",
             "--output",
             str(output_path),
         ],
@@ -236,7 +248,9 @@ def test_gate_chunking_comparison_cli_writes_json_and_fails(tmp_path):
     assert "max_recall_at_k_drop" in payload["failed_checks"]
     assert "min_pairwise_win_rate" in payload["failed_checks"]
     assert "min_pairwise_target_coverage_ci_low" in payload["failed_checks"]
+    assert "max_pairwise_mean_target_rank_delta" in payload["failed_checks"]
     assert payload["pairwise_metrics"]["pairwise_candidate_win_rate"] == 0.2
+    assert payload["pairwise_metrics"]["pairwise_mean_target_rank_delta"] == 2.0
 
 
 def comparison_report() -> ChunkingComparison:
@@ -300,6 +314,8 @@ def comparison_report() -> ChunkingComparison:
                 mean_target_coverage_delta=0.3,
                 mean_target_ndcg_delta=0.25,
                 mean_precision_delta=0.2,
+                mean_first_relevant_rank_delta=-1.0,
+                mean_target_rank_delta=-2.0,
                 mean_latency_delta_ms=-18.0,
                 bootstrap_samples=1000,
                 confidence_level=0.95,
@@ -311,6 +327,10 @@ def comparison_report() -> ChunkingComparison:
                 target_ndcg_delta_ci_high=0.4,
                 precision_delta_ci_low=0.1,
                 precision_delta_ci_high=0.32,
+                first_relevant_rank_delta_ci_low=-2.0,
+                first_relevant_rank_delta_ci_high=-0.2,
+                target_rank_delta_ci_low=-3.0,
+                target_rank_delta_ci_high=-0.5,
                 latency_delta_ci_low_ms=-24.0,
                 latency_delta_ci_high_ms=-10.0,
             ),
@@ -327,6 +347,8 @@ def comparison_report() -> ChunkingComparison:
                 mean_target_coverage_delta=-0.3,
                 mean_target_ndcg_delta=-0.25,
                 mean_precision_delta=-0.2,
+                mean_first_relevant_rank_delta=1.0,
+                mean_target_rank_delta=2.0,
                 mean_latency_delta_ms=18.0,
                 bootstrap_samples=1000,
                 confidence_level=0.95,
@@ -338,6 +360,10 @@ def comparison_report() -> ChunkingComparison:
                 target_ndcg_delta_ci_high=-0.1,
                 precision_delta_ci_low=-0.32,
                 precision_delta_ci_high=-0.1,
+                first_relevant_rank_delta_ci_low=0.2,
+                first_relevant_rank_delta_ci_high=2.0,
+                target_rank_delta_ci_low=0.5,
+                target_rank_delta_ci_high=3.0,
                 latency_delta_ci_low_ms=10.0,
                 latency_delta_ci_high_ms=24.0,
             ),

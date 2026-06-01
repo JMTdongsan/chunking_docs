@@ -105,6 +105,10 @@ def gate_chunking_comparison(
     min_pairwise_target_ndcg_ci_low: float | None = None,
     min_pairwise_mrr_ci_low: float | None = None,
     min_pairwise_precision_ci_low: float | None = None,
+    max_pairwise_mean_first_relevant_rank_delta: float | None = None,
+    max_pairwise_mean_target_rank_delta: float | None = None,
+    max_pairwise_first_relevant_rank_delta_ci_high: float | None = None,
+    max_pairwise_target_rank_delta_ci_high: float | None = None,
     max_pairwise_mean_latency_delta_ms: float | None = None,
 ) -> ChunkingComparisonGateReport:
     selected_name = select_candidate_name(comparison, candidate)
@@ -333,6 +337,10 @@ def gate_chunking_comparison(
                 min_pairwise_target_ndcg_ci_low,
                 min_pairwise_mrr_ci_low,
                 min_pairwise_precision_ci_low,
+                max_pairwise_mean_first_relevant_rank_delta,
+                max_pairwise_mean_target_rank_delta,
+                max_pairwise_first_relevant_rank_delta_ci_high,
+                max_pairwise_target_rank_delta_ci_high,
                 max_pairwise_mean_latency_delta_ms,
             ]
         ):
@@ -412,6 +420,34 @@ def gate_chunking_comparison(
                         "pairwise_precision_delta_ci_low",
                         pairwise_metrics,
                         min_pairwise_precision_ci_low,
+                    ),
+                    optional_maximum_check(
+                        "max_pairwise_mean_first_relevant_rank_delta",
+                        selected_name,
+                        "pairwise_mean_first_relevant_rank_delta",
+                        pairwise_metrics,
+                        max_pairwise_mean_first_relevant_rank_delta,
+                    ),
+                    optional_maximum_check(
+                        "max_pairwise_mean_target_rank_delta",
+                        selected_name,
+                        "pairwise_mean_target_rank_delta",
+                        pairwise_metrics,
+                        max_pairwise_mean_target_rank_delta,
+                    ),
+                    optional_maximum_check(
+                        "max_pairwise_first_relevant_rank_delta_ci_high",
+                        selected_name,
+                        "pairwise_first_relevant_rank_delta_ci_high",
+                        pairwise_metrics,
+                        max_pairwise_first_relevant_rank_delta_ci_high,
+                    ),
+                    optional_maximum_check(
+                        "max_pairwise_target_rank_delta_ci_high",
+                        selected_name,
+                        "pairwise_target_rank_delta_ci_high",
+                        pairwise_metrics,
+                        max_pairwise_target_rank_delta_ci_high,
                     ),
                     optional_maximum_check(
                         "max_pairwise_mean_latency_delta_ms",
