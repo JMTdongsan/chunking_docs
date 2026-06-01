@@ -29,6 +29,8 @@ class TorchCudaStatus(BaseModel):
     device_count: int | None = None
     device_names: list[str] = Field(default_factory=list)
     compute_capabilities: list[str] = Field(default_factory=list)
+    cuda_version: str | None = None
+    compiled_arches: list[str] = Field(default_factory=list)
     bfloat16_supported: bool | None = None
 
 
@@ -47,6 +49,8 @@ class RuntimeReport(BaseModel):
     torch_cuda_device_count: int | None = None
     torch_cuda_device_names: list[str] = Field(default_factory=list)
     torch_cuda_compute_capabilities: list[str] = Field(default_factory=list)
+    torch_cuda_version: str | None = None
+    torch_cuda_compiled_arches: list[str] = Field(default_factory=list)
     torch_bfloat16_supported: bool | None = None
     paddle_cuda_available: bool | None = None
     paddle_cuda_device_count: int | None = None
@@ -160,6 +164,13 @@ def build_runtime_report(
                 metadata={"torch_cuda_device_count": torch_cuda_device_count or 0},
             )
         )
+        if torch_cuda_available:
+            checks.extend(
+                torch_cuda_arch_checks(
+                    torch_cuda_status,
+                    strict=require_embeddings or require_vision,
+                )
+            )
     if require_gpu and require_ocr and dependencies.get("paddlepaddle") and dependencies["paddlepaddle"].installed:
         checks.append(
             RuntimeCheck(
@@ -177,6 +188,8 @@ def build_runtime_report(
         torch_cuda_device_count=torch_cuda_device_count,
         torch_cuda_device_names=torch_cuda_status.device_names,
         torch_cuda_compute_capabilities=torch_cuda_status.compute_capabilities,
+        torch_cuda_version=torch_cuda_status.cuda_version,
+        torch_cuda_compiled_arches=torch_cuda_status.compiled_arches,
         torch_bfloat16_supported=torch_cuda_status.bfloat16_supported,
         paddle_cuda_available=paddle_cuda_available,
         paddle_cuda_device_count=paddle_cuda_device_count,
@@ -295,6 +308,62 @@ def vlm_profile_dtype_checks(
     ]
 
 
+def torch_cuda_arch_checks(
+    torch_cuda_status: TorchCudaStatus,
+    strict: bool = False,
+) -> list[RuntimeCheck]:
+    capabilities = [value for value in torch_cuda_status.compute_capabilities if value]
+    if not capabilities:
+        return []
+    arches = sorted(set(torch_cuda_status.compiled_arches))
+    severity = "error" if strict else "warning"
+    if not arches:
+        return [
+            RuntimeCheck(
+                name="torch_cuda_arches_known",
+                passed=False,
+                severity="warning",
+                message="Torch CUDA compiled architecture list could not be inspected.",
+                metadata={
+                    "torch_cuda_version": torch_cuda_status.cuda_version,
+                    "torch_cuda_compute_capabilities": capabilities,
+                },
+            )
+        ]
+
+    checks = []
+    for capability in capabilities:
+        expected = capability_arch_tokens(capability)
+        matching_arches = sorted(set(expected) & set(arches))
+        checks.append(
+            RuntimeCheck(
+                name=f"torch_cuda_arch:{capability}",
+                passed=bool(matching_arches),
+                severity=severity,
+                message="Torch CUDA build includes an architecture target for the visible GPU.",
+                metadata={
+                    "compute_capability": capability,
+                    "expected_arches": expected,
+                    "matching_arches": matching_arches,
+                    "compiled_arches": arches,
+                    "torch_cuda_version": torch_cuda_status.cuda_version,
+                },
+            )
+        )
+    return checks
+
+
+def capability_arch_tokens(capability: str) -> list[str]:
+    parts = capability.split(".", 1)
+    if len(parts) != 2:
+        return []
+    major, minor = (part.strip() for part in parts)
+    if not major.isdigit() or not minor.isdigit():
+        return []
+    suffix = f"{int(major)}{int(minor)}"
+    return [f"sm_{suffix}", f"compute_{suffix}"]
+
+
 def dependency_checks(
     dependencies: dict[str, DependencyStatus],
     names: list[str],
@@ -395,11 +464,22 @@ def detect_torch_cuda_status(dependency: DependencyStatus | None = None) -> Torc
         bfloat16_supported = bool(torch.cuda.is_bf16_supported()) if available else False
     except Exception:
         bfloat16_supported = None
+    try:
+        cuda_version = str(torch.version.cuda) if torch.version.cuda else None
+    except Exception:
+        cuda_version = None
+    try:
+        arch_getter = getattr(torch.cuda, "get_arch_list", None)
+        compiled_arches = list(arch_getter()) if available and callable(arch_getter) else []
+    except Exception:
+        compiled_arches = []
     return TorchCudaStatus(
         available=available,
         device_count=device_count,
         device_names=device_names,
         compute_capabilities=compute_capabilities,
+        cuda_version=cuda_version,
+        compiled_arches=[str(arch) for arch in compiled_arches],
         bfloat16_supported=bfloat16_supported,
     )
 

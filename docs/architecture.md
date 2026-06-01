@@ -6,7 +6,8 @@
 
 0. **Runtime Preflight**
    - Inspect optional dependencies for Qdrant, PostgreSQL, text embeddings, OCR, and VLM backends.
-   - Detect visible NVIDIA GPUs, Torch CUDA availability, device names, compute capability, and bfloat16 support when GPU-backed runs are required.
+   - Detect visible NVIDIA GPUs, Torch CUDA availability, device names, compute capability, CUDA version, compiled architecture targets, and bfloat16 support when GPU-backed runs are required.
+   - Check that the Torch CUDA build includes an architecture target for the visible GPU before GPU-backed embedding or VLM batches.
    - Fail early when requested runtime capabilities are missing, including VLM profile GPU-memory fit, and warn when the configured VLM memory safety margin is not met.
    - Audit public repository files for forbidden text patterns, blocked generated artifact extensions, oversized files, and required `.gitignore` protections before publishing.
 

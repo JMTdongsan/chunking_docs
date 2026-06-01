@@ -149,6 +149,8 @@ def test_runtime_report_checks_vlm_profile_bfloat16_support():
             device_count=1,
             device_names=["old-gpu"],
             compute_capabilities=["7.5"],
+            cuda_version="12.4",
+            compiled_arches=["sm_75"],
             bfloat16_supported=False,
         ),
         vlm_profiles=["qwen2_5_vl_7b"],
@@ -161,7 +163,85 @@ def test_runtime_report_checks_vlm_profile_bfloat16_support():
     assert dtype_check.metadata["torch_bfloat16_supported"] is False
     assert report.torch_cuda_device_names == ["old-gpu"]
     assert report.torch_cuda_compute_capabilities == ["7.5"]
+    assert report.torch_cuda_version == "12.4"
+    assert report.torch_cuda_compiled_arches == ["sm_75"]
     assert report.torch_bfloat16_supported is False
+
+
+def test_runtime_report_checks_torch_cuda_arch_support_for_gpu_vision():
+    report = build_runtime_report(
+        dependencies=vision_dependencies(),
+        gpus=[GPUDevice(name="RTX 5090", memory_total_mib=32768)],
+        torch_cuda_status=TorchCudaStatus(
+            available=True,
+            device_count=1,
+            device_names=["RTX 5090"],
+            compute_capabilities=["12.0"],
+            cuda_version="12.8",
+            compiled_arches=["sm_120", "compute_120"],
+            bfloat16_supported=True,
+        ),
+        require_gpu=True,
+        require_vision=True,
+    )
+
+    checks = {check.name: check for check in report.checks}
+    assert report.passed is True
+    arch_check = checks["torch_cuda_arch:12.0"]
+    assert arch_check.passed is True
+    assert arch_check.metadata["matching_arches"] == ["compute_120", "sm_120"]
+    assert report.torch_cuda_version == "12.8"
+    assert report.torch_cuda_compiled_arches == ["sm_120", "compute_120"]
+
+
+def test_runtime_report_fails_gpu_vision_when_torch_arch_is_missing():
+    report = build_runtime_report(
+        dependencies=vision_dependencies(),
+        gpus=[GPUDevice(name="RTX 5090", memory_total_mib=32768)],
+        torch_cuda_status=TorchCudaStatus(
+            available=True,
+            device_count=1,
+            device_names=["RTX 5090"],
+            compute_capabilities=["12.0"],
+            cuda_version="12.4",
+            compiled_arches=["sm_90"],
+            bfloat16_supported=True,
+        ),
+        require_gpu=True,
+        require_vision=True,
+    )
+
+    checks = {check.name: check for check in report.checks}
+    assert report.passed is False
+    arch_check = checks["torch_cuda_arch:12.0"]
+    assert arch_check.passed is False
+    assert arch_check.severity == "error"
+    assert arch_check.metadata["expected_arches"] == ["sm_120", "compute_120"]
+    assert arch_check.metadata["compiled_arches"] == ["sm_90"]
+
+
+def test_runtime_report_warns_when_torch_arch_list_is_unknown():
+    report = build_runtime_report(
+        dependencies=vision_dependencies(),
+        gpus=[GPUDevice(name="RTX 5090", memory_total_mib=32768)],
+        torch_cuda_status=TorchCudaStatus(
+            available=True,
+            device_count=1,
+            device_names=["RTX 5090"],
+            compute_capabilities=["12.0"],
+            cuda_version="12.8",
+            compiled_arches=[],
+            bfloat16_supported=True,
+        ),
+        require_gpu=True,
+        require_vision=True,
+    )
+
+    checks = {check.name: check for check in report.checks}
+    assert report.passed is True
+    arch_check = checks["torch_cuda_arches_known"]
+    assert arch_check.passed is False
+    assert arch_check.severity == "warning"
 
 
 def test_runtime_report_fails_when_vlm_profile_needs_more_memory():
@@ -186,3 +266,12 @@ def test_runtime_report_fails_unknown_vlm_profile():
 
     assert report.passed is False
     assert report.checks[0].name == "vlm_profile_memory:unknown_profile"
+
+
+def vision_dependencies() -> dict[str, DependencyStatus]:
+    return {
+        "torch": dep("torch", True),
+        "torchvision": dep("torchvision", True),
+        "transformers": dep("transformers", True),
+        "accelerate": dep("accelerate", True),
+    }

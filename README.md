@@ -48,7 +48,7 @@ chunking-docs doctor \
   --vlm-memory-margin-ratio 0.1
 ```
 
-`--vlm-profile` compares the selected Hugging Face VLM profile with visible GPU memory before a long local run. It also records Torch CUDA device names, compute capability, and bfloat16 support when Torch is installed, and `--vlm-memory-margin-ratio` emits a warning when the selected profile only barely fits. Current 7B/8B profiles are marked for 24GB-class GPUs, while the compact Phi-3.5 Vision profile is marked for 12GB-class GPUs.
+`--vlm-profile` compares the selected Hugging Face VLM profile with visible GPU memory before a long local run. It also records Torch CUDA device names, compute capability, CUDA version, compiled architecture targets, and bfloat16 support when Torch is installed. For GPU-backed embedding or VLM runs, `doctor` checks that the Torch CUDA build includes an architecture target for the visible GPU, which catches unsupported builds on newer cards before batch work starts. `--vlm-memory-margin-ratio` emits a warning when the selected profile only barely fits. Current 7B/8B profiles are marked for 24GB-class GPUs, while the compact Phi-3.5 Vision profile is marked for 12GB-class GPUs.
 
 ## Basic Pipeline
 
