@@ -24,6 +24,14 @@ class GPUDevice(BaseModel):
     driver_version: str | None = None
 
 
+class TorchCudaStatus(BaseModel):
+    available: bool | None = None
+    device_count: int | None = None
+    device_names: list[str] = Field(default_factory=list)
+    compute_capabilities: list[str] = Field(default_factory=list)
+    bfloat16_supported: bool | None = None
+
+
 class RuntimeCheck(BaseModel):
     name: str
     passed: bool
@@ -37,6 +45,9 @@ class RuntimeReport(BaseModel):
     gpus: list[GPUDevice] = Field(default_factory=list)
     torch_cuda_available: bool | None = None
     torch_cuda_device_count: int | None = None
+    torch_cuda_device_names: list[str] = Field(default_factory=list)
+    torch_cuda_compute_capabilities: list[str] = Field(default_factory=list)
+    torch_bfloat16_supported: bool | None = None
     paddle_cuda_available: bool | None = None
     paddle_cuda_device_count: int | None = None
     dependencies: dict[str, DependencyStatus] = Field(default_factory=dict)
@@ -65,12 +76,14 @@ def inspect_runtime(
     require_ocr: bool = False,
     require_vision: bool = False,
     vlm_profiles: list[str] | None = None,
+    vlm_memory_margin_ratio: float = 0.0,
 ) -> RuntimeReport:
     dependencies = {name: dependency_status(name, module, package) for name, (module, package) in DEPENDENCIES.items()}
+    torch_cuda_status = detect_torch_cuda_status(dependencies.get("torch"))
     return build_runtime_report(
         dependencies=dependencies,
         gpus=detect_gpus(),
-        torch_cuda=detect_torch_cuda(dependencies.get("torch")),
+        torch_cuda_status=torch_cuda_status,
         paddle_cuda=detect_paddle_cuda(dependencies.get("paddlepaddle"))
         if require_gpu and require_ocr
         else (None, None),
@@ -81,6 +94,7 @@ def inspect_runtime(
         require_ocr=require_ocr,
         require_vision=require_vision,
         vlm_profiles=vlm_profiles,
+        vlm_memory_margin_ratio=vlm_memory_margin_ratio,
     )
 
 
@@ -88,6 +102,7 @@ def build_runtime_report(
     dependencies: dict[str, DependencyStatus],
     gpus: list[GPUDevice],
     torch_cuda: tuple[bool | None, int | None] = (None, None),
+    torch_cuda_status: TorchCudaStatus | None = None,
     paddle_cuda: tuple[bool | None, int | None] = (None, None),
     require_gpu: bool = False,
     require_qdrant: bool = False,
@@ -96,6 +111,7 @@ def build_runtime_report(
     require_ocr: bool = False,
     require_vision: bool = False,
     vlm_profiles: list[str] | None = None,
+    vlm_memory_margin_ratio: float = 0.0,
 ) -> RuntimeReport:
     checks = []
     if require_gpu:
@@ -118,9 +134,22 @@ def build_runtime_report(
     if require_vision:
         checks.extend(dependency_checks(dependencies, ["torch", "torchvision", "transformers", "accelerate"]))
     if vlm_profiles:
-        checks.extend(vlm_profile_memory_checks(gpus, vlm_profiles))
+        checks.extend(
+            vlm_profile_checks(
+                gpus,
+                vlm_profiles,
+                torch_cuda_status=torch_cuda_status,
+                memory_margin_ratio=vlm_memory_margin_ratio,
+            )
+        )
 
-    torch_cuda_available, torch_cuda_device_count = torch_cuda
+    if torch_cuda_status is None:
+        torch_cuda_status = TorchCudaStatus(
+            available=torch_cuda[0],
+            device_count=torch_cuda[1],
+        )
+    torch_cuda_available = torch_cuda_status.available
+    torch_cuda_device_count = torch_cuda_status.device_count
     paddle_cuda_available, paddle_cuda_device_count = paddle_cuda
     if require_gpu and dependencies.get("torch") and dependencies["torch"].installed:
         checks.append(
@@ -146,6 +175,9 @@ def build_runtime_report(
         gpus=gpus,
         torch_cuda_available=torch_cuda_available,
         torch_cuda_device_count=torch_cuda_device_count,
+        torch_cuda_device_names=torch_cuda_status.device_names,
+        torch_cuda_compute_capabilities=torch_cuda_status.compute_capabilities,
+        torch_bfloat16_supported=torch_cuda_status.bfloat16_supported,
         paddle_cuda_available=paddle_cuda_available,
         paddle_cuda_device_count=paddle_cuda_device_count,
         dependencies=dependencies,
@@ -153,12 +185,15 @@ def build_runtime_report(
     )
 
 
-def vlm_profile_memory_checks(
+def vlm_profile_checks(
     gpus: list[GPUDevice],
     profile_names: list[str],
+    torch_cuda_status: TorchCudaStatus | None = None,
+    memory_margin_ratio: float = 0.0,
 ) -> list[RuntimeCheck]:
     checks = []
     max_gpu_memory_mib = max((gpu.memory_total_mib or 0 for gpu in gpus), default=0)
+    margin_ratio = max(float(memory_margin_ratio), 0.0)
     for profile_name in profile_names:
         try:
             profile = get_vlm_model_profile(profile_name)
@@ -173,10 +208,16 @@ def vlm_profile_memory_checks(
             )
             continue
         required_mib = profile.min_gpu_memory_mib or 0
+        required_with_margin_mib = int(required_mib * (1.0 + margin_ratio))
         matching_gpus = [
             gpu.name
             for gpu in gpus
             if gpu.memory_total_mib is not None and gpu.memory_total_mib >= required_mib
+        ]
+        margin_matching_gpus = [
+            gpu.name
+            for gpu in gpus
+            if gpu.memory_total_mib is not None and gpu.memory_total_mib >= required_with_margin_mib
         ]
         checks.append(
             RuntimeCheck(
@@ -187,12 +228,71 @@ def vlm_profile_memory_checks(
                     "profile": profile.name,
                     "model_name": profile.model_name,
                     "required_memory_mib": required_mib,
+                    "required_memory_with_margin_mib": required_with_margin_mib,
+                    "memory_margin_ratio": margin_ratio,
                     "max_gpu_memory_mib": max_gpu_memory_mib,
                     "matching_gpus": matching_gpus,
                 },
             )
         )
+        if required_mib > 0 and margin_ratio > 0 and matching_gpus:
+            checks.append(
+                RuntimeCheck(
+                    name=f"vlm_profile_memory_margin:{profile.name}",
+                    passed=bool(margin_matching_gpus),
+                    severity="warning",
+                    message="GPU memory meets the profile minimum but not the configured safety margin.",
+                    metadata={
+                        "profile": profile.name,
+                        "model_name": profile.model_name,
+                        "required_memory_mib": required_mib,
+                        "required_memory_with_margin_mib": required_with_margin_mib,
+                        "memory_margin_ratio": margin_ratio,
+                        "max_gpu_memory_mib": max_gpu_memory_mib,
+                        "matching_gpus": margin_matching_gpus,
+                    },
+                )
+            )
+        checks.extend(vlm_profile_dtype_checks(profile, torch_cuda_status))
     return checks
+
+
+def vlm_profile_dtype_checks(
+    profile,
+    torch_cuda_status: TorchCudaStatus | None,
+) -> list[RuntimeCheck]:
+    dtype = profile.torch_dtype.strip().lower()
+    if dtype not in {"bfloat16", "bf16"}:
+        return []
+    if torch_cuda_status is None:
+        return []
+    if torch_cuda_status.bfloat16_supported is None:
+        return [
+            RuntimeCheck(
+                name=f"vlm_profile_dtype:{profile.name}",
+                passed=False,
+                severity="warning",
+                message="Torch CUDA bfloat16 support could not be confirmed for this VLM profile.",
+                metadata={
+                    "profile": profile.name,
+                    "torch_dtype": profile.torch_dtype,
+                },
+            )
+        ]
+    return [
+        RuntimeCheck(
+            name=f"vlm_profile_dtype:{profile.name}",
+            passed=torch_cuda_status.bfloat16_supported,
+            message="Torch CUDA bfloat16 support is compatible with the selected VLM profile.",
+            metadata={
+                "profile": profile.name,
+                "torch_dtype": profile.torch_dtype,
+                "torch_cuda_device_names": torch_cuda_status.device_names,
+                "torch_cuda_compute_capabilities": torch_cuda_status.compute_capabilities,
+                "torch_bfloat16_supported": torch_cuda_status.bfloat16_supported,
+            },
+        )
+    ]
 
 
 def dependency_checks(
@@ -263,13 +363,45 @@ def detect_gpus() -> list[GPUDevice]:
 
 
 def detect_torch_cuda(dependency: DependencyStatus | None = None) -> tuple[bool | None, int | None]:
+    status = detect_torch_cuda_status(dependency)
+    return status.available, status.device_count
+
+
+def detect_torch_cuda_status(dependency: DependencyStatus | None = None) -> TorchCudaStatus:
     if dependency is not None and not dependency.installed:
-        return None, None
+        return TorchCudaStatus()
     try:
         import torch
     except ImportError:
-        return None, None
-    return bool(torch.cuda.is_available()), int(torch.cuda.device_count())
+        return TorchCudaStatus()
+    available = bool(torch.cuda.is_available())
+    try:
+        device_count = int(torch.cuda.device_count()) if available else 0
+    except Exception:
+        device_count = 0
+    device_names = []
+    compute_capabilities = []
+    for index in range(device_count):
+        try:
+            device_names.append(str(torch.cuda.get_device_name(index)))
+        except Exception:
+            device_names.append(f"cuda:{index}")
+        try:
+            major, minor = torch.cuda.get_device_capability(index)
+            compute_capabilities.append(f"{major}.{minor}")
+        except Exception:
+            compute_capabilities.append("")
+    try:
+        bfloat16_supported = bool(torch.cuda.is_bf16_supported()) if available else False
+    except Exception:
+        bfloat16_supported = None
+    return TorchCudaStatus(
+        available=available,
+        device_count=device_count,
+        device_names=device_names,
+        compute_capabilities=compute_capabilities,
+        bfloat16_supported=bfloat16_supported,
+    )
 
 
 def detect_paddle_cuda(dependency: DependencyStatus | None = None) -> tuple[bool | None, int | None]:

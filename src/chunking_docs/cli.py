@@ -139,6 +139,11 @@ def doctor_command(
         "--vlm-profile",
         help="Check GPU memory against a VLM profile such as qwen2_5_vl_7b.",
     ),
+    vlm_memory_margin_ratio: float = typer.Option(
+        0.0,
+        "--vlm-memory-margin-ratio",
+        help="Warn when a VLM profile does not have this extra GPU memory margin.",
+    ),
     fail: bool = typer.Option(
         True,
         "--fail/--no-fail",
@@ -154,6 +159,7 @@ def doctor_command(
         require_ocr=require_ocr,
         require_vision=require_vision,
         vlm_profiles=vlm_profile,
+        vlm_memory_margin_ratio=vlm_memory_margin_ratio,
     )
     payload = report.model_dump()
     if output is not None:

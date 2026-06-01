@@ -3,7 +3,12 @@ import json
 from typer.testing import CliRunner
 
 from chunking_docs.cli import app
-from chunking_docs.runtime import DependencyStatus, GPUDevice, build_runtime_report
+from chunking_docs.runtime import (
+    DependencyStatus,
+    GPUDevice,
+    TorchCudaStatus,
+    build_runtime_report,
+)
 
 
 def dep(name: str, installed: bool) -> DependencyStatus:
@@ -116,6 +121,47 @@ def test_runtime_report_checks_vlm_profile_gpu_memory():
     assert checks["vlm_profile_memory:qwen2_5_vl_7b"].passed is True
     assert checks["vlm_profile_memory:qwen2_5_vl_7b"].metadata["required_memory_mib"] == 24576
     assert checks["vlm_profile_memory:phi3_5_vision"].metadata["matching_gpus"] == ["RTX"]
+
+
+def test_runtime_report_warns_when_vlm_profile_lacks_memory_margin():
+    report = build_runtime_report(
+        dependencies={},
+        gpus=[GPUDevice(name="RTX", memory_total_mib=24576)],
+        vlm_profiles=["qwen2_5_vl_7b"],
+        vlm_memory_margin_ratio=0.1,
+    )
+
+    checks = {check.name: check for check in report.checks}
+    assert report.passed is True
+    assert checks["vlm_profile_memory:qwen2_5_vl_7b"].passed is True
+    margin_check = checks["vlm_profile_memory_margin:qwen2_5_vl_7b"]
+    assert margin_check.passed is False
+    assert margin_check.severity == "warning"
+    assert margin_check.metadata["required_memory_with_margin_mib"] == 27033
+
+
+def test_runtime_report_checks_vlm_profile_bfloat16_support():
+    report = build_runtime_report(
+        dependencies={},
+        gpus=[GPUDevice(name="old-gpu", memory_total_mib=24576)],
+        torch_cuda_status=TorchCudaStatus(
+            available=True,
+            device_count=1,
+            device_names=["old-gpu"],
+            compute_capabilities=["7.5"],
+            bfloat16_supported=False,
+        ),
+        vlm_profiles=["qwen2_5_vl_7b"],
+    )
+
+    checks = {check.name: check for check in report.checks}
+    assert report.passed is False
+    dtype_check = checks["vlm_profile_dtype:qwen2_5_vl_7b"]
+    assert dtype_check.passed is False
+    assert dtype_check.metadata["torch_bfloat16_supported"] is False
+    assert report.torch_cuda_device_names == ["old-gpu"]
+    assert report.torch_cuda_compute_capabilities == ["7.5"]
+    assert report.torch_bfloat16_supported is False
 
 
 def test_runtime_report_fails_when_vlm_profile_needs_more_memory():
