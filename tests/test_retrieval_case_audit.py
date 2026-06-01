@@ -64,6 +64,7 @@ def test_audit_retrieval_cases_passes_valid_target_distribution():
         max_triple_cases_per_target=1,
         min_case_group_counts={"case_source:visual_object_probe": 1, "modality:vision_object": 1},
         require_visual_only_object_probes=True,
+        min_query_terms_per_case=2,
     )
 
     assert report.passed is True
@@ -76,6 +77,9 @@ def test_audit_retrieval_cases_passes_valid_target_distribution():
     assert report.visual_object_probe_count == 1
     assert report.visual_only_object_probe_count == 1
     assert report.non_visual_only_object_probe_count == 0
+    assert report.short_query_count == 0
+    assert report.min_query_term_count == 2
+    assert report.max_query_term_count == 2
     assert report.missing_target_counts == {"page": 0, "chunk": 0, "asset": 0, "triple": 0}
 
 
@@ -188,6 +192,33 @@ def test_audit_retrieval_cases_checks_target_concentration():
     assert check.threshold == 1
 
 
+def test_audit_retrieval_cases_checks_query_term_strength():
+    profiles, chunks, assets, triples = package_records()
+    cases = [
+        RetrievalCase(query="short", expected_pages=[1]),
+        RetrievalCase(query="specific visual target", expected_asset_ids=["asset-1"]),
+    ]
+
+    report = audit_retrieval_cases(
+        cases,
+        profiles=profiles,
+        chunks=chunks,
+        assets=assets,
+        triples=triples,
+        min_query_terms_per_case=2,
+    )
+
+    assert report.passed is False
+    assert report.short_query_count == 1
+    assert report.min_query_term_count == 1
+    assert report.max_query_term_count == 3
+    assert "min_query_terms_per_case" in report.failed_checks
+    assert "short_query" in {issue.code for issue in report.issues}
+    check = next(check for check in report.checks if check.name == "min_query_terms_per_case")
+    assert check.actual == 1
+    assert check.threshold == 2
+
+
 def test_audit_retrieval_cases_can_require_visual_only_object_probes():
     profiles, chunks, assets, triples = package_records()
     cases = [
@@ -265,6 +296,8 @@ def test_audit_retrieval_cases_cli_writes_report(tmp_path):
             "--min-case-group-count",
             "case_source:visual_object_probe=1",
             "--require-visual-only-object-probes",
+            "--min-query-terms-per-case",
+            "2",
             "--output",
             str(output_path),
         ],
@@ -280,6 +313,8 @@ def test_audit_retrieval_cases_cli_writes_report(tmp_path):
     assert payload["visual_object_probe_count"] == 1
     assert payload["visual_only_object_probe_count"] == 1
     assert payload["non_visual_only_object_probe_count"] == 0
+    assert payload["short_query_count"] == 0
+    assert payload["min_query_term_count"] == 2
 
 
 def write_package(tmp_path):

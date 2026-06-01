@@ -9,6 +9,12 @@ from chunking_docs.evaluation.retrieval import RetrievalCase, case_group_labels,
 from chunking_docs.models import DocumentChunk, GraphTriple, PageProfile, VisualAsset
 
 _SPACE_RE = re.compile(r"\s+")
+_QUERY_TERM_RE = re.compile(
+    r"[A-Za-z][A-Za-z0-9_./%+-]{1,}|"
+    r"[0-9]+(?:[.,][0-9]+)*(?:[%A-Za-z]*)?|"
+    r"[\uac00-\ud7a3]{2,}|"
+    r"[\u4e00-\u9fff]{2,}"
+)
 
 
 class RetrievalCaseAuditIssue(BaseModel):
@@ -44,6 +50,9 @@ class RetrievalCaseAuditReport(BaseModel):
     duplicate_query_count: int = 0
     empty_query_count: int = 0
     todo_query_count: int = 0
+    short_query_count: int = 0
+    min_query_term_count: int = 0
+    max_query_term_count: int = 0
     missing_target_counts: dict[str, int] = Field(default_factory=dict)
     failed_checks: list[str] = Field(default_factory=list)
     checks: list[RetrievalCaseAuditCheck] = Field(default_factory=list)
@@ -71,6 +80,7 @@ def audit_retrieval_cases(
     max_triple_cases_per_target: int | None = None,
     min_case_group_counts: dict[str, int] | None = None,
     require_visual_only_object_probes: bool = False,
+    min_query_terms_per_case: int = 0,
     max_duplicate_queries: int = 0,
     max_issues: int = 200,
 ) -> RetrievalCaseAuditReport:
@@ -86,9 +96,12 @@ def audit_retrieval_cases(
     visual_object_probe_counts = count_visual_object_probes(cases)
     missing_target_counts = {"page": 0, "chunk": 0, "asset": 0, "triple": 0}
     normalized_queries: dict[str, list[int]] = {}
+    query_term_counts: list[int] = []
 
     for index, case in enumerate(cases):
         query = case.query.strip()
+        query_terms = distinct_query_terms(query)
+        query_term_counts.append(len(query_terms))
         normalized_query = normalize_query(query)
         if normalized_query:
             normalized_queries.setdefault(normalized_query, []).append(index)
@@ -174,6 +187,22 @@ def audit_retrieval_cases(
                     {"object_probe_visual_only": case.metadata.get("object_probe_visual_only")},
                 ),
             )
+        if min_query_terms_per_case > 0 and len(query_terms) < min_query_terms_per_case:
+            append_issue(
+                issues,
+                max_issues,
+                issue(
+                    "warning",
+                    "short_query",
+                    "Retrieval case query has fewer distinct terms than the configured minimum.",
+                    index,
+                    case,
+                    {
+                        "query_term_count": len(query_terms),
+                        "min_query_terms_per_case": min_query_terms_per_case,
+                    },
+                ),
+            )
 
     duplicate_query_count = duplicate_count(normalized_queries)
     for query, indexes in sorted(normalized_queries.items()):
@@ -192,6 +221,13 @@ def audit_retrieval_cases(
             ),
         )
 
+    min_query_term_count = min(query_term_counts, default=0)
+    max_query_term_count = max(query_term_counts, default=0)
+    short_query_count = (
+        sum(1 for count in query_term_counts if count < min_query_terms_per_case)
+        if min_query_terms_per_case > 0
+        else 0
+    )
     metrics = {
         "case_count": len(cases),
         "page_cases": target_counts["page"],
@@ -208,6 +244,7 @@ def audit_retrieval_cases(
         "max_triple_cases_per_target": max_cases_per_target["triple"],
         "non_visual_only_object_probe_count": visual_object_probe_counts["non_visual_only"],
         "duplicate_query_count": duplicate_query_count,
+        "min_query_term_count": min_query_term_count,
     }
     checks = [
         min_check("min_case_count", "case_count", metrics, min_case_count),
@@ -241,6 +278,15 @@ def audit_retrieval_cases(
         ),
         max_check("max_duplicate_queries", "duplicate_query_count", metrics, max_duplicate_queries),
     ]
+    if min_query_terms_per_case > 0:
+        checks.append(
+            min_check(
+                "min_query_terms_per_case",
+                "min_query_term_count",
+                metrics,
+                min_query_terms_per_case,
+            )
+        )
     checks.extend(
         max_cases_per_target_checks(
             metrics,
@@ -278,6 +324,9 @@ def audit_retrieval_cases(
         duplicate_query_count=duplicate_query_count,
         empty_query_count=sum(1 for case in cases if not case.query.strip()),
         todo_query_count=sum(1 for case in cases if case.query.strip().upper().startswith("TODO:")),
+        short_query_count=short_query_count,
+        min_query_term_count=min_query_term_count,
+        max_query_term_count=max_query_term_count,
         missing_target_counts=missing_target_counts,
         failed_checks=failed_checks,
         checks=checks,
@@ -441,6 +490,18 @@ def has_expected_target(case: RetrievalCase) -> bool:
 
 def normalize_query(value: str) -> str:
     return _SPACE_RE.sub(" ", value.strip().casefold())
+
+
+def distinct_query_terms(value: str) -> list[str]:
+    terms = []
+    seen = set()
+    for match in _QUERY_TERM_RE.finditer(value):
+        term = match.group(0).casefold()
+        if term in seen:
+            continue
+        seen.add(term)
+        terms.append(term)
+    return terms
 
 
 def duplicate_count(queries: dict[str, list[int]]) -> int:

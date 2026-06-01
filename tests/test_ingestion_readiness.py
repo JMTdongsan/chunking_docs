@@ -205,6 +205,7 @@ def test_ingestion_readiness_includes_retrieval_cases_and_chunking_gate(tmp_path
             "min_distinct_asset_targets": 1,
             "max_asset_cases_per_target": 1,
             "require_visual_only_object_probes": True,
+            "min_query_terms_per_case": 2,
         },
         chunking_comparison=comparison,
         chunking_gate_options={
@@ -224,6 +225,7 @@ def test_ingestion_readiness_includes_retrieval_cases_and_chunking_gate(tmp_path
     assert report.retrieval_case_audit.target_counts["asset"] == 1
     assert report.retrieval_case_audit.distinct_target_counts["asset"] == 1
     assert report.retrieval_case_audit.max_cases_per_target["asset"] == 1
+    assert report.retrieval_case_audit.short_query_count == 0
     assert report.retrieval_case_audit.visual_only_object_probe_count == 1
     retrieval_component = next(
         component for component in report.components if component.name == "retrieval_case_audit"
@@ -231,6 +233,7 @@ def test_ingestion_readiness_includes_retrieval_cases_and_chunking_gate(tmp_path
     assert retrieval_component.metadata["visual_object_probe_count"] == 1
     assert retrieval_component.metadata["distinct_target_counts"]["asset"] == 1
     assert retrieval_component.metadata["max_cases_per_target"]["asset"] == 1
+    assert retrieval_component.metadata["min_query_term_count"] == 2
     assert retrieval_component.metadata["non_visual_only_object_probe_count"] == 0
     assert report.chunking_comparison_gate is not None
     assert report.chunking_comparison_gate.candidate == "candidate"
@@ -645,6 +648,45 @@ def test_ingestion_readiness_cli_can_gate_retrieval_target_concentration(tmp_pat
     )
     assert component["metadata"]["failed_checks"] == ["max_asset_cases_per_target"]
     assert component["metadata"]["max_cases_per_target"]["asset"] == 2
+
+
+def test_ingestion_readiness_cli_can_gate_retrieval_query_strength(tmp_path):
+    package_dir, _ = write_ready_package(tmp_path)
+    cases_path = tmp_path / "cases.jsonl"
+    output = tmp_path / "readiness.json"
+    write_jsonl(
+        cases_path,
+        [
+            RetrievalCase(query="short", expected_pages=[1]),
+            RetrievalCase(query="specific visual target", expected_asset_ids=["asset-1"]),
+        ],
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "ingestion-readiness",
+            "--package-dir",
+            str(package_dir),
+            "--retrieval-cases",
+            str(cases_path),
+            "--min-retrieval-query-terms-per-case",
+            "2",
+            "--output",
+            str(output),
+            "--no-fail",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["passed"] is False
+    component = next(
+        component for component in payload["components"] if component["name"] == "retrieval_case_audit"
+    )
+    assert component["metadata"]["failed_checks"] == ["min_query_terms_per_case"]
+    assert component["metadata"]["short_query_count"] == 1
+    assert component["metadata"]["min_query_term_count"] == 1
 
 
 def test_ingestion_readiness_cli_can_gate_visual_quality_from_assets(tmp_path):

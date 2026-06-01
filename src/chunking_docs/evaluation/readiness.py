@@ -221,6 +221,9 @@ def build_ingestion_readiness_report(
                     "non_visual_only_object_probe_count": (
                         retrieval_case_audit.non_visual_only_object_probe_count
                     ),
+                    "short_query_count": retrieval_case_audit.short_query_count,
+                    "min_query_term_count": retrieval_case_audit.min_query_term_count,
+                    "max_query_term_count": retrieval_case_audit.max_query_term_count,
                     "missing_target_counts": retrieval_case_audit.missing_target_counts,
                 },
             )

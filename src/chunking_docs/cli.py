@@ -2395,6 +2395,7 @@ def ingestion_readiness_command(
     max_retrieval_chunk_cases_per_target: int | None = None,
     max_retrieval_asset_cases_per_target: int | None = None,
     max_retrieval_triple_cases_per_target: int | None = None,
+    min_retrieval_query_terms_per_case: int = 0,
     min_retrieval_case_group_count: list[str] = typer.Option(
         None,
         "--min-retrieval-case-group-count",
@@ -2690,6 +2691,7 @@ def ingestion_readiness_command(
             "max_triple_cases_per_target": max_retrieval_triple_cases_per_target,
             "min_case_group_counts": retrieval_case_group_count_thresholds,
             "require_visual_only_object_probes": require_visual_only_object_probes,
+            "min_query_terms_per_case": min_retrieval_query_terms_per_case,
             "max_duplicate_queries": max_duplicate_queries,
         },
         retrieval_evaluation=parsed_retrieval,
@@ -3083,6 +3085,7 @@ def audit_retrieval_cases_command(
     max_chunk_cases_per_target: int | None = None,
     max_asset_cases_per_target: int | None = None,
     max_triple_cases_per_target: int | None = None,
+    min_query_terms_per_case: int = 0,
     min_case_group_count: list[str] = typer.Option(
         None,
         "--min-case-group-count",
@@ -3128,6 +3131,7 @@ def audit_retrieval_cases_command(
         max_triple_cases_per_target=max_triple_cases_per_target,
         min_case_group_counts=case_group_thresholds,
         require_visual_only_object_probes=require_visual_only_object_probes,
+        min_query_terms_per_case=min_query_terms_per_case,
         max_duplicate_queries=max_duplicate_queries,
     )
     payload = report.model_dump()
@@ -3145,6 +3149,9 @@ def audit_retrieval_cases_command(
             "visual_object_probe_count": report.visual_object_probe_count,
             "visual_only_object_probe_count": report.visual_only_object_probe_count,
             "non_visual_only_object_probe_count": report.non_visual_only_object_probe_count,
+            "short_query_count": report.short_query_count,
+            "min_query_term_count": report.min_query_term_count,
+            "max_query_term_count": report.max_query_term_count,
             "missing_target_counts": report.missing_target_counts,
             "failed_checks": report.failed_checks,
         }
