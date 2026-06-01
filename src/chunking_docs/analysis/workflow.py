@@ -87,9 +87,10 @@ VISUAL_RUN_COMPARISON_READINESS_GATE_ARGS = [
 def build_ingestion_workflow_plan(
     characteristics: PackageCharacteristics,
     package_dir: Path = Path("outputs/package"),
-    retrieval_cases: Path = Path("examples/retrieval_cases.jsonl"),
+    retrieval_cases: Path | None = None,
     vlm_profiles: list[str] | None = None,
 ) -> IngestionWorkflowPlan:
+    case_path = retrieval_cases or package_dir / "retrieval_cases.jsonl"
     profiles = vlm_profiles or ["qwen2_5_vl_7b", "qwen2_vl_7b", "llava_next_7b"]
     recommendations_by_code = {item.code: item for item in characteristics.recommendations}
     steps = [
@@ -113,23 +114,30 @@ def build_ingestion_workflow_plan(
 
     handled_codes: set[str] = set()
     if "build_page_tiles" in recommendations_by_code:
-        steps.append(recommendation_step(recommendations_by_code["build_page_tiles"], package_dir, retrieval_cases))
+        steps.append(recommendation_step(recommendations_by_code["build_page_tiles"], package_dir, case_path))
         handled_codes.add("build_page_tiles")
     if "prioritize_visual_annotations" in recommendations_by_code:
-        steps.append(visual_annotation_step(package_dir, retrieval_cases, profiles, recommendations_by_code["prioritize_visual_annotations"]))
+        steps.append(
+            visual_annotation_step(
+                package_dir,
+                case_path,
+                profiles,
+                recommendations_by_code["prioritize_visual_annotations"],
+            )
+        )
         handled_codes.add("prioritize_visual_annotations")
 
     for code in RECOMMENDATION_ORDER:
         recommendation = recommendations_by_code.get(code)
         if recommendation is None or code in handled_codes or code in POST_INDEX_RECOMMENDATIONS:
             continue
-        steps.append(recommendation_step(recommendation, package_dir, retrieval_cases))
+        steps.append(recommendation_step(recommendation, package_dir, case_path))
         handled_codes.add(code)
 
     for recommendation in characteristics.recommendations:
         if recommendation.code in handled_codes or recommendation.code in POST_INDEX_RECOMMENDATIONS:
             continue
-        steps.append(recommendation_step(recommendation, package_dir, retrieval_cases))
+        steps.append(recommendation_step(recommendation, package_dir, case_path))
         handled_codes.add(recommendation.code)
 
     steps.append(index_refresh_step(package_dir))
@@ -142,12 +150,12 @@ def build_ingestion_workflow_plan(
         recommendation = recommendations_by_code.get(code)
         if recommendation is None or code in handled_codes or code not in POST_INDEX_RECOMMENDATIONS:
             continue
-        steps.append(recommendation_step(recommendation, package_dir, retrieval_cases))
+        steps.append(recommendation_step(recommendation, package_dir, case_path))
         handled_codes.add(code)
     for recommendation in characteristics.recommendations:
         if recommendation.code in handled_codes or recommendation.code not in POST_INDEX_RECOMMENDATIONS:
             continue
-        steps.append(recommendation_step(recommendation, package_dir, retrieval_cases))
+        steps.append(recommendation_step(recommendation, package_dir, case_path))
         handled_codes.add(recommendation.code)
 
     steps.append(metadata_refresh_step(package_dir))
@@ -161,7 +169,7 @@ def build_ingestion_workflow_plan(
     steps.append(
         readiness_step(
             package_dir,
-            retrieval_cases,
+            case_path,
             include_visual_quality=requires_visual_quality_gate(
                 characteristics,
                 recommendations_by_code.get("prioritize_visual_annotations"),
@@ -183,7 +191,7 @@ def build_ingestion_workflow_plan(
     )
     return IngestionWorkflowPlan(
         package_dir=path_text(package_dir),
-        retrieval_cases=path_text(retrieval_cases),
+        retrieval_cases=path_text(case_path),
         vlm_profiles=profiles,
         observation_codes=[item.code for item in characteristics.observations],
         recommendation_codes=[item.code for item in characteristics.recommendations],

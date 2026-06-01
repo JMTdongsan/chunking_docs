@@ -200,6 +200,34 @@ def test_plan_ingestion_workflow_cli_writes_json(tmp_path):
     assert any(step["step_id"] == "visual_annotations" for step in payload["steps"])
 
 
+def test_plan_ingestion_workflow_cli_defaults_cases_to_package_dir(tmp_path):
+    package_dir, _ = make_workflow_package(tmp_path)
+    output = tmp_path / "workflow.json"
+    default_cases = package_dir / "retrieval_cases.jsonl"
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "plan-ingestion-workflow",
+            "--package-dir",
+            str(package_dir),
+            "--output",
+            str(output),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["retrieval_cases"] == str(default_cases)
+    commands = [
+        command
+        for step in payload["steps"]
+        for command in step["commands"]
+    ]
+    assert any(str(default_cases) in command for command in commands)
+    assert not any("examples/retrieval_cases.jsonl" in command for command in commands)
+
+
 def test_workflow_plan_rebuilds_embeddings_after_index_refresh_for_indexed_text_package(tmp_path):
     package_dir, manifest = make_indexed_text_package(tmp_path)
     cases = tmp_path / "cases.jsonl"

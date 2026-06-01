@@ -6336,7 +6336,15 @@ def characterize_package_command(
 def plan_ingestion_workflow_command(
     package_dir: Path = Path("outputs/package"),
     output: Path | None = None,
-    retrieval_cases: Path = Path("examples/retrieval_cases.jsonl"),
+    retrieval_cases: Path | None = typer.Option(
+        None,
+        "--retrieval-cases",
+        help=(
+            "Retrieval benchmark JSONL path for generated and evaluated cases. "
+            "Defaults to <package-dir>/retrieval_cases.jsonl so package-specific cases "
+            "stay with generated artifacts."
+        ),
+    ),
     vlm_profiles: str = "qwen2_5_vl_7b,qwen2_vl_7b,llava_next_7b",
     max_pages: int = 25,
 ):
