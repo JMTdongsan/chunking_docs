@@ -6,6 +6,8 @@ import re
 from chunking_docs.models import ChunkKind, DocumentChunk
 
 BOUNDARY_RE = re.compile(r"(?m)^\s*(?:#{1,6}\s+|제\d+[장절]\b|\d+[.)]\s+|[-•]\s+|\[[A-Z]+ page \d+)")
+SENTENCE_END_RE = re.compile(r"[.!?。！？]+[\"')\]\}]*")
+WHITESPACE_RE = re.compile(r"\s+")
 
 
 def semantic_subchunks(
@@ -96,14 +98,66 @@ def paragraph_blocks(text: str) -> list[str]:
 
 def hard_split(text: str, max_chars: int, overlap_chars: int) -> list[str]:
     chunks = []
+    effective_overlap = max(0, min(overlap_chars, max_chars // 2))
     start = 0
     while start < len(text):
-        end = min(start + max_chars, len(text))
+        limit = min(start + max_chars, len(text))
+        end = best_split_end(text, start=start, limit=limit)
         chunks.append(text[start:end].strip())
         if end == len(text):
             break
-        start = max(0, end - overlap_chars)
+        next_start = overlap_start(text, end=end, overlap_chars=effective_overlap)
+        start = next_start if next_start > start else end
     return chunks
+
+
+def best_split_end(text: str, start: int, limit: int) -> int:
+    if limit >= len(text):
+        return len(text)
+    window_start = start + max(1, int((limit - start) * 0.55))
+    for pattern in (SENTENCE_END_RE, "\n", WHITESPACE_RE):
+        end = last_boundary_end(text, pattern, window_start=window_start, limit=limit)
+        if end is not None and end > start:
+            return end
+    return limit
+
+
+def last_boundary_end(
+    text: str,
+    pattern: str | re.Pattern[str],
+    window_start: int,
+    limit: int,
+) -> int | None:
+    if isinstance(pattern, str):
+        position = text.rfind(pattern, window_start, limit)
+        return position + len(pattern) if position >= 0 else None
+
+    matches = [match.end() for match in pattern.finditer(text, window_start, limit)]
+    return matches[-1] if matches else None
+
+
+def overlap_start(text: str, end: int, overlap_chars: int) -> int:
+    if overlap_chars <= 0:
+        return end
+    lower = max(0, end - overlap_chars)
+    if lower == 0:
+        return 0
+    candidates = []
+    previous_window_start = max(0, lower - max(40, overlap_chars))
+    previous = last_boundary_end(
+        text,
+        WHITESPACE_RE,
+        window_start=previous_window_start,
+        limit=lower,
+    )
+    if previous is not None and previous > 0:
+        candidates.append(previous)
+    next_match = WHITESPACE_RE.search(text, lower, end)
+    if next_match is not None and next_match.end() < end:
+        candidates.append(next_match.end())
+    if not candidates:
+        return lower
+    return min(candidates, key=lambda candidate: abs(candidate - lower))
 
 
 def join_blocks(left: str, right: str) -> str:
@@ -115,7 +169,8 @@ def join_blocks(left: str, right: str) -> str:
 def overlap_tail(text: str, overlap_chars: int) -> str:
     if overlap_chars <= 0:
         return ""
-    return text[-overlap_chars:].strip()
+    start = overlap_start(text, end=len(text), overlap_chars=overlap_chars)
+    return text[start:].strip()
 
 
 def subchunk_id(parent_chunk_id: str, index: int) -> str:
