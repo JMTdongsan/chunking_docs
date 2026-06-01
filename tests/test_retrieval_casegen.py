@@ -304,6 +304,38 @@ def test_generate_retrieval_case_skeleton_can_filter_target_overlap_terms():
     assert cases == []
 
 
+def test_generate_retrieval_case_skeleton_can_filter_target_concentration():
+    chunk = DocumentChunk(
+        chunk_id="chunk-1",
+        doc_id="doc",
+        page_start=1,
+        page_end=1,
+        kind=ChunkKind.TEXT,
+        text="Transit corridor station access evidence.",
+    )
+    asset = VisualAsset(
+        asset_id="asset-1",
+        doc_id="doc",
+        page_no=1,
+        kind=AssetKind.MAP,
+        caption="Station access map legend signal",
+    )
+
+    cases = generate_retrieval_case_skeleton(
+        [chunk],
+        [asset],
+        [],
+        page_limit=1,
+        asset_limit=1,
+        include_triples=False,
+        max_page_cases_per_target=1,
+    )
+
+    assert len(cases) == 1
+    assert cases[0].metadata["case_source"] == "page"
+    assert cases[0].expected_pages == [1]
+
+
 def test_generate_retrieval_case_skeleton_can_rank_by_salience():
     chunks = [
         DocumentChunk(
@@ -859,6 +891,35 @@ def test_generate_retrieval_cases_cli_writes_jsonl(tmp_path):
     assert rows[0]["metadata"]["query_mode"] == "salient_terms"
     assert rows[1]["expected_asset_ids"] == ["asset-1"]
     assert rows[2]["expected_triple_ids"] == ["triple-1"]
+
+
+def test_generate_retrieval_cases_cli_accepts_target_concentration_limits(tmp_path):
+    package_dir = write_case_package(tmp_path)
+    output = tmp_path / "cases.jsonl"
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "generate-retrieval-cases",
+            "--package-dir",
+            str(package_dir),
+            "--output",
+            str(output),
+            "--page-limit",
+            "1",
+            "--asset-limit",
+            "1",
+            "--no-include-triples",
+            "--max-page-cases-per-target",
+            "1",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    rows = [json.loads(line) for line in output.read_text(encoding="utf-8").splitlines()]
+    assert len(rows) == 1
+    assert rows[0]["metadata"]["case_source"] == "page"
+    assert "'max_page_cases_per_target': 1" in result.output
 
 
 def test_generate_retrieval_cases_cli_writes_visual_probe_cases(tmp_path):

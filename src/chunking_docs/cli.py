@@ -4016,6 +4016,26 @@ def generate_retrieval_cases_command(
         "--min-terms-for-target-overlap",
         help="Only apply generated-case target overlap filtering to queries with this many terms.",
     ),
+    max_page_cases_per_target: int | None = typer.Option(
+        None,
+        "--max-page-cases-per-target",
+        help="Skip generated cases that would exceed this page-target concentration limit.",
+    ),
+    max_chunk_cases_per_target: int | None = typer.Option(
+        None,
+        "--max-chunk-cases-per-target",
+        help="Skip generated cases that would exceed this chunk-target concentration limit.",
+    ),
+    max_asset_cases_per_target: int | None = typer.Option(
+        None,
+        "--max-asset-cases-per-target",
+        help="Skip generated cases that would exceed this visual-asset target concentration limit.",
+    ),
+    max_triple_cases_per_target: int | None = typer.Option(
+        None,
+        "--max-triple-cases-per-target",
+        help="Skip generated cases that would exceed this graph-triple target concentration limit.",
+    ),
 ):
     """Generate retrieval benchmark JSONL drafts from package chunks, assets, and triples."""
     manifest = load_processing_package(package_dir)
@@ -4045,6 +4065,10 @@ def generate_retrieval_cases_command(
             max_target_query_overlap_ratio=max_target_query_overlap_ratio,
             max_target_query_overlap_terms=max_target_query_overlap_terms,
             min_terms_for_target_overlap=min_terms_for_target_overlap,
+            max_page_cases_per_target=max_page_cases_per_target,
+            max_chunk_cases_per_target=max_chunk_cases_per_target,
+            max_asset_cases_per_target=max_asset_cases_per_target,
+            max_triple_cases_per_target=max_triple_cases_per_target,
         )
     except ValueError as exc:
         raise typer.BadParameter(str(exc)) from exc
@@ -4074,6 +4098,10 @@ def generate_retrieval_cases_command(
             "max_target_query_overlap_ratio": max_target_query_overlap_ratio,
             "max_target_query_overlap_terms": max_target_query_overlap_terms,
             "min_terms_for_target_overlap": min_terms_for_target_overlap,
+            "max_page_cases_per_target": max_page_cases_per_target,
+            "max_chunk_cases_per_target": max_chunk_cases_per_target,
+            "max_asset_cases_per_target": max_asset_cases_per_target,
+            "max_triple_cases_per_target": max_triple_cases_per_target,
             "include_todo": include_todo,
             "query_mode": query_mode,
             "selection_strategy": selection_strategy,

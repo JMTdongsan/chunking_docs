@@ -117,8 +117,21 @@ def generate_retrieval_case_skeleton(
     max_target_query_overlap_ratio: float | None = None,
     max_target_query_overlap_terms: int | None = None,
     min_terms_for_target_overlap: int = 4,
+    max_page_cases_per_target: int | None = None,
+    max_chunk_cases_per_target: int | None = None,
+    max_asset_cases_per_target: int | None = None,
+    max_triple_cases_per_target: int | None = None,
 ) -> list[RetrievalCase]:
-    validate_casegen_options(query_mode, selection_strategy, min_query_terms, max_query_terms)
+    validate_casegen_options(
+        query_mode,
+        selection_strategy,
+        min_query_terms,
+        max_query_terms,
+        max_page_cases_per_target=max_page_cases_per_target,
+        max_chunk_cases_per_target=max_chunk_cases_per_target,
+        max_asset_cases_per_target=max_asset_cases_per_target,
+        max_triple_cases_per_target=max_triple_cases_per_target,
+    )
     corpus_texts = case_source_texts(chunks, assets, triples)
     term_df = term_document_frequencies(corpus_texts)
     cases: list[RetrievalCase] = []
@@ -223,6 +236,13 @@ def generate_retrieval_case_skeleton(
         max_target_query_overlap_ratio=max_target_query_overlap_ratio,
         max_target_query_overlap_terms=max_target_query_overlap_terms,
         min_terms_for_target_overlap=min_terms_for_target_overlap,
+    )
+    cases = filter_cases_by_target_concentration(
+        cases,
+        max_page_cases_per_target=max_page_cases_per_target,
+        max_chunk_cases_per_target=max_chunk_cases_per_target,
+        max_asset_cases_per_target=max_asset_cases_per_target,
+        max_triple_cases_per_target=max_triple_cases_per_target,
     )
     return cases
 
@@ -1275,11 +1295,82 @@ def filter_cases_by_target_overlap(
     return selected
 
 
+def filter_cases_by_target_concentration(
+    cases: list[RetrievalCase],
+    max_page_cases_per_target: int | None = None,
+    max_chunk_cases_per_target: int | None = None,
+    max_asset_cases_per_target: int | None = None,
+    max_triple_cases_per_target: int | None = None,
+) -> list[RetrievalCase]:
+    limits = {
+        "page": max_page_cases_per_target,
+        "chunk": max_chunk_cases_per_target,
+        "asset": max_asset_cases_per_target,
+        "triple": max_triple_cases_per_target,
+    }
+    if all(limit is None for limit in limits.values()):
+        return cases
+    counts: dict[str, dict[int | str, int]] = {
+        "page": {},
+        "chunk": {},
+        "asset": {},
+        "triple": {},
+    }
+    selected = []
+    for case in cases:
+        targets = case_target_values(case)
+        if would_exceed_target_limits(targets, counts, limits):
+            continue
+        selected.append(case)
+        increment_target_counts(targets, counts, limits)
+    return selected
+
+
+def case_target_values(case: RetrievalCase) -> dict[str, list[int | str]]:
+    return {
+        "page": list(case.expected_pages),
+        "chunk": list(case.expected_chunk_ids),
+        "asset": list(case.expected_asset_ids),
+        "triple": list(case.expected_triple_ids),
+    }
+
+
+def would_exceed_target_limits(
+    targets: dict[str, list[int | str]],
+    counts: dict[str, dict[int | str, int]],
+    limits: dict[str, int | None],
+) -> bool:
+    for target_kind, values in targets.items():
+        limit = limits.get(target_kind)
+        if limit is None:
+            continue
+        for value in values:
+            if counts[target_kind].get(value, 0) >= limit:
+                return True
+    return False
+
+
+def increment_target_counts(
+    targets: dict[str, list[int | str]],
+    counts: dict[str, dict[int | str, int]],
+    limits: dict[str, int | None],
+) -> None:
+    for target_kind, values in targets.items():
+        if limits.get(target_kind) is None:
+            continue
+        for value in values:
+            counts[target_kind][value] = counts[target_kind].get(value, 0) + 1
+
+
 def validate_casegen_options(
     query_mode: str,
     selection_strategy: str,
     min_query_terms: int,
     max_query_terms: int,
+    max_page_cases_per_target: int | None = None,
+    max_chunk_cases_per_target: int | None = None,
+    max_asset_cases_per_target: int | None = None,
+    max_triple_cases_per_target: int | None = None,
 ) -> None:
     if query_mode not in {"snippet", "salient_terms", "question"}:
         raise ValueError("query_mode must be one of: snippet, salient_terms, question")
@@ -1289,6 +1380,14 @@ def validate_casegen_options(
         raise ValueError("min_query_terms must be at least 1")
     if max_query_terms < min_query_terms:
         raise ValueError("max_query_terms must be greater than or equal to min_query_terms")
+    for name, value in {
+        "max_page_cases_per_target": max_page_cases_per_target,
+        "max_chunk_cases_per_target": max_chunk_cases_per_target,
+        "max_asset_cases_per_target": max_asset_cases_per_target,
+        "max_triple_cases_per_target": max_triple_cases_per_target,
+    }.items():
+        if value is not None and value < 1:
+            raise ValueError(f"{name} must be at least 1 when set")
 
 
 def asset_priority(asset: VisualAsset) -> int:
