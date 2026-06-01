@@ -361,7 +361,9 @@ chunking-docs qdrant-hybrid-search "policy corridor" \
   --graph-expand
 ```
 
-When `image_dense` is included, use a text query encoder from the same image-text model family:
+Qdrant hybrid search, Qdrant retrieval evaluation, and exported-config context commands default to `--text-backend auto` and `--image-query-backend auto`. When `embedding_manifest.json` is present, text-like vectors such as `text_dense`, `caption_dense`, `object_dense`, and `triple_dense` use the recorded text embedding backend and model, while `image_dense` uses the recorded CLIP text-side encoder when the image vectors were built with CLIP. Explicit `--text-backend`, `--text-model`, `--image-query-backend`, and `--image-query-model` flags still override the inferred settings.
+
+When `image_dense` is included without a usable manifest, choose a text query encoder from the same image-text model family:
 
 ```bash
 chunking-docs qdrant-hybrid-search "map showing station access" \

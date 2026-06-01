@@ -7,6 +7,7 @@ from chunking_docs.cli import (
     build_reranker,
     parse_fusion_weights,
     qdrant_query_encoder_details,
+    resolve_qdrant_query_backend_options,
     validate_qdrant_query_encoder_dimensions,
 )
 from chunking_docs.embeddings.interfaces import HashingTextEmbedder
@@ -581,6 +582,46 @@ def test_qdrant_query_encoder_details_records_backend_model_and_dimension():
         "backend": "clip",
         "model": "openai/clip-vit-large-patch14",
         "dimension": 768,
+    }
+
+
+def test_resolve_qdrant_query_backend_options_reads_embedding_manifest(tmp_path):
+    (tmp_path / "embedding_manifest.json").write_text(
+        """
+{
+  "vectors": {
+    "text_dense": {
+      "dimension": 1024,
+      "embedding": {"backend": "sentence-transformers", "model": "BAAI/bge-m3"}
+    },
+    "caption_dense": {
+      "dimension": 1024,
+      "embedding": {"same_as": "text_dense"}
+    },
+    "image_dense": {
+      "dimension": 768,
+      "embedding": {"backend": "clip", "model": "openai/clip-vit-large-patch14"}
+    }
+  }
+}
+""",
+        encoding="utf-8",
+    )
+
+    options = resolve_qdrant_query_backend_options(
+        package_dir=tmp_path,
+        selected_vectors=["caption_dense", "image_dense"],
+        text_backend="auto",
+        text_model="fallback-text",
+        image_query_backend="auto",
+        image_query_model="fallback-image",
+    )
+
+    assert options == {
+        "text_backend": "sentence-transformers",
+        "text_model": "BAAI/bge-m3",
+        "image_query_backend": "clip",
+        "image_query_model": "openai/clip-vit-large-patch14",
     }
 
 

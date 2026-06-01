@@ -589,9 +589,9 @@ def qdrant_hybrid_search(
     top_k: int = 5,
     graph_expand: bool = False,
     collapse_hierarchical: bool = False,
-    text_backend: str = "hashing",
+    text_backend: str = "auto",
     text_model: str = "BAAI/bge-m3",
-    image_query_backend: str = "none",
+    image_query_backend: str = "auto",
     image_query_model: str = "openai/clip-vit-large-patch14",
     device: str = "cuda",
     hashing_dim: int = 384,
@@ -720,9 +720,9 @@ def qdrant_rag_context_command(
     neighbor_window: int = 0,
     include_assets: bool = True,
     include_triples: bool = True,
-    text_backend: str = "hashing",
+    text_backend: str = "auto",
     text_model: str = "BAAI/bge-m3",
-    image_query_backend: str = "none",
+    image_query_backend: str = "auto",
     image_query_model: str = "openai/clip-vit-large-patch14",
     device: str = "cuda",
     hashing_dim: int = 384,
@@ -850,9 +850,9 @@ def qdrant_rag_context_config_command(
     neighbor_window: int = 0,
     include_assets: bool = True,
     include_triples: bool = True,
-    text_backend: str = "hashing",
+    text_backend: str = "auto",
     text_model: str = "BAAI/bge-m3",
-    image_query_backend: str = "none",
+    image_query_backend: str = "auto",
     image_query_model: str = "openai/clip-vit-large-patch14",
     device: str = "cuda",
     hashing_dim: int = 384,
@@ -871,6 +871,14 @@ def qdrant_rag_context_config_command(
     )
     effective_collection = collection or retrieval_config.collection_name or ""
     vector_names = ",".join(retrieval_config.vector_names)
+    query_backend_options = resolve_qdrant_query_backend_options(
+        package_dir=effective_package_dir,
+        selected_vectors=retrieval_config.vector_names,
+        text_backend=text_backend,
+        text_model=text_model,
+        image_query_backend=image_query_backend,
+        image_query_model=image_query_model,
+    )
     filters = build_payload_filter(filter_specs=payload_filter)
     metadata_filters = build_payload_filter(doc_id=doc_id, filter_specs=payload_filter)
 
@@ -881,10 +889,10 @@ def qdrant_rag_context_config_command(
         location=location,
         path=path,
         vector_names=vector_names,
-        text_backend=text_backend,
-        text_model=text_model,
-        image_query_backend=image_query_backend,
-        image_query_model=image_query_model,
+        text_backend=query_backend_options["text_backend"],
+        text_model=query_backend_options["text_model"],
+        image_query_backend=query_backend_options["image_query_backend"],
+        image_query_model=query_backend_options["image_query_model"],
         device=device,
         hashing_dim=hashing_dim,
         lexical_tokenizer=tokenizer_options["strategy"],
@@ -967,9 +975,9 @@ def eval_qdrant_rag_context_config_command(
     neighbor_window: int = 0,
     include_assets: bool = True,
     include_triples: bool = True,
-    text_backend: str = "hashing",
+    text_backend: str = "auto",
     text_model: str = "BAAI/bge-m3",
-    image_query_backend: str = "none",
+    image_query_backend: str = "auto",
     image_query_model: str = "openai/clip-vit-large-patch14",
     device: str = "cuda",
     hashing_dim: int = 384,
@@ -988,6 +996,14 @@ def eval_qdrant_rag_context_config_command(
     )
     effective_collection = collection or retrieval_config.collection_name or ""
     vector_names = ",".join(retrieval_config.vector_names)
+    query_backend_options = resolve_qdrant_query_backend_options(
+        package_dir=effective_package_dir,
+        selected_vectors=retrieval_config.vector_names,
+        text_backend=text_backend,
+        text_model=text_model,
+        image_query_backend=image_query_backend,
+        image_query_model=image_query_model,
+    )
     filters = build_payload_filter(filter_specs=payload_filter)
     metadata_filters = build_payload_filter(doc_id=doc_id, filter_specs=payload_filter)
 
@@ -999,10 +1015,10 @@ def eval_qdrant_rag_context_config_command(
         location=location,
         path=path,
         vector_names=vector_names,
-        text_backend=text_backend,
-        text_model=text_model,
-        image_query_backend=image_query_backend,
-        image_query_model=image_query_model,
+        text_backend=query_backend_options["text_backend"],
+        text_model=query_backend_options["text_model"],
+        image_query_backend=query_backend_options["image_query_backend"],
+        image_query_model=query_backend_options["image_query_model"],
         device=device,
         hashing_dim=hashing_dim,
         lexical_tokenizer=tokenizer_options["strategy"],
@@ -1251,9 +1267,9 @@ def eval_qdrant_retrieval_command(
     top_k: int = 5,
     repeat: int = 1,
     collapse_hierarchical: bool = False,
-    text_backend: str = "hashing",
+    text_backend: str = "auto",
     text_model: str = "BAAI/bge-m3",
-    image_query_backend: str = "none",
+    image_query_backend: str = "auto",
     image_query_model: str = "openai/clip-vit-large-patch14",
     device: str = "cuda",
     hashing_dim: int = 384,
@@ -1402,9 +1418,9 @@ def eval_qdrant_retrieval_config_command(
         "--repeat",
         help="Repeat count for latency/stability sampling. Defaults to the config metadata value.",
     ),
-    text_backend: str = "hashing",
+    text_backend: str = "auto",
     text_model: str = "BAAI/bge-m3",
-    image_query_backend: str = "none",
+    image_query_backend: str = "auto",
     image_query_model: str = "openai/clip-vit-large-patch14",
     device: str = "cuda",
     hashing_dim: int = 384,
@@ -1424,6 +1440,14 @@ def eval_qdrant_retrieval_config_command(
     effective_repeat = repeat or int(retrieval_config.metadata.get("repeat") or 1)
     effective_collection = collection or retrieval_config.collection_name or ""
     vector_names = ",".join(retrieval_config.vector_names)
+    query_backend_options = resolve_qdrant_query_backend_options(
+        package_dir=effective_package_dir,
+        selected_vectors=retrieval_config.vector_names,
+        text_backend=text_backend,
+        text_model=text_model,
+        image_query_backend=image_query_backend,
+        image_query_model=image_query_model,
+    )
     filters = build_payload_filter(filter_specs=payload_filter)
     metadata_filters = build_payload_filter(doc_id=doc_id, filter_specs=payload_filter)
 
@@ -1435,10 +1459,10 @@ def eval_qdrant_retrieval_config_command(
         location=location,
         path=path,
         vector_names=vector_names,
-        text_backend=text_backend,
-        text_model=text_model,
-        image_query_backend=image_query_backend,
-        image_query_model=image_query_model,
+        text_backend=query_backend_options["text_backend"],
+        text_model=query_backend_options["text_model"],
+        image_query_backend=query_backend_options["image_query_backend"],
+        image_query_model=query_backend_options["image_query_model"],
         device=device,
         hashing_dim=hashing_dim,
         lexical_tokenizer=tokenizer_options["strategy"],
@@ -7273,6 +7297,116 @@ def embedding_backend_metadata(
     return metadata
 
 
+TEXT_QUERY_VECTOR_PRIORITY = ("text_dense", "caption_dense", "object_dense", "triple_dense")
+TEXT_QUERY_BACKENDS = {"sentence-transformers", "sentence_transformers", "st"}
+CLIP_QUERY_BACKENDS = {"clip", "transformers"}
+SAME_AS_TEXT_BACKENDS = {"same-as-text", "same_as_text", "same"}
+
+
+def resolve_qdrant_query_backend_options(
+    package_dir: Path,
+    selected_vectors: list[str],
+    text_backend: str,
+    text_model: str,
+    image_query_backend: str,
+    image_query_model: str,
+) -> dict[str, str]:
+    """Resolve `auto` query encoder settings from embedding_manifest.json when available."""
+    vectors = load_embedding_manifest_vectors(package_dir)
+    resolved_text_backend = text_backend
+    resolved_text_model = text_model
+    resolved_image_query_backend = image_query_backend
+    resolved_image_query_model = image_query_model
+
+    if normalize_backend(text_backend) == "auto":
+        vector_name = select_text_query_vector(selected_vectors, vectors)
+        embedding = resolve_embedding_config(vectors, vector_name) if vector_name else {}
+        backend = normalize_backend(str(embedding.get("backend") or ""))
+        if backend in TEXT_QUERY_BACKENDS:
+            resolved_text_backend = "sentence-transformers"
+            resolved_text_model = str(embedding.get("model") or text_model)
+        elif backend == "hashing":
+            resolved_text_backend = "hashing"
+        else:
+            resolved_text_backend = "hashing"
+
+    if normalize_backend(image_query_backend) == "auto":
+        if "image_dense" not in selected_vectors:
+            resolved_image_query_backend = "none"
+        else:
+            embedding = resolve_embedding_config(vectors, "image_dense")
+            backend = normalize_backend(str(embedding.get("backend") or ""))
+            same_as = str(embedding.get("same_as") or "")
+            if backend in CLIP_QUERY_BACKENDS:
+                resolved_image_query_backend = "clip"
+                resolved_image_query_model = str(embedding.get("model") or image_query_model)
+            elif backend == "hashing":
+                resolved_image_query_backend = "hashing"
+            elif backend in TEXT_QUERY_BACKENDS or normalize_backend(same_as) in TEXT_QUERY_VECTOR_PRIORITY:
+                resolved_image_query_backend = "same-as-text"
+            elif backend in SAME_AS_TEXT_BACKENDS:
+                resolved_image_query_backend = "same-as-text"
+            else:
+                resolved_image_query_backend = "none"
+
+    return {
+        "text_backend": resolved_text_backend,
+        "text_model": resolved_text_model,
+        "image_query_backend": resolved_image_query_backend,
+        "image_query_model": resolved_image_query_model,
+    }
+
+
+def load_embedding_manifest_vectors(package_dir: Path) -> dict[str, dict]:
+    manifest_path = package_dir / "embedding_manifest.json"
+    if not manifest_path.exists():
+        return {}
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise typer.BadParameter(f"Invalid embedding manifest JSON: {manifest_path}") from exc
+    vectors = manifest.get("vectors") if isinstance(manifest, dict) else None
+    return dict(vectors) if isinstance(vectors, dict) else {}
+
+
+def select_text_query_vector(selected_vectors: list[str], vectors: dict[str, dict]) -> str | None:
+    for vector_name in TEXT_QUERY_VECTOR_PRIORITY:
+        if vector_name in selected_vectors:
+            return vector_name
+    for vector_name in selected_vectors:
+        if vector_name != "image_dense":
+            return vector_name
+    if "text_dense" in vectors:
+        return "text_dense"
+    return None
+
+
+def resolve_embedding_config(
+    vectors: dict[str, dict],
+    vector_name: str,
+    seen: set[str] | None = None,
+) -> dict:
+    if not vector_name or vector_name in (seen or set()):
+        return {}
+    entry = vectors.get(vector_name)
+    if not isinstance(entry, dict):
+        return {}
+    embedding = dict(entry.get("embedding") or {})
+    if "dimension" not in embedding and entry.get("dimension") is not None:
+        embedding["dimension"] = entry["dimension"]
+    same_as = embedding.get("same_as") or entry.get("same_as")
+    if not same_as:
+        return embedding
+    next_seen = set(seen or set())
+    next_seen.add(vector_name)
+    base = resolve_embedding_config(vectors, str(same_as), next_seen)
+    if not base:
+        return embedding
+    merged = {**base, **{key: value for key, value in embedding.items() if value not in (None, "")}}
+    merged["same_as"] = str(same_as)
+    return merged
+
+
 def build_qdrant_query_embedders(
     selected_vectors: list[str],
     vector_sizes: dict[str, int],
@@ -7626,6 +7760,18 @@ def prepare_qdrant_hybrid_search(
         raise typer.BadParameter(
             f"Unknown Qdrant named vectors for this package: {', '.join(unknown_vectors)}"
         )
+    query_backend_options = resolve_qdrant_query_backend_options(
+        package_dir=package_dir,
+        selected_vectors=selected_vectors,
+        text_backend=text_backend,
+        text_model=text_model,
+        image_query_backend=image_query_backend,
+        image_query_model=image_query_model,
+    )
+    text_backend = query_backend_options["text_backend"]
+    text_model = query_backend_options["text_model"]
+    image_query_backend = query_backend_options["image_query_backend"]
+    image_query_model = query_backend_options["image_query_model"]
     store = QdrantChunkStore(
         url=url,
         collection_name=collection_name,

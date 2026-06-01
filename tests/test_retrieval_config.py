@@ -196,6 +196,132 @@ def test_eval_qdrant_retrieval_config_cli_uses_exported_settings(tmp_path, monke
     assert payload["metadata"]["config_selection"]["candidate"] == "balanced"
 
 
+def test_eval_qdrant_retrieval_config_cli_auto_detects_text_query_encoder(
+    tmp_path,
+    monkeypatch,
+):
+    package_dir = tmp_path / "package"
+    package_dir.mkdir()
+    (package_dir / "embedding_manifest.json").write_text(
+        json.dumps(
+            {
+                "vectors": {
+                    "text_dense": {
+                        "dimension": 1024,
+                        "embedding": {
+                            "backend": "sentence-transformers",
+                            "model": "BAAI/bge-m3",
+                        },
+                    },
+                    "caption_dense": {
+                        "dimension": 1024,
+                        "embedding": {
+                            "backend": "sentence-transformers",
+                            "model": "BAAI/bge-m3",
+                            "same_as": "text_dense",
+                        },
+                    },
+                    "object_dense": {
+                        "dimension": 1024,
+                        "embedding": {
+                            "same_as": "caption_dense",
+                        },
+                    },
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    config = build_qdrant_retrieval_config_from_fusion_sweep(fusion_sweep_report())
+    config = config.model_copy(
+        update={
+            "package_dir": str(package_dir),
+            "collection_name": "config_collection",
+            "vector_names": ["text_dense", "caption_dense", "object_dense"],
+            "top_k": 3,
+        }
+    )
+    config_path = tmp_path / "qdrant_retrieval_config.json"
+    cases_path = tmp_path / "cases.jsonl"
+    output_path = tmp_path / "eval.json"
+    config_path.write_text(config.model_dump_json(indent=2), encoding="utf-8")
+    cases_path.write_text(
+        json.dumps({"query": "redevelopment policy", "expected_pages": [1]}) + "\n",
+        encoding="utf-8",
+    )
+    chunk = DocumentChunk(
+        chunk_id="chunk-1",
+        doc_id="doc",
+        page_start=1,
+        page_end=1,
+        kind=ChunkKind.TEXT,
+        text="redevelopment policy",
+    )
+    calls = {}
+
+    class FakeStore:
+        def count(self):
+            return 1
+
+    class FakeSearcher:
+        def search(self, **kwargs):
+            return [
+                QdrantHybridSearchHit(
+                    item_id="chunk-1",
+                    score=1.0,
+                    sources=["qdrant:text_dense"],
+                    chunk=chunk,
+                )
+            ]
+
+    def fake_prepare_qdrant_hybrid_search(**kwargs):
+        calls["prepare"] = kwargs
+        return {
+            "searcher": FakeSearcher(),
+            "store": FakeStore(),
+            "collection_name": kwargs["collection"],
+            "selected_vectors": ["text_dense", "caption_dense", "object_dense"],
+            "query_encoders": {
+                "text_dense": "default_text",
+                "caption_dense": "default_text",
+                "object_dense": "default_text",
+            },
+            "query_encoder_details": {
+                "text_dense": {
+                    "backend": kwargs["text_backend"],
+                    "model": kwargs["text_model"],
+                }
+            },
+            "upserted": {"count": 1},
+            "chunks": [chunk],
+            "assets": [],
+            "triples": [],
+        }
+
+    monkeypatch.setattr(
+        "chunking_docs.cli.prepare_qdrant_hybrid_search",
+        fake_prepare_qdrant_hybrid_search,
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "eval-qdrant-retrieval-config",
+            str(config_path),
+            str(cases_path),
+            "--output",
+            str(output_path),
+            "--repeat",
+            "1",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert calls["prepare"]["text_backend"] == "sentence-transformers"
+    assert calls["prepare"]["text_model"] == "BAAI/bge-m3"
+    assert calls["prepare"]["image_query_backend"] == "none"
+
+
 def test_qdrant_rag_context_config_cli_uses_exported_settings(tmp_path, monkeypatch):
     config = build_qdrant_retrieval_config_from_fusion_sweep(fusion_sweep_report())
     config = config.model_copy(
@@ -295,6 +421,118 @@ def test_qdrant_rag_context_config_cli_uses_exported_settings(tmp_path, monkeypa
     assert payload["metadata"]["backend"] == "qdrant_hybrid_config"
     assert payload["metadata"]["config_selection"]["candidate"] == "balanced"
     assert payload["metadata"]["fusion_weights"] == {"bm25": 1.2}
+
+
+def test_qdrant_rag_context_config_cli_auto_detects_image_query_encoder(
+    tmp_path,
+    monkeypatch,
+):
+    package_dir = tmp_path / "package"
+    package_dir.mkdir()
+    (package_dir / "embedding_manifest.json").write_text(
+        json.dumps(
+            {
+                "vectors": {
+                    "text_dense": {
+                        "dimension": 1024,
+                        "embedding": {
+                            "backend": "sentence-transformers",
+                            "model": "BAAI/bge-m3",
+                        },
+                    },
+                    "image_dense": {
+                        "dimension": 768,
+                        "embedding": {
+                            "backend": "clip",
+                            "model": "openai/clip-vit-large-patch14",
+                        },
+                    },
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    config = build_qdrant_retrieval_config_from_fusion_sweep(fusion_sweep_report())
+    config = config.model_copy(
+        update={
+            "package_dir": str(package_dir),
+            "collection_name": "config_collection",
+            "vector_names": ["text_dense", "image_dense"],
+            "top_k": 3,
+        }
+    )
+    config_path = tmp_path / "qdrant_retrieval_config.json"
+    output_path = tmp_path / "context.json"
+    config_path.write_text(config.model_dump_json(indent=2), encoding="utf-8")
+    chunk = DocumentChunk(
+        chunk_id="chunk-1",
+        doc_id="doc",
+        page_start=1,
+        page_end=1,
+        kind=ChunkKind.TEXT,
+        text="redevelopment policy",
+    )
+    calls = {}
+
+    class FakeStore:
+        def count(self):
+            return 1
+
+    class FakeSearcher:
+        def search(self, **kwargs):
+            return [
+                QdrantHybridSearchHit(
+                    item_id="chunk-1",
+                    score=1.0,
+                    sources=["qdrant:image_dense"],
+                    chunk=chunk,
+                )
+            ]
+
+    def fake_prepare_qdrant_hybrid_search(**kwargs):
+        calls["prepare"] = kwargs
+        return {
+            "searcher": FakeSearcher(),
+            "store": FakeStore(),
+            "collection_name": kwargs["collection"],
+            "selected_vectors": ["text_dense", "image_dense"],
+            "query_encoders": {
+                "text_dense": "default_text",
+                "image_dense": kwargs["image_query_backend"],
+            },
+            "query_encoder_details": {
+                "image_dense": {
+                    "backend": kwargs["image_query_backend"],
+                    "model": kwargs["image_query_model"],
+                }
+            },
+            "upserted": {"count": 1},
+            "chunks": [chunk],
+            "assets": [],
+            "triples": [],
+        }
+
+    monkeypatch.setattr(
+        "chunking_docs.cli.prepare_qdrant_hybrid_search",
+        fake_prepare_qdrant_hybrid_search,
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "qdrant-rag-context-config",
+            str(config_path),
+            "redevelopment policy",
+            "--output",
+            str(output_path),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert calls["prepare"]["text_backend"] == "sentence-transformers"
+    assert calls["prepare"]["text_model"] == "BAAI/bge-m3"
+    assert calls["prepare"]["image_query_backend"] == "clip"
+    assert calls["prepare"]["image_query_model"] == "openai/clip-vit-large-patch14"
 
 
 def test_eval_qdrant_rag_context_config_cli_scores_generated_contexts(
