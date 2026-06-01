@@ -11,6 +11,7 @@ from chunking_docs.models import ProcessingManifest
 from chunking_docs.storage.postgres_records import (
     asset_row,
     chunk_asset_link_rows,
+    chunk_lexical_token_rows,
     chunk_row,
     document_row,
     embedding_artifact_rows,
@@ -46,6 +47,15 @@ EXPECTED_POSTGRES_SCHEMA = {
         "kind": "text",
         "section": "jsonb",
         "text": "text",
+        "metadata": "jsonb",
+    },
+    "chunk_lexical_tokens": {
+        "chunk_id": "text",
+        "doc_id": "text",
+        "tokenizer": "jsonb",
+        "text_char_count": "integer",
+        "token_count": "integer",
+        "tokens": "text[]",
         "metadata": "jsonb",
     },
     "assets": {
@@ -94,6 +104,8 @@ EXPECTED_POSTGRES_SCHEMA = {
 
 EXPECTED_POSTGRES_INDEXES = {
     "assets_doc_page_idx": "assets",
+    "chunk_lexical_tokens_doc_idx": "chunk_lexical_tokens",
+    "chunk_lexical_tokens_tokens_idx": "chunk_lexical_tokens",
     "chunk_asset_links_asset_idx": "chunk_asset_links",
     "chunk_asset_links_doc_idx": "chunk_asset_links",
     "chunks_doc_page_idx": "chunks",
@@ -180,6 +192,7 @@ class PostgresDocumentStore:
                 upsert_documents(cursor, [rows["document"]])
                 upsert_pages(cursor, rows["pages"])
                 upsert_chunks(cursor, rows["chunks"])
+                upsert_chunk_lexical_tokens(cursor, rows["chunk_lexical_tokens"])
                 upsert_assets(cursor, rows["assets"])
                 upsert_chunk_asset_links(cursor, rows["chunk_asset_links"])
                 upsert_triples(cursor, rows["triples"])
@@ -188,6 +201,7 @@ class PostgresDocumentStore:
             "documents": 1,
             "pages": len(rows["pages"]),
             "chunks": len(rows["chunks"]),
+            "chunk_lexical_tokens": len(rows["chunk_lexical_tokens"]),
             "assets": len(rows["assets"]),
             "chunk_asset_links": len(rows["chunk_asset_links"]),
             "triples": len(rows["triples"]),
@@ -201,6 +215,11 @@ def manifest_rows(manifest: ProcessingManifest, base_dir: Path | None = None) ->
         "document": document_row(manifest.doc),
         "pages": [page_row(profile) for profile in manifest.profiles],
         "chunks": [chunk_row(chunk) for chunk in manifest.chunks],
+        "chunk_lexical_tokens": chunk_lexical_token_rows(
+            manifest.doc.doc_id,
+            manifest.chunks,
+            package_dir=base_dir,
+        ),
         "assets": [asset_row(asset, base_dir=base_dir) for asset in manifest.assets],
         "chunk_asset_links": chunk_asset_link_rows(
             manifest.chunks,
@@ -324,6 +343,8 @@ def check_postgres_schema_snapshot(
 def normalize_postgres_type(data_type: str, udt_name: Any = None) -> str:
     if data_type == "ARRAY" and udt_name == "_float8":
         return "double precision[]"
+    if data_type == "ARRAY" and udt_name == "_text":
+        return "text[]"
     if data_type == "USER-DEFINED" and udt_name:
         return str(udt_name)
     return data_type
@@ -393,6 +414,30 @@ def upsert_chunks(cursor, rows: list[dict[str, Any]]) -> None:
             metadata = excluded.metadata
         """,
         [with_json(with_json(row, "section"), "metadata") for row in rows],
+    )
+
+
+def upsert_chunk_lexical_tokens(cursor, rows: list[dict[str, Any]]) -> None:
+    if not rows:
+        return
+    cursor.executemany(
+        """
+        insert into chunk_lexical_tokens (
+            chunk_id, doc_id, tokenizer, text_char_count, token_count, tokens, metadata
+        )
+        values (
+            %(chunk_id)s, %(doc_id)s, %(tokenizer)s::jsonb, %(text_char_count)s,
+            %(token_count)s, %(tokens)s, %(metadata)s::jsonb
+        )
+        on conflict (chunk_id) do update set
+            doc_id = excluded.doc_id,
+            tokenizer = excluded.tokenizer,
+            text_char_count = excluded.text_char_count,
+            token_count = excluded.token_count,
+            tokens = excluded.tokens,
+            metadata = excluded.metadata
+        """,
+        [with_json(with_json(row, "tokenizer"), "metadata") for row in rows],
     )
 
 

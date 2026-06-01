@@ -15,6 +15,7 @@ from chunking_docs.models import (
 from chunking_docs.storage.postgres_records import (
     asset_row,
     chunk_asset_link_rows,
+    chunk_lexical_token_rows,
     chunk_row,
     document_row,
     embedding_artifact_rows,
@@ -144,6 +145,7 @@ def test_manifest_rows_counts():
 
     assert rows["document"]["doc_id"] == "doc"
     assert rows["pages"] == []
+    assert rows["chunk_lexical_tokens"] == []
     assert rows["chunk_asset_links"] == []
     assert rows["embedding_artifacts"] == []
 
@@ -290,12 +292,83 @@ def test_manifest_rows_includes_embedding_artifact_provenance(tmp_path):
     ]
 
 
+def test_manifest_rows_includes_bm25_token_rows(tmp_path):
+    (tmp_path / "bm25_tokens.json").write_text(
+        json.dumps(
+            {
+                "tokenizer": {
+                    "strategy": "mixed",
+                    "ngram_min": 2,
+                    "ngram_max": 4,
+                    "cjk_only": True,
+                },
+                "chunks": [
+                    {
+                        "chunk_id": "chunk",
+                        "text_char_count": 12,
+                        "tokens": ["alpha", "beta", "", " beta "],
+                    },
+                    {
+                        "chunk_id": "stale",
+                        "text_char_count": 5,
+                        "tokens": ["ignored"],
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    manifest = ProcessingManifest(
+        doc=SourceDocument(doc_id="doc", title="title", local_path=Path("/tmp/doc.pdf")),
+        profiles=[],
+        chunks=[
+            DocumentChunk(
+                chunk_id="chunk",
+                doc_id="doc",
+                page_start=1,
+                page_end=1,
+                kind=ChunkKind.TEXT,
+                text="alpha beta",
+            )
+        ],
+        assets=[],
+        triples=[],
+    )
+
+    rows = manifest_rows(manifest, base_dir=tmp_path)
+
+    assert rows["chunk_lexical_tokens"] == [
+        {
+            "chunk_id": "chunk",
+            "doc_id": "doc",
+            "tokenizer": {
+                "strategy": "mixed",
+                "ngram_min": 2,
+                "ngram_max": 4,
+                "cjk_only": True,
+            },
+            "text_char_count": 12,
+            "token_count": 3,
+            "tokens": ["alpha", "beta", "beta"],
+            "metadata": {
+                "manifest_file": "bm25_tokens.json",
+                "manifest_chunk_count": 2,
+            },
+        }
+    ]
+    assert chunk_lexical_token_rows("doc", manifest.chunks, package_dir=tmp_path)[0][
+        "token_count"
+    ] == 3
+
+
 def expected_schema_rows():
     rows = []
     for table, columns in EXPECTED_POSTGRES_SCHEMA.items():
         for column, data_type in columns.items():
             if data_type == "double precision[]":
                 rows.append((table, column, "ARRAY", "_float8"))
+            elif data_type == "text[]":
+                rows.append((table, column, "ARRAY", "_text"))
             else:
                 rows.append((table, column, data_type, data_type))
     return rows

@@ -30,6 +30,16 @@ create table if not exists chunks (
     metadata jsonb not null default '{}'::jsonb
 );
 
+create table if not exists chunk_lexical_tokens (
+    chunk_id text primary key references chunks(chunk_id) on delete cascade,
+    doc_id text not null references documents(doc_id) on delete cascade,
+    tokenizer jsonb not null default '{}'::jsonb,
+    text_char_count integer not null default 0,
+    token_count integer not null default 0,
+    tokens text[] not null default '{}'::text[],
+    metadata jsonb not null default '{}'::jsonb
+);
+
 create table if not exists assets (
     asset_id text primary key,
     doc_id text not null references documents(doc_id) on delete cascade,
@@ -79,6 +89,8 @@ create table if not exists embedding_artifacts (
 );
 
 create index if not exists chunks_doc_page_idx on chunks(doc_id, page_start, page_end);
+create index if not exists chunk_lexical_tokens_doc_idx on chunk_lexical_tokens(doc_id, chunk_id);
+create index if not exists chunk_lexical_tokens_tokens_idx on chunk_lexical_tokens using gin (tokens);
 create index if not exists assets_doc_page_idx on assets(doc_id, page_no);
 create index if not exists chunk_asset_links_asset_idx on chunk_asset_links(asset_id, chunk_id);
 create index if not exists chunk_asset_links_doc_idx on chunk_asset_links(doc_id, asset_id);

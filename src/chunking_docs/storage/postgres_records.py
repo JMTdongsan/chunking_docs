@@ -7,6 +7,8 @@ from typing import Any
 from chunking_docs.graph.provenance import asset_ids_from_ref, chunk_asset_ids
 from chunking_docs.models import DocumentChunk, GraphTriple, PageProfile, SourceDocument, VisualAsset
 
+BM25_TOKEN_MANIFEST = "bm25_tokens.json"
+
 
 def document_row(document: SourceDocument) -> dict[str, Any]:
     return {
@@ -44,6 +46,46 @@ def chunk_row(chunk: DocumentChunk) -> dict[str, Any]:
             "source_refs": chunk.source_refs,
         },
     }
+
+
+def chunk_lexical_token_rows(
+    doc_id: str,
+    chunks: list[DocumentChunk],
+    package_dir: Path | None = None,
+) -> list[dict[str, Any]]:
+    if package_dir is None:
+        return []
+    path = package_dir / BM25_TOKEN_MANIFEST
+    if not path.exists():
+        return []
+
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    tokenizer = payload.get("tokenizer") or {}
+    entries = payload.get("chunks") or []
+    chunk_doc_ids = {chunk.chunk_id: chunk.doc_id for chunk in chunks}
+    rows = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        chunk_id = str(entry.get("chunk_id") or "").strip()
+        if chunk_id not in chunk_doc_ids:
+            continue
+        tokens = normalized_tokens(entry.get("tokens") or [])
+        rows.append(
+            {
+                "chunk_id": chunk_id,
+                "doc_id": chunk_doc_ids.get(chunk_id) or doc_id,
+                "tokenizer": tokenizer,
+                "text_char_count": int(entry.get("text_char_count") or 0),
+                "token_count": len(tokens),
+                "tokens": tokens,
+                "metadata": {
+                    "manifest_file": path.name,
+                    "manifest_chunk_count": len(entries),
+                },
+            }
+        )
+    return rows
 
 
 def asset_row(asset: VisualAsset, base_dir: Path | None = None) -> dict[str, Any]:
@@ -118,6 +160,17 @@ def triple_row(triple: GraphTriple) -> dict[str, Any]:
         "qualifiers": triple.qualifiers,
         "confidence": triple.confidence,
     }
+
+
+def normalized_tokens(values: Any) -> list[str]:
+    if not isinstance(values, list):
+        return []
+    tokens = []
+    for value in values:
+        token = str(value).strip()
+        if token:
+            tokens.append(token)
+    return tokens
 
 
 def embedding_artifact_rows(doc_id: str, package_dir: Path | None = None) -> list[dict[str, Any]]:
