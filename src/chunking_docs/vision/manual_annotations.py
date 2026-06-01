@@ -9,6 +9,7 @@ from chunking_docs.graph.provenance import chunk_asset_ids
 from chunking_docs.graph.quality import normalize_graph_triples
 from chunking_docs.models import AssetKind, DocumentChunk, GraphTriple, VisualAsset
 from chunking_docs.vision.annotate import merge_asset_annotations_into_chunks
+from chunking_docs.vision.vlm_output import visual_triples_from_payload
 
 
 class AssetAnnotation(BaseModel):
@@ -33,14 +34,16 @@ def apply_asset_annotations(
 
     for annotation in annotations:
         updated_assets = apply_one_annotation(updated_assets, annotation)
-        if annotation.triples:
+        matched_assets = matching_assets_for_annotation(updated_assets, annotation)
+        annotation_triples = triples_for_annotation(annotation, matched_assets)
+        if annotation_triples:
             chunk = chunk_for_annotation(chunks, updated_assets, annotation)
             if chunk is not None:
                 triples.extend(
                     triples_from_vlm_json(
                         chunk,
-                        annotation.triples,
-                        qualifiers=triple_provenance(annotation),
+                        annotation_triples,
+                        qualifiers=triple_provenance(annotation, matched_assets),
                     )
                 )
 
@@ -102,14 +105,56 @@ def chunk_for_annotation(
     return None
 
 
-def triple_provenance(annotation: AssetAnnotation) -> dict[str, Any]:
+def matching_assets_for_annotation(
+    assets: list[VisualAsset],
+    annotation: AssetAnnotation,
+) -> list[VisualAsset]:
+    return [asset for asset in assets if annotation_matches(asset, annotation)]
+
+
+def triples_for_annotation(
+    annotation: AssetAnnotation,
+    matched_assets: list[VisualAsset],
+) -> list[dict[str, Any]]:
+    payload = annotation_visual_payload(annotation, matched_assets)
+    return visual_triples_from_payload(payload)
+
+
+def annotation_visual_payload(
+    annotation: AssetAnnotation,
+    matched_assets: list[VisualAsset],
+) -> dict[str, Any]:
+    payload = dict(annotation.metadata)
+    if annotation.triples:
+        payload["triples"] = annotation.triples
+    if any(payload.get(key) for key in ("title", "caption", "name")):
+        return payload
+    if annotation.caption:
+        payload["caption"] = annotation.caption
+        return payload
+    if len(matched_assets) == 1 and matched_assets[0].caption:
+        payload["caption"] = matched_assets[0].caption
+    return payload
+
+
+def triple_provenance(
+    annotation: AssetAnnotation,
+    matched_assets: list[VisualAsset] | None = None,
+) -> dict[str, Any]:
     provenance: dict[str, Any] = {"source": "visual_annotation"}
+    matched_assets = matched_assets or []
     if annotation.asset_id is not None:
         provenance["asset_id"] = annotation.asset_id
+    elif len(matched_assets) == 1:
+        provenance["asset_id"] = matched_assets[0].asset_id
+    elif matched_assets:
+        provenance["asset_ids"] = sorted(asset.asset_id for asset in matched_assets)
     if annotation.page_no is not None:
         provenance["page_no"] = annotation.page_no
     if annotation.kind is not None:
         provenance["asset_kind"] = str(annotation.kind)
+    elif len(matched_assets) == 1:
+        provenance["asset_kind"] = str(matched_assets[0].kind)
     for key in [
         "annotation_source",
         "visual_job_id",
