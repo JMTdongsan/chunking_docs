@@ -64,6 +64,8 @@ def gate_retrieval_evaluation(
     max_source_family_excluded_target_hit_rate: dict[str, float] | None = None,
     min_chunk_strategy_target_coverage: dict[str, float] | None = None,
     min_retrieval_role_target_coverage: dict[str, float] | None = None,
+    max_chunk_strategy_excluded_target_hit_rate: dict[str, float] | None = None,
+    max_retrieval_role_excluded_target_hit_rate: dict[str, float] | None = None,
     min_case_group_target_coverage: dict[str, float] | None = None,
     max_recall_drop: float | None = None,
     max_target_coverage_drop: float | None = None,
@@ -259,6 +261,22 @@ def gate_retrieval_evaluation(
             min_retrieval_role_target_coverage or {},
             metric_key_fn=retrieval_role_metric_key,
             check_prefix="min_retrieval_role_target_coverage",
+        )
+    )
+    checks.extend(
+        grouped_excluded_target_hit_rate_checks(
+            metrics,
+            max_chunk_strategy_excluded_target_hit_rate or {},
+            metric_key_fn=chunk_strategy_metric_key,
+            check_prefix="max_chunk_strategy_excluded_target_hit_rate",
+        )
+    )
+    checks.extend(
+        grouped_excluded_target_hit_rate_checks(
+            metrics,
+            max_retrieval_role_excluded_target_hit_rate or {},
+            metric_key_fn=retrieval_role_metric_key,
+            check_prefix="max_retrieval_role_excluded_target_hit_rate",
         )
     )
     checks.extend(
@@ -564,12 +582,18 @@ def retrieval_group_metrics(metrics_by_group) -> dict[str, dict[str, float]]:
         group: {
             "query_count": float(metric.query_count),
             "relevant_query_count": float(metric.relevant_query_count),
+            "excluded_query_count": float(metric.excluded_query_count),
             "hit_count": float(metric.hit_count),
             "relevant_hit_count": float(metric.relevant_hit_count),
+            "excluded_hit_count": float(metric.excluded_hit_count),
             "expected_target_count": float(metric.expected_target_count),
             "matched_target_count": float(metric.matched_target_count),
+            "excluded_target_count": float(metric.excluded_target_count),
+            "excluded_matched_target_count": float(metric.excluded_matched_target_count),
             "precision_at_hits": metric.precision_at_hits,
+            "excluded_precision_at_hits": metric.excluded_precision_at_hits,
             "target_coverage_at_k": metric.target_coverage_at_k,
+            "excluded_target_hit_rate": metric.excluded_target_hit_rate,
             "mean_relevant_rank": metric.mean_relevant_rank,
         }
         for group, metric in sorted(metrics_by_group.items())
@@ -701,6 +725,28 @@ def grouped_target_coverage_checks(
         metrics.setdefault(metric, 0.0)
         checks.append(
             minimum_check(
+                f"{check_prefix}:{normalized_group}",
+                metric,
+                metrics,
+                threshold,
+            )
+        )
+    return checks
+
+
+def grouped_excluded_target_hit_rate_checks(
+    metrics: dict[str, float],
+    thresholds: dict[str, float],
+    metric_key_fn,
+    check_prefix: str,
+) -> list[RetrievalGateCheck]:
+    checks = []
+    for group, threshold in sorted(thresholds.items()):
+        normalized_group = group.strip().lower()
+        metric = metric_key_fn(normalized_group, "excluded_target_hit_rate")
+        metrics.setdefault(metric, 0.0)
+        checks.append(
+            maximum_check(
                 f"{check_prefix}:{normalized_group}",
                 metric,
                 metrics,

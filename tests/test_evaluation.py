@@ -1381,6 +1381,10 @@ def test_evaluate_search_results_reports_excluded_target_hits():
     assert result.source_metrics["test"].excluded_precision_at_hits == 0.5
     assert result.source_metrics["test"].excluded_target_hit_rate == 1.0
     assert result.source_family_metrics["test"].excluded_target_hit_rate == 1.0
+    assert result.chunk_strategy_metrics["unspecified"].excluded_query_count == 1
+    assert result.chunk_strategy_metrics["unspecified"].excluded_hit_count == 1
+    assert result.chunk_strategy_metrics["unspecified"].excluded_target_hit_rate == 1.0
+    assert result.retrieval_role_metrics["unspecified"].excluded_target_hit_rate == 1.0
     assert result.failed_queries == ["hard negative target"]
     assert result.case_group_metrics["graph_expand"]["false"].recall_at_k == 1.0
     assert result.case_group_metrics["graph_expand"]["false"].passed_count == 0
@@ -1917,14 +1921,20 @@ def test_gate_retrieval_ablation_checks_source_excluded_target_hits():
         mode="bm25",
         max_source_excluded_target_hit_rate={"bm25": 0.0},
         max_source_family_excluded_target_hit_rate={"lexical": 0.0},
+        max_chunk_strategy_excluded_target_hit_rate={"visual_asset_text": 0.0},
+        max_retrieval_role_excluded_target_hit_rate={"child": 0.0},
     )
 
     assert gate.passed is False
     assert gate.metrics["source.bm25.excluded_target_hit_rate"] == 1.0
     assert gate.metrics["source_family.lexical.excluded_target_hit_rate"] == 1.0
+    assert gate.metrics["chunk_strategy.visual_asset_text.excluded_target_hit_rate"] == 1.0
+    assert gate.metrics["retrieval_role.child.excluded_target_hit_rate"] == 1.0
     assert set(gate.failed_checks) == {
         "max_source_excluded_target_hit_rate:bm25",
         "max_source_family_excluded_target_hit_rate:lexical",
+        "max_chunk_strategy_excluded_target_hit_rate:visual_asset_text",
+        "max_retrieval_role_excluded_target_hit_rate:child",
     }
 
 
@@ -2008,6 +2018,7 @@ def retrieval_ablation_report_with_excluded_hits():
             kind=ChunkKind.TEXT,
             text="north river corridor diagram",
             asset_ids=["asset-1"],
+            metadata={"chunking_strategy": "visual_asset_text", "retrieval_role": "child"},
         ),
         DocumentChunk(
             chunk_id="chunk-2",
@@ -2017,6 +2028,7 @@ def retrieval_ablation_report_with_excluded_hits():
             kind=ChunkKind.TEXT,
             text="north river corridor diagram",
             asset_ids=["asset-2"],
+            metadata={"chunking_strategy": "visual_asset_text", "retrieval_role": "child"},
         ),
     ]
     cases = [
@@ -2370,6 +2382,7 @@ def qdrant_vector_ablation_report_with_excluded_hits():
         kind=ChunkKind.TEXT,
         text="visual evidence",
         asset_ids=["asset-1"],
+        metadata={"chunking_strategy": "visual_asset_text", "retrieval_role": "child"},
     )
     excluded_chunk = DocumentChunk(
         chunk_id="chunk-2",
@@ -2379,6 +2392,7 @@ def qdrant_vector_ablation_report_with_excluded_hits():
         kind=ChunkKind.TEXT,
         text="visual evidence",
         asset_ids=["asset-2"],
+        metadata={"chunking_strategy": "visual_asset_text", "retrieval_role": "child"},
     )
     cases = [
         RetrievalCase(
@@ -2568,14 +2582,20 @@ def test_gate_qdrant_vector_ablation_checks_source_excluded_target_hits():
         mode="leaky",
         max_source_excluded_target_hit_rate={"qdrant:image_dense": 0.0},
         max_source_family_excluded_target_hit_rate={"visual": 0.0},
+        max_chunk_strategy_excluded_target_hit_rate={"visual_asset_text": 0.0},
+        max_retrieval_role_excluded_target_hit_rate={"child": 0.0},
     )
 
     assert gate.passed is False
     assert gate.metrics["source.qdrant:image_dense.excluded_target_hit_rate"] == 1.0
     assert gate.metrics["source_family.visual.excluded_target_hit_rate"] == 1.0
+    assert gate.metrics["chunk_strategy.visual_asset_text.excluded_target_hit_rate"] == 1.0
+    assert gate.metrics["retrieval_role.child.excluded_target_hit_rate"] == 1.0
     assert set(gate.failed_checks) == {
         "max_source_excluded_target_hit_rate:qdrant:image_dense",
         "max_source_family_excluded_target_hit_rate:visual",
+        "max_chunk_strategy_excluded_target_hit_rate:visual_asset_text",
+        "max_retrieval_role_excluded_target_hit_rate:child",
     }
 
 
@@ -2687,6 +2707,10 @@ def test_gate_qdrant_vector_ablation_cli_checks_excluded_target_hits(tmp_path):
             "qdrant:image_dense=0",
             "--max-source-family-excluded-target-hit-rate",
             "visual=0",
+            "--max-chunk-strategy-excluded-target-hit-rate",
+            "visual_asset_text=0",
+            "--max-retrieval-role-excluded-target-hit-rate",
+            "child=0",
             "--no-fail",
             "--output",
             str(output),
@@ -2699,12 +2723,16 @@ def test_gate_qdrant_vector_ablation_cli_checks_excluded_target_hits(tmp_path):
     assert payload["metrics"]["excluded_target_hit_rate"] == 1.0
     assert payload["metrics"]["source.qdrant:image_dense.excluded_target_hit_rate"] == 1.0
     assert payload["metrics"]["source_family.visual.excluded_target_hit_rate"] == 1.0
+    assert payload["metrics"]["chunk_strategy.visual_asset_text.excluded_target_hit_rate"] == 1.0
+    assert payload["metrics"]["retrieval_role.child.excluded_target_hit_rate"] == 1.0
     assert set(payload["failed_checks"]) == {
         "max_excluded_target_hit_rate",
         "max_excluded_query_hit_rate",
         "max_excluded_hit_query_count",
         "max_source_excluded_target_hit_rate:qdrant:image_dense",
         "max_source_family_excluded_target_hit_rate:visual",
+        "max_chunk_strategy_excluded_target_hit_rate:visual_asset_text",
+        "max_retrieval_role_excluded_target_hit_rate:child",
     }
 
 
@@ -2944,6 +2972,10 @@ def test_gate_retrieval_ablation_cli_checks_source_excluded_target_hits(tmp_path
             "bm25=0",
             "--max-source-family-excluded-target-hit-rate",
             "lexical=0",
+            "--max-chunk-strategy-excluded-target-hit-rate",
+            "visual_asset_text=0",
+            "--max-retrieval-role-excluded-target-hit-rate",
+            "child=0",
             "--output",
             str(output),
             "--no-fail",
@@ -2955,7 +2987,11 @@ def test_gate_retrieval_ablation_cli_checks_source_excluded_target_hits(tmp_path
     assert payload["passed"] is False
     assert payload["metrics"]["source.bm25.excluded_target_hit_rate"] == 1.0
     assert payload["metrics"]["source_family.lexical.excluded_target_hit_rate"] == 1.0
+    assert payload["metrics"]["chunk_strategy.visual_asset_text.excluded_target_hit_rate"] == 1.0
+    assert payload["metrics"]["retrieval_role.child.excluded_target_hit_rate"] == 1.0
     assert set(payload["failed_checks"]) == {
         "max_source_excluded_target_hit_rate:bm25",
         "max_source_family_excluded_target_hit_rate:lexical",
+        "max_chunk_strategy_excluded_target_hit_rate:visual_asset_text",
+        "max_retrieval_role_excluded_target_hit_rate:child",
     }

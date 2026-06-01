@@ -30,6 +30,8 @@ def make_evaluation(
     source_family_excluded_hit_rate: dict[str, float] | None = None,
     chunk_strategy_coverage: dict[str, float] | None = None,
     retrieval_role_coverage: dict[str, float] | None = None,
+    chunk_strategy_excluded_hit_rate: dict[str, float] | None = None,
+    retrieval_role_excluded_hit_rate: dict[str, float] | None = None,
     case_group_coverage: dict[str, dict[str, float]] | None = None,
     excluded_query_count: int = 0,
     excluded_hit_query_count: int = 0,
@@ -83,11 +85,21 @@ def make_evaluation(
             for family, coverage in (source_family_coverage or {}).items()
         },
         chunk_strategy_metrics={
-            strategy: source_family_metric(coverage)
+            strategy: source_family_metric(
+                coverage,
+                excluded_target_hit_rate=(chunk_strategy_excluded_hit_rate or {}).get(
+                    strategy, 0.0
+                ),
+            )
             for strategy, coverage in (chunk_strategy_coverage or {}).items()
         },
         retrieval_role_metrics={
-            role: source_family_metric(coverage)
+            role: source_family_metric(
+                coverage,
+                excluded_target_hit_rate=(retrieval_role_excluded_hit_rate or {}).get(
+                    role, 0.0
+                ),
+            )
             for role, coverage in (retrieval_role_coverage or {}).items()
         },
         case_group_metrics={
@@ -346,6 +358,40 @@ def test_retrieval_gate_checks_chunk_strategy_and_role_coverage():
     ]
 
 
+def test_retrieval_gate_checks_chunk_strategy_and_role_excluded_target_hits():
+    evaluation = make_evaluation(
+        chunk_strategy_coverage={"visual_asset_text": 0.8, "semantic": 1.0},
+        retrieval_role_coverage={"child": 0.8, "parent": 1.0},
+        chunk_strategy_excluded_hit_rate={"visual_asset_text": 0.25, "semantic": 0.0},
+        retrieval_role_excluded_hit_rate={"child": 0.25, "parent": 0.0},
+    )
+
+    report = gate_retrieval_evaluation(
+        evaluation,
+        max_chunk_strategy_excluded_target_hit_rate={"semantic": 0.0},
+        max_retrieval_role_excluded_target_hit_rate={"parent": 0.0},
+    )
+
+    assert report.passed is True
+    assert (
+        report.metrics["chunk_strategy.visual_asset_text.excluded_target_hit_rate"]
+        == 0.25
+    )
+    assert report.retrieval_role_metrics["child"]["excluded_target_hit_rate"] == 0.25
+
+    failed = gate_retrieval_evaluation(
+        evaluation,
+        max_chunk_strategy_excluded_target_hit_rate={"visual_asset_text": 0.0},
+        max_retrieval_role_excluded_target_hit_rate={"child": 0.0},
+    )
+
+    assert failed.passed is False
+    assert failed.failed_checks == [
+        "max_chunk_strategy_excluded_target_hit_rate:visual_asset_text",
+        "max_retrieval_role_excluded_target_hit_rate:child",
+    ]
+
+
 def test_retrieval_gate_checks_case_group_target_coverage():
     evaluation = make_evaluation(
         case_group_coverage={
@@ -572,6 +618,42 @@ def test_gate_retrieval_cli_checks_chunk_strategy_target_coverage(tmp_path):
     assert "min_chunk_strategy_target_coverage:visual_asset_text" in result.output
     payload = output.read_text(encoding="utf-8")
     assert "chunk_strategy.visual_asset_text.target_coverage_at_k" in payload
+
+
+def test_gate_retrieval_cli_checks_strategy_and_role_excluded_target_hits(tmp_path):
+    evaluation_path = tmp_path / "retrieval_eval.json"
+    output = tmp_path / "retrieval_gate.json"
+    evaluation_path.write_text(
+        make_evaluation(
+            chunk_strategy_coverage={"visual_asset_text": 0.8},
+            retrieval_role_coverage={"child": 0.8},
+            chunk_strategy_excluded_hit_rate={"visual_asset_text": 0.5},
+            retrieval_role_excluded_hit_rate={"child": 0.5},
+        ).model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "gate-retrieval",
+            str(evaluation_path),
+            "--max-chunk-strategy-excluded-target-hit-rate",
+            "visual_asset_text=0.0",
+            "--max-retrieval-role-excluded-target-hit-rate",
+            "child=0.0",
+            "--output",
+            str(output),
+            "--no-fail",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "max_chunk_strategy_excluded_target_hit_rate:visual_asset_text" in result.output
+    assert "max_retrieval_role_excluded_target_hit_rate:child" in result.output
+    payload = output.read_text(encoding="utf-8")
+    assert "chunk_strategy.visual_asset_text.excluded_target_hit_rate" in payload
+    assert "retrieval_role.child.excluded_target_hit_rate" in payload
 
 
 def test_gate_retrieval_cli_checks_case_group_target_coverage(tmp_path):

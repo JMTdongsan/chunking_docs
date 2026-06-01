@@ -1002,27 +1002,38 @@ def hit_group_metrics(
     group_attr: str,
 ) -> dict[str, RetrievalSourceMetric]:
     total_expected_targets = sum(result.expected_target_count for result in results)
+    total_excluded_targets = sum(result.excluded_target_count for result in results)
     accumulators: dict[str, dict[str, Any]] = {}
 
     for result in results:
         groups_by_hit = getattr(result, group_attr, [])
         groups_seen_in_query: set[str] = set()
         relevant_groups_seen_in_query: set[str] = set()
+        excluded_groups_seen_in_query: set[str] = set()
         best_rank_by_group: dict[str, int] = {}
         matched_targets_by_group: dict[str, set[str]] = {}
+        excluded_targets_by_group: dict[str, set[str]] = {}
 
         for index, groups in enumerate(groups_by_hit):
             rank = index + 1
             matched_targets = set(result.top_matched_targets[index]) if index < len(result.top_matched_targets) else set()
+            excluded_targets = (
+                set(result.top_excluded_targets[index])
+                if index < len(result.top_excluded_targets)
+                else set()
+            )
             for group in groups:
                 accumulator = accumulators.setdefault(
                     group,
                     {
                         "query_count": 0,
                         "relevant_query_count": 0,
+                        "excluded_query_count": 0,
                         "hit_count": 0,
                         "relevant_hit_count": 0,
+                        "excluded_hit_count": 0,
                         "matched_target_count": 0,
+                        "excluded_matched_target_count": 0,
                         "rank_sum": 0,
                         "rank_count": 0,
                     },
@@ -1034,6 +1045,10 @@ def hit_group_metrics(
                     relevant_groups_seen_in_query.add(group)
                     best_rank_by_group[group] = min(best_rank_by_group.get(group, rank), rank)
                     matched_targets_by_group.setdefault(group, set()).update(matched_targets)
+                if excluded_targets:
+                    accumulator["excluded_hit_count"] += 1
+                    excluded_groups_seen_in_query.add(group)
+                    excluded_targets_by_group.setdefault(group, set()).update(excluded_targets)
 
         for group in groups_seen_in_query:
             accumulators[group]["query_count"] += 1
@@ -1041,22 +1056,37 @@ def hit_group_metrics(
             accumulators[group]["relevant_query_count"] += 1
             accumulators[group]["rank_sum"] += best_rank_by_group[group]
             accumulators[group]["rank_count"] += 1
+        for group in excluded_groups_seen_in_query:
+            accumulators[group]["excluded_query_count"] += 1
         for group, matched_targets in matched_targets_by_group.items():
             accumulators[group]["matched_target_count"] += len(matched_targets)
+        for group, excluded_targets in excluded_targets_by_group.items():
+            accumulators[group]["excluded_matched_target_count"] += len(excluded_targets)
 
     return {
         group: RetrievalSourceMetric(
             query_count=values["query_count"],
             relevant_query_count=values["relevant_query_count"],
+            excluded_query_count=values["excluded_query_count"],
             hit_count=values["hit_count"],
             relevant_hit_count=values["relevant_hit_count"],
+            excluded_hit_count=values["excluded_hit_count"],
             expected_target_count=total_expected_targets,
             matched_target_count=values["matched_target_count"],
+            excluded_target_count=total_excluded_targets,
+            excluded_matched_target_count=values["excluded_matched_target_count"],
             precision_at_hits=values["relevant_hit_count"] / values["hit_count"]
+            if values["hit_count"]
+            else 0.0,
+            excluded_precision_at_hits=values["excluded_hit_count"] / values["hit_count"]
             if values["hit_count"]
             else 0.0,
             target_coverage_at_k=values["matched_target_count"] / total_expected_targets
             if total_expected_targets
+            else 0.0,
+            excluded_target_hit_rate=values["excluded_matched_target_count"]
+            / total_excluded_targets
+            if total_excluded_targets
             else 0.0,
             mean_relevant_rank=values["rank_sum"] / values["rank_count"]
             if values["rank_count"]

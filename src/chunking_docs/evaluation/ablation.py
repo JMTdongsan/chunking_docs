@@ -29,6 +29,7 @@ from chunking_docs.evaluation.gate import (
     retrieval_source_metrics,
     retrieval_source_family_metrics,
     retrieval_target_metrics,
+    grouped_excluded_target_hit_rate_checks,
     source_excluded_target_hit_rate_checks,
     source_family_excluded_target_hit_rate_checks,
     source_metric_key,
@@ -463,6 +464,8 @@ def gate_retrieval_ablation(
     min_source_family_target_coverage: dict[str, float] | None = None,
     max_source_excluded_target_hit_rate: dict[str, float] | None = None,
     max_source_family_excluded_target_hit_rate: dict[str, float] | None = None,
+    max_chunk_strategy_excluded_target_hit_rate: dict[str, float] | None = None,
+    max_retrieval_role_excluded_target_hit_rate: dict[str, float] | None = None,
     min_case_group_target_coverage: dict[str, float] | None = None,
     min_recall_lift: float | None = None,
     min_target_coverage_lift: float | None = None,
@@ -639,6 +642,22 @@ def gate_retrieval_ablation(
         source_family_excluded_target_hit_rate_checks(
             metrics,
             max_source_family_excluded_target_hit_rate or {},
+        )
+    )
+    checks.extend(
+        grouped_excluded_target_hit_rate_checks(
+            metrics,
+            max_chunk_strategy_excluded_target_hit_rate or {},
+            metric_key_fn=chunk_strategy_metric_key,
+            check_prefix="max_chunk_strategy_excluded_target_hit_rate",
+        )
+    )
+    checks.extend(
+        grouped_excluded_target_hit_rate_checks(
+            metrics,
+            max_retrieval_role_excluded_target_hit_rate or {},
+            metric_key_fn=retrieval_role_metric_key,
+            check_prefix="max_retrieval_role_excluded_target_hit_rate",
         )
     )
     checks.extend(case_group_target_coverage_checks(metrics, min_case_group_target_coverage or {}))
@@ -1373,6 +1392,8 @@ def gate_qdrant_vector_ablation(
     min_source_family_target_coverage: dict[str, float] | None = None,
     max_source_excluded_target_hit_rate: dict[str, float] | None = None,
     max_source_family_excluded_target_hit_rate: dict[str, float] | None = None,
+    max_chunk_strategy_excluded_target_hit_rate: dict[str, float] | None = None,
+    max_retrieval_role_excluded_target_hit_rate: dict[str, float] | None = None,
     min_case_group_target_coverage: dict[str, float] | None = None,
     min_pairwise_shared_queries: int | None = None,
     min_pairwise_win_rate: float | None = None,
@@ -1535,6 +1556,22 @@ def gate_qdrant_vector_ablation(
         source_family_excluded_target_hit_rate_checks(
             metrics,
             max_source_family_excluded_target_hit_rate or {},
+        )
+    )
+    checks.extend(
+        grouped_excluded_target_hit_rate_checks(
+            metrics,
+            max_chunk_strategy_excluded_target_hit_rate or {},
+            metric_key_fn=chunk_strategy_metric_key,
+            check_prefix="max_chunk_strategy_excluded_target_hit_rate",
+        )
+    )
+    checks.extend(
+        grouped_excluded_target_hit_rate_checks(
+            metrics,
+            max_retrieval_role_excluded_target_hit_rate or {},
+            metric_key_fn=retrieval_role_metric_key,
+            check_prefix="max_retrieval_role_excluded_target_hit_rate",
         )
     )
     checks.extend(case_group_target_coverage_checks(metrics, min_case_group_target_coverage or {}))

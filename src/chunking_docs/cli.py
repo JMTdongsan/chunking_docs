@@ -1533,6 +1533,19 @@ def gate_qdrant_vector_ablation_command(
         "--max-source-family-excluded-target-hit-rate",
         help="Limit selected mode source-family excluded-target hit rate such as visual=0.0.",
     ),
+    max_chunk_strategy_excluded_target_hit_rate: list[str] = typer.Option(
+        None,
+        "--max-chunk-strategy-excluded-target-hit-rate",
+        help=(
+            "Limit selected mode chunking-strategy excluded-target hit rate such as "
+            "visual_asset_text=0.0."
+        ),
+    ),
+    max_retrieval_role_excluded_target_hit_rate: list[str] = typer.Option(
+        None,
+        "--max-retrieval-role-excluded-target-hit-rate",
+        help="Limit selected mode retrieval-role excluded-target hit rate such as child=0.0.",
+    ),
     min_case_group_target_coverage: list[str] = typer.Option(
         None,
         "--min-case-group-target-coverage",
@@ -1586,6 +1599,14 @@ def gate_qdrant_vector_ablation_command(
         max_source_family_excluded_target_hit_rate,
         "source family excluded-target hit rate",
     )
+    chunk_strategy_excluded_thresholds = parse_named_float_thresholds(
+        max_chunk_strategy_excluded_target_hit_rate,
+        "chunk strategy excluded-target hit rate",
+    )
+    retrieval_role_excluded_thresholds = parse_named_float_thresholds(
+        max_retrieval_role_excluded_target_hit_rate,
+        "retrieval role excluded-target hit rate",
+    )
     target_type_thresholds = parse_named_float_thresholds(
         min_target_type_coverage,
         "target type coverage",
@@ -1619,6 +1640,8 @@ def gate_qdrant_vector_ablation_command(
             min_source_family_target_coverage=source_family_thresholds,
             max_source_excluded_target_hit_rate=source_excluded_thresholds,
             max_source_family_excluded_target_hit_rate=source_family_excluded_thresholds,
+            max_chunk_strategy_excluded_target_hit_rate=chunk_strategy_excluded_thresholds,
+            max_retrieval_role_excluded_target_hit_rate=retrieval_role_excluded_thresholds,
             min_case_group_target_coverage=case_group_thresholds,
             min_pairwise_shared_queries=min_pairwise_shared_queries,
             min_pairwise_win_rate=min_pairwise_win_rate,
@@ -4536,6 +4559,19 @@ def gate_retrieval_ablation_command(
         "--max-source-family-excluded-target-hit-rate",
         help="Limit selected mode source-family excluded-target hit rate such as lexical=0.0.",
     ),
+    max_chunk_strategy_excluded_target_hit_rate: list[str] = typer.Option(
+        None,
+        "--max-chunk-strategy-excluded-target-hit-rate",
+        help=(
+            "Limit selected mode chunking-strategy excluded-target hit rate such as "
+            "visual_asset_text=0.0."
+        ),
+    ),
+    max_retrieval_role_excluded_target_hit_rate: list[str] = typer.Option(
+        None,
+        "--max-retrieval-role-excluded-target-hit-rate",
+        help="Limit selected mode retrieval-role excluded-target hit rate such as child=0.0.",
+    ),
     min_case_group_target_coverage: list[str] = typer.Option(
         None,
         "--min-case-group-target-coverage",
@@ -4594,6 +4630,14 @@ def gate_retrieval_ablation_command(
         max_source_family_excluded_target_hit_rate,
         "source family excluded-target hit rate",
     )
+    chunk_strategy_excluded_thresholds = parse_named_float_thresholds(
+        max_chunk_strategy_excluded_target_hit_rate,
+        "chunk strategy excluded-target hit rate",
+    )
+    retrieval_role_excluded_thresholds = parse_named_float_thresholds(
+        max_retrieval_role_excluded_target_hit_rate,
+        "retrieval role excluded-target hit rate",
+    )
     target_type_thresholds = parse_named_float_thresholds(
         min_target_type_coverage,
         "target type coverage",
@@ -4627,6 +4671,8 @@ def gate_retrieval_ablation_command(
             min_source_family_target_coverage=source_family_thresholds,
             max_source_excluded_target_hit_rate=source_excluded_thresholds,
             max_source_family_excluded_target_hit_rate=source_family_excluded_thresholds,
+            max_chunk_strategy_excluded_target_hit_rate=chunk_strategy_excluded_thresholds,
+            max_retrieval_role_excluded_target_hit_rate=retrieval_role_excluded_thresholds,
             min_case_group_target_coverage=case_group_thresholds,
             min_recall_lift=min_recall_lift,
             min_target_coverage_lift=min_target_coverage_lift,
@@ -4849,6 +4895,19 @@ def gate_retrieval_command(
         "--min-retrieval-role-target-coverage",
         help="Require retrieval-role target coverage such as child=0.8.",
     ),
+    max_chunk_strategy_excluded_target_hit_rate: list[str] = typer.Option(
+        None,
+        "--max-chunk-strategy-excluded-target-hit-rate",
+        help=(
+            "Limit chunking-strategy excluded-target hit rate such as "
+            "visual_asset_text=0.0."
+        ),
+    ),
+    max_retrieval_role_excluded_target_hit_rate: list[str] = typer.Option(
+        None,
+        "--max-retrieval-role-excluded-target-hit-rate",
+        help="Limit retrieval-role excluded-target hit rate such as child=0.0.",
+    ),
     min_case_group_target_coverage: list[str] = typer.Option(
         None,
         "--min-case-group-target-coverage",
@@ -4897,6 +4956,14 @@ def gate_retrieval_command(
         min_retrieval_role_target_coverage,
         "retrieval role target coverage",
     )
+    chunk_strategy_excluded_thresholds = parse_named_float_thresholds(
+        max_chunk_strategy_excluded_target_hit_rate,
+        "chunk strategy excluded-target hit rate",
+    )
+    retrieval_role_excluded_thresholds = parse_named_float_thresholds(
+        max_retrieval_role_excluded_target_hit_rate,
+        "retrieval role excluded-target hit rate",
+    )
     case_group_thresholds = parse_named_float_thresholds(
         min_case_group_target_coverage,
         "case group target coverage",
@@ -4932,6 +4999,8 @@ def gate_retrieval_command(
         max_source_family_excluded_target_hit_rate=source_family_excluded_thresholds,
         min_chunk_strategy_target_coverage=chunk_strategy_thresholds,
         min_retrieval_role_target_coverage=retrieval_role_thresholds,
+        max_chunk_strategy_excluded_target_hit_rate=chunk_strategy_excluded_thresholds,
+        max_retrieval_role_excluded_target_hit_rate=retrieval_role_excluded_thresholds,
         min_case_group_target_coverage=case_group_thresholds,
         max_recall_drop=max_recall_drop,
         max_target_coverage_drop=max_target_coverage_drop,
