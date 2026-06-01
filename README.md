@@ -659,6 +659,8 @@ chunking-docs generate-retrieval-cases \
   --query-mode question \
   --selection-strategy salience \
   --max-query-terms 3 \
+  --max-target-query-overlap-ratio 0.9 \
+  --max-target-query-overlap-terms 5 \
   --visual-probe-limit 20 \
   --image-probe-limit 20 \
   --object-probe-limit 20 \

@@ -7,6 +7,12 @@ from dataclasses import dataclass
 from typing import Literal
 
 from chunking_docs.embeddings.records import asset_text
+from chunking_docs.evaluation.case_audit import (
+    build_target_text_index,
+    distinct_query_terms,
+    target_query_overlap_ratio,
+    target_query_overlap_term_count_for_case,
+)
 from chunking_docs.evaluation.retrieval import CASE_GROUP_METADATA_KEYS, RetrievalCase
 from chunking_docs.graph.provenance import (
     chunk_asset_ids,
@@ -108,6 +114,9 @@ def generate_retrieval_case_skeleton(
     image_probe_limit: int = 0,
     object_probe_limit: int = 0,
     object_probe_visual_only: bool = True,
+    max_target_query_overlap_ratio: float | None = None,
+    max_target_query_overlap_terms: int | None = None,
+    min_terms_for_target_overlap: int = 4,
 ) -> list[RetrievalCase]:
     validate_casegen_options(query_mode, selection_strategy, min_query_terms, max_query_terms)
     corpus_texts = case_source_texts(chunks, assets, triples)
@@ -206,6 +215,15 @@ def generate_retrieval_case_skeleton(
         )
     if dedupe_queries:
         cases = dedupe_cases_by_query(cases)
+    cases = filter_cases_by_target_overlap(
+        cases,
+        chunks=chunks,
+        assets=assets,
+        triples=triples,
+        max_target_query_overlap_ratio=max_target_query_overlap_ratio,
+        max_target_query_overlap_terms=max_target_query_overlap_terms,
+        min_terms_for_target_overlap=min_terms_for_target_overlap,
+    )
     return cases
 
 
@@ -1223,6 +1241,38 @@ def dedupe_cases_by_query(cases: list[RetrievalCase]) -> list[RetrievalCase]:
         counts[key] += 1
         selected_by_query[key] = merge_retrieval_cases(existing, case, counts[key])
     return list(selected_by_query.values())
+
+
+def filter_cases_by_target_overlap(
+    cases: list[RetrievalCase],
+    chunks: list[DocumentChunk],
+    assets: list[VisualAsset],
+    triples: list[GraphTriple],
+    max_target_query_overlap_ratio: float | None = None,
+    max_target_query_overlap_terms: int | None = None,
+    min_terms_for_target_overlap: int = 4,
+) -> list[RetrievalCase]:
+    if max_target_query_overlap_ratio is None and max_target_query_overlap_terms is None:
+        return cases
+    target_text_index = build_target_text_index(chunks, assets, triples)
+    selected = []
+    for case in cases:
+        query_terms = distinct_query_terms(case.query)
+        if len(query_terms) < min_terms_for_target_overlap:
+            selected.append(case)
+            continue
+        ratio = target_query_overlap_ratio(case, query_terms, target_text_index)
+        term_count = target_query_overlap_term_count_for_case(
+            case,
+            query_terms,
+            target_text_index,
+        )
+        if max_target_query_overlap_ratio is not None and ratio > max_target_query_overlap_ratio:
+            continue
+        if max_target_query_overlap_terms is not None and term_count > max_target_query_overlap_terms:
+            continue
+        selected.append(case)
+    return selected
 
 
 def validate_casegen_options(

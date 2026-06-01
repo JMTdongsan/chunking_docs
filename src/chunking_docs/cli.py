@@ -4001,6 +4001,21 @@ def generate_retrieval_cases_command(
         "--object-probe-visual-only/--no-object-probe-visual-only",
         help="Use object probe terms that are not already present in linked chunk text.",
     ),
+    max_target_query_overlap_ratio: float | None = typer.Option(
+        None,
+        "--max-target-query-overlap-ratio",
+        help="Skip generated cases whose query terms overlap expected target text above this ratio.",
+    ),
+    max_target_query_overlap_terms: int | None = typer.Option(
+        None,
+        "--max-target-query-overlap-terms",
+        help="Skip generated cases whose query uses too many distinct terms from expected target text.",
+    ),
+    min_terms_for_target_overlap: int = typer.Option(
+        4,
+        "--min-terms-for-target-overlap",
+        help="Only apply generated-case target overlap filtering to queries with this many terms.",
+    ),
 ):
     """Generate retrieval benchmark JSONL drafts from package chunks, assets, and triples."""
     manifest = load_processing_package(package_dir)
@@ -4027,6 +4042,9 @@ def generate_retrieval_cases_command(
             image_probe_limit=image_probe_limit,
             object_probe_limit=object_probe_limit,
             object_probe_visual_only=object_probe_visual_only,
+            max_target_query_overlap_ratio=max_target_query_overlap_ratio,
+            max_target_query_overlap_terms=max_target_query_overlap_terms,
+            min_terms_for_target_overlap=min_terms_for_target_overlap,
         )
     except ValueError as exc:
         raise typer.BadParameter(str(exc)) from exc
@@ -4053,6 +4071,9 @@ def generate_retrieval_cases_command(
             "image_probe_limit": image_probe_limit,
             "object_probe_limit": object_probe_limit,
             "object_probe_visual_only": object_probe_visual_only,
+            "max_target_query_overlap_ratio": max_target_query_overlap_ratio,
+            "max_target_query_overlap_terms": max_target_query_overlap_terms,
+            "min_terms_for_target_overlap": min_terms_for_target_overlap,
             "include_todo": include_todo,
             "query_mode": query_mode,
             "selection_strategy": selection_strategy,

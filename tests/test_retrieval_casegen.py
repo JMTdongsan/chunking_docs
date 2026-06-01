@@ -279,6 +279,31 @@ def test_generate_retrieval_case_skeleton_can_use_question_queries():
     assert report.max_target_query_overlap_ratio <= 0.75
 
 
+def test_generate_retrieval_case_skeleton_can_filter_target_overlap_terms():
+    chunk = DocumentChunk(
+        chunk_id="chunk-1",
+        doc_id="doc",
+        page_start=1,
+        page_end=1,
+        kind=ChunkKind.TEXT,
+        text="Transit corridor station access evidence.",
+    )
+
+    cases = generate_retrieval_case_skeleton(
+        [chunk],
+        [],
+        [],
+        page_limit=1,
+        query_mode="question",
+        min_query_terms=3,
+        max_query_terms=3,
+        max_target_query_overlap_terms=1,
+        min_terms_for_target_overlap=2,
+    )
+
+    assert cases == []
+
+
 def test_generate_retrieval_case_skeleton_can_rank_by_salience():
     chunks = [
         DocumentChunk(
