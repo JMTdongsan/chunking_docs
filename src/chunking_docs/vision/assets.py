@@ -6,6 +6,7 @@ from typing import NamedTuple
 
 import fitz
 
+from chunking_docs.analysis.pdf_profile import page_profile_text_quality_metadata
 from chunking_docs.chunking.section_map import SectionRange, section_for_page
 from chunking_docs.models import AssetKind, PageProfile, TextQuality, VisualAsset
 
@@ -81,7 +82,7 @@ def build_page_assets(
                     caption=f"Full page render for page {page_no}",
                     metadata={
                         "asset_scope": "page",
-                        "text_quality": profile.text_quality,
+                        **page_profile_text_quality_metadata(profile),
                         "image_block_count": profile.image_block_count,
                         "embedded_image_count": profile.embedded_image_count,
                         "drawing_count": profile.drawing_count,
@@ -165,7 +166,7 @@ def build_page_tile_assets(
                             "tile_rows": rows,
                             "tile_cols": cols,
                             "tile_overlap_ratio": overlap_ratio,
-                            "text_quality": profile.text_quality,
+                            **page_profile_text_quality_metadata(profile),
                             "image_block_count": profile.image_block_count,
                             "embedded_image_count": profile.embedded_image_count,
                             "drawing_count": profile.drawing_count,

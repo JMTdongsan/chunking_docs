@@ -5,7 +5,11 @@ from pathlib import Path
 
 import fitz
 
-from chunking_docs.analysis.pdf_profile import classify_text_quality
+from chunking_docs.analysis.pdf_profile import (
+    page_profile_text_quality_metadata,
+    text_quality_analysis,
+    text_quality_metadata,
+)
 from chunking_docs.chunking.section_map import SectionRange, section_for_page
 from chunking_docs.models import ChunkKind, DocumentChunk, PageProfile, TextQuality
 
@@ -34,7 +38,11 @@ def page_level_chunks(
             page_no = index + 1
             profile = profile_map.get(page_no)
             text = clean_pdf_text(page.get_text("text") or "")
-            quality = profile.text_quality if profile else classify_text_quality(text)
+            if profile:
+                quality_metadata = page_profile_text_quality_metadata(profile)
+            else:
+                quality_metadata = text_quality_metadata(text_quality_analysis(text))
+            quality = quality_metadata["text_quality"]
             section = section_for_page(page_no, section_ranges)
 
             if quality == TextQuality.GOOD and text:
@@ -48,7 +56,7 @@ def page_level_chunks(
                         text=text,
                         section=section,
                         metadata={
-                            "text_quality": quality,
+                            **quality_metadata,
                             "section_label": section.label(),
                             "source": "pdf_text_layer",
                         },
@@ -66,7 +74,7 @@ def page_level_chunks(
                         text=f"[{reason}] OCR/VLM processing required for page {page_no}.",
                         section=section,
                         metadata={
-                            "text_quality": quality,
+                            **quality_metadata,
                             "section_label": section.label(),
                             "requires_ocr": True,
                             "requires_vlm": True,

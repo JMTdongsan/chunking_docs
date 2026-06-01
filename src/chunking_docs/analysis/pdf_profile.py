@@ -16,6 +16,14 @@ from chunking_docs.models import PageProfile, TextQuality
 CJK_RE = re.compile(r"[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af]")
 MIN_READABLE_CHAR_RATIO = 0.2
 MIN_READABLE_TEXT_LENGTH = 40
+TEXT_QUALITY_METADATA_KEYS = (
+    "text_quality",
+    "control_char_count",
+    "control_char_ratio",
+    "letter_or_number_ratio",
+    "cjk_char_ratio",
+    "text_quality_reasons",
+)
 
 
 def classify_text_quality(text: str) -> TextQuality:
@@ -58,6 +66,21 @@ def text_quality_analysis(text: str) -> dict[str, Any]:
 
 def is_control_character(char: str) -> bool:
     return unicodedata.category(char).startswith("C") and not char.isspace()
+
+
+def text_quality_metadata(analysis: dict[str, Any]) -> dict[str, Any]:
+    return {key: analysis[key] for key in TEXT_QUALITY_METADATA_KEYS if key in analysis}
+
+
+def page_profile_text_quality_metadata(profile: PageProfile) -> dict[str, Any]:
+    return {
+        "text_quality": profile.text_quality,
+        "control_char_count": profile.control_char_count,
+        "control_char_ratio": profile.control_char_ratio,
+        "letter_or_number_ratio": profile.letter_or_number_ratio,
+        "cjk_char_ratio": profile.cjk_char_ratio,
+        "text_quality_reasons": profile.text_quality_reasons,
+    }
 
 
 def profile_pdf(pdf_path: Path, doc_id: str) -> list[PageProfile]:

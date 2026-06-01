@@ -74,6 +74,9 @@ def test_build_page_tile_assets_renders_tiles(tmp_path):
         embedded_image_count=0,
         drawing_count=0,
         text_quality=TextQuality.EMPTY,
+        control_char_count=3,
+        control_char_ratio=0.2,
+        text_quality_reasons=["empty_text"],
     )
 
     assets = build_page_tile_assets(
@@ -93,6 +96,9 @@ def test_build_page_tile_assets_renders_tiles(tmp_path):
     assert assets[0].metadata["tile_rows"] == 2
     assert assets[0].metadata["tile_cols"] == 2
     assert assets[0].metadata["requires_ocr"] is True
+    assert assets[0].metadata["control_char_count"] == 3
+    assert assets[0].metadata["control_char_ratio"] == 0.2
+    assert assets[0].metadata["text_quality_reasons"] == ["empty_text"]
 
 
 def test_section_triples_from_chunk_metadata():
