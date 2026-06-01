@@ -517,6 +517,118 @@ def test_audit_package_validates_qdrant_target_coverage(tmp_path):
     assert "qdrant_missing_caption_asset_records" in codes
 
 
+def test_audit_package_detects_stale_qdrant_payload_text(tmp_path):
+    profiles = [
+        PageProfile(
+            doc_id="doc",
+            page_no=1,
+            width=1,
+            height=1,
+            char_count=10,
+            line_count=1,
+            text_block_count=1,
+            image_block_count=1,
+            embedded_image_count=1,
+            drawing_count=0,
+            text_quality=TextQuality.GOOD,
+        )
+    ]
+    chunks = [
+        DocumentChunk(
+            chunk_id="chunk-a",
+            doc_id="doc",
+            page_start=1,
+            page_end=1,
+            kind=ChunkKind.TEXT,
+            text="current chunk evidence",
+        )
+    ]
+    assets = [
+        VisualAsset(
+            asset_id="asset-a",
+            doc_id="doc",
+            page_no=1,
+            kind=AssetKind.FIGURE,
+            caption="current caption",
+            vlm_summary="current VLM object summary",
+            metadata={"objects": [{"label": "current object", "description": "visible marker"}]},
+        )
+    ]
+    (tmp_path / "qdrant_collection.json").write_text(
+        json.dumps(
+            {
+                "collection": "documents",
+                "named_vectors": {
+                    "text_dense": {"size": 2},
+                    "caption_dense": {"size": 2},
+                },
+                "payload_indexes": [
+                    {"field": field, "schema": "keyword"}
+                    for field in sorted(required_payload_indexes())
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    write_jsonl(
+        tmp_path / "qdrant_text_records.jsonl",
+        [
+            EmbeddingRecord(
+                point_id="text-a",
+                chunk_id="chunk-a",
+                doc_id="doc",
+                vector_name="text_dense",
+                vector=[1.0, 0.0],
+                payload={
+                    "chunk_id": "chunk-a",
+                    "doc_id": "doc",
+                    "page_start": 1,
+                    "page_end": 1,
+                    "kind": "text",
+                    "text": "old chunk evidence",
+                },
+            )
+        ],
+    )
+    write_jsonl(
+        tmp_path / "qdrant_caption_records.jsonl",
+        [
+            EmbeddingRecord(
+                point_id="caption-a",
+                chunk_id="asset-a",
+                doc_id="doc",
+                vector_name="caption_dense",
+                vector=[0.5, 0.5],
+                payload={
+                    "asset_id": "asset-a",
+                    "doc_id": "doc",
+                    "page_no": 1,
+                    "kind": "figure",
+                    "text": "old visual summary",
+                },
+            )
+        ],
+    )
+
+    audit = audit_package(
+        profiles,
+        chunks,
+        assets,
+        [],
+        package_dir=tmp_path,
+        require_qdrant_records=True,
+    )
+    codes = {issue.code for issue in audit.issues}
+
+    assert not audit.passed
+    assert "qdrant_stale_chunk_payload_text" in codes
+    assert "qdrant_stale_caption_asset_payload_text" in codes
+    stale_caption = next(
+        issue for issue in audit.issues if issue.code == "qdrant_stale_caption_asset_payload_text"
+    )
+    assert stale_caption.metadata["mismatches"][0]["id"] == "asset-a"
+
+
 def test_audit_package_validates_embedding_manifest_contract(tmp_path):
     profiles = [
         PageProfile(

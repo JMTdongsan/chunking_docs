@@ -765,6 +765,14 @@ def validate_qdrant_target_coverage(
             package_dir=package_dir,
             issues=issues,
         )
+        validate_target_payload_text(
+            vector_name="text_dense",
+            target_label="chunk",
+            payload_key="chunk_id",
+            expected_text_by_id={chunk.chunk_id: chunk.text for chunk in chunks},
+            package_dir=package_dir,
+            issues=issues,
+        )
     if "image_dense" in named_vectors:
         validate_target_record_ids(
             vector_name="image_dense",
@@ -775,11 +783,25 @@ def validate_qdrant_target_coverage(
             issues=issues,
         )
     if "caption_dense" in named_vectors:
+        caption_text_by_asset_id = {
+            asset.asset_id: text
+            for asset in assets
+            for text in [asset_text(asset)]
+            if text
+        }
         validate_target_record_ids(
             vector_name="caption_dense",
             target_label="caption_asset",
             payload_key="asset_id",
-            expected_ids={asset.asset_id for asset in assets if asset_text(asset)},
+            expected_ids=set(caption_text_by_asset_id),
+            package_dir=package_dir,
+            issues=issues,
+        )
+        validate_target_payload_text(
+            vector_name="caption_dense",
+            target_label="caption_asset",
+            payload_key="asset_id",
+            expected_text_by_id=caption_text_by_asset_id,
             package_dir=package_dir,
             issues=issues,
         )
@@ -831,6 +853,57 @@ def validate_target_record_ids(
                 },
             )
         )
+
+
+def validate_target_payload_text(
+    vector_name: str,
+    target_label: str,
+    payload_key: str,
+    expected_text_by_id: dict[str, str],
+    package_dir: Path,
+    issues: list[AuditIssue],
+) -> None:
+    record_file = package_dir / qdrant_record_filename(vector_name)
+    if not record_file.exists():
+        return
+    mismatches = []
+    for record in read_jsonl(record_file, EmbeddingRecord):
+        if record.vector_name != vector_name:
+            continue
+        target_id = record.payload.get(payload_key)
+        if target_id in {None, ""}:
+            continue
+        expected_text = expected_text_by_id.get(str(target_id))
+        if expected_text is None:
+            continue
+        actual_text = str(record.payload.get("text") or "")
+        if normalized_payload_text(actual_text) == normalized_payload_text(expected_text):
+            continue
+        mismatches.append(
+            {
+                "id": str(target_id),
+                "point_id": record.point_id,
+                "expected_text_chars": len(expected_text),
+                "actual_text_chars": len(actual_text),
+            }
+        )
+    if mismatches:
+        issues.append(
+            AuditIssue(
+                severity="error",
+                code=f"qdrant_stale_{target_label}_payload_text",
+                message=f"Some {vector_name} records have stale payload text for current {target_label} data.",
+                metadata={
+                    "vector_name": vector_name,
+                    "mismatches": mismatches[:50],
+                    "count": len(mismatches),
+                },
+            )
+        )
+
+
+def normalized_payload_text(text: str) -> str:
+    return " ".join(text.split())
 
 
 def normalize_payload_indexes(payload_indexes: list[str | dict[str, Any]]) -> set[str]:
