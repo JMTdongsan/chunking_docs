@@ -335,6 +335,8 @@ def build_ingestion_readiness_report(
                 passed=retrieval_gate.passed,
                 message="Retrieval evaluation meets configured quality thresholds.",
                 metadata={
+                    "check_count": len(retrieval_gate.checks),
+                    "checks": [check.model_dump() for check in retrieval_gate.checks],
                     "failed_checks": retrieval_gate.failed_checks,
                     "metrics": retrieval_gate.metrics,
                     "target_metrics": retrieval_gate.target_metrics,

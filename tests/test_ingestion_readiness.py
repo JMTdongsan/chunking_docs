@@ -986,6 +986,11 @@ def test_ingestion_readiness_can_gate_retrieval_source(tmp_path):
     assert report.retrieval_gate.source_metrics["qdrant:text_dense"]["target_coverage_at_k"] == 1.0
     assert report.retrieval_gate.source_family_metrics["dense_text"]["target_coverage_at_k"] == 1.0
     component = next(component for component in report.components if component.name == "retrieval_gate")
+    assert component.metadata["check_count"] == len(report.retrieval_gate.checks)
+    assert any(
+        check["name"] == "min_source_target_coverage:qdrant:text_dense"
+        for check in component.metadata["checks"]
+    )
     assert component.metadata["source_metrics"]["qdrant:text_dense"]["target_coverage_at_k"] == 1.0
     assert component.metadata["source_family_metrics"]["dense_text"]["target_coverage_at_k"] == 1.0
     assert report.failed_components == []
