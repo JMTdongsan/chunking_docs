@@ -1,9 +1,13 @@
+import json
+
+import pytest
 from typer.testing import CliRunner
 
 from chunking_docs.cli import app
 from chunking_docs.evaluation.gate import gate_retrieval_evaluation
 from chunking_docs.evaluation.retrieval import (
     RetrievalCaseGroupMetric,
+    RetrievalCaseResult,
     RetrievalEvaluation,
     RetrievalSourceMetric,
     RetrievalTargetMetric,
@@ -79,6 +83,42 @@ def test_retrieval_gate_passes_absolute_thresholds():
     assert report.passed is True
     assert report.failed_checks == []
     assert report.metrics["recall_at_k"] == 0.9
+
+
+def test_retrieval_gate_checks_target_rank_metrics():
+    evaluation = make_evaluation_with_rank_results()
+
+    report = gate_retrieval_evaluation(
+        evaluation,
+        max_mean_first_relevant_rank=2.0,
+        max_p95_first_relevant_rank=3.0,
+        max_mean_target_rank=3.0,
+        max_p95_target_rank=5.6,
+    )
+
+    assert report.passed is True
+    assert report.metrics["mean_first_relevant_rank"] == 2.0
+    assert report.metrics["p95_first_relevant_rank"] == pytest.approx(2.9)
+    assert report.metrics["mean_target_rank"] == 3.0
+    assert report.metrics["p95_target_rank"] == pytest.approx(5.6)
+    assert report.metrics["ranked_expected_case_count"] == 2.0
+    assert report.metrics["ranked_target_count"] == 3.0
+
+    failed = gate_retrieval_evaluation(
+        evaluation,
+        max_mean_first_relevant_rank=1.5,
+        max_p95_first_relevant_rank=2.0,
+        max_mean_target_rank=2.5,
+        max_p95_target_rank=5.0,
+    )
+
+    assert failed.passed is False
+    assert failed.failed_checks == [
+        "max_mean_first_relevant_rank",
+        "max_p95_first_relevant_rank",
+        "max_mean_target_rank",
+        "max_p95_target_rank",
+    ]
 
 
 def test_retrieval_gate_checks_target_type_coverage():
@@ -335,6 +375,93 @@ def test_gate_retrieval_cli_checks_target_type_coverage(tmp_path):
     assert "min_target_type_coverage:asset" in result.output
     payload = output.read_text(encoding="utf-8")
     assert "target_type.asset.coverage_at_k" in payload
+
+
+def test_gate_retrieval_cli_checks_target_rank_metrics(tmp_path):
+    evaluation_path = tmp_path / "retrieval_eval.json"
+    output = tmp_path / "retrieval_gate.json"
+    evaluation_path.write_text(make_evaluation_with_rank_results().model_dump_json(indent=2), encoding="utf-8")
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "gate-retrieval",
+            str(evaluation_path),
+            "--max-mean-target-rank",
+            "2.5",
+            "--output",
+            str(output),
+            "--no-fail",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "max_mean_target_rank" in result.output
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["metrics"]["mean_target_rank"] == 3.0
+    assert payload["failed_checks"] == ["max_mean_target_rank"]
+
+
+def make_evaluation_with_rank_results() -> RetrievalEvaluation:
+    return RetrievalEvaluation(
+        case_count=2,
+        expected_case_count=2,
+        passed_count=2,
+        failed_count=0,
+        hit_rate=1.0,
+        recall_at_k=1.0,
+        mrr=0.75,
+        target_coverage_at_k=2 / 3,
+        mean_target_ndcg_at_k=0.7,
+        mean_precision_at_k=0.5,
+        top_k=5,
+        mean_latency_ms=10.0,
+        p95_latency_ms=12.0,
+        target_metrics={},
+        source_family_metrics={},
+        failed_queries=[],
+        results=[
+            case_result(
+                query="first target",
+                expected_pages=[1],
+                expected_asset_ids=[],
+                matched_rank=1,
+                target_key_matched_ranks={"page:1": 1},
+            ),
+            case_result(
+                query="partial target",
+                expected_pages=[2],
+                expected_asset_ids=["asset-2"],
+                matched_rank=3,
+                target_key_matched_ranks={"page:2": 2},
+            ),
+        ],
+    )
+
+
+def case_result(
+    query: str,
+    expected_pages: list[int],
+    expected_asset_ids: list[str],
+    matched_rank: int,
+    target_key_matched_ranks: dict[str, int],
+) -> RetrievalCaseResult:
+    expected_target_count = len(expected_pages) + len(expected_asset_ids)
+    return RetrievalCaseResult(
+        query=query,
+        passed=True,
+        top_pages=[],
+        top_chunk_ids=[],
+        expected_pages=expected_pages,
+        expected_chunk_ids=[],
+        expected_asset_ids=expected_asset_ids,
+        expected_triple_ids=[],
+        expected_target_count=expected_target_count,
+        matched_target_count=len(target_key_matched_ranks),
+        matched_rank=matched_rank,
+        reciprocal_rank=1 / matched_rank,
+        target_key_matched_ranks=target_key_matched_ranks,
+    )
 
 
 def target_type_metric(target_coverage: float) -> RetrievalTargetMetric:

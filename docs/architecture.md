@@ -257,6 +257,8 @@ Fusion weights are also part of the retrieval experiment. Use `--fusion-weight` 
 
 Reranking is a separate experiment knob. Keep `--reranker`, `--rerank-top-k`, and the reranker model fixed when comparing chunking strategies unless the experiment is explicitly measuring reranking.
 
+Rank gates are separate from recall gates. `gate-retrieval` can cap mean or p95 first relevant rank and target rank, with missing expected targets counted as `top_k + 1`, so a run that technically retrieves the right evidence but buries it below stronger candidates can still fail.
+
 Use repeated retrieval evaluation when comparing strategies whose recall is similar. The latency fields are intended to show whether higher recall comes with an acceptable retrieval cost. Pairwise comparison metrics are computed on shared benchmark queries, so they should be used with a stable, reviewed retrieval-case set.
 
 For hierarchical candidates, enable parent collapse during `eval-retrieval`, `compare-chunking`, or `write-experiment-report` when the benchmark expects page-level or parent-level citation behavior.

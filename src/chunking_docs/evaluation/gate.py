@@ -40,6 +40,10 @@ def gate_retrieval_evaluation(
     min_target_ndcg_at_k: float = 0.0,
     min_mrr: float = 0.0,
     min_precision_at_k: float = 0.0,
+    max_mean_first_relevant_rank: float | None = None,
+    max_p95_first_relevant_rank: float | None = None,
+    max_mean_target_rank: float | None = None,
+    max_p95_target_rank: float | None = None,
     max_mean_latency_ms: float | None = None,
     max_p95_latency_ms: float | None = None,
     min_target_type_coverage: dict[str, float] | None = None,
@@ -102,6 +106,28 @@ def gate_retrieval_evaluation(
         checks.append(maximum_check("max_mean_latency_ms", "mean_latency_ms", metrics, max_mean_latency_ms))
     if max_p95_latency_ms is not None:
         checks.append(maximum_check("max_p95_latency_ms", "p95_latency_ms", metrics, max_p95_latency_ms))
+    if max_mean_first_relevant_rank is not None:
+        checks.append(
+            maximum_check(
+                "max_mean_first_relevant_rank",
+                "mean_first_relevant_rank",
+                metrics,
+                max_mean_first_relevant_rank,
+            )
+        )
+    if max_p95_first_relevant_rank is not None:
+        checks.append(
+            maximum_check(
+                "max_p95_first_relevant_rank",
+                "p95_first_relevant_rank",
+                metrics,
+                max_p95_first_relevant_rank,
+            )
+        )
+    if max_mean_target_rank is not None:
+        checks.append(maximum_check("max_mean_target_rank", "mean_target_rank", metrics, max_mean_target_rank))
+    if max_p95_target_rank is not None:
+        checks.append(maximum_check("max_p95_target_rank", "p95_target_rank", metrics, max_p95_target_rank))
     checks.extend(
         target_type_coverage_checks(
             metrics,
@@ -191,6 +217,7 @@ def retrieval_metrics(
         "mean_latency_ms": evaluation.mean_latency_ms,
         "p95_latency_ms": evaluation.p95_latency_ms,
     }
+    metrics.update(retrieval_rank_metrics(evaluation))
     for target_type, target_type_metrics in (target_metrics or {}).items():
         for key, value in target_type_metrics.items():
             metrics[target_type_metric_key(target_type, key)] = value
@@ -208,6 +235,74 @@ def retrieval_metrics(
             for key, value in group_metrics.items():
                 metrics[case_group_metric_key(group_name, group_value, key)] = value
     return metrics
+
+
+def retrieval_rank_metrics(evaluation: RetrievalEvaluation) -> dict[str, float]:
+    missing_rank = float(evaluation.top_k + 1)
+    expected_results = [result for result in evaluation.results if result.expected_target_count > 0]
+    if not expected_results:
+        if evaluation.expected_case_count <= 0:
+            return {
+                "mean_first_relevant_rank": 0.0,
+                "p95_first_relevant_rank": 0.0,
+                "mean_target_rank": 0.0,
+                "p95_target_rank": 0.0,
+            } | rank_count_metrics(expected_case_count=0, target_count=0)
+        target_count = sum(metric.target_count for metric in evaluation.target_metrics.values())
+        target_count = target_count or evaluation.expected_case_count
+        return {
+            "mean_first_relevant_rank": missing_rank,
+            "p95_first_relevant_rank": missing_rank,
+            "mean_target_rank": missing_rank,
+            "p95_target_rank": missing_rank,
+        } | rank_count_metrics(expected_case_count=evaluation.expected_case_count, target_count=int(target_count))
+
+    first_relevant_ranks = [
+        float(result.matched_rank) if result.matched_rank is not None else missing_rank
+        for result in expected_results
+    ]
+    target_ranks: list[float] = []
+    for result in expected_results:
+        for target in result_expected_target_keys(result):
+            target_ranks.append(float(result.target_key_matched_ranks.get(target, missing_rank)))
+    return {
+        "mean_first_relevant_rank": mean(first_relevant_ranks),
+        "p95_first_relevant_rank": percentile(first_relevant_ranks, 0.95),
+        "mean_target_rank": mean(target_ranks),
+        "p95_target_rank": percentile(target_ranks, 0.95),
+    } | rank_count_metrics(expected_case_count=len(expected_results), target_count=len(target_ranks))
+
+
+def rank_count_metrics(expected_case_count: int, target_count: int) -> dict[str, float]:
+    return {
+        "ranked_expected_case_count": float(expected_case_count),
+        "ranked_target_count": float(target_count),
+    }
+
+
+def result_expected_target_keys(result) -> list[str]:
+    keys = [f"page:{page}" for page in result.expected_pages]
+    keys.extend(f"chunk:{chunk_id}" for chunk_id in result.expected_chunk_ids)
+    keys.extend(f"asset:{asset_id}" for asset_id in result.expected_asset_ids)
+    keys.extend(f"triple:{triple_id}" for triple_id in result.expected_triple_ids)
+    return keys
+
+
+def mean(values: list[float]) -> float:
+    return sum(values) / len(values) if values else 0.0
+
+
+def percentile(values: list[float], quantile: float) -> float:
+    if not values:
+        return 0.0
+    ordered = sorted(values)
+    index = (len(ordered) - 1) * quantile
+    lower = int(index)
+    upper = min(lower + 1, len(ordered) - 1)
+    if lower == upper:
+        return ordered[lower]
+    fraction = index - lower
+    return ordered[lower] * (1 - fraction) + ordered[upper] * fraction
 
 
 def retrieval_target_metrics(

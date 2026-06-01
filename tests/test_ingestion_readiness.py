@@ -426,6 +426,26 @@ def test_ingestion_readiness_can_gate_retrieval_target_type(tmp_path):
     assert report.failed_components == []
 
 
+def test_ingestion_readiness_can_gate_retrieval_target_rank(tmp_path):
+    package_dir, manifest = write_ready_package(tmp_path)
+
+    report = build_ingestion_readiness_report(
+        package_dir,
+        manifest,
+        retrieval_evaluation=qdrant_vector_ablation_report().rows[1].evaluation,
+        retrieval_gate_options={
+            "max_mean_target_rank": 5.0,
+        },
+    )
+
+    assert report.passed is False
+    assert report.retrieval_gate is not None
+    assert report.retrieval_gate.metrics["mean_target_rank"] == 6.0
+    assert "max_mean_target_rank" in report.retrieval_gate.failed_checks
+    component = next(component for component in report.components if component.name == "retrieval_gate")
+    assert component.metadata["metrics"]["mean_target_rank"] == 6.0
+
+
 def test_ingestion_readiness_can_gate_visual_quality_from_assets(tmp_path):
     package_dir, manifest = write_ready_package(tmp_path)
     manifest.assets[0] = manifest.assets[0].model_copy(
