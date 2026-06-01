@@ -607,7 +607,7 @@ chunking-docs generate-retrieval-cases \
   --output outputs/package/retrieval_cases.skeleton.jsonl
 ```
 
-`--chunks` can point at a candidate chunk file so the same benchmark drafting logic can be run against semantic, multimodal, or hierarchical candidates. `--query-mode snippet` drafts queries from source text snippets. `--query-mode salient_terms` drafts harder keyword-style queries from document-frequency-weighted terms, and `--selection-strategy salience` prioritizes targets with more distinctive text. `--visual-probe-limit` adds asset-targeted probe cases whose query terms come from linked visual captions, OCR text, or VLM summaries after removing terms already present in the linked non-visual chunk text; these cases are useful for measuring whether visual text actually improves retrieval. `--object-probe-limit` adds separate `visual_object_probe` cases from structured VLM objects, detections, regions, attributes, locations, and bbox-bearing metadata so object detection output can be measured as its own case family. Object probes default to terms that are not already present in linked non-visual chunk text, which makes them better at isolating VLM object value; generated `Visual context:` blocks and `visual_asset_text` chunks do not suppress those probe terms. Use `--no-object-probe-visual-only` only when broad object-label coverage is preferred. Triple cases include visual asset targets when triples carry asset provenance, so generated benchmarks can measure graph and visual retrieval paths together. Duplicate query strings are merged by default so repeated tables, section labels, or graph triples become one case with multiple acceptable targets; use `--no-dedupe-queries` only when auditing duplicate behavior. Treat generated cases as reviewable drafts before using them as a benchmark gate.
+`--chunks` can point at a candidate chunk file so the same benchmark drafting logic can be run against semantic, multimodal, object-aware, or hierarchical candidates. `--query-mode snippet` drafts queries from source text snippets. `--query-mode salient_terms` drafts harder keyword-style queries from document-frequency-weighted terms, and `--selection-strategy salience` prioritizes targets with more distinctive text. `--visual-probe-limit` adds asset-targeted probe cases whose query terms come from linked visual captions, OCR text, or VLM summaries after removing terms already present in the linked non-visual chunk text; these cases are useful for measuring whether visual text actually improves retrieval. `--object-probe-limit` adds separate `visual_object_probe` cases from structured VLM objects, detections, regions, attributes, locations, and bbox-bearing metadata so object detection output can be measured as its own case family. Object probes default to terms that are not already present in linked non-visual chunk text, which makes them better at isolating VLM object value; generated `Visual context:` blocks and `visual_asset_text` chunks do not suppress those probe terms. Use `--no-object-probe-visual-only` only when broad object-label coverage is preferred. Triple cases include visual asset targets when triples carry asset provenance, so generated benchmarks can measure graph and visual retrieval paths together. Duplicate query strings are merged by default so repeated tables, section labels, or graph triples become one case with multiple acceptable targets; use `--no-dedupe-queries` only when auditing duplicate behavior. Treat generated cases as reviewable drafts before using them as a benchmark gate.
 
 ```jsonl
 {"query":"policy corridor near river","expected_pages":[12],"graph_expand":true}
@@ -666,6 +666,11 @@ chunking-docs build-chunk-strategy \
 
 chunking-docs build-chunk-strategy \
   --package-dir outputs/package \
+  --strategy object_aware \
+  --output outputs/package/chunks.object_aware.jsonl
+
+chunking-docs build-chunk-strategy \
+  --package-dir outputs/package \
   --strategy hierarchical \
   --output outputs/package/chunks.hierarchical.jsonl
 ```
@@ -678,6 +683,7 @@ chunking-docs compare-chunking \
   --candidate baseline=outputs/package/chunks.jsonl \
   --candidate semantic=outputs/package/chunks.semantic.jsonl \
   --candidate multimodal=outputs/package/chunks.multimodal.jsonl \
+  --candidate object_aware=outputs/package/chunks.object_aware.jsonl \
   --candidate hierarchical=outputs/package/chunks.hierarchical.jsonl \
   --collapse-hierarchical \
   --retrieval-repeat 3 \
@@ -715,14 +721,14 @@ chunking-docs gate-chunking-comparison outputs/package/chunking_comparison.json 
   --output outputs/package/chunking_comparison_gate.json
 ```
 
-The `multimodal` strategy keeps semantic text chunks, appends bounded visual context from linked captions, OCR, VLM summaries, and structured VLM metadata, and adds separate visual asset text chunks. Visual links are resolved from both `asset_ids` and `asset:` source refs, so annotations can remain provenance-oriented while still contributing to embedding text. Text-bearing visual assets without a linked parent chunk are emitted as standalone visual chunks instead of being dropped. The `hierarchical` strategy emits coarse parent chunks plus fine child chunks with shared visual context, which supports experiments where broad queries should find a page or section while precise queries should retrieve a smaller evidence span. `--collapse-hierarchical` reports the parent as the final hit while preserving matched child chunks as evidence. Comparison output includes recall@k, MRR, target coverage@k, target nDCG@k, precision@k, target rank metrics, target-type coverage, source-family target coverage, chunking-strategy coverage, retrieval-role coverage, linked visual text asset coverage, linked visual text part coverage, latency, failed queries, chunk size issues, query-paired baseline deltas, paired bootstrap confidence intervals, and the best candidate by quality and retrieval behavior. Pairwise gate options such as `--min-pairwise-win-rate`, `--min-pairwise-target-coverage-lift`, `--min-pairwise-target-ndcg-lift`, `--max-pairwise-mean-target-rank-delta`, `--max-pairwise-target-rank-delta-ci-high`, and `--max-pairwise-mean-latency-delta-ms` help distinguish broad aggregate gains from stable wins on the same benchmark queries.
+The `multimodal` strategy keeps semantic text chunks, appends bounded visual context from linked captions, OCR, VLM summaries, and structured VLM metadata, and adds separate visual asset text chunks. Visual links are resolved from both `asset_ids` and `asset:` source refs, so annotations can remain provenance-oriented while still contributing to embedding text. Text-bearing visual assets without a linked parent chunk are emitted as standalone visual chunks instead of being dropped. The `object_aware` strategy keeps the multimodal chunks and adds one `visual_object_text` chunk per normalized VLM object or detected region, preserving object ID, label, attributes, bbox region, source field, parent chunk, and asset provenance so object probes can be measured through BM25 and dense text retrieval as well as `object_dense`. The `hierarchical` strategy emits coarse parent chunks plus fine child chunks with shared visual context, which supports experiments where broad queries should find a page or section while precise queries should retrieve a smaller evidence span. `--collapse-hierarchical` reports the parent as the final hit while preserving matched child chunks as evidence. Comparison output includes recall@k, MRR, target coverage@k, target nDCG@k, precision@k, target rank metrics, target-type coverage, source-family target coverage, chunking-strategy coverage, retrieval-role coverage, linked visual text asset coverage, linked visual text part coverage, visual object chunk count, latency, failed queries, chunk size issues, query-paired baseline deltas, paired bootstrap confidence intervals, and the best candidate by quality and retrieval behavior. Pairwise gate options such as `--min-pairwise-win-rate`, `--min-pairwise-target-coverage-lift`, `--min-pairwise-target-ndcg-lift`, `--max-pairwise-mean-target-rank-delta`, `--max-pairwise-target-rank-delta-ci-high`, and `--max-pairwise-mean-latency-delta-ms` help distinguish broad aggregate gains from stable wins on the same benchmark queries.
 
 Run a parameter sweep when choosing defaults:
 
 ```bash
 chunking-docs sweep-chunking \
   --package-dir outputs/package \
-  --strategies semantic,multimodal,hierarchical \
+  --strategies semantic,multimodal,object_aware,hierarchical \
   --max-chars 1000 \
   --max-chars 1600 \
   --overlap-chars 100 \
@@ -740,6 +746,7 @@ chunking-docs sweep-chunking \
   --selection-max-mean-target-rank 3 \
   --selection-max-mean-latency-ms 150 \
   --selection-max-total-chunk-chars 1000000 \
+  --selection-max-visual-object-chunk-count 200 \
   --cases examples/retrieval_cases.jsonl \
   --output outputs/package/chunking_sweep.json
 ```

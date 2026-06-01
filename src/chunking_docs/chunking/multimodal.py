@@ -9,11 +9,11 @@ from chunking_docs.chunking.hierarchical import (
     tile_descriptor,
 )
 from chunking_docs.chunking.semantic_splitter import semantic_subchunks
-from chunking_docs.embeddings.records import asset_text
+from chunking_docs.embeddings.records import asset_text, visual_object_embedding_items
 from chunking_docs.graph.provenance import chunk_asset_ids
 from chunking_docs.models import ChunkKind, DocumentChunk, SectionPath, VisualAsset
 
-ChunkStrategy = Literal["page", "semantic", "multimodal", "hierarchical"]
+ChunkStrategy = Literal["page", "semantic", "multimodal", "object_aware", "hierarchical"]
 
 VISUAL_CHUNK_METADATA_KEYS = (
     "asset_scope",
@@ -74,6 +74,24 @@ def build_strategy_chunks(
             min_chars=min_chars,
         )
         return base + visual_asset_chunks(chunks, assets, include_context_prefix=include_context_prefix)
+    if strategy == "object_aware":
+        contextualized = contextualize_chunks(chunks, include_context_prefix=include_context_prefix)
+        visual_contextualized = add_visual_context_to_chunks(
+            contextualized,
+            assets,
+            max_chars=visual_context_chars,
+        )
+        base = semantic_subchunks(
+            visual_contextualized,
+            max_chars=max_chars,
+            overlap_chars=overlap_chars,
+            min_chars=min_chars,
+        )
+        return (
+            base
+            + visual_asset_chunks(chunks, assets, include_context_prefix=include_context_prefix)
+            + visual_object_chunks(chunks, assets, include_context_prefix=include_context_prefix)
+        )
     if strategy == "hierarchical":
         hierarchical_chunks = build_hierarchical_chunks(
             contextualize_chunks(chunks, include_context_prefix=include_context_prefix),
@@ -203,6 +221,67 @@ def visual_asset_chunks(
     return results
 
 
+def visual_object_chunks(
+    chunks: list[DocumentChunk],
+    assets: list[VisualAsset],
+    include_context_prefix: bool = True,
+    include_linked: bool = True,
+    include_unlinked: bool = True,
+) -> list[DocumentChunk]:
+    assets_by_id = {asset.asset_id: asset for asset in assets}
+    chunk_by_asset_id: dict[str, DocumentChunk] = {}
+    for chunk in chunks:
+        for asset_id in chunk_asset_ids(chunk):
+            chunk_by_asset_id.setdefault(asset_id, chunk)
+
+    results: list[DocumentChunk] = []
+    for item in visual_object_embedding_items(assets):
+        asset_id = str(item.get("asset_id") or "")
+        asset = assets_by_id.get(asset_id)
+        if asset is None:
+            continue
+        parent = chunk_by_asset_id.get(asset.asset_id)
+        if parent is None and not include_unlinked:
+            continue
+        if parent is not None and not include_linked:
+            continue
+        text = metadata_text(item.get("text"))
+        if not text:
+            continue
+        prefix = visual_asset_context_prefix(asset, parent) if include_context_prefix else ""
+        label = metadata_text(item.get("label"))
+        body = "\n".join(
+            part
+            for part in [
+                prefix,
+                f"Visual object: {label}" if label else "",
+                f"Visual asset kind: {asset.kind}",
+                f"Asset page: {asset.page_no}",
+                *visual_asset_descriptor_lines(asset),
+                text,
+            ]
+            if part
+        )
+        results.append(
+            DocumentChunk(
+                chunk_id=visual_object_chunk_id(
+                    parent.chunk_id if parent is not None else "unlinked",
+                    str(item["object_id"]),
+                ),
+                doc_id=parent.doc_id if parent is not None else asset.doc_id,
+                page_start=asset.page_no,
+                page_end=asset.page_no,
+                kind=asset_chunk_kind(asset),
+                text=body,
+                section=parent.section if parent is not None else SectionPath(),
+                asset_ids=[asset.asset_id],
+                source_refs=[f"asset:{asset.asset_id}", f"object:{item['object_id']}"],
+                metadata=visual_object_chunk_metadata(asset, item, parent),
+            )
+        )
+    return results
+
+
 def visual_asset_context_prefix(asset: VisualAsset, parent: DocumentChunk | None) -> str:
     if parent is not None:
         return context_prefix(parent)
@@ -222,6 +301,35 @@ def visual_asset_chunk_metadata(asset: VisualAsset, parent: DocumentChunk | None
         "asset_kind": str(asset.kind),
         "chunking_strategy": "visual_asset_text",
     }
+    if parent is not None:
+        metadata["parent_chunk_id"] = parent.chunk_id
+    else:
+        metadata["visual_asset_unlinked"] = True
+    return metadata
+
+
+def visual_object_chunk_metadata(
+    asset: VisualAsset,
+    item: dict,
+    parent: DocumentChunk | None,
+) -> dict:
+    metadata = {
+        **(parent.metadata if parent is not None else {}),
+        **visual_asset_payload_metadata(asset),
+        "asset_id": asset.asset_id,
+        "asset_kind": str(asset.kind),
+        "chunking_strategy": "visual_object_text",
+        "retrieval_role": "visual_object",
+        "record_kind": "visual_object",
+        "object_id": item.get("object_id"),
+        "object_index": item.get("object_index"),
+        "label": item.get("label"),
+        "object_label": item.get("label"),
+        "source_key": item.get("source_key"),
+    }
+    for key in ("attributes", "description", "location", "bbox", "bbox_region", "confidence"):
+        if not metadata_value_empty(item.get(key)):
+            metadata[key] = item[key]
     if parent is not None:
         metadata["parent_chunk_id"] = parent.chunk_id
     else:
@@ -279,7 +387,22 @@ def visual_chunk_id(parent_chunk_id: str, asset_id: str) -> str:
     return hashlib.sha256(raw).hexdigest()[:20]
 
 
+def visual_object_chunk_id(parent_chunk_id: str, object_id: str) -> str:
+    raw = f"{parent_chunk_id}:visual-object:{object_id}".encode("utf-8")
+    return hashlib.sha256(raw).hexdigest()[:20]
+
+
 def metadata_text(value) -> str:
     if value is None:
         return ""
     return str(value).strip()
+
+
+def metadata_value_empty(value) -> bool:
+    if value is None:
+        return True
+    if isinstance(value, str):
+        return not value.strip()
+    if isinstance(value, list | dict | tuple | set):
+        return len(value) == 0
+    return False

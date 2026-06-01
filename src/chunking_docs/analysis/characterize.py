@@ -476,11 +476,11 @@ def recommendations(
                 area="chunking",
                 priority="required",
                 message=(
-                    "Compare semantic, multimodal, and hierarchical chunk candidates with the same benchmark cases "
-                    "before changing default chunking settings."
+                    "Compare semantic, multimodal, object-aware, and hierarchical chunk candidates with the same "
+                    "benchmark cases before changing default chunking settings."
                 ),
                 commands=[
-                    "chunking-docs compare-chunking --package-dir outputs/package --candidate semantic=outputs/package/chunks.semantic.jsonl --candidate multimodal=outputs/package/chunks.multimodal.jsonl",
+                    "chunking-docs compare-chunking --package-dir outputs/package --candidate semantic=outputs/package/chunks.semantic.jsonl --candidate multimodal=outputs/package/chunks.multimodal.jsonl --candidate object_aware=outputs/package/chunks.object_aware.jsonl",
                     "chunking-docs gate-chunking-comparison outputs/package/chunking_comparison.json",
                 ],
                 metadata={

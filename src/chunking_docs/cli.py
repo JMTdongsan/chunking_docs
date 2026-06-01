@@ -4307,7 +4307,7 @@ def sweep_chunking_command(
     package_dir: Path = Path("outputs/package"),
     output: Path | None = None,
     candidates_dir: Path | None = None,
-    strategies: str = "semantic,multimodal,hierarchical",
+    strategies: str = "semantic,multimodal,object_aware,hierarchical",
     max_chars: list[int] = typer.Option(
         None,
         "--max-chars",
@@ -4439,6 +4439,11 @@ def sweep_chunking_command(
         "--selection-max-standalone-visual-chunk-count",
         help="Only recommend sweep candidates at or below this standalone visual chunk count.",
     ),
+    selection_max_visual_object_chunk_count: float | None = typer.Option(
+        None,
+        "--selection-max-visual-object-chunk-count",
+        help="Only recommend sweep candidates at or below this visual object chunk count.",
+    ),
     lexical_tokenizer: TokenizerStrategy = "mixed",
     ngram_min: int = 2,
     ngram_max: int = 4,
@@ -4480,6 +4485,7 @@ def sweep_chunking_command(
         "max_standalone_visual_chunk_count": (
             selection_max_standalone_visual_chunk_count
         ),
+        "max_visual_object_chunk_count": selection_max_visual_object_chunk_count,
     }
     selection_constraints.update(
         {
@@ -5588,7 +5594,7 @@ def parse_named_path_inputs(
 
 
 def parse_strategy_list(value: str) -> list[ChunkStrategy]:
-    allowed = {"page", "semantic", "multimodal", "hierarchical"}
+    allowed = {"page", "semantic", "multimodal", "object_aware", "hierarchical"}
     strategies = [item.strip() for item in value.split(",") if item.strip()]
     if not strategies:
         raise typer.BadParameter("--strategies must include at least one strategy")

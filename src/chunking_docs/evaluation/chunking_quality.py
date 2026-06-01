@@ -55,6 +55,7 @@ class ChunkingQualityReport(BaseModel):
     standalone_visual_chunk_count: int = 0
     standalone_visual_text_asset_count: int = 0
     standalone_visual_text_asset_ids: list[str] = Field(default_factory=list)
+    visual_object_chunk_count: int = 0
     retrieval: RetrievalEvaluation | None = None
     quality_score: float
     issues: list[QualityIssue] = Field(default_factory=list)
@@ -91,6 +92,11 @@ def evaluate_chunking_quality(
     visual_annotation = ratio(sum(1 for asset in assets if asset.ocr_text or asset.vlm_summary), len(assets))
     visual_text_coverage = visual_text_coverage_stats(chunks, assets)
     standalone_visual_text = standalone_visual_text_stats(chunks, assets)
+    visual_object_chunk_count = sum(
+        1
+        for chunk in chunks
+        if chunk.metadata.get("chunking_strategy") == "visual_object_text"
+    )
     retrieval = None
     if retrieval_cases:
         retrieval = evaluate_retrieval(
@@ -152,6 +158,7 @@ def evaluate_chunking_quality(
         standalone_visual_chunk_count=standalone_visual_text["chunk_count"],
         standalone_visual_text_asset_count=standalone_visual_text["asset_count"],
         standalone_visual_text_asset_ids=standalone_visual_text["asset_ids"],
+        visual_object_chunk_count=visual_object_chunk_count,
         retrieval=retrieval,
         quality_score=quality_score,
         issues=issues,

@@ -98,6 +98,7 @@ PARETO_LOWER_IS_BETTER = [
     "p95_chunk_chars",
     "embedding_text_kchars",
     "standalone_visual_chunk_count",
+    "visual_object_chunk_count",
 ]
 
 MIN_SELECTION_CONSTRAINTS = {
@@ -121,6 +122,7 @@ MAX_SELECTION_CONSTRAINTS = {
     "max_p95_chunk_chars": "p95_chunk_chars",
     "max_embedding_text_kchars": "embedding_text_kchars",
     "max_standalone_visual_chunk_count": "standalone_visual_chunk_count",
+    "max_visual_object_chunk_count": "visual_object_chunk_count",
 }
 
 DYNAMIC_MIN_SELECTION_PREFIXES = {
@@ -380,6 +382,7 @@ def selection_metrics(candidate: ChunkingSweepCandidate) -> dict[str, float | No
         "p95_chunk_chars": candidate.report.char_count.p95,
         "embedding_text_kchars": total_chunk_chars / 1000.0,
         "standalone_visual_chunk_count": float(candidate.report.standalone_visual_chunk_count),
+        "visual_object_chunk_count": float(candidate.report.visual_object_chunk_count),
     }
     add_retrieval_breakdown_metrics(metrics, retrieval)
     return metrics
@@ -504,7 +507,7 @@ def sweep_configs(
                     "overlap_chars": overlap_chars,
                     "min_chars": min_chars,
                 }
-                if strategy == "multimodal":
+                if strategy in {"multimodal", "object_aware"}:
                     for visual_context_chars in visual_context_chars_values:
                         add_unique_config(
                             configs,
@@ -555,7 +558,7 @@ def candidate_name(config: dict[str, Any]) -> str:
                 f"visual{config.get('visual_context_chars')}",
             ]
         )
-    elif strategy == "multimodal" and "visual_context_chars" in config:
+    elif strategy in {"multimodal", "object_aware"} and "visual_context_chars" in config:
         parts.append(f"visual{config.get('visual_context_chars')}")
     return safe_name("-".join(parts))
 

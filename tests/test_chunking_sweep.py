@@ -76,6 +76,43 @@ def test_multimodal_sweep_varies_visual_context_chars(tmp_path):
     assert any("visual120" in candidate.name for candidate in report.candidates)
 
 
+def test_object_aware_sweep_tracks_visual_object_chunk_cost(tmp_path):
+    manifest = make_manifest(tmp_path)
+    assets = [
+        asset.model_copy(
+            update={
+                "metadata": {
+                    "objects": [
+                        {"label": "station marker"},
+                        {"label": "route line"},
+                    ]
+                }
+            }
+        )
+        for asset in manifest.assets
+    ]
+
+    report = run_chunking_sweep(
+        chunks=manifest.chunks,
+        assets=assets,
+        profiles=manifest.profiles,
+        triples=manifest.triples,
+        strategies=["object_aware"],
+        max_chars_values=[200],
+        overlap_chars_values=[20],
+        min_chars=40,
+        visual_context_chars_values=[120],
+        selection_constraints={"max_visual_object_chunk_count": 1},
+    )
+
+    assert len(report.candidates) == 1
+    assert report.candidates[0].strategy == "object_aware"
+    assert report.candidates[0].report.visual_object_chunk_count == 2
+    assert report.selection.ranking[0].metrics["visual_object_chunk_count"] == 2.0
+    assert report.selection.ranking[0].failed_constraints == ["max_visual_object_chunk_count"]
+    assert report.selection.recommended is None
+
+
 def test_sweep_selection_constraints_filter_recommendation(tmp_path):
     manifest = make_manifest(tmp_path)
 

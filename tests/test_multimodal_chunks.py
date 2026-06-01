@@ -4,6 +4,7 @@ from chunking_docs.chunking.multimodal import (
     add_visual_context_to_chunks,
     build_strategy_chunks,
     visual_asset_chunks,
+    visual_object_chunks,
 )
 from chunking_docs.models import AssetKind, ChunkKind, DocumentChunk, SectionPath, VisualAsset
 
@@ -109,6 +110,84 @@ def test_multimodal_strategy_uses_structured_visual_metadata_as_context():
     assert len(chunks) == 2
     assert "Entities: transfer hub" in chunks[0].text
     assert "Objects: station marker: red circle" in chunks[1].text
+
+
+def test_object_aware_strategy_adds_visual_object_chunks():
+    chunk = DocumentChunk(
+        chunk_id="chunk-1",
+        doc_id="doc",
+        page_start=3,
+        page_end=3,
+        kind=ChunkKind.TEXT,
+        text="base text",
+        section=SectionPath(chapter="Strategy", section="Mobility"),
+        asset_ids=["asset-1"],
+    )
+    asset = VisualAsset(
+        asset_id="asset-1",
+        doc_id="doc",
+        page_no=3,
+        kind=AssetKind.MAP,
+        caption="corridor map",
+        metadata={
+            "objects": [
+                {
+                    "label": "station marker",
+                    "attributes": ["red circle"],
+                    "bbox": [0.1, 0.2, 0.3, 0.4],
+                }
+            ]
+        },
+    )
+
+    chunks = build_strategy_chunks([chunk], [asset], strategy="object_aware")
+    object_chunks = [
+        candidate
+        for candidate in chunks
+        if candidate.metadata.get("chunking_strategy") == "visual_object_text"
+    ]
+
+    assert len(chunks) == 3
+    assert len(object_chunks) == 1
+    object_chunk = object_chunks[0]
+    assert object_chunk.metadata["retrieval_role"] == "visual_object"
+    assert object_chunk.metadata["record_kind"] == "visual_object"
+    assert object_chunk.metadata["parent_chunk_id"] == "chunk-1"
+    assert object_chunk.metadata["asset_id"] == "asset-1"
+    assert object_chunk.metadata["object_id"] == "asset-1:object:0"
+    assert object_chunk.metadata["label"] == "station marker"
+    assert object_chunk.metadata["bbox_region"] == "upper left"
+    assert object_chunk.asset_ids == ["asset-1"]
+    assert object_chunk.source_refs == ["asset:asset-1", "object:asset-1:object:0"]
+    assert object_chunk.text.startswith("Section: Strategy > Mobility")
+    assert "Visual object: station marker" in object_chunk.text
+    assert "Object: station marker" in object_chunk.text
+    assert "Attributes: red circle" in object_chunk.text
+
+
+def test_visual_object_chunks_keep_unlinked_objects_searchable():
+    asset = VisualAsset(
+        asset_id="asset-1",
+        doc_id="doc",
+        page_no=4,
+        kind=AssetKind.FIGURE,
+        metadata={
+            "section_label": "Strategy > Access",
+            "detections": {"transfer deck": [0.2, 0.4, 0.5, 0.6]},
+        },
+    )
+
+    chunks = visual_object_chunks([], [asset])
+
+    assert len(chunks) == 1
+    object_chunk = chunks[0]
+    assert object_chunk.metadata["visual_asset_unlinked"] is True
+    assert object_chunk.metadata["chunking_strategy"] == "visual_object_text"
+    assert object_chunk.metadata["source_key"] == "detections"
+    assert object_chunk.metadata["bbox_region"] == "center"
+    assert object_chunk.asset_ids == ["asset-1"]
+    assert "Page range: 4-4" in object_chunk.text
+    assert "Object: transfer deck" in object_chunk.text
 
 
 def test_multimodal_strategy_uses_source_ref_visual_asset_links():

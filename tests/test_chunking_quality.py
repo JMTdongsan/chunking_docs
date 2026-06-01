@@ -65,6 +65,7 @@ def test_evaluate_chunking_quality_reports_retrieval_and_multimodal_metrics():
     assert report.visual_text_part_count == 1
     assert report.visual_text_covered_part_count == 1
     assert report.visual_text_part_coverage_ratio == 1.0
+    assert report.visual_object_chunk_count == 0
     assert report.retrieval is not None
     assert report.retrieval.hit_rate == 1.0
     assert report.retrieval.mrr == 1.0
@@ -269,3 +270,41 @@ def test_evaluate_chunking_quality_reports_standalone_visual_chunks():
     assert report.standalone_visual_chunk_count == 1
     assert report.standalone_visual_text_asset_count == 1
     assert report.standalone_visual_text_asset_ids == ["asset-1"]
+
+
+def test_evaluate_chunking_quality_counts_visual_object_chunks():
+    chunks = [
+        DocumentChunk(
+            chunk_id="object-1",
+            doc_id="doc",
+            page_start=1,
+            page_end=1,
+            kind=ChunkKind.MAP,
+            text="Object: station marker",
+            asset_ids=["asset-1"],
+            source_refs=["asset:asset-1", "object:asset-1:object:0"],
+            metadata={
+                "chunking_strategy": "visual_object_text",
+                "retrieval_role": "visual_object",
+                "object_id": "asset-1:object:0",
+            },
+        )
+    ]
+    assets = [
+        VisualAsset(
+            asset_id="asset-1",
+            doc_id="doc",
+            page_no=1,
+            kind=AssetKind.MAP,
+            metadata={"objects": [{"label": "station marker"}]},
+        )
+    ]
+
+    report = evaluate_chunking_quality(
+        chunks=chunks,
+        profiles=[],
+        assets=assets,
+        triples=[],
+    )
+
+    assert report.visual_object_chunk_count == 1
