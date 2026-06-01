@@ -211,6 +211,7 @@ def build_ingestion_readiness_report(
                 metadata={
                     "failed_checks": retrieval_case_audit.failed_checks,
                     "target_counts": retrieval_case_audit.target_counts,
+                    "case_group_counts": retrieval_case_audit.case_group_counts,
                     "missing_target_counts": retrieval_case_audit.missing_target_counts,
                 },
             )

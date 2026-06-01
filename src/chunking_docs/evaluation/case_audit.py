@@ -5,7 +5,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from chunking_docs.evaluation.retrieval import RetrievalCase
+from chunking_docs.evaluation.retrieval import RetrievalCase, case_group_labels, normalized_metric_label
 from chunking_docs.models import DocumentChunk, GraphTriple, PageProfile, VisualAsset
 
 _SPACE_RE = re.compile(r"\s+")
@@ -34,6 +34,7 @@ class RetrievalCaseAuditReport(BaseModel):
     case_count: int
     expected_case_count: int
     target_counts: dict[str, int] = Field(default_factory=dict)
+    case_group_counts: dict[str, dict[str, int]] = Field(default_factory=dict)
     graph_expand_count: int = 0
     duplicate_query_count: int = 0
     empty_query_count: int = 0
@@ -55,6 +56,7 @@ def audit_retrieval_cases(
     min_chunk_cases: int = 0,
     min_asset_cases: int = 0,
     min_triple_cases: int = 0,
+    min_case_group_counts: dict[str, int] | None = None,
     max_duplicate_queries: int = 0,
     max_issues: int = 200,
 ) -> RetrievalCaseAuditReport:
@@ -64,6 +66,7 @@ def audit_retrieval_cases(
     triple_ids = {triple.triple_id for triple in triples}
     issues: list[RetrievalCaseAuditIssue] = []
     target_counts = {"page": 0, "chunk": 0, "asset": 0, "triple": 0}
+    group_counts = count_case_groups(cases)
     missing_target_counts = {"page": 0, "chunk": 0, "asset": 0, "triple": 0}
     normalized_queries: dict[str, list[int]] = {}
 
@@ -180,12 +183,14 @@ def audit_retrieval_cases(
         min_check("min_triple_cases", "triple_cases", metrics, min_triple_cases),
         max_check("max_duplicate_queries", "duplicate_query_count", metrics, max_duplicate_queries),
     ]
+    checks.extend(case_group_count_checks(group_counts, min_case_group_counts or {}))
     failed_checks = [check.name for check in checks if not check.passed]
     return RetrievalCaseAuditReport(
         passed=not failed_checks and not any(item.severity == "error" for item in issues),
         case_count=len(cases),
         expected_case_count=sum(1 for case in cases if has_expected_target(case)),
         target_counts=target_counts,
+        case_group_counts=group_counts,
         graph_expand_count=sum(1 for case in cases if case.graph_expand),
         duplicate_query_count=duplicate_query_count,
         empty_query_count=sum(1 for case in cases if not case.query.strip()),
@@ -195,6 +200,47 @@ def audit_retrieval_cases(
         checks=checks,
         issues=issues,
     )
+
+
+def count_case_groups(cases: list[RetrievalCase]) -> dict[str, dict[str, int]]:
+    counts: dict[str, dict[str, int]] = {}
+    for case in cases:
+        for group_name, group_value in case_group_labels(case):
+            counts.setdefault(group_name, {}).setdefault(group_value, 0)
+            counts[group_name][group_value] += 1
+    return {
+        group_name: dict(sorted(values.items()))
+        for group_name, values in sorted(counts.items())
+    }
+
+
+def case_group_count_checks(
+    group_counts: dict[str, dict[str, int]],
+    thresholds: dict[str, int],
+) -> list[RetrievalCaseAuditCheck]:
+    checks = []
+    for group_spec, threshold in sorted(thresholds.items()):
+        group_name, group_value = parse_case_group_count_spec(group_spec)
+        actual = group_counts.get(group_name, {}).get(group_value, 0)
+        checks.append(
+            RetrievalCaseAuditCheck(
+                name=f"min_case_group_count:{group_name}:{group_value}",
+                metric=f"case_group.{group_name}.{group_value}.case_count",
+                operator=">=",
+                actual=actual,
+                threshold=threshold,
+                passed=actual >= threshold,
+            )
+        )
+    return checks
+
+
+def parse_case_group_count_spec(value: str) -> tuple[str, str]:
+    if ":" in value:
+        group_name, group_value = value.split(":", 1)
+    else:
+        group_name, group_value = "case_source", value
+    return normalized_metric_label(group_name), normalized_metric_label(group_value)
 
 
 def known_pages(profiles: list[PageProfile], chunks: list[DocumentChunk]) -> set[int]:

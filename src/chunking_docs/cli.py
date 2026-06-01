@@ -2325,6 +2325,11 @@ def ingestion_readiness_command(
     min_chunk_cases: int = 0,
     min_asset_cases: int = 0,
     min_triple_cases: int = 0,
+    min_retrieval_case_group_count: list[str] = typer.Option(
+        None,
+        "--min-retrieval-case-group-count",
+        help="Require retrieval case metadata group counts such as case_source:visual_object_probe=5.",
+    ),
     max_duplicate_queries: int = 0,
     retrieval_evaluation: Path | None = None,
     require_retrieval_evaluation: bool = False,
@@ -2490,6 +2495,10 @@ def ingestion_readiness_command(
         min_retrieval_case_group_target_coverage,
         "retrieval case group target coverage",
     )
+    retrieval_case_group_count_thresholds = parse_named_int_thresholds(
+        min_retrieval_case_group_count,
+        "retrieval case group count",
+    )
     chunking_source_family_thresholds = parse_named_float_thresholds(
         min_chunking_source_family_target_coverage,
         "chunking source family target coverage",
@@ -2549,6 +2558,7 @@ def ingestion_readiness_command(
             "min_chunk_cases": min_chunk_cases,
             "min_asset_cases": min_asset_cases,
             "min_triple_cases": min_triple_cases,
+            "min_case_group_counts": retrieval_case_group_count_thresholds,
             "max_duplicate_queries": max_duplicate_queries,
         },
         retrieval_evaluation=parsed_retrieval,
@@ -2868,6 +2878,11 @@ def audit_retrieval_cases_command(
     min_chunk_cases: int = 0,
     min_asset_cases: int = 0,
     min_triple_cases: int = 0,
+    min_case_group_count: list[str] = typer.Option(
+        None,
+        "--min-case-group-count",
+        help="Require retrieval case metadata group counts such as case_source:visual_object_probe=5.",
+    ),
     max_duplicate_queries: int = 0,
     fail: bool = typer.Option(
         True,
@@ -2878,6 +2893,10 @@ def audit_retrieval_cases_command(
     """Validate retrieval benchmark cases against package targets and target-family coverage."""
     manifest = load_processing_package(package_dir)
     parsed_cases = load_retrieval_cases(cases)
+    case_group_thresholds = parse_named_int_thresholds(
+        min_case_group_count,
+        "case group count",
+    )
     report = audit_retrieval_cases(
         parsed_cases,
         profiles=manifest.profiles,
@@ -2889,6 +2908,7 @@ def audit_retrieval_cases_command(
         min_chunk_cases=min_chunk_cases,
         min_asset_cases=min_asset_cases,
         min_triple_cases=min_triple_cases,
+        min_case_group_counts=case_group_thresholds,
         max_duplicate_queries=max_duplicate_queries,
     )
     payload = report.model_dump()
@@ -2900,6 +2920,7 @@ def audit_retrieval_cases_command(
             "passed": report.passed,
             "case_count": report.case_count,
             "target_counts": report.target_counts,
+            "case_group_counts": report.case_group_counts,
             "missing_target_counts": report.missing_target_counts,
             "failed_checks": report.failed_checks,
         }
@@ -4163,6 +4184,28 @@ def parse_named_float_thresholds(
             value = float(raw_value.strip())
         except ValueError as exc:
             raise typer.BadParameter(f"{label} for {name} must be numeric") from exc
+        if value < 0:
+            raise typer.BadParameter(f"{label} for {name} must be non-negative")
+        thresholds[name] = value
+    return thresholds
+
+
+def parse_named_int_thresholds(
+    specs: list[str] | None = None,
+    label: str = "threshold",
+) -> dict[str, int]:
+    thresholds: dict[str, int] = {}
+    for spec in specs or []:
+        if "=" not in spec:
+            raise typer.BadParameter(f"{label} must use name=value")
+        name, raw_value = spec.split("=", 1)
+        name = name.strip()
+        if not name:
+            raise typer.BadParameter(f"{label} name must not be empty")
+        try:
+            value = int(raw_value.strip())
+        except ValueError as exc:
+            raise typer.BadParameter(f"{label} for {name} must be an integer") from exc
         if value < 0:
             raise typer.BadParameter(f"{label} for {name} must be non-negative")
         thresholds[name] = value

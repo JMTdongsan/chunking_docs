@@ -22,9 +22,23 @@ from chunking_docs.models import (
 def test_audit_retrieval_cases_passes_valid_target_distribution():
     profiles, chunks, assets, triples = package_records()
     cases = [
-        RetrievalCase(query="overview target", expected_pages=[1], expected_chunk_ids=["chunk-1"]),
-        RetrievalCase(query="visual target", expected_asset_ids=["asset-1"]),
-        RetrievalCase(query="graph target", expected_triple_ids=["triple-1"], graph_expand=True),
+        RetrievalCase(
+            query="overview target",
+            expected_pages=[1],
+            expected_chunk_ids=["chunk-1"],
+            metadata={"case_source": "page"},
+        ),
+        RetrievalCase(
+            query="visual target",
+            expected_asset_ids=["asset-1"],
+            metadata={"case_source": "visual_object_probe", "modality": "vision_object"},
+        ),
+        RetrievalCase(
+            query="graph target",
+            expected_triple_ids=["triple-1"],
+            graph_expand=True,
+            metadata={"case_source": "triple"},
+        ),
     ]
 
     report = audit_retrieval_cases(
@@ -37,10 +51,14 @@ def test_audit_retrieval_cases_passes_valid_target_distribution():
         min_page_cases=1,
         min_asset_cases=1,
         min_triple_cases=1,
+        min_case_group_counts={"case_source:visual_object_probe": 1, "modality:vision_object": 1},
     )
 
     assert report.passed is True
     assert report.target_counts == {"page": 1, "chunk": 1, "asset": 1, "triple": 1}
+    assert report.case_group_counts["case_source"]["visual_object_probe"] == 1
+    assert report.case_group_counts["modality"]["vision_object"] == 1
+    assert report.case_group_counts["graph_expand"]["true"] == 1
     assert report.missing_target_counts == {"page": 0, "chunk": 0, "asset": 0, "triple": 0}
 
 
@@ -75,6 +93,35 @@ def test_audit_retrieval_cases_flags_bad_cases():
     assert "max_duplicate_queries" in report.failed_checks
 
 
+def test_audit_retrieval_cases_checks_case_group_counts():
+    profiles, chunks, assets, triples = package_records()
+    cases = [
+        RetrievalCase(
+            query="visual target",
+            expected_asset_ids=["asset-1"],
+            metadata={"case_source": "visual_lexical_probe"},
+        )
+    ]
+
+    report = audit_retrieval_cases(
+        cases,
+        profiles=profiles,
+        chunks=chunks,
+        assets=assets,
+        triples=triples,
+        min_case_group_counts={"case_source:visual_object_probe": 1},
+    )
+
+    assert report.passed is False
+    assert "min_case_group_count:case_source:visual_object_probe" in report.failed_checks
+    check = next(
+        check
+        for check in report.checks
+        if check.name == "min_case_group_count:case_source:visual_object_probe"
+    )
+    assert check.actual == 0
+
+
 def test_audit_retrieval_cases_cli_writes_report(tmp_path):
     package_dir = write_package(tmp_path)
     cases_path = tmp_path / "cases.jsonl"
@@ -82,8 +129,16 @@ def test_audit_retrieval_cases_cli_writes_report(tmp_path):
     write_jsonl(
         cases_path,
         [
-            RetrievalCase(query="overview target", expected_pages=[1]),
-            RetrievalCase(query="visual target", expected_asset_ids=["asset-1"]),
+            RetrievalCase(
+                query="overview target",
+                expected_pages=[1],
+                metadata={"case_source": "page"},
+            ),
+            RetrievalCase(
+                query="visual target",
+                expected_asset_ids=["asset-1"],
+                metadata={"case_source": "visual_object_probe"},
+            ),
         ],
     )
 
@@ -100,6 +155,8 @@ def test_audit_retrieval_cases_cli_writes_report(tmp_path):
             "1",
             "--min-asset-cases",
             "1",
+            "--min-case-group-count",
+            "case_source:visual_object_probe=1",
             "--output",
             str(output_path),
         ],
@@ -109,6 +166,7 @@ def test_audit_retrieval_cases_cli_writes_report(tmp_path):
     payload = json.loads(output_path.read_text(encoding="utf-8"))
     assert payload["passed"] is True
     assert payload["target_counts"]["asset"] == 1
+    assert payload["case_group_counts"]["case_source"]["visual_object_probe"] == 1
 
 
 def write_package(tmp_path):
