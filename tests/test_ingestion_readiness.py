@@ -1979,6 +1979,56 @@ def test_ingestion_readiness_cli_can_require_runtime_report(tmp_path):
     assert component["metadata"]["torch_cuda_compute_capabilities"] == ["12.0"]
 
 
+def test_ingestion_readiness_cli_reports_missing_runtime_report_path(tmp_path):
+    package_dir, _ = write_ready_package(tmp_path)
+    output = tmp_path / "readiness.json"
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "ingestion-readiness",
+            "--package-dir",
+            str(package_dir),
+            "--runtime-report",
+            str(tmp_path / "missing_runtime_doctor.json"),
+            "--require-runtime-report",
+            "--output",
+            str(output),
+            "--no-fail",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["passed"] is False
+    assert "runtime_report" in payload["failed_components"]
+
+
+def test_ingestion_readiness_cli_reports_missing_chunking_comparison_path(tmp_path):
+    package_dir, _ = write_ready_package(tmp_path)
+    output = tmp_path / "readiness.json"
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "ingestion-readiness",
+            "--package-dir",
+            str(package_dir),
+            "--chunking-comparison",
+            str(tmp_path / "missing_chunking_sweep.json"),
+            "--require-chunking-comparison",
+            "--output",
+            str(output),
+            "--no-fail",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["passed"] is False
+    assert "chunking_comparison_gate" in payload["failed_components"]
+
+
 def test_ingestion_readiness_cli_can_gate_qdrant_vector_ablation(tmp_path):
     package_dir, _ = write_ready_package(tmp_path)
     ablation_path = tmp_path / "qdrant_vector_ablation.json"

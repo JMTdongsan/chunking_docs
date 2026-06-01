@@ -69,6 +69,7 @@ class RetrievalCaseAuditReport(BaseModel):
     case_group_counts: dict[str, dict[str, int]] = Field(default_factory=dict)
     case_group_distinct_target_counts: dict[str, dict[str, dict[str, int]]] = Field(default_factory=dict)
     case_group_max_cases_per_target: dict[str, dict[str, dict[str, int]]] = Field(default_factory=dict)
+    table_probe_count: int = 0
     visual_object_probe_count: int = 0
     visual_only_object_probe_count: int = 0
     non_visual_only_object_probe_count: int = 0
@@ -586,6 +587,7 @@ def audit_retrieval_cases(
         case_group_counts=group_counts,
         case_group_distinct_target_counts=group_distinct_target_counts,
         case_group_max_cases_per_target=group_max_cases_per_target,
+        table_probe_count=count_table_probes(cases),
         visual_object_probe_count=visual_object_probe_counts["total"],
         visual_only_object_probe_count=visual_object_probe_counts["visual_only"],
         non_visual_only_object_probe_count=visual_object_probe_counts["non_visual_only"],
@@ -870,6 +872,10 @@ def count_visual_object_probes(cases: list[RetrievalCase]) -> dict[str, int]:
 
 def count_visual_image_probes(cases: list[RetrievalCase]) -> int:
     return sum(1 for case in cases if is_visual_image_probe(case))
+
+
+def count_table_probes(cases: list[RetrievalCase]) -> int:
+    return sum(1 for case in cases if ("case_source", "table_probe") in case_group_labels(case))
 
 
 def is_visual_image_probe(case: RetrievalCase) -> bool:

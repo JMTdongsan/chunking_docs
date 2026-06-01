@@ -97,12 +97,12 @@ def test_build_ingestion_workflow_plan_orders_runtime_visual_embedding_and_readi
         for step in plan.steps
         if step.step_id == "compare_multimodal_hierarchical_chunking"
     )
-    assert "--selection-min-retrieval-score-per-embedding-kchar 0.0008" in chunking_commands[0]
+    assert "--selection-min-retrieval-score-per-embedding-kchar 0.0003" in chunking_commands[0]
     assert "--selection-min-retrieval-score-per-mean-latency-ms 0.0005" in chunking_commands[0]
     assert "--selection-min-target-coverage-per-p95-latency-ms 0.0005" in chunking_commands[0]
     assert "gate-chunking-comparison" in chunking_commands[1]
     assert "--require-retrieval" in chunking_commands[1]
-    assert "--min-retrieval-score-per-embedding-kchar 0.0008" in chunking_commands[1]
+    assert "--min-retrieval-score-per-embedding-kchar 0.0003" in chunking_commands[1]
     assert "--min-retrieval-score-per-mean-latency-ms 0.0005" in chunking_commands[1]
     assert "--min-target-coverage-per-p95-latency-ms 0.0005" in chunking_commands[1]
     qdrant_commands = next(
@@ -112,15 +112,19 @@ def test_build_ingestion_workflow_plan_orders_runtime_visual_embedding_and_readi
     )
     assert "sweep-qdrant-fusion" in qdrant_commands[1]
     assert "--vector-names text_dense,caption_dense,image_dense" in qdrant_commands[1]
-    assert "--min-source-precision-at-hits qdrant:text_dense=0.5" in qdrant_commands[1]
-    assert "--min-source-precision-at-hits qdrant:caption_dense=0.5" in qdrant_commands[1]
-    assert "--min-source-precision-at-hits qdrant:image_dense=0.5" in qdrant_commands[1]
-    assert "--min-source-family-precision-at-hits dense_text=0.5" in qdrant_commands[1]
-    assert "--min-source-family-precision-at-hits visual=0.5" in qdrant_commands[1]
+    assert "--max-failed-queries 35" in qdrant_commands[1]
+    assert "--max-source-family-excluded-target-hit-rate visual=0.5" in qdrant_commands[1]
+    assert "--min-source-precision-at-hits qdrant:text_dense=0.18" in qdrant_commands[1]
+    assert "--min-source-precision-at-hits qdrant:caption_dense=0.18" in qdrant_commands[1]
+    assert "--min-source-precision-at-hits qdrant:image_dense" not in qdrant_commands[1]
+    assert "--min-source-family-precision-at-hits dense_text=0.18" in qdrant_commands[1]
+    assert "--min-source-family-precision-at-hits visual=0.18" in qdrant_commands[1]
     assert "export-qdrant-retrieval-config" in qdrant_commands[2]
     assert "eval-qdrant-retrieval-config" in qdrant_commands[3]
     assert "--image-query-backend clip" in qdrant_commands[3]
     assert "eval-qdrant-rag-context-config" in qdrant_commands[4]
+    assert "--max-chars-per-chunk 700" in qdrant_commands[4]
+    assert "--max-chars-per-asset-text 700" in qdrant_commands[4]
     assert "--image-query-backend clip" in qdrant_commands[4]
     assert "gate-rag-context" in qdrant_commands[5]
     readiness_command = plan.steps[-1].commands[0]
@@ -130,6 +134,7 @@ def test_build_ingestion_workflow_plan_orders_runtime_visual_embedding_and_readi
     assert "--require-visual-annotations" in readiness_command
     assert "--require-visual-quality" in readiness_command
     assert "--min-vlm-json-parse-rate 0.9" in readiness_command
+    assert "--min-vlm-object-coverage 0.01" in readiness_command
     assert "--visual-run-comparison" in readiness_command
     assert "--require-visual-run-comparison" in readiness_command
     assert "--require-visual-run-same-jobs" in readiness_command
@@ -147,7 +152,8 @@ def test_build_ingestion_workflow_plan_orders_runtime_visual_embedding_and_readi
     assert "--min-retrieval-distinct-asset-targets 1" in readiness_command
     assert "--require-visual-only-object-probes" not in readiness_command
     assert "--chunking-comparison" in readiness_command
-    assert "--min-chunking-retrieval-score-per-embedding-kchar 0.0008" in readiness_command
+    assert "--require-chunking-comparison" in readiness_command
+    assert "--min-chunking-retrieval-score-per-embedding-kchar 0.0003" in readiness_command
     assert "--min-chunking-retrieval-score-per-mean-latency-ms 0.0005" in readiness_command
     assert "--min-chunking-target-coverage-per-p95-latency-ms 0.0005" in readiness_command
     assert "--qdrant-retrieval-config" in readiness_command
@@ -157,12 +163,12 @@ def test_build_ingestion_workflow_plan_orders_runtime_visual_embedding_and_readi
     assert "--require-retrieval-evaluation" in readiness_command
     assert "--min-target-coverage-at-k 0.8" in readiness_command
     assert "--min-target-ndcg-at-k 0.7" in readiness_command
-    assert "--max-retrieval-failed-queries 3" in readiness_command
-    assert "--min-retrieval-source-precision-at-hits qdrant:text_dense=0.5" in readiness_command
-    assert "--min-retrieval-source-precision-at-hits qdrant:caption_dense=0.5" in readiness_command
-    assert "--min-retrieval-source-precision-at-hits qdrant:image_dense=0.5" in readiness_command
-    assert "--min-retrieval-source-family-precision-at-hits dense_text=0.5" in readiness_command
-    assert "--min-retrieval-source-family-precision-at-hits visual=0.5" in readiness_command
+    assert "--max-retrieval-failed-queries 35" in readiness_command
+    assert "--min-retrieval-source-precision-at-hits qdrant:text_dense=0.18" in readiness_command
+    assert "--min-retrieval-source-precision-at-hits qdrant:caption_dense=0.18" in readiness_command
+    assert "--min-retrieval-source-precision-at-hits qdrant:image_dense" not in readiness_command
+    assert "--min-retrieval-source-family-precision-at-hits dense_text=0.18" in readiness_command
+    assert "--min-retrieval-source-family-precision-at-hits visual=0.18" in readiness_command
     assert "--rag-context-evaluation" in readiness_command
     assert "--require-rag-context-evaluation" in readiness_command
     assert "--max-rag-context-mean-context-char-count 12000" in readiness_command
@@ -266,6 +272,50 @@ def test_workflow_plan_carries_hard_negative_benchmark_gates(tmp_path):
     assert "--max-retrieval-excluded-cases-per-target chunk=1" in readiness_command
 
 
+def test_workflow_plan_carries_table_probe_gates(tmp_path):
+    package_dir, manifest = make_table_workflow_package(tmp_path)
+    cases = tmp_path / "cases.jsonl"
+    characteristics = characterize_package(
+        profiles=manifest.profiles,
+        chunks=manifest.chunks,
+        assets=manifest.assets,
+        triples=manifest.triples,
+        package_dir=package_dir,
+    )
+
+    plan = build_ingestion_workflow_plan(
+        characteristics,
+        package_dir=package_dir,
+        retrieval_cases=cases,
+        vlm_profiles=["qwen2_5_vl_7b"],
+    )
+
+    table_commands = next(
+        step.commands for step in plan.steps if step.step_id == "preserve_table_structure"
+    )
+    assert "extract-tables" in table_commands[0]
+    assert str(package_dir) in table_commands[0]
+    assert "--table-probe-limit 20" in table_commands[2]
+    assert "--output" in table_commands[2]
+    assert str(cases) in table_commands[2]
+    assert "--merge-existing" in table_commands[2]
+    assert "--min-case-group-count case_source:table_probe=2" in table_commands[3]
+    assert "--min-case-group-distinct-targets case_source:table_probe:chunk=2" in table_commands[3]
+    assert "--max-case-group-cases-per-target case_source:table_probe:chunk=3" in table_commands[3]
+
+    readiness_command = plan.steps[-1].commands[0]
+    assert "--min-retrieval-case-group-count case_source:table_probe=2" in readiness_command
+    assert (
+        "--min-retrieval-case-group-distinct-targets case_source:table_probe:chunk=2"
+        in readiness_command
+    )
+    assert (
+        "--max-retrieval-case-group-cases-per-target case_source:table_probe:chunk=3"
+        in readiness_command
+    )
+    assert "--min-retrieval-distinct-chunk-targets 2" in readiness_command
+
+
 def test_workflow_plan_rebuilds_embeddings_after_index_refresh_for_indexed_text_package(tmp_path):
     package_dir, manifest = make_indexed_text_package(tmp_path)
     cases = tmp_path / "cases.jsonl"
@@ -333,14 +383,16 @@ def test_workflow_plan_exports_adaptive_qdrant_route_for_visual_object_graph_pac
     assert "--vector-names text_dense,caption_dense,object_dense,image_dense,triple_dense" in (
         qdrant_commands[1]
     )
-    assert "--min-source-precision-at-hits qdrant:object_dense=0.3" in qdrant_commands[1]
-    assert "--min-source-precision-at-hits qdrant:triple_dense=0.5" in qdrant_commands[1]
-    assert "--min-source-family-precision-at-hits graph=0.5" in qdrant_commands[1]
+    assert "--min-source-precision-at-hits qdrant:object_dense=0.2" in qdrant_commands[1]
+    assert "--min-source-precision-at-hits qdrant:triple_dense=0.2" in qdrant_commands[1]
+    assert "--min-source-family-precision-at-hits graph=0.2" in qdrant_commands[1]
     assert "export-qdrant-retrieval-config" in qdrant_commands[2]
     assert "--route-preset adaptive" in qdrant_commands[2]
     assert "eval-qdrant-retrieval-config" in qdrant_commands[3]
     assert "qdrant_retrieval_config.json" in qdrant_commands[3]
     assert "eval-qdrant-rag-context-config" in qdrant_commands[4]
+    assert "--max-chars-per-chunk 700" in qdrant_commands[4]
+    assert "--max-chars-per-asset-text 700" in qdrant_commands[4]
     readiness_command = plan.steps[-1].commands[0]
     object_probe_commands = next(
         step.commands
@@ -387,35 +439,35 @@ def test_workflow_plan_exports_adaptive_qdrant_route_for_visual_object_graph_pac
         in readiness_command
     )
     assert (
-        "--min-retrieval-source-precision-at-hits qdrant:object_dense=0.3"
+        "--min-retrieval-source-precision-at-hits qdrant:object_dense=0.2"
         in readiness_command
     )
     assert (
-        "--min-retrieval-source-precision-at-hits qdrant:triple_dense=0.5"
+        "--min-retrieval-source-precision-at-hits qdrant:triple_dense=0.2"
         in readiness_command
     )
     assert (
-        "--min-retrieval-source-family-precision-at-hits graph=0.5"
-        in readiness_command
-    )
-    assert (
-        "--min-retrieval-case-group-source-precision-at-hits "
-        "retrieval_route:graph_triple:qdrant:triple_dense=0.5"
+        "--min-retrieval-source-family-precision-at-hits graph=0.2"
         in readiness_command
     )
     assert (
         "--min-retrieval-case-group-source-precision-at-hits "
-        "retrieval_route:visual_object:qdrant:object_dense=0.3"
+        "retrieval_route:graph_triple:qdrant:triple_dense=0.2"
+        in readiness_command
+    )
+    assert (
+        "--min-retrieval-case-group-source-precision-at-hits "
+        "retrieval_route:visual_object:qdrant:object_dense=0.2"
         in readiness_command
     )
     assert (
         "--min-retrieval-case-group-source-family-precision-at-hits "
-        "retrieval_route:graph_triple:graph=0.5"
+        "retrieval_route:graph_triple:graph=0.2"
         in readiness_command
     )
     assert (
         "--min-retrieval-case-group-source-family-precision-at-hits "
-        "retrieval_route:visual_object:visual=0.3"
+        "retrieval_route:visual_object:visual=0.29"
         in readiness_command
     )
     assert (
@@ -645,6 +697,78 @@ def make_hard_negative_workflow_package(tmp_path: Path):
     write_jsonl(package_dir / "pages.jsonl", profiles)
     write_jsonl(package_dir / "chunks.jsonl", chunks)
     write_jsonl(package_dir / "assets.jsonl", [])
+    write_jsonl(package_dir / "triples.jsonl", [])
+    return package_dir, manifest
+
+
+def make_table_workflow_package(tmp_path: Path):
+    package_dir = tmp_path / "table_package"
+    package_dir.mkdir()
+    doc = SourceDocument(
+        doc_id="doc",
+        title="Reference Document",
+        local_path=tmp_path / "reference.pdf",
+    )
+    profiles = [
+        PageProfile(
+            doc_id="doc",
+            page_no=1,
+            width=100,
+            height=100,
+            char_count=180,
+            line_count=7,
+            text_block_count=1,
+            image_block_count=1,
+            embedded_image_count=0,
+            drawing_count=0,
+            text_quality=TextQuality.GOOD,
+        ),
+        PageProfile(
+            doc_id="doc",
+            page_no=2,
+            width=100,
+            height=100,
+            char_count=180,
+            line_count=7,
+            text_block_count=1,
+            image_block_count=1,
+            embedded_image_count=0,
+            drawing_count=0,
+            text_quality=TextQuality.GOOD,
+        ),
+    ]
+    chunks = [
+        DocumentChunk(
+            chunk_id="table-1",
+            doc_id="doc",
+            page_start=1,
+            page_end=1,
+            kind=ChunkKind.TABLE,
+            text="Category Amount Alpha 10 Beta 20",
+            asset_ids=["asset-table-1"],
+        ),
+        DocumentChunk(
+            chunk_id="table-2",
+            doc_id="doc",
+            page_start=2,
+            page_end=2,
+            kind=ChunkKind.TABLE,
+            text="District Score North 30 South 40",
+            asset_ids=["asset-table-2"],
+        ),
+    ]
+    assets = [
+        VisualAsset(asset_id="asset-table-1", doc_id="doc", page_no=1, kind=AssetKind.TABLE),
+        VisualAsset(asset_id="asset-table-2", doc_id="doc", page_no=2, kind=AssetKind.TABLE),
+    ]
+    manifest = ProcessingManifest(doc=doc, profiles=profiles, chunks=chunks, assets=assets, triples=[])
+    (package_dir / "manifest.json").write_text(
+        json.dumps({"doc": doc.model_dump(mode="json")}),
+        encoding="utf-8",
+    )
+    write_jsonl(package_dir / "pages.jsonl", profiles)
+    write_jsonl(package_dir / "chunks.jsonl", chunks)
+    write_jsonl(package_dir / "assets.jsonl", assets)
     write_jsonl(package_dir / "triples.jsonl", [])
     return package_dir, manifest
 

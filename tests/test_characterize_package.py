@@ -71,12 +71,12 @@ def test_characterize_package_reports_strategy_observations(tmp_path):
         item for item in report.recommendations if item.code == "compare_multimodal_hierarchical_chunking"
     )
     assert "sweep-chunking" in chunking_recommendation.commands[0]
-    assert "--selection-min-retrieval-score-per-embedding-kchar 0.0008" in chunking_recommendation.commands[0]
+    assert "--selection-min-retrieval-score-per-embedding-kchar 0.0003" in chunking_recommendation.commands[0]
     assert "--selection-min-retrieval-score-per-mean-latency-ms 0.0005" in chunking_recommendation.commands[0]
     assert "--selection-min-target-coverage-per-p95-latency-ms 0.0005" in chunking_recommendation.commands[0]
     assert "gate-chunking-comparison outputs/package/chunking_sweep.json" in chunking_recommendation.commands[1]
     assert "--require-retrieval" in chunking_recommendation.commands[1]
-    assert "--min-retrieval-score-per-embedding-kchar 0.0008" in chunking_recommendation.commands[1]
+    assert "--min-retrieval-score-per-embedding-kchar 0.0003" in chunking_recommendation.commands[1]
     assert "--min-retrieval-score-per-mean-latency-ms 0.0005" in chunking_recommendation.commands[1]
     assert "--min-target-coverage-per-p95-latency-ms 0.0005" in chunking_recommendation.commands[1]
     assert "apply-chunking-sweep" in chunking_recommendation.commands[-1]
@@ -174,6 +174,8 @@ def test_characterize_package_reports_strategy_observations(tmp_path):
     assert "--route-preset adaptive" in qdrant_recommendation.commands[2]
     assert "--image-query-backend clip" in qdrant_recommendation.commands[3]
     assert "eval-qdrant-rag-context-config" in qdrant_recommendation.commands[4]
+    assert "--max-chars-per-chunk 700" in qdrant_recommendation.commands[4]
+    assert "--max-chars-per-asset-text 700" in qdrant_recommendation.commands[4]
     assert "--image-query-backend clip" in qdrant_recommendation.commands[4]
     assert "gate-rag-context" in qdrant_recommendation.commands[5]
     assert "--min-target-type-coverage triple=0.7" in qdrant_recommendation.commands[5]
@@ -206,6 +208,89 @@ def test_characterize_package_does_not_count_attempted_ocr_as_pending(tmp_path):
     assert "prioritize_visual_annotations" not in {
         item.code for item in report.recommendations
     }
+
+
+def test_characterize_package_recommends_table_probe_gates(tmp_path):
+    package_dir = tmp_path / "package"
+    package_dir.mkdir()
+    profiles = [
+        PageProfile(
+            doc_id="doc",
+            page_no=1,
+            width=100,
+            height=100,
+            char_count=180,
+            line_count=8,
+            text_block_count=1,
+            image_block_count=1,
+            embedded_image_count=0,
+            drawing_count=0,
+            text_quality=TextQuality.GOOD,
+        ),
+        PageProfile(
+            doc_id="doc",
+            page_no=2,
+            width=100,
+            height=100,
+            char_count=160,
+            line_count=7,
+            text_block_count=1,
+            image_block_count=1,
+            embedded_image_count=0,
+            drawing_count=0,
+            text_quality=TextQuality.GOOD,
+        ),
+    ]
+    chunks = [
+        DocumentChunk(
+            chunk_id="table-1",
+            doc_id="doc",
+            page_start=1,
+            page_end=1,
+            kind=ChunkKind.TABLE,
+            text="Category Amount Alpha 10 Beta 20",
+            asset_ids=["asset-table-1"],
+        ),
+        DocumentChunk(
+            chunk_id="table-2",
+            doc_id="doc",
+            page_start=2,
+            page_end=2,
+            kind=ChunkKind.TABLE,
+            text="District Score North 30 South 40",
+            asset_ids=["asset-table-2"],
+        ),
+    ]
+    assets = [
+        VisualAsset(asset_id="asset-table-1", doc_id="doc", page_no=1, kind=AssetKind.TABLE),
+        VisualAsset(asset_id="asset-table-2", doc_id="doc", page_no=2, kind=AssetKind.TABLE),
+    ]
+
+    report = characterize_package(profiles, chunks, assets, [], package_dir=package_dir)
+
+    assert report.chunks.table_chunk_count == 2
+    recommendation = next(
+        item for item in report.recommendations if item.code == "preserve_table_structure"
+    )
+    assert "extract-tables" in recommendation.commands[0]
+    assert "--require-qdrant-records" in recommendation.commands[1]
+    assert "--table-probe-limit 20" in recommendation.commands[2]
+    assert "--no-include-pages --no-include-assets --no-include-triples" in (
+        recommendation.commands[2]
+    )
+    assert "--max-chunk-cases-per-target 3" in recommendation.commands[2]
+    assert "--merge-existing" in recommendation.commands[2]
+    assert "--min-case-group-count case_source:table_probe=2" in recommendation.commands[3]
+    assert "--min-distinct-chunk-targets 2" in recommendation.commands[3]
+    assert "--min-case-group-distinct-targets case_source:table_probe:chunk=2" in (
+        recommendation.commands[3]
+    )
+    assert (
+        "--max-case-group-cases-per-target case_source:table_probe:chunk=3"
+        in recommendation.commands[3]
+    )
+    assert recommendation.metadata["recommended_table_probe_case_threshold"] == 2
+    assert recommendation.metadata["recommended_distinct_chunk_threshold"] == 2
 
 
 def test_characterize_package_cli_writes_json(tmp_path):

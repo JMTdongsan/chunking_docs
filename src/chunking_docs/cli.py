@@ -49,6 +49,7 @@ from chunking_docs.evaluation.case_audit import (
     count_retrieval_case_max_excluded_target_mentions,
     count_retrieval_case_max_target_mentions,
     count_retrieval_case_targets,
+    count_table_probes,
     count_visual_image_probes,
     count_visual_object_probes,
 )
@@ -5641,51 +5642,74 @@ def ingestion_readiness_command(
 ):
     """Check whether a package is ready for Qdrant/PostgreSQL ingestion and RAG evaluation."""
     manifest = load_processing_package(package_dir)
-    parsed_visual_results = read_jsonl(visual_results, VisualJobRunResult) if visual_results else None
-    parsed_visual_run_comparison = (
-        VisualRunComparison.model_validate_json(
-            visual_run_comparison.read_text(encoding="utf-8")
-        )
-        if visual_run_comparison
+    def existing_artifact(path: Path | None) -> Path | None:
+        if path is None:
+            return None
+        return path if path.exists() else None
+
+    parsed_visual_results = (
+        read_jsonl(existing_artifact(visual_results), VisualJobRunResult)
+        if existing_artifact(visual_results)
         else None
     )
-    parsed_retrieval_cases = load_retrieval_cases(retrieval_cases) if retrieval_cases else None
-    parsed_retrieval = load_retrieval_evaluation(retrieval_evaluation) if retrieval_evaluation else None
+    parsed_visual_run_comparison = (
+        VisualRunComparison.model_validate_json(
+            existing_artifact(visual_run_comparison).read_text(encoding="utf-8")
+        )
+        if existing_artifact(visual_run_comparison)
+        else None
+    )
+    parsed_retrieval_cases = (
+        load_retrieval_cases(existing_artifact(retrieval_cases))
+        if existing_artifact(retrieval_cases)
+        else None
+    )
+    parsed_retrieval = (
+        load_retrieval_evaluation(existing_artifact(retrieval_evaluation))
+        if existing_artifact(retrieval_evaluation)
+        else None
+    )
     parsed_qdrant_retrieval_config = (
-        read_qdrant_retrieval_config(qdrant_retrieval_config)
-        if qdrant_retrieval_config
+        read_qdrant_retrieval_config(existing_artifact(qdrant_retrieval_config))
+        if existing_artifact(qdrant_retrieval_config)
         else None
     )
     parsed_runtime_report = (
-        RuntimeReport.model_validate_json(runtime_report.read_text(encoding="utf-8"))
-        if runtime_report
+        RuntimeReport.model_validate_json(
+            existing_artifact(runtime_report).read_text(encoding="utf-8")
+        )
+        if existing_artifact(runtime_report)
         else None
     )
     parsed_rag_context = (
-        load_rag_context_evaluation(rag_context_evaluation)
-        if rag_context_evaluation
+        load_rag_context_evaluation(existing_artifact(rag_context_evaluation))
+        if existing_artifact(rag_context_evaluation)
         else None
     )
-    parsed_chunking_comparison = load_chunking_comparison(chunking_comparison) if chunking_comparison else None
+    parsed_chunking_comparison = (
+        load_chunking_comparison(existing_artifact(chunking_comparison))
+        if existing_artifact(chunking_comparison)
+        else None
+    )
     parsed_retrieval_ablation = (
         RetrievalAblationReport.model_validate_json(
-            retrieval_ablation.read_text(encoding="utf-8")
+            existing_artifact(retrieval_ablation).read_text(encoding="utf-8")
         )
-        if retrieval_ablation
+        if existing_artifact(retrieval_ablation)
         else None
     )
     parsed_qdrant_vector_ablation = (
         QdrantVectorAblationReport.model_validate_json(
-            qdrant_vector_ablation.read_text(encoding="utf-8")
+            existing_artifact(qdrant_vector_ablation).read_text(encoding="utf-8")
         )
-        if qdrant_vector_ablation
+        if existing_artifact(qdrant_vector_ablation)
         else None
     )
     parsed_qdrant_reranker_ablation = (
         QdrantRerankerAblationReport.model_validate_json(
-            qdrant_reranker_ablation.read_text(encoding="utf-8")
+            existing_artifact(qdrant_reranker_ablation).read_text(encoding="utf-8")
         )
-        if qdrant_reranker_ablation
+        if existing_artifact(qdrant_reranker_ablation)
         else None
     )
     qdrant_vector_source_family_thresholds = parse_named_float_thresholds(
@@ -6606,6 +6630,7 @@ def generate_retrieval_cases_command(
     visual_probe_limit: int = 0,
     image_probe_limit: int = 0,
     object_probe_limit: int = 0,
+    table_probe_limit: int = 0,
     object_probe_visual_only: bool = typer.Option(
         True,
         "--object-probe-visual-only/--no-object-probe-visual-only",
@@ -6692,6 +6717,7 @@ def generate_retrieval_cases_command(
             visual_probe_limit=visual_probe_limit,
             image_probe_limit=image_probe_limit,
             object_probe_limit=object_probe_limit,
+            table_probe_limit=table_probe_limit,
             object_probe_visual_only=object_probe_visual_only,
             max_target_query_overlap_ratio=max_target_query_overlap_ratio,
             max_target_query_overlap_terms=max_target_query_overlap_terms,
@@ -6726,12 +6752,14 @@ def generate_retrieval_cases_command(
             "visual_object_probe_count": visual_object_probe_counts["total"],
             "visual_only_object_probe_count": visual_object_probe_counts["visual_only"],
             "non_visual_only_object_probe_count": visual_object_probe_counts["non_visual_only"],
+            "table_probe_count": count_table_probes(cases),
             "page_limit": page_limit,
             "asset_limit": asset_limit,
             "triple_limit": triple_limit,
             "visual_probe_limit": visual_probe_limit,
             "image_probe_limit": image_probe_limit,
             "object_probe_limit": object_probe_limit,
+            "table_probe_limit": table_probe_limit,
             "object_probe_visual_only": object_probe_visual_only,
             "max_target_query_overlap_ratio": max_target_query_overlap_ratio,
             "max_target_query_overlap_terms": max_target_query_overlap_terms,

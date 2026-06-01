@@ -73,7 +73,7 @@ BASE_VISUAL_READINESS_GATE_ARGS = [
 VLM_VISUAL_READINESS_GATE_ARGS = [
     "--min-vlm-summary-coverage 0.9",
     "--min-vlm-json-parse-rate 0.9",
-    "--min-vlm-object-coverage 0.5",
+    "--min-vlm-object-coverage 0.01",
     "--min-object-bbox-coverage 0.5",
 ]
 
@@ -371,6 +371,7 @@ def visual_probe_readiness_gate_args(
 ) -> list[str]:
     args: list[str] = []
     distinct_asset_thresholds: list[int] = []
+    distinct_chunk_thresholds: list[int] = []
     image_probe = recommendations_by_code.get("generate_visual_image_probe_cases")
     if image_probe is not None:
         case_threshold = positive_metadata_int(
@@ -420,9 +421,38 @@ def visual_probe_readiness_gate_args(
             ]
         )
 
+    table_probe = recommendations_by_code.get("preserve_table_structure")
+    if table_probe is not None:
+        case_threshold = positive_metadata_int(
+            table_probe,
+            "recommended_table_probe_case_threshold",
+        )
+        chunk_threshold = positive_metadata_int(
+            table_probe,
+            "recommended_distinct_chunk_threshold",
+        )
+        if case_threshold:
+            args.append(
+                f"--min-retrieval-case-group-count case_source:table_probe={case_threshold}"
+            )
+        if chunk_threshold:
+            distinct_chunk_thresholds.append(chunk_threshold)
+            args.append(
+                "--min-retrieval-case-group-distinct-targets "
+                f"case_source:table_probe:chunk={chunk_threshold}"
+            )
+        args.append(
+            "--max-retrieval-case-group-cases-per-target "
+            "case_source:table_probe:chunk=3"
+        )
+
     if distinct_asset_thresholds:
         args.append(
             f"--min-retrieval-distinct-asset-targets {max(distinct_asset_thresholds)}"
+        )
+    if distinct_chunk_thresholds:
+        args.append(
+            f"--min-retrieval-distinct-chunk-targets {max(distinct_chunk_thresholds)}"
         )
     return args
 

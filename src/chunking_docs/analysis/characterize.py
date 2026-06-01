@@ -606,6 +606,8 @@ def recommendations(
             )
         )
     if visual.asset_kind_counts.get("table", 0) or chunks.table_chunk_count:
+        table_target_count = max(visual.asset_kind_counts.get("table", 0), chunks.table_chunk_count)
+        table_probe_threshold = bounded_threshold(table_target_count)
         result.append(
             ProcessingRecommendation(
                 code="preserve_table_structure",
@@ -616,10 +618,33 @@ def recommendations(
                     "targets in retrieval cases."
                 ),
                 commands=[
+                    "chunking-docs extract-tables --package-dir outputs/package",
                     "chunking-docs audit-package --package-dir outputs/package --require-qdrant-records",
-                    "chunking-docs generate-retrieval-cases --package-dir outputs/package",
+                    (
+                        "chunking-docs generate-retrieval-cases --package-dir outputs/package "
+                        "--query-mode salient_terms --selection-strategy salience "
+                        "--no-include-pages --no-include-assets --no-include-triples "
+                        "--table-probe-limit 20 --max-chunk-cases-per-target 3 "
+                        "--max-asset-cases-per-target 3 "
+                        "--output examples/retrieval_cases.jsonl --merge-existing"
+                    ),
+                    (
+                        "chunking-docs audit-retrieval-cases examples/retrieval_cases.jsonl "
+                        "--package-dir outputs/package "
+                        f"--min-case-group-count case_source:table_probe={table_probe_threshold} "
+                        f"--min-distinct-chunk-targets {table_probe_threshold} "
+                        f"--min-case-group-distinct-targets case_source:table_probe:chunk={table_probe_threshold} "
+                        "--max-case-group-cases-per-target case_source:table_probe:chunk=3 "
+                        "--max-expected-targets-per-case 5 "
+                        "--min-query-terms-per-case 3"
+                    ),
                 ],
-                metadata={"table_assets": visual.asset_kind_counts.get("table", 0), "table_chunks": chunks.table_chunk_count},
+                metadata={
+                    "table_assets": visual.asset_kind_counts.get("table", 0),
+                    "table_chunks": chunks.table_chunk_count,
+                    "recommended_table_probe_case_threshold": table_probe_threshold,
+                    "recommended_distinct_chunk_threshold": table_probe_threshold,
+                },
             )
         )
     if chunks.chunks_with_assets or visual.asset_kind_counts:

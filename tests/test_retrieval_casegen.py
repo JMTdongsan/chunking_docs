@@ -777,6 +777,61 @@ def test_generate_retrieval_case_skeleton_can_create_visual_object_probes():
     assert cases[0].metadata["linked_chunk_ids"] == ["chunk-1"]
 
 
+def test_generate_retrieval_case_skeleton_can_create_table_probes():
+    chunk = DocumentChunk(
+        chunk_id="table-chunk",
+        doc_id="doc",
+        page_start=3,
+        page_end=3,
+        kind=ChunkKind.TABLE,
+        text="Category Amount Alpha 10 Beta 20 redevelopment priority",
+        asset_ids=["table-asset"],
+    )
+    asset = VisualAsset(
+        asset_id="table-asset",
+        doc_id="doc",
+        page_no=3,
+        kind=AssetKind.TABLE,
+        caption="Redevelopment priority table",
+    )
+
+    cases = generate_retrieval_case_skeleton(
+        [chunk],
+        [asset],
+        [],
+        include_pages=False,
+        include_assets=False,
+        include_triples=False,
+        table_probe_limit=1,
+    )
+
+    assert len(cases) == 1
+    assert cases[0].expected_pages == [3]
+    assert cases[0].expected_chunk_ids == ["table-chunk"]
+    assert cases[0].expected_asset_ids == ["table-asset"]
+    assert cases[0].metadata["case_source"] == "table_probe"
+    assert cases[0].metadata["case_family"] == "structured"
+    assert cases[0].metadata["evidence_family"] == "table"
+    assert cases[0].metadata["chunk_kind"] == "table"
+
+    report = audit_retrieval_cases(
+        cases,
+        profiles=[],
+        chunks=[chunk],
+        assets=[asset],
+        triples=[],
+        min_case_group_counts={"case_source:table_probe": 1},
+        min_case_group_distinct_targets={"case_source:table_probe:chunk": 1},
+        max_case_group_cases_per_target={"case_source:table_probe:chunk": 1},
+        min_query_terms_per_case=3,
+    )
+
+    assert report.passed is True
+    assert report.table_probe_count == 1
+    assert report.case_group_counts["case_source"]["table_probe"] == 1
+    assert report.case_group_distinct_target_counts["case_source"]["table_probe"]["chunk"] == 1
+
+
 def test_visual_object_probe_duplicate_queries_keep_one_expected_target_per_case():
     chunk_1 = DocumentChunk(
         chunk_id="chunk-1",
@@ -1208,6 +1263,40 @@ def test_generate_retrieval_cases_cli_writes_image_probe_cases(tmp_path):
     assert "'image_probe_limit': 1" in result.output
 
 
+def test_generate_retrieval_cases_cli_writes_table_probe_cases(tmp_path):
+    package_dir = write_table_case_package(tmp_path)
+    output = tmp_path / "cases.jsonl"
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "generate-retrieval-cases",
+            "--package-dir",
+            str(package_dir),
+            "--output",
+            str(output),
+            "--no-include-pages",
+            "--no-include-assets",
+            "--no-include-triples",
+            "--table-probe-limit",
+            "1",
+            "--max-chunk-cases-per-target",
+            "1",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    rows = [json.loads(line) for line in output.read_text(encoding="utf-8").splitlines()]
+    assert len(rows) == 1
+    assert rows[0]["expected_chunk_ids"] == ["table-chunk"]
+    assert rows[0]["expected_asset_ids"] == ["table-asset"]
+    assert rows[0]["metadata"]["case_source"] == "table_probe"
+    assert rows[0]["metadata"]["target_vector"] == "text_dense"
+    assert "'table_probe_count': 1" in result.output
+    assert "'table_probe_limit': 1" in result.output
+    assert "'chunk': 1" in result.output
+
+
 def test_generate_retrieval_cases_cli_merges_existing_output(tmp_path):
     package_dir = write_case_package(tmp_path)
     output = tmp_path / "cases.jsonl"
@@ -1416,4 +1505,56 @@ def write_case_package(tmp_path: Path) -> Path:
     write_jsonl(package_dir / "chunks.jsonl", [chunk])
     write_jsonl(package_dir / "assets.jsonl", [asset])
     write_jsonl(package_dir / "triples.jsonl", [triple])
+    return package_dir
+
+
+def write_table_case_package(tmp_path: Path) -> Path:
+    package_dir = tmp_path / "table_package"
+    package_dir.mkdir()
+    doc = SourceDocument(
+        doc_id="doc",
+        title="Reference Document",
+        local_path=tmp_path / "reference.pdf",
+    )
+    profile = PageProfile(
+        doc_id="doc",
+        page_no=3,
+        width=100,
+        height=100,
+        char_count=120,
+        line_count=6,
+        text_block_count=1,
+        image_block_count=1,
+        embedded_image_count=0,
+        drawing_count=0,
+        text_quality=TextQuality.GOOD,
+    )
+    chunk = DocumentChunk(
+        chunk_id="table-chunk",
+        doc_id="doc",
+        page_start=3,
+        page_end=3,
+        kind=ChunkKind.TABLE,
+        text="Category Amount Alpha 10 Beta 20 redevelopment priority",
+        asset_ids=["table-asset"],
+    )
+    asset = VisualAsset(
+        asset_id="table-asset",
+        doc_id="doc",
+        page_no=3,
+        kind=AssetKind.TABLE,
+        caption="Redevelopment priority table",
+    )
+    manifest = ProcessingManifest(
+        doc=doc,
+        profiles=[profile],
+        chunks=[chunk],
+        assets=[asset],
+        triples=[],
+    )
+    (package_dir / "manifest.json").write_text(manifest.model_dump_json(indent=2), encoding="utf-8")
+    write_jsonl(package_dir / "pages.jsonl", [profile])
+    write_jsonl(package_dir / "chunks.jsonl", [chunk])
+    write_jsonl(package_dir / "assets.jsonl", [asset])
+    write_jsonl(package_dir / "triples.jsonl", [])
     return package_dir

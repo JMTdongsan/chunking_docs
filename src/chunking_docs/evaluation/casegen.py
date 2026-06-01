@@ -113,6 +113,7 @@ def generate_retrieval_case_skeleton(
     visual_probe_limit: int = 0,
     image_probe_limit: int = 0,
     object_probe_limit: int = 0,
+    table_probe_limit: int = 0,
     object_probe_visual_only: bool = True,
     max_target_query_overlap_ratio: float | None = None,
     max_target_query_overlap_terms: int | None = None,
@@ -213,6 +214,21 @@ def generate_retrieval_case_skeleton(
                 min_query_terms=min_query_terms,
                 max_query_terms=max_query_terms,
                 visual_only=object_probe_visual_only,
+            )
+        )
+    if table_probe_limit > 0:
+        cases.extend(
+            table_probe_cases(
+                chunks,
+                assets,
+                limit=table_probe_limit,
+                query_max_chars=query_max_chars,
+                query_mode=query_mode,
+                selection_strategy=selection_strategy,
+                term_df=term_df,
+                document_count=len(corpus_texts),
+                min_query_terms=min_query_terms,
+                max_query_terms=max_query_terms,
             )
         )
     if include_triples:
@@ -642,6 +658,69 @@ def visual_object_probe_query_from_object(
         score=sum(score for score, _, _, _ in selected),
         terms=tuple(query_terms),
     )
+
+
+def table_probe_cases(
+    chunks: list[DocumentChunk],
+    assets: list[VisualAsset],
+    limit: int,
+    query_max_chars: int,
+    query_mode: QueryMode = "snippet",
+    selection_strategy: SelectionStrategy = "document_order",
+    term_df: dict[str, int] | None = None,
+    document_count: int = 0,
+    min_query_terms: int = 3,
+    max_query_terms: int = 8,
+) -> list[RetrievalCase]:
+    candidates: list[CaseCandidate] = []
+    asset_ids = {asset.asset_id for asset in assets}
+    for chunk in sorted(chunks, key=lambda item: (item.page_start, item.page_end, item.chunk_id)):
+        if str(chunk.kind) != "table":
+            continue
+        draft = query_from_text(
+            chunk.text,
+            max_chars=query_max_chars,
+            mode=query_mode,
+            term_df=term_df,
+            document_count=document_count,
+            min_query_terms=min_query_terms,
+            max_query_terms=max_query_terms,
+        )
+        if not draft.query:
+            continue
+        linked_asset_ids = sorted(asset_id for asset_id in chunk_asset_ids(chunk) if asset_id in asset_ids)
+        case = with_case_metadata(
+            RetrievalCase(
+                query=draft.query,
+                expected_pages=[chunk.page_start],
+                expected_chunk_ids=[chunk.chunk_id],
+                expected_asset_ids=linked_asset_ids,
+            ),
+            case_source="table_probe",
+            query_mode=query_mode,
+            draft=draft,
+        )
+        case = case.model_copy(
+            update={
+                "metadata": {
+                    **case.metadata,
+                    "case_family": "structured",
+                    "evidence_family": "table",
+                    "modality": "table",
+                    "target_vector": "text_dense",
+                    "chunk_kind": "table",
+                    "linked_asset_ids": linked_asset_ids,
+                }
+            }
+        )
+        candidates.append(
+            CaseCandidate(
+                case=case,
+                score=draft.score,
+                order=(chunk.page_start, chunk.page_end, chunk.chunk_id),
+            )
+        )
+    return select_candidates(dedupe_case_candidates_by_query(candidates, selection_strategy), limit, selection_strategy)
 
 
 def asset_visual_objects(asset: VisualAsset) -> list[dict[str, object]]:

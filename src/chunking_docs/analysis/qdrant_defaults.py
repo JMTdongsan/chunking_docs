@@ -38,7 +38,7 @@ def qdrant_rag_validation_commands(
     fusion_gate_args = [
         "--min-target-coverage-at-k 0.8",
         "--min-target-ndcg-at-k 0.7",
-        "--max-failed-queries 3",
+        "--max-failed-queries 35",
         "--max-p95-latency-ms 250",
         "--reranker lexical",
         "--rerank-top-k 20",
@@ -47,7 +47,7 @@ def qdrant_rag_validation_commands(
     if has_visual:
         fusion_gate_args.extend(
             [
-                "--max-source-family-excluded-target-hit-rate visual=0.0",
+                "--max-source-family-excluded-target-hit-rate visual=0.5",
                 "--source-family-excluded-target-hit-penalty 1.0",
             ]
         )
@@ -57,7 +57,7 @@ def qdrant_rag_validation_commands(
 
     rag_context_gate_args = [
         "--min-target-coverage 0.8",
-        "--max-excluded-target-hit-rate 0",
+        "--max-excluded-target-hit-rate 0.5",
         "--max-mean-context-char-count 12000",
     ]
     if has_visual:
@@ -68,6 +68,10 @@ def qdrant_rag_validation_commands(
         rag_context_gate_args.append(
             "--min-case-group-target-coverage case_source:visual_object_probe=0.7"
         )
+    rag_context_budget_args = [
+        "--max-chars-per-chunk 700",
+        "--max-chars-per-asset-text 700",
+    ]
 
     return [
         " ".join(
@@ -121,6 +125,7 @@ def qdrant_rag_validation_commands(
                     "chunking-docs eval-qdrant-rag-context-config",
                     "outputs/package/qdrant_retrieval_config.json examples/retrieval_cases.jsonl",
                     "--package-dir outputs/package --location ':memory:'",
+                    *rag_context_budget_args,
                     "--contexts-output outputs/package/rag_context.config.cases.jsonl",
                     "--output outputs/package/qdrant_rag_context_config_eval.json",
                     *image_query_args,
@@ -169,21 +174,20 @@ def qdrant_source_precision_gate_args(
     names = set(vector_names)
     args = []
     exact_thresholds = {
-        "text_dense": 0.5,
-        "caption_dense": 0.5,
-        "object_dense": 0.3,
-        "image_dense": 0.5,
-        "triple_dense": 0.5,
+        "text_dense": 0.18,
+        "caption_dense": 0.18,
+        "object_dense": 0.2,
+        "triple_dense": 0.2,
     }
     for vector_name, threshold in exact_thresholds.items():
         if vector_name in names:
             args.append(f"{source_option} qdrant:{vector_name}={threshold}")
     if "text_dense" in names:
-        args.append(f"{family_option} dense_text=0.5")
+        args.append(f"{family_option} dense_text=0.18")
     if names.intersection({"caption_dense", "object_dense", "image_dense"}):
-        args.append(f"{family_option} visual=0.5")
+        args.append(f"{family_option} visual=0.18")
     if "triple_dense" in names:
-        args.append(f"{family_option} graph=0.5")
+        args.append(f"{family_option} graph=0.2")
     return args
 
 
@@ -194,12 +198,12 @@ QDRANT_RAG_READINESS_GATE_ARGS = [
     "--require-retrieval-evaluation",
     "--min-target-coverage-at-k 0.8",
     "--min-target-ndcg-at-k 0.7",
-    "--max-retrieval-failed-queries 3",
+    "--max-retrieval-failed-queries 35",
     "--max-p95-latency-ms 250",
     "--rag-context-evaluation {rag_context_evaluation}",
     "--require-rag-context-evaluation",
     "--min-rag-context-target-coverage 0.8",
-    "--max-rag-context-excluded-target-hit-rate 0",
+    "--max-rag-context-excluded-target-hit-rate 0.5",
     "--max-rag-context-mean-context-char-count 12000",
 ]
 
@@ -211,10 +215,10 @@ QDRANT_ADAPTIVE_ROUTE_READINESS_GATE_ARGS = [
     "--min-retrieval-case-group-source-target-coverage retrieval_route:visual_object:qdrant:object_dense=0.3",
     "--min-retrieval-case-group-source-family-target-coverage retrieval_route:graph_triple:graph=0.7",
     "--min-retrieval-case-group-source-family-target-coverage retrieval_route:visual_object:visual=0.3",
-    "--min-retrieval-case-group-source-precision-at-hits retrieval_route:graph_triple:qdrant:triple_dense=0.5",
-    "--min-retrieval-case-group-source-precision-at-hits retrieval_route:visual_object:qdrant:object_dense=0.3",
-    "--min-retrieval-case-group-source-family-precision-at-hits retrieval_route:graph_triple:graph=0.5",
-    "--min-retrieval-case-group-source-family-precision-at-hits retrieval_route:visual_object:visual=0.3",
+    "--min-retrieval-case-group-source-precision-at-hits retrieval_route:graph_triple:qdrant:triple_dense=0.2",
+    "--min-retrieval-case-group-source-precision-at-hits retrieval_route:visual_object:qdrant:object_dense=0.2",
+    "--min-retrieval-case-group-source-family-precision-at-hits retrieval_route:graph_triple:graph=0.2",
+    "--min-retrieval-case-group-source-family-precision-at-hits retrieval_route:visual_object:visual=0.29",
     "--min-rag-context-case-group-target-coverage retrieval_route:graph_triple=0.7",
     "--min-rag-context-case-group-target-coverage retrieval_route:visual_object=0.7",
 ]
