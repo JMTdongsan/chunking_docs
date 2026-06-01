@@ -270,7 +270,9 @@ def payload_matches_filter(payload: dict[str, Any], filters: dict[str, Any]) -> 
 
 def payload_filter_value(payload: dict[str, Any], key: str, expected: Any) -> bool:
     if key == "asset_id":
-        actual = payload.get("asset_id", payload.get("asset_ids"))
+        actual = payload.get("asset_id")
+        if not actual:
+            actual = payload.get("asset_ids")
     elif key == "page_no" and "page_no" not in payload:
         page_start = payload.get("page_start")
         page_end = payload.get("page_end")
