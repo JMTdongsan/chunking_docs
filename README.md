@@ -73,10 +73,11 @@ The package directory contains:
 For an existing package, refresh reproducibility metadata before readiness checks:
 
 ```bash
+chunking-docs refresh-package-indexes --package-dir outputs/package
 chunking-docs refresh-package-metadata --package-dir outputs/package
 ```
 
-This updates `manifest.json` with the current source checksum, profile summary, package config, tokenizer config, table count, and inferred embedding mode without rebuilding chunks or vectors.
+`refresh-package-indexes` rebuilds `bm25_tokens.json` from the current chunks plus linked visual captions, OCR text, VLM summaries, object metadata, entities, and visual elements. By default it removes stale Qdrant record files, `qdrant_collection.json`, and `embedding_manifest.json` so outdated vectors are not ingested after chunk or visual annotation changes. Use `embed-package` afterward for model-backed text, caption, object, image, and triple vectors, or `--rebuild-dry-run-embeddings` for deterministic local test vectors. `refresh-package-metadata` then updates `manifest.json` with the current source checksum, profile summary, package config, tokenizer config, table count, and inferred embedding mode without rebuilding chunks.
 
 Summarize the package characteristics that should drive chunking, OCR/VLM, graph, and retrieval choices:
 
@@ -91,7 +92,7 @@ chunking-docs plan-ingestion-workflow \
   --output outputs/package/ingestion_workflow_plan.json
 ```
 
-The report includes observations and processing recommendations for visual annotation, multimodal embeddings, graph signals, and retrieval benchmark coverage. `plan-ingestion-workflow` turns those recommendations into an ordered command plan: runtime checks, characterization, page tiling, OCR/VLM jobs, VLM profile experiments, embedding rebuilds, retrieval case generation, chunking comparison, metadata refresh, and final ingestion readiness. Dense visual pages are reported as tile candidates with a ready `build-tile-assets` command so maps, tables, and diagrams can be processed as overlapping crops before OCR/VLM evaluation. When rendered assets, VLM object metadata, or graph triples are present without matching `image_dense`, `object_dense`, or `triple_dense` records, the report recommends rebuilding those vector families before ablation. When rendered visual assets are present, it recommends generating and gating `visual_image_probe` cases so `qdrant:image_dense` contribution is measured separately from caption and object vectors. When VLM object metadata is present, it reports object and bbox counts and recommends generating and auditing `visual_object_probe` retrieval cases with visual-only, target-diversity, concentration, and query-strength gates so object detections are evaluated separately from aggregate retrieval scores.
+The report includes observations and processing recommendations for visual annotation, multimodal embeddings, graph signals, and retrieval benchmark coverage. `plan-ingestion-workflow` turns those recommendations into an ordered command plan: runtime checks, characterization, page tiling, OCR/VLM jobs, VLM profile experiments, embedding rebuilds, retrieval case generation, chunking comparison, index refresh, metadata refresh, and final ingestion readiness. Dense visual pages are reported as tile candidates with a ready `build-tile-assets` command so maps, tables, and diagrams can be processed as overlapping crops before OCR/VLM evaluation. When rendered assets, VLM object metadata, or graph triples are present without matching `image_dense`, `object_dense`, or `triple_dense` records, the report recommends rebuilding those vector families before ablation. When rendered visual assets are present, it recommends generating and gating `visual_image_probe` cases so `qdrant:image_dense` contribution is measured separately from caption and object vectors. When VLM object metadata is present, it reports object and bbox counts and recommends generating and auditing `visual_object_probe` retrieval cases with visual-only, target-diversity, concentration, and query-strength gates so object detections are evaluated separately from aggregate retrieval scores.
 
 ## Document Structure
 

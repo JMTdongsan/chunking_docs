@@ -78,6 +78,7 @@ from chunking_docs.pipeline import (
     clear_embedding_artifacts,
     load_processing_package,
     refresh_package_metadata,
+    refresh_package_indexes,
     rebuild_search_artifacts,
     write_embedding_artifacts,
     write_split_chunks,
@@ -304,6 +305,39 @@ def refresh_package_metadata_command(
             "profile_page_count": manifest.metadata.get("profile_summary", {}).get("page_count"),
         }
     )
+
+
+@app.command(name="refresh-package-indexes")
+def refresh_package_indexes_command(
+    package_dir: Path = Path("outputs/package"),
+    lexical_tokenizer: str = "auto",
+    ngram_min: int = 2,
+    ngram_max: int = 4,
+    ngram_cjk_only: bool = True,
+    deduplicate_tokens: bool = False,
+    rebuild_dry_run_embeddings: bool = False,
+    clear_stale_embeddings: bool = True,
+):
+    """Refresh BM25 tokens and invalidate stale vector artifacts for an existing package."""
+    tokenizer_config = None
+    if lexical_tokenizer != "auto":
+        try:
+            tokenizer_config = LexicalTokenizerConfig(
+                strategy=lexical_tokenizer,
+                min_n=ngram_min,
+                max_n=ngram_max,
+                ngram_cjk_only=ngram_cjk_only,
+                deduplicate=deduplicate_tokens,
+            )
+        except ValueError as exc:
+            raise typer.BadParameter(str(exc)) from exc
+    payload = refresh_package_indexes(
+        output_dir=package_dir,
+        tokenizer_config=tokenizer_config,
+        rebuild_dry_run_embeddings=rebuild_dry_run_embeddings,
+        clear_stale_embeddings=clear_stale_embeddings,
+    )
+    print({"package_dir": str(package_dir), **payload})
 
 
 @app.command(name="qdrant-upsert")

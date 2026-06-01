@@ -353,6 +353,47 @@ def rebuild_search_artifacts(
     )
 
 
+def refresh_package_indexes(
+    output_dir: Path,
+    manifest: ProcessingManifest | None = None,
+    tokenizer_config: LexicalTokenizerConfig | None = None,
+    rebuild_dry_run_embeddings: bool = False,
+    clear_stale_embeddings: bool = True,
+) -> dict[str, Any]:
+    """Refresh lexical artifacts and invalidate vector artifacts that may be stale."""
+    manifest = manifest or load_processing_package(output_dir)
+    tokenizer = (
+        tokenizer_config
+        or package_tokenizer_config(output_dir)
+        or existing_tokenizer_config(
+            manifest.metadata.get("package_config")
+            if isinstance(manifest.metadata.get("package_config"), dict)
+            else {}
+        )
+        or LexicalTokenizerConfig()
+    )
+    rebuild_search_artifacts(
+        output_dir,
+        manifest.chunks,
+        assets=manifest.assets,
+        triples=manifest.triples,
+        tokenizer_config=tokenizer,
+        rebuild_embeddings=rebuild_dry_run_embeddings,
+    )
+    cleared_embedding_artifacts = []
+    if clear_stale_embeddings and not rebuild_dry_run_embeddings:
+        cleared_embedding_artifacts = clear_embedding_artifacts(output_dir)
+    return {
+        "bm25_tokens": str(output_dir / "bm25_tokens.json"),
+        "chunk_count": len(manifest.chunks),
+        "asset_count": len(manifest.assets),
+        "triple_count": len(manifest.triples),
+        "tokenizer": tokenizer.model_dump(),
+        "rebuilt_dry_run_embeddings": rebuild_dry_run_embeddings,
+        "cleared_embedding_artifacts": cleared_embedding_artifacts,
+    }
+
+
 def clear_embedding_artifacts(output_dir: Path) -> list[str]:
     """Remove vector artifacts that become stale when chunk IDs or text change."""
     removed = []

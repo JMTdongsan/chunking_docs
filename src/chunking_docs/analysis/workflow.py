@@ -93,6 +93,7 @@ def build_ingestion_workflow_plan(
         steps.append(recommendation_step(recommendation, package_dir, retrieval_cases))
         handled_codes.add(recommendation.code)
 
+    steps.append(index_refresh_step(package_dir))
     steps.append(metadata_refresh_step(package_dir))
     steps.append(readiness_step(package_dir, retrieval_cases))
     return IngestionWorkflowPlan(
@@ -223,6 +224,19 @@ def metadata_refresh_step(package_dir: Path) -> WorkflowStep:
         reason="Record current source checksum, tokenizer config, and chunking selection before final ingestion gates.",
         commands=[
             f"chunking-docs refresh-package-metadata --package-dir {path_arg(package_dir)}"
+        ],
+    )
+
+
+def index_refresh_step(package_dir: Path) -> WorkflowStep:
+    return WorkflowStep(
+        step_id="refresh_package_indexes",
+        title="Refresh package indexes",
+        area="readiness",
+        priority="required",
+        reason="Regenerate BM25 tokens from current chunk and visual asset text, then invalidate stale vector artifacts before final gates.",
+        commands=[
+            f"chunking-docs refresh-package-indexes --package-dir {path_arg(package_dir)}"
         ],
     )
 

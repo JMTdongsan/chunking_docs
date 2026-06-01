@@ -1,7 +1,21 @@
 import json
 
-from chunking_docs.models import AssetKind, ChunkKind, DocumentChunk, GraphTriple, VisualAsset
-from chunking_docs.pipeline import rebuild_search_artifacts, write_embedding_artifacts
+from chunking_docs.embeddings.tokenizers import LexicalTokenizerConfig
+from chunking_docs.io import write_jsonl
+from chunking_docs.models import (
+    AssetKind,
+    ChunkKind,
+    DocumentChunk,
+    GraphTriple,
+    ProcessingManifest,
+    SourceDocument,
+    VisualAsset,
+)
+from chunking_docs.pipeline import (
+    rebuild_search_artifacts,
+    refresh_package_indexes,
+    write_embedding_artifacts,
+)
 from chunking_docs.storage.records import EmbeddingRecord
 
 
@@ -340,3 +354,85 @@ def test_rebuild_search_artifacts_can_rebuild_hashing_embeddings(tmp_path):
     assert config["collection"] == "custom_documents"
     assert manifest["collection"] == "custom_documents"
     assert manifest["vectors"]["text_dense"]["embedding"]["backend"] == "hashing"
+
+
+def test_refresh_package_indexes_rebuilds_asset_enriched_bm25_and_clears_vectors(tmp_path):
+    source_path = tmp_path / "source.pdf"
+    source_path.write_bytes(b"test")
+    asset_path = tmp_path / "page.png"
+    asset_path.write_bytes(b"image")
+    doc = SourceDocument(
+        doc_id="doc",
+        title="Reference Document",
+        local_path=source_path,
+    )
+    chunk = DocumentChunk(
+        chunk_id="chunk-1",
+        doc_id="doc",
+        page_start=1,
+        page_end=1,
+        kind=ChunkKind.TEXT,
+        text="renewal strategy",
+        asset_ids=["asset-1"],
+    )
+    asset = VisualAsset(
+        asset_id="asset-1",
+        doc_id="doc",
+        page_no=1,
+        kind=AssetKind.MAP,
+        path=asset_path,
+        caption="airport station map",
+        metadata={"visual_elements": ["transfer corridor"]},
+    )
+    manifest = ProcessingManifest(
+        doc=doc,
+        chunks=[chunk],
+        assets=[asset],
+        metadata={
+            "package_config": {
+                "lexical_tokenizer": LexicalTokenizerConfig(strategy="word").model_dump()
+            }
+        },
+    )
+    (tmp_path / "manifest.json").write_text(
+        manifest.model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+    write_jsonl(tmp_path / "pages.jsonl", [])
+    write_jsonl(tmp_path / "chunks.jsonl", [chunk])
+    write_jsonl(tmp_path / "assets.jsonl", [asset])
+    write_jsonl(tmp_path / "triples.jsonl", [])
+    (tmp_path / "bm25_tokens.json").write_text(
+        json.dumps(
+            {
+                "tokenizer": LexicalTokenizerConfig(strategy="word").model_dump(),
+                "chunks": [{"chunk_id": "chunk-1", "text_char_count": 3, "tokens": ["old"]}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    for artifact_name in [
+        "qdrant_text_records.jsonl",
+        "qdrant_caption_records.jsonl",
+        "qdrant_collection.json",
+        "embedding_manifest.json",
+    ]:
+        (tmp_path / artifact_name).write_text("stale\n", encoding="utf-8")
+
+    result = refresh_package_indexes(tmp_path)
+
+    bm25 = json.loads((tmp_path / "bm25_tokens.json").read_text(encoding="utf-8"))
+    tokens = bm25["chunks"][0]["tokens"]
+    assert result["chunk_count"] == 1
+    assert result["asset_count"] == 1
+    assert result["tokenizer"]["strategy"] == "word"
+    assert bm25["chunks"][0]["text_char_count"] > len(chunk.text)
+    assert {"renewal", "airport", "station", "transfer", "corridor"}.issubset(tokens)
+    assert sorted(path.rsplit("/", 1)[-1] for path in result["cleared_embedding_artifacts"]) == [
+        "embedding_manifest.json",
+        "qdrant_caption_records.jsonl",
+        "qdrant_collection.json",
+        "qdrant_text_records.jsonl",
+    ]
+    assert not (tmp_path / "qdrant_text_records.jsonl").exists()
+    assert not (tmp_path / "embedding_manifest.json").exists()
