@@ -3882,6 +3882,31 @@ def gate_retrieval_command(
         help="Optional baseline retrieval evaluation JSON for regression checks.",
     ),
     output: Path | None = None,
+    min_case_count: int = typer.Option(
+        0,
+        "--min-case-count",
+        help="Require at least this many benchmark cases in the retrieval evaluation.",
+    ),
+    min_expected_case_count: int = typer.Option(
+        0,
+        "--min-expected-case-count",
+        help="Require at least this many cases with expected targets.",
+    ),
+    min_expected_target_count: int = typer.Option(
+        0,
+        "--min-expected-target-count",
+        help="Require at least this many expected page/chunk/asset/triple targets.",
+    ),
+    min_passed_query_count: int = typer.Option(
+        0,
+        "--min-passed-query-count",
+        help="Require at least this many benchmark queries to pass.",
+    ),
+    max_failed_queries: int | None = typer.Option(
+        None,
+        "--max-failed-queries",
+        help="Limit benchmark queries that failed to retrieve expected evidence.",
+    ),
     min_recall_at_k: float = 0.0,
     min_target_coverage_at_k: float = 0.0,
     min_target_ndcg_at_k: float = 0.0,
@@ -3975,6 +4000,11 @@ def gate_retrieval_command(
     report = gate_retrieval_evaluation(
         parsed_evaluation,
         baseline=parsed_baseline,
+        min_case_count=min_case_count,
+        min_expected_case_count=min_expected_case_count,
+        min_expected_target_count=min_expected_target_count,
+        min_passed_query_count=min_passed_query_count,
+        max_failed_query_count=max_failed_queries,
         min_recall_at_k=min_recall_at_k,
         min_target_coverage_at_k=min_target_coverage_at_k,
         min_target_ndcg_at_k=min_target_ndcg_at_k,

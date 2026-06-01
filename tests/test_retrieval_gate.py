@@ -110,6 +110,32 @@ def test_retrieval_gate_checks_result_stability():
     ]
 
 
+def test_retrieval_gate_checks_benchmark_size_and_failure_counts():
+    report = gate_retrieval_evaluation(
+        make_evaluation(recall=0.6, target_type_coverage={"asset": 0.5}),
+        min_case_count=12,
+        min_expected_case_count=11,
+        min_expected_target_count=12,
+        min_passed_query_count=8,
+        max_failed_query_count=2,
+    )
+
+    assert report.passed is False
+    assert report.metrics["case_count"] == 10.0
+    assert report.metrics["expected_case_count"] == 10.0
+    assert report.metrics["expected_target_count"] == 10.0
+    assert report.metrics["matched_target_count"] == 5.0
+    assert report.metrics["passed_query_count"] == 6.0
+    assert report.metrics["failed_query_count"] == 4.0
+    assert report.failed_checks == [
+        "min_case_count",
+        "min_expected_case_count",
+        "min_expected_target_count",
+        "min_passed_query_count",
+        "max_failed_query_count",
+    ]
+
+
 def test_retrieval_gate_checks_target_rank_metrics():
     evaluation = make_evaluation_with_rank_results()
 
@@ -509,6 +535,46 @@ def test_gate_retrieval_cli_checks_result_stability(tmp_path):
     assert payload["failed_checks"] == [
         "min_result_stability_rate",
         "max_unstable_result_count",
+    ]
+
+
+def test_gate_retrieval_cli_checks_benchmark_size(tmp_path):
+    evaluation_path = tmp_path / "retrieval_eval.json"
+    output = tmp_path / "retrieval_gate.json"
+    evaluation_path.write_text(
+        make_evaluation(recall=0.7).model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "gate-retrieval",
+            str(evaluation_path),
+            "--min-case-count",
+            "12",
+            "--min-expected-case-count",
+            "12",
+            "--min-passed-query-count",
+            "8",
+            "--max-failed-queries",
+            "2",
+            "--output",
+            str(output),
+            "--no-fail",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["metrics"]["case_count"] == 10.0
+    assert payload["metrics"]["passed_query_count"] == 7.0
+    assert payload["metrics"]["failed_query_count"] == 3.0
+    assert payload["failed_checks"] == [
+        "min_case_count",
+        "min_expected_case_count",
+        "min_passed_query_count",
+        "max_failed_query_count",
     ]
 
 

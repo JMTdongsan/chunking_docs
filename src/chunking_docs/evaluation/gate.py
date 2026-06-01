@@ -36,6 +36,11 @@ class RetrievalGateReport(BaseModel):
 def gate_retrieval_evaluation(
     evaluation: RetrievalEvaluation,
     baseline: RetrievalEvaluation | None = None,
+    min_case_count: int = 0,
+    min_expected_case_count: int = 0,
+    min_expected_target_count: int = 0,
+    min_passed_query_count: int = 0,
+    max_failed_query_count: int | None = None,
     min_recall_at_k: float = 0.0,
     min_target_coverage_at_k: float = 0.0,
     min_target_ndcg_at_k: float = 0.0,
@@ -93,6 +98,25 @@ def gate_retrieval_evaluation(
         else {}
     )
     checks = [
+        minimum_check("min_case_count", "case_count", metrics, float(min_case_count)),
+        minimum_check(
+            "min_expected_case_count",
+            "expected_case_count",
+            metrics,
+            float(min_expected_case_count),
+        ),
+        minimum_check(
+            "min_expected_target_count",
+            "expected_target_count",
+            metrics,
+            float(min_expected_target_count),
+        ),
+        minimum_check(
+            "min_passed_query_count",
+            "passed_query_count",
+            metrics,
+            float(min_passed_query_count),
+        ),
         minimum_check("min_recall_at_k", "recall_at_k", metrics, min_recall_at_k),
         minimum_check(
             "min_target_coverage_at_k",
@@ -115,6 +139,15 @@ def gate_retrieval_evaluation(
             min_result_stability_rate,
         ),
     ]
+    if max_failed_query_count is not None:
+        checks.append(
+            maximum_check(
+                "max_failed_query_count",
+                "failed_query_count",
+                metrics,
+                float(max_failed_query_count),
+            )
+        )
     if max_unstable_result_count is not None:
         checks.append(
             maximum_check(
@@ -238,6 +271,11 @@ def retrieval_metrics(
     if evaluation is None:
         return {}
     metrics = {
+        "case_count": float(evaluation.case_count),
+        "expected_case_count": float(evaluation.expected_case_count),
+        "passed_query_count": float(evaluation.passed_count),
+        "failed_query_count": float(evaluation.failed_count),
+        **retrieval_expected_target_count_metrics(evaluation),
         "hit_rate": evaluation.hit_rate,
         "recall_at_k": evaluation.recall_at_k,
         "mrr": evaluation.mrr,
@@ -270,6 +308,20 @@ def retrieval_metrics(
             for key, value in group_metrics.items():
                 metrics[case_group_metric_key(group_name, group_value, key)] = value
     return metrics
+
+
+def retrieval_expected_target_count_metrics(evaluation: RetrievalEvaluation) -> dict[str, float]:
+    target_count = sum(metric.target_count for metric in evaluation.target_metrics.values())
+    matched_target_count = sum(
+        metric.matched_target_count for metric in evaluation.target_metrics.values()
+    )
+    if target_count <= 0 and evaluation.results:
+        target_count = sum(result.expected_target_count for result in evaluation.results)
+        matched_target_count = sum(result.matched_target_count for result in evaluation.results)
+    return {
+        "expected_target_count": float(target_count),
+        "matched_target_count": float(matched_target_count),
+    }
 
 
 def retrieval_rank_metrics(evaluation: RetrievalEvaluation) -> dict[str, float]:
