@@ -228,6 +228,44 @@ def test_plan_ingestion_workflow_cli_defaults_cases_to_package_dir(tmp_path):
     assert not any("examples/retrieval_cases.jsonl" in command for command in commands)
 
 
+def test_workflow_plan_carries_hard_negative_benchmark_gates(tmp_path):
+    package_dir, manifest = make_hard_negative_workflow_package(tmp_path)
+    cases = tmp_path / "cases.jsonl"
+    characteristics = characterize_package(
+        profiles=manifest.profiles,
+        chunks=manifest.chunks,
+        assets=manifest.assets,
+        triples=manifest.triples,
+        package_dir=package_dir,
+    )
+
+    plan = build_ingestion_workflow_plan(
+        characteristics,
+        package_dir=package_dir,
+        retrieval_cases=cases,
+        vlm_profiles=["qwen2_5_vl_7b"],
+    )
+
+    benchmark_commands = next(
+        step.commands for step in plan.steps if step.step_id == "maintain_retrieval_benchmark"
+    )
+    assert "--hard-negative-limit 1" in benchmark_commands[0]
+    assert "--merge-existing" in benchmark_commands[0]
+    assert "--min-excluded-target-cases page=1" in benchmark_commands[1]
+    assert "--min-excluded-target-cases chunk=1" in benchmark_commands[1]
+    assert "--min-distinct-excluded-targets page=1" in benchmark_commands[1]
+    assert "--min-distinct-excluded-targets chunk=1" in benchmark_commands[1]
+    assert "--max-excluded-cases-per-target page=1" in benchmark_commands[1]
+    assert "--max-excluded-cases-per-target chunk=1" in benchmark_commands[1]
+    readiness_command = plan.steps[-1].commands[0]
+    assert "--min-retrieval-excluded-target-cases page=1" in readiness_command
+    assert "--min-retrieval-excluded-target-cases chunk=1" in readiness_command
+    assert "--min-retrieval-distinct-excluded-targets page=1" in readiness_command
+    assert "--min-retrieval-distinct-excluded-targets chunk=1" in readiness_command
+    assert "--max-retrieval-excluded-cases-per-target page=1" in readiness_command
+    assert "--max-retrieval-excluded-cases-per-target chunk=1" in readiness_command
+
+
 def test_workflow_plan_rebuilds_embeddings_after_index_refresh_for_indexed_text_package(tmp_path):
     package_dir, manifest = make_indexed_text_package(tmp_path)
     cases = tmp_path / "cases.jsonl"
@@ -542,6 +580,72 @@ def make_completed_visual_package(tmp_path: Path):
     manifest.assets[0].metadata["vlm_parse_status"] = "json_object"
     manifest.assets[0].metadata["objects"] = [{"label": "station area"}]
     write_jsonl(package_dir / "assets.jsonl", manifest.assets)
+    return package_dir, manifest
+
+
+def make_hard_negative_workflow_package(tmp_path: Path):
+    package_dir = tmp_path / "hard_negative_package"
+    package_dir.mkdir()
+    doc = SourceDocument(
+        doc_id="doc",
+        title="Reference Document",
+        local_path=tmp_path / "reference.pdf",
+    )
+    profiles = [
+        PageProfile(
+            doc_id="doc",
+            page_no=1,
+            width=100,
+            height=100,
+            char_count=180,
+            line_count=4,
+            text_block_count=1,
+            image_block_count=0,
+            embedded_image_count=0,
+            drawing_count=0,
+            text_quality=TextQuality.GOOD,
+        ),
+        PageProfile(
+            doc_id="doc",
+            page_no=2,
+            width=100,
+            height=100,
+            char_count=190,
+            line_count=4,
+            text_block_count=1,
+            image_block_count=0,
+            embedded_image_count=0,
+            drawing_count=0,
+            text_quality=TextQuality.GOOD,
+        ),
+    ]
+    chunks = [
+        DocumentChunk(
+            chunk_id="chunk-1",
+            doc_id="doc",
+            page_start=1,
+            page_end=1,
+            kind=ChunkKind.TEXT,
+            text="station area redevelopment corridor",
+        ),
+        DocumentChunk(
+            chunk_id="chunk-2",
+            doc_id="doc",
+            page_start=2,
+            page_end=2,
+            kind=ChunkKind.TEXT,
+            text="housing area redevelopment corridor",
+        ),
+    ]
+    manifest = ProcessingManifest(doc=doc, profiles=profiles, chunks=chunks, assets=[], triples=[])
+    (package_dir / "manifest.json").write_text(
+        json.dumps({"doc": doc.model_dump(mode="json")}),
+        encoding="utf-8",
+    )
+    write_jsonl(package_dir / "pages.jsonl", profiles)
+    write_jsonl(package_dir / "chunks.jsonl", chunks)
+    write_jsonl(package_dir / "assets.jsonl", [])
+    write_jsonl(package_dir / "triples.jsonl", [])
     return package_dir, manifest
 
 

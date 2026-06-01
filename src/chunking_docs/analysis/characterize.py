@@ -719,6 +719,8 @@ def recommendations(
                 },
             )
         )
+    hard_negative_thresholds = hard_negative_target_thresholds(text_layer, chunks, visual, graph)
+    hard_negative_audit_args = hard_negative_audit_command_args(hard_negative_thresholds)
     result.append(
         ProcessingRecommendation(
             code="maintain_retrieval_benchmark",
@@ -729,7 +731,17 @@ def recommendations(
                 "a chunking strategy is an improvement."
             ),
             commands=[
-                "chunking-docs audit-retrieval-cases examples/retrieval_cases.jsonl --package-dir outputs/package --min-query-terms-per-case 3 --max-duplicate-queries 0 --max-expected-targets-per-case 5",
+                (
+                    "chunking-docs generate-retrieval-cases --package-dir outputs/package "
+                    "--query-mode salient_terms --selection-strategy salience "
+                    "--hard-negative-limit 1 --output examples/retrieval_cases.jsonl --merge-existing"
+                ),
+                (
+                    "chunking-docs audit-retrieval-cases examples/retrieval_cases.jsonl "
+                    "--package-dir outputs/package "
+                    "--min-query-terms-per-case 3 --max-duplicate-queries 0 "
+                    f"--max-expected-targets-per-case 5{hard_negative_audit_args}"
+                ),
                 "chunking-docs eval-retrieval examples/retrieval_cases.jsonl --package-dir outputs/package --repeat 3",
                 "chunking-docs gate-retrieval outputs/package/retrieval_eval.json",
             ],
@@ -738,6 +750,8 @@ def recommendations(
                 "chunk_count": chunks.chunk_count,
                 "asset_count": sum(visual.asset_kind_counts.values()),
                 "triple_count": graph.triple_count,
+                "hard_negative_limit": 1,
+                "recommended_hard_negative_thresholds": hard_negative_thresholds,
             },
         )
     )
@@ -796,6 +810,38 @@ def recommended_qdrant_vector_ablation_modes(
 
 def bounded_threshold(value: int, cap: int = 5) -> int:
     return max(1, min(cap, value))
+
+
+def hard_negative_target_thresholds(
+    text_layer: TextLayerCharacteristics,
+    chunks: ChunkCharacteristics,
+    visual: VisualCharacteristics,
+    graph: GraphCharacteristics,
+) -> dict[str, int]:
+    source_counts = {
+        "page": text_layer.page_count,
+        "chunk": chunks.chunk_count,
+        "asset": sum(visual.asset_kind_counts.values()),
+        "triple": graph.triple_count,
+    }
+    return {
+        target_type: bounded_threshold(count - 1)
+        for target_type, count in source_counts.items()
+        if count > 1
+    }
+
+
+def hard_negative_audit_command_args(thresholds: dict[str, int]) -> str:
+    parts = []
+    for target_type, threshold in sorted(thresholds.items()):
+        parts.extend(
+            [
+                f"--min-excluded-target-cases {target_type}={threshold}",
+                f"--min-distinct-excluded-targets {target_type}={threshold}",
+                f"--max-excluded-cases-per-target {target_type}={threshold}",
+            ]
+        )
+    return f" {' '.join(parts)}" if parts else ""
 
 
 def qdrant_record_present(artifacts: ArtifactCharacteristics, vector_name: str) -> bool:

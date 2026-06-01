@@ -166,6 +166,9 @@ def build_ingestion_workflow_plan(
         recommendations_by_code.get("validate_qdrant_rag_context")
     )
     visual_probe_gate_args = visual_probe_readiness_gate_args(recommendations_by_code)
+    retrieval_benchmark_gate_args = retrieval_benchmark_readiness_gate_args(
+        recommendations_by_code.get("maintain_retrieval_benchmark")
+    )
     steps.append(
         readiness_step(
             package_dir,
@@ -187,6 +190,7 @@ def build_ingestion_workflow_plan(
             qdrant_route_preset=qdrant_route_preset,
             qdrant_vector_names=qdrant_vector_names,
             visual_probe_gate_args=visual_probe_gate_args,
+            retrieval_benchmark_gate_args=retrieval_benchmark_gate_args,
         )
     )
     return IngestionWorkflowPlan(
@@ -423,6 +427,33 @@ def visual_probe_readiness_gate_args(
     return args
 
 
+def retrieval_benchmark_readiness_gate_args(
+    recommendation: ProcessingRecommendation | None,
+) -> list[str]:
+    if recommendation is None:
+        return []
+    thresholds = recommendation.metadata.get("recommended_hard_negative_thresholds")
+    if not isinstance(thresholds, dict):
+        return []
+    args = []
+    for target_type, raw_threshold in sorted(thresholds.items()):
+        try:
+            threshold = int(raw_threshold)
+        except (TypeError, ValueError):
+            continue
+        if threshold <= 0:
+            continue
+        target = shlex.quote(str(target_type))
+        args.extend(
+            [
+                f"--min-retrieval-excluded-target-cases {target}={threshold}",
+                f"--min-retrieval-distinct-excluded-targets {target}={threshold}",
+                f"--max-retrieval-excluded-cases-per-target {target}={threshold}",
+            ]
+        )
+    return args
+
+
 def positive_metadata_int(recommendation: ProcessingRecommendation, key: str) -> int:
     value = recommendation.metadata.get(key)
     try:
@@ -604,6 +635,7 @@ def readiness_step(
     qdrant_route_preset: str = "",
     qdrant_vector_names: list[str] | None = None,
     visual_probe_gate_args: list[str] | None = None,
+    retrieval_benchmark_gate_args: list[str] | None = None,
 ) -> WorkflowStep:
     command_parts = [
         "chunking-docs ingestion-readiness",
@@ -623,6 +655,8 @@ def readiness_step(
     ]
     if visual_probe_gate_args:
         command_parts.extend(visual_probe_gate_args)
+    if retrieval_benchmark_gate_args:
+        command_parts.extend(retrieval_benchmark_gate_args)
     if include_visual_quality:
         command_parts.extend(BASE_VISUAL_READINESS_GATE_ARGS)
     if include_vlm_quality:
@@ -672,6 +706,7 @@ def readiness_step(
             "include_qdrant_rag_context": include_qdrant_rag_context,
             "qdrant_route_preset": qdrant_route_preset or None,
             "visual_probe_gate_args": visual_probe_gate_args or [],
+            "retrieval_benchmark_gate_args": retrieval_benchmark_gate_args or [],
         },
     )
 

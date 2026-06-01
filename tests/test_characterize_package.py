@@ -143,9 +143,16 @@ def test_characterize_package_reports_strategy_observations(tmp_path):
     benchmark_recommendation = next(
         item for item in report.recommendations if item.code == "maintain_retrieval_benchmark"
     )
-    assert "--min-query-terms-per-case 3" in benchmark_recommendation.commands[0]
-    assert "--max-duplicate-queries 0" in benchmark_recommendation.commands[0]
-    assert "--max-expected-targets-per-case 5" in benchmark_recommendation.commands[0]
+    assert "--hard-negative-limit 1" in benchmark_recommendation.commands[0]
+    assert "--merge-existing" in benchmark_recommendation.commands[0]
+    assert "--min-query-terms-per-case 3" in benchmark_recommendation.commands[1]
+    assert "--max-duplicate-queries 0" in benchmark_recommendation.commands[1]
+    assert "--max-expected-targets-per-case 5" in benchmark_recommendation.commands[1]
+    assert "--min-excluded-target-cases page=1" in benchmark_recommendation.commands[1]
+    assert "--min-distinct-excluded-targets page=1" in benchmark_recommendation.commands[1]
+    assert "--max-excluded-cases-per-target page=1" in benchmark_recommendation.commands[1]
+    assert benchmark_recommendation.metadata["hard_negative_limit"] == 1
+    assert benchmark_recommendation.metadata["recommended_hard_negative_thresholds"] == {"page": 1}
     qdrant_recommendation = next(
         item for item in report.recommendations if item.code == "validate_qdrant_rag_context"
     )
