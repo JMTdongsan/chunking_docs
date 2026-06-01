@@ -128,7 +128,7 @@ def test_sweep_selection_constraints_filter_embedding_text_budget(tmp_path):
     assert report.selection.ranking[0].metrics["total_chunk_chars"] == 194.0
     rejected = next(row for row in report.selection.ranking if not row.eligible)
     assert rejected.failed_constraints == ["max_total_chunk_chars"]
-    assert rejected.metrics["total_chunk_chars"] == 494.0
+    assert rejected.metrics["total_chunk_chars"] == 495.0
 
 
 def test_sweep_selection_reports_no_recommendation_when_constraints_all_fail(tmp_path):

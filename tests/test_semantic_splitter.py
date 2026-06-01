@@ -1,6 +1,7 @@
 from chunking_docs.chunking.semantic_splitter import (
     hard_split,
     overlap_tail,
+    paragraph_blocks,
     semantic_subchunks,
     split_text,
 )
@@ -14,6 +15,66 @@ def test_split_text_keeps_overlap_for_long_blocks():
 
     assert len(chunks) > 1
     assert all(len(chunk) <= 560 for chunk in chunks)
+
+
+def test_paragraph_blocks_detect_report_outline_boundaries():
+    text = "\n".join(
+        [
+            "Executive summary",
+            "1.1 Regional context",
+            "Alpha text",
+            "(1) First implementation phase",
+            "Beta text",
+            "가. Local criteria",
+            "Gamma text",
+            "○ Review item",
+            "Delta text",
+        ]
+    )
+
+    blocks = paragraph_blocks(text)
+
+    assert blocks == [
+        "Executive summary",
+        "1.1 Regional context\nAlpha text",
+        "(1) First implementation phase\nBeta text",
+        "가. Local criteria\nGamma text",
+        "○ Review item\nDelta text",
+    ]
+
+
+def test_paragraph_blocks_detect_korean_report_headings():
+    text = "\n".join(
+        [
+            "제1편 General plan",
+            "intro",
+            "제 2 장 Detailed policy",
+            "details",
+            "① Indexed item",
+            "item details",
+        ]
+    )
+
+    blocks = paragraph_blocks(text)
+
+    assert blocks == [
+        "제1편 General plan\nintro",
+        "제 2 장 Detailed policy\ndetails",
+        "① Indexed item\nitem details",
+    ]
+
+
+def test_paragraph_blocks_preserve_preamble_before_first_boundary():
+    text = "Preamble text\n\nOverview\n1. First policy\nbody\n2. Second policy\nbody"
+
+    blocks = paragraph_blocks(text)
+
+    assert blocks == [
+        "Preamble text",
+        "Overview",
+        "1. First policy\nbody",
+        "2. Second policy\nbody",
+    ]
 
 
 def test_hard_split_prefers_sentence_boundaries():

@@ -65,7 +65,7 @@
    - Compare before/after package directories to verify how annotations changed chunks, assets, graph triples, and vector records.
 
 8. **Semantic Splitting**
-   - Split long annotated chunks into subchunks using paragraph, sentence, line, and word boundaries.
+   - Split long annotated chunks into subchunks using paragraph, report outline, list, sentence, line, and word boundaries.
    - Preserve original chunk IDs when a chunk does not need splitting.
    - Remap triples to available child chunks when splitting changes IDs.
 

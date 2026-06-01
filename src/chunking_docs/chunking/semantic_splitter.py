@@ -5,7 +5,19 @@ import re
 
 from chunking_docs.models import ChunkKind, DocumentChunk
 
-BOUNDARY_RE = re.compile(r"(?m)^\s*(?:#{1,6}\s+|제\d+[장절]\b|\d+[.)]\s+|[-•]\s+|\[[A-Z]+ page \d+)")
+BOUNDARY_RE = re.compile(
+    r"(?m)^\s*(?:"
+    r"#{1,6}\s+|"
+    r"제\s*[0-9０-９一二三四五六七八九十]+\s*[편부장절항]\b|"
+    r"\d+(?:\.\d+)*[.)]?\s+|"
+    r"\(\d+\)\s+|"
+    r"[가-힣][.)]\s+|"
+    r"[①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳]\s*|"
+    r"[IVXLCDM]+[.)]\s+|"
+    r"[-*•◦○●▪▫□■◇◆▶▷ㆍ∙]\s+|"
+    r"\[[A-Z]+ page \d+\]?"
+    r")"
+)
 SENTENCE_END_RE = re.compile(r"[.!?。！？]+[\"')\]\}]*")
 WHITESPACE_RE = re.compile(r"\s+")
 
@@ -84,7 +96,11 @@ def paragraph_blocks(text: str) -> list[str]:
         rough = rough.strip()
         if not rough:
             continue
-        starts = [match.start() for match in BOUNDARY_RE.finditer(rough)]
+        boundary_starts = [match.start() for match in BOUNDARY_RE.finditer(rough)]
+        if not boundary_starts:
+            blocks.append(rough)
+            continue
+        starts = boundary_starts if boundary_starts[0] == 0 else [0, *boundary_starts]
         if len(starts) <= 1:
             blocks.append(rough)
             continue
