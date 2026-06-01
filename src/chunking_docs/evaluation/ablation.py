@@ -3,6 +3,15 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 from chunking_docs.embeddings.tokenizers import LexicalTokenizerConfig
+from chunking_docs.evaluation.compare import (
+    PAIRWISE_BOOTSTRAP_SAMPLES,
+    PAIRWISE_CONFIDENCE_LEVEL,
+    bootstrap_mean_interval,
+    compare_case_results,
+    mean,
+    results_by_query,
+    stable_seed,
+)
 from chunking_docs.evaluation.gate import (
     RetrievalGateCheck,
     case_group_metric_key,
@@ -44,6 +53,34 @@ class AblationBestModeMetric(BaseModel):
     value: float | None = None
 
 
+class AblationPairwiseComparison(BaseModel):
+    candidate: str
+    baseline: str
+    shared_query_count: int
+    candidate_win_count: int = 0
+    baseline_win_count: int = 0
+    tie_count: int = 0
+    candidate_win_rate: float = 0.0
+    baseline_win_rate: float = 0.0
+    mean_reciprocal_rank_delta: float = 0.0
+    mean_target_coverage_delta: float = 0.0
+    mean_target_ndcg_delta: float = 0.0
+    mean_precision_delta: float = 0.0
+    mean_latency_delta_ms: float | None = None
+    bootstrap_samples: int = 0
+    confidence_level: float = 0.95
+    reciprocal_rank_delta_ci_low: float | None = None
+    reciprocal_rank_delta_ci_high: float | None = None
+    target_coverage_delta_ci_low: float | None = None
+    target_coverage_delta_ci_high: float | None = None
+    target_ndcg_delta_ci_low: float | None = None
+    target_ndcg_delta_ci_high: float | None = None
+    precision_delta_ci_low: float | None = None
+    precision_delta_ci_high: float | None = None
+    latency_delta_ci_low_ms: float | None = None
+    latency_delta_ci_high_ms: float | None = None
+
+
 class RetrievalAblationReport(BaseModel):
     rows: list[RetrievalAblationRow]
     best_by_recall: str | None
@@ -55,6 +92,7 @@ class RetrievalAblationReport(BaseModel):
         str,
         dict[str, dict[str, AblationBestModeMetric]],
     ] = Field(default_factory=dict)
+    pairwise: list[AblationPairwiseComparison] = Field(default_factory=list)
 
 
 class RetrievalAblationGateReport(BaseModel):
@@ -75,6 +113,7 @@ class RetrievalAblationGateReport(BaseModel):
     baseline_case_group_metrics: dict[str, dict[str, dict[str, float]]] = Field(
         default_factory=dict
     )
+    pairwise_metrics: dict[str, float | None] = Field(default_factory=dict)
     best_by_recall: str | None = None
     best_by_target_coverage: str | None = None
     best_by_target_ndcg: str | None = None
@@ -110,19 +149,23 @@ class QdrantVectorAblationReport(BaseModel):
         str,
         dict[str, dict[str, AblationBestModeMetric]],
     ] = Field(default_factory=dict)
+    pairwise: list[AblationPairwiseComparison] = Field(default_factory=list)
 
 
 class QdrantVectorAblationGateReport(BaseModel):
     passed: bool
     mode: str
+    baseline_mode: str | None = None
     vector_names: list[str] = Field(default_factory=list)
     graph_expand: bool = False
     metrics: dict[str, float]
+    baseline_metrics: dict[str, float] = Field(default_factory=dict)
     target_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
     source_family_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
     chunk_strategy_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
     retrieval_role_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
     case_group_metrics: dict[str, dict[str, dict[str, float]]] = Field(default_factory=dict)
+    pairwise_metrics: dict[str, float | None] = Field(default_factory=dict)
     best_by_recall: str | None = None
     best_by_target_coverage: str | None = None
     best_by_target_ndcg: str | None = None
@@ -270,6 +313,7 @@ def evaluate_retrieval_ablation(
         if rows
         else None,
         case_group_best_modes=case_group_best_modes(rows),
+        pairwise=ablation_pairwise_comparisons(rows),
     )
 
 
@@ -400,6 +444,15 @@ def gate_retrieval_ablation(
         if baseline_row
         else {}
     )
+    pairwise_metrics = ablation_pairwise_metrics(
+        find_ablation_pairwise_comparison(
+            report.pairwise,
+            mode,
+            baseline_mode,
+        )
+        if baseline_mode is not None
+        else None
+    )
     checks = [
         minimum_check("min_recall_at_k", "recall_at_k", metrics, min_recall_at_k),
         minimum_check(
@@ -503,6 +556,7 @@ def gate_retrieval_ablation(
         baseline_chunk_strategy_metrics=baseline_chunk_strategy_metrics,
         baseline_retrieval_role_metrics=baseline_retrieval_role_metrics,
         baseline_case_group_metrics=baseline_case_group_metrics,
+        pairwise_metrics=pairwise_metrics,
         best_by_recall=report.best_by_recall,
         best_by_target_coverage=report.best_by_target_coverage,
         best_by_target_ndcg=report.best_by_target_ndcg,
@@ -644,7 +698,183 @@ def build_qdrant_vector_ablation_report(
         if rows
         else None,
         case_group_best_modes=case_group_best_modes(rows),
+        pairwise=ablation_pairwise_comparisons(rows),
     )
+
+
+def ablation_pairwise_comparisons(
+    rows: list[RetrievalAblationRow] | list[QdrantVectorAblationRow],
+) -> list[AblationPairwiseComparison]:
+    comparisons = []
+    for candidate_row in rows:
+        for baseline_row in rows:
+            if candidate_row.mode.name == baseline_row.mode.name:
+                continue
+            comparison = compare_ablation_rows_pairwise(candidate_row, baseline_row)
+            if comparison is not None:
+                comparisons.append(comparison)
+    return comparisons
+
+
+def compare_ablation_rows_pairwise(
+    candidate_row: RetrievalAblationRow | QdrantVectorAblationRow,
+    baseline_row: RetrievalAblationRow | QdrantVectorAblationRow,
+) -> AblationPairwiseComparison | None:
+    candidate_results = results_by_query(candidate_row.evaluation.results)
+    baseline_results = results_by_query(baseline_row.evaluation.results)
+    shared_queries = sorted(candidate_results.keys() & baseline_results.keys())
+    if not shared_queries:
+        return None
+
+    candidate_wins = 0
+    baseline_wins = 0
+    ties = 0
+    reciprocal_rank_deltas = []
+    target_coverage_deltas = []
+    target_ndcg_deltas = []
+    precision_deltas = []
+    latency_deltas = []
+    for query in shared_queries:
+        candidate_result = candidate_results[query]
+        baseline_result = baseline_results[query]
+        winner = compare_case_results(candidate_result, baseline_result)
+        if winner > 0:
+            candidate_wins += 1
+        elif winner < 0:
+            baseline_wins += 1
+        else:
+            ties += 1
+        reciprocal_rank_deltas.append(
+            candidate_result.reciprocal_rank - baseline_result.reciprocal_rank
+        )
+        target_coverage_deltas.append(
+            candidate_result.target_coverage_at_k - baseline_result.target_coverage_at_k
+        )
+        target_ndcg_deltas.append(
+            candidate_result.target_ndcg_at_k - baseline_result.target_ndcg_at_k
+        )
+        precision_deltas.append(candidate_result.precision_at_k - baseline_result.precision_at_k)
+        latency_deltas.append(candidate_result.latency_ms - baseline_result.latency_ms)
+
+    candidate_name = candidate_row.mode.name
+    baseline_name = baseline_row.mode.name
+    shared_count = len(shared_queries)
+    reciprocal_rank_ci = bootstrap_mean_interval(
+        reciprocal_rank_deltas,
+        seed=stable_seed(candidate_name, baseline_name, "mrr"),
+    )
+    target_coverage_ci = bootstrap_mean_interval(
+        target_coverage_deltas,
+        seed=stable_seed(candidate_name, baseline_name, "coverage"),
+    )
+    target_ndcg_ci = bootstrap_mean_interval(
+        target_ndcg_deltas,
+        seed=stable_seed(candidate_name, baseline_name, "ndcg"),
+    )
+    precision_ci = bootstrap_mean_interval(
+        precision_deltas,
+        seed=stable_seed(candidate_name, baseline_name, "precision"),
+    )
+    latency_ci = bootstrap_mean_interval(
+        latency_deltas,
+        seed=stable_seed(candidate_name, baseline_name, "latency"),
+    )
+    return AblationPairwiseComparison(
+        candidate=candidate_name,
+        baseline=baseline_name,
+        shared_query_count=shared_count,
+        candidate_win_count=candidate_wins,
+        baseline_win_count=baseline_wins,
+        tie_count=ties,
+        candidate_win_rate=candidate_wins / shared_count,
+        baseline_win_rate=baseline_wins / shared_count,
+        mean_reciprocal_rank_delta=mean(reciprocal_rank_deltas),
+        mean_target_coverage_delta=mean(target_coverage_deltas),
+        mean_target_ndcg_delta=mean(target_ndcg_deltas),
+        mean_precision_delta=mean(precision_deltas),
+        mean_latency_delta_ms=mean(latency_deltas),
+        bootstrap_samples=PAIRWISE_BOOTSTRAP_SAMPLES,
+        confidence_level=PAIRWISE_CONFIDENCE_LEVEL,
+        reciprocal_rank_delta_ci_low=reciprocal_rank_ci[0],
+        reciprocal_rank_delta_ci_high=reciprocal_rank_ci[1],
+        target_coverage_delta_ci_low=target_coverage_ci[0],
+        target_coverage_delta_ci_high=target_coverage_ci[1],
+        target_ndcg_delta_ci_low=target_ndcg_ci[0],
+        target_ndcg_delta_ci_high=target_ndcg_ci[1],
+        precision_delta_ci_low=precision_ci[0],
+        precision_delta_ci_high=precision_ci[1],
+        latency_delta_ci_low_ms=latency_ci[0],
+        latency_delta_ci_high_ms=latency_ci[1],
+    )
+
+
+def find_ablation_pairwise_comparison(
+    pairwise: list[AblationPairwiseComparison],
+    candidate: str,
+    baseline: str | None,
+) -> AblationPairwiseComparison | None:
+    if baseline is None:
+        return None
+    for comparison in pairwise:
+        if comparison.candidate == candidate and comparison.baseline == baseline:
+            return comparison
+    return None
+
+
+def ablation_pairwise_metrics(
+    pairwise: AblationPairwiseComparison | None,
+) -> dict[str, float | None]:
+    if pairwise is None:
+        return {
+            "pairwise_shared_query_count": None,
+            "pairwise_candidate_win_count": None,
+            "pairwise_baseline_win_count": None,
+            "pairwise_tie_count": None,
+            "pairwise_candidate_win_rate": None,
+            "pairwise_baseline_win_rate": None,
+            "pairwise_mean_reciprocal_rank_delta": None,
+            "pairwise_mean_target_coverage_delta": None,
+            "pairwise_mean_target_ndcg_delta": None,
+            "pairwise_mean_precision_delta": None,
+            "pairwise_mean_latency_delta_ms": None,
+            "pairwise_bootstrap_samples": None,
+            "pairwise_confidence_level": None,
+            "pairwise_reciprocal_rank_delta_ci_low": None,
+            "pairwise_reciprocal_rank_delta_ci_high": None,
+            "pairwise_target_coverage_delta_ci_low": None,
+            "pairwise_target_coverage_delta_ci_high": None,
+            "pairwise_target_ndcg_delta_ci_low": None,
+            "pairwise_target_ndcg_delta_ci_high": None,
+            "pairwise_precision_delta_ci_low": None,
+            "pairwise_precision_delta_ci_high": None,
+            "pairwise_latency_delta_ci_low_ms": None,
+            "pairwise_latency_delta_ci_high_ms": None,
+        }
+    return {
+        "pairwise_shared_query_count": float(pairwise.shared_query_count),
+        "pairwise_candidate_win_count": float(pairwise.candidate_win_count),
+        "pairwise_baseline_win_count": float(pairwise.baseline_win_count),
+        "pairwise_tie_count": float(pairwise.tie_count),
+        "pairwise_candidate_win_rate": pairwise.candidate_win_rate,
+        "pairwise_baseline_win_rate": pairwise.baseline_win_rate,
+        "pairwise_mean_reciprocal_rank_delta": pairwise.mean_reciprocal_rank_delta,
+        "pairwise_mean_target_coverage_delta": pairwise.mean_target_coverage_delta,
+        "pairwise_mean_target_ndcg_delta": pairwise.mean_target_ndcg_delta,
+        "pairwise_mean_precision_delta": pairwise.mean_precision_delta,
+        "pairwise_mean_latency_delta_ms": pairwise.mean_latency_delta_ms,
+        "pairwise_bootstrap_samples": float(pairwise.bootstrap_samples),
+        "pairwise_confidence_level": pairwise.confidence_level,
+        "pairwise_reciprocal_rank_delta_ci_low": pairwise.reciprocal_rank_delta_ci_low,
+        "pairwise_reciprocal_rank_delta_ci_high": pairwise.reciprocal_rank_delta_ci_high,
+        "pairwise_target_coverage_delta_ci_low": pairwise.target_coverage_delta_ci_low,
+        "pairwise_target_coverage_delta_ci_high": pairwise.target_coverage_delta_ci_high,
+        "pairwise_target_ndcg_delta_ci_low": pairwise.target_ndcg_delta_ci_low,
+        "pairwise_target_ndcg_delta_ci_high": pairwise.target_ndcg_delta_ci_high,
+        "pairwise_precision_delta_ci_low": pairwise.precision_delta_ci_low,
+        "pairwise_precision_delta_ci_high": pairwise.precision_delta_ci_high,
+        "pairwise_latency_delta_ci_low_ms": pairwise.latency_delta_ci_low_ms,
+        "pairwise_latency_delta_ci_high_ms": pairwise.latency_delta_ci_high_ms,
+    }
 
 
 def case_group_best_modes(
@@ -742,6 +972,7 @@ def case_group_mode_score(
 def gate_qdrant_vector_ablation(
     report: QdrantVectorAblationReport,
     mode: str,
+    baseline_mode: str | None = None,
     min_recall_at_k: float = 0.0,
     min_target_coverage_at_k: float = 0.0,
     min_target_ndcg_at_k: float = 0.0,
@@ -762,6 +993,12 @@ def gate_qdrant_vector_ablation(
     if row is None:
         raise ValueError(f"Qdrant vector ablation mode not found: {mode}")
 
+    baseline_row = None
+    if baseline_mode is not None:
+        baseline_row = qdrant_vector_ablation_row(report, baseline_mode)
+        if baseline_row is None:
+            raise ValueError(f"Baseline Qdrant vector ablation mode not found: {baseline_mode}")
+
     target_metrics = retrieval_target_metrics(row.evaluation)
     source_family_metrics = retrieval_source_family_metrics(row.evaluation)
     chunk_strategy_metrics = retrieval_chunk_strategy_metrics(row.evaluation)
@@ -774,6 +1011,19 @@ def gate_qdrant_vector_ablation(
         chunk_strategy_metrics,
         retrieval_role_metrics,
         case_group_metrics,
+    )
+    baseline_metrics = {}
+    if baseline_row is not None:
+        baseline_metrics = qdrant_vector_ablation_metrics(
+            baseline_row.evaluation,
+            retrieval_target_metrics(baseline_row.evaluation),
+            retrieval_source_family_metrics(baseline_row.evaluation),
+            retrieval_chunk_strategy_metrics(baseline_row.evaluation),
+            retrieval_role_metrics_payload(baseline_row.evaluation),
+            retrieval_case_group_metrics(baseline_row.evaluation),
+        )
+    pairwise_metrics = ablation_pairwise_metrics(
+        find_ablation_pairwise_comparison(report.pairwise, mode, baseline_mode)
     )
     checks = [
         minimum_check("min_recall_at_k", "recall_at_k", metrics, min_recall_at_k),
@@ -863,14 +1113,17 @@ def gate_qdrant_vector_ablation(
     return QdrantVectorAblationGateReport(
         passed=not failed_checks,
         mode=mode,
+        baseline_mode=baseline_mode,
         vector_names=row.mode.vector_names,
         graph_expand=row.mode.graph_expand,
         metrics=metrics,
+        baseline_metrics=baseline_metrics,
         target_metrics=target_metrics,
         source_family_metrics=source_family_metrics,
         chunk_strategy_metrics=chunk_strategy_metrics,
         retrieval_role_metrics=retrieval_role_metrics,
         case_group_metrics=case_group_metrics,
+        pairwise_metrics=pairwise_metrics,
         best_by_recall=report.best_by_recall,
         best_by_target_coverage=report.best_by_target_coverage,
         best_by_target_ndcg=report.best_by_target_ndcg,

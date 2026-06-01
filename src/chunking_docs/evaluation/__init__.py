@@ -1,4 +1,5 @@
 from .ablation import (
+    AblationPairwiseComparison,
     RetrievalAblationMode,
     RetrievalAblationGateReport,
     RetrievalAblationReport,
@@ -45,6 +46,7 @@ from .sweep import ChunkingSweepCandidate, ChunkingSweepReport, run_chunking_swe
 __all__ = [
     "AuditIssue",
     "ArtifactSummary",
+    "AblationPairwiseComparison",
     "ChunkingSweepCandidate",
     "ChunkingSweepReport",
     "ChunkingComparisonGateCheck",

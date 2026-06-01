@@ -946,6 +946,7 @@ def eval_qdrant_vector_ablation_command(
                 "best_by_mrr": report.best_by_mrr,
                 "fastest_by_mean_latency": report.fastest_by_mean_latency,
                 "case_group_best_modes": report.case_group_best_modes,
+                "pairwise": [comparison.model_dump() for comparison in report.pairwise],
                 "rows": [
                     {
                         "mode": row.mode.name,
@@ -986,6 +987,11 @@ def gate_qdrant_vector_ablation_command(
         ...,
         "--mode",
         help="Ablation mode to gate, such as image or caption_image.",
+    ),
+    baseline_mode: str | None = typer.Option(
+        None,
+        "--baseline-mode",
+        help="Optional baseline mode for query-paired comparison metrics.",
     ),
     output: Path | None = None,
     min_recall_at_k: float = 0.0,
@@ -1044,6 +1050,7 @@ def gate_qdrant_vector_ablation_command(
         gate_report = gate_qdrant_vector_ablation(
             parsed_report,
             mode=mode,
+            baseline_mode=baseline_mode,
             min_recall_at_k=min_recall_at_k,
             min_target_coverage_at_k=min_target_coverage_at_k,
             min_target_ndcg_at_k=min_target_ndcg_at_k,
@@ -1071,14 +1078,17 @@ def gate_qdrant_vector_ablation_command(
             "output": str(output),
             "passed": gate_report.passed,
             "mode": gate_report.mode,
+            "baseline_mode": gate_report.baseline_mode,
             "vector_names": gate_report.vector_names,
             "failed_checks": gate_report.failed_checks,
             "metrics": gate_report.metrics,
+            "baseline_metrics": gate_report.baseline_metrics,
             "target_metrics": gate_report.target_metrics,
             "source_family_metrics": gate_report.source_family_metrics,
             "chunk_strategy_metrics": gate_report.chunk_strategy_metrics,
             "retrieval_role_metrics": gate_report.retrieval_role_metrics,
             "case_group_metrics": gate_report.case_group_metrics,
+            "pairwise_metrics": gate_report.pairwise_metrics,
             "case_group_best_modes": gate_report.case_group_best_modes,
         }
     print(payload)
@@ -2451,6 +2461,7 @@ def ingestion_readiness_command(
     qdrant_vector_ablation: Path | None = None,
     require_qdrant_vector_ablation: bool = False,
     qdrant_vector_mode: str | None = None,
+    qdrant_vector_baseline_mode: str | None = None,
     min_qdrant_vector_recall_at_k: float = 0.0,
     min_qdrant_vector_target_coverage_at_k: float = 0.0,
     min_qdrant_vector_target_ndcg_at_k: float = 0.0,
@@ -2673,6 +2684,7 @@ def ingestion_readiness_command(
         require_qdrant_vector_ablation=require_qdrant_vector_ablation,
         qdrant_vector_ablation_mode=qdrant_vector_mode,
         qdrant_vector_ablation_gate_options={
+            "baseline_mode": qdrant_vector_baseline_mode,
             "min_recall_at_k": min_qdrant_vector_recall_at_k,
             "min_target_coverage_at_k": min_qdrant_vector_target_coverage_at_k,
             "min_target_ndcg_at_k": min_qdrant_vector_target_ndcg_at_k,
@@ -3038,6 +3050,7 @@ def eval_retrieval_ablation_command(
             "best_by_mrr": report.best_by_mrr,
             "fastest_by_mean_latency": report.fastest_by_mean_latency,
             "case_group_best_modes": report.case_group_best_modes,
+            "pairwise": [comparison.model_dump() for comparison in report.pairwise],
             "rows": [
                 {
                     "mode": row.mode.name,
@@ -3184,6 +3197,7 @@ def gate_retrieval_ablation_command(
             "chunk_strategy_metrics": gate_report.chunk_strategy_metrics,
             "retrieval_role_metrics": gate_report.retrieval_role_metrics,
             "case_group_metrics": gate_report.case_group_metrics,
+            "pairwise_metrics": gate_report.pairwise_metrics,
             "case_group_best_modes": gate_report.case_group_best_modes,
         }
     print(payload)

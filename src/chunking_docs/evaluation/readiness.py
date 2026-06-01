@@ -322,6 +322,7 @@ def build_ingestion_readiness_report(
                             "chunk_strategy_metrics": retrieval_ablation_gate.chunk_strategy_metrics,
                             "retrieval_role_metrics": retrieval_ablation_gate.retrieval_role_metrics,
                             "case_group_metrics": retrieval_ablation_gate.case_group_metrics,
+                            "pairwise_metrics": retrieval_ablation_gate.pairwise_metrics,
                             "case_group_best_modes": (
                                 retrieval_ablation_gate.case_group_best_modes
                             ),
@@ -382,9 +383,11 @@ def build_ingestion_readiness_report(
                         message="Selected Qdrant vector ablation mode meets configured retrieval thresholds.",
                         metadata={
                             "mode": qdrant_vector_ablation_gate.mode,
+                            "baseline_mode": qdrant_vector_ablation_gate.baseline_mode,
                             "vector_names": qdrant_vector_ablation_gate.vector_names,
                             "failed_checks": qdrant_vector_ablation_gate.failed_checks,
                             "metrics": qdrant_vector_ablation_gate.metrics,
+                            "baseline_metrics": qdrant_vector_ablation_gate.baseline_metrics,
                             "target_metrics": qdrant_vector_ablation_gate.target_metrics,
                             "source_family_metrics": (
                                 qdrant_vector_ablation_gate.source_family_metrics
@@ -398,6 +401,7 @@ def build_ingestion_readiness_report(
                             "case_group_metrics": (
                                 qdrant_vector_ablation_gate.case_group_metrics
                             ),
+                            "pairwise_metrics": qdrant_vector_ablation_gate.pairwise_metrics,
                             "case_group_best_modes": (
                                 qdrant_vector_ablation_gate.case_group_best_modes
                             ),

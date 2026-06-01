@@ -1224,6 +1224,15 @@ def test_evaluate_retrieval_ablation_can_measure_visual_lexical_gain():
     assert visual_probe_best["target_coverage_at_k"].mode == "bm25_visual"
     assert visual_probe_best["target_coverage_at_k"].value == 1.0
     assert visual_probe_best["ndcg_at_k"].mode == "bm25_visual"
+    pairwise = next(
+        comparison
+        for comparison in report.pairwise
+        if comparison.candidate == "bm25_visual" and comparison.baseline == "bm25_text"
+    )
+    assert pairwise.shared_query_count == 1
+    assert pairwise.candidate_win_rate == 1.0
+    assert pairwise.mean_target_coverage_delta == 1.0
+    assert pairwise.target_coverage_delta_ci_low == 1.0
 
 
 def test_gate_retrieval_ablation_can_require_visual_lift():
@@ -1260,6 +1269,8 @@ def test_gate_retrieval_ablation_can_require_visual_lift():
     assert gate.case_group_best_modes["case_source"]["visual_lexical_probe"][
         "target_coverage_at_k"
     ].mode == "bm25_visual"
+    assert gate.pairwise_metrics["pairwise_candidate_win_rate"] == 1.0
+    assert gate.pairwise_metrics["pairwise_mean_target_coverage_delta"] == 1.0
     assert gate.failed_checks == []
 
 
@@ -1572,6 +1583,14 @@ def test_eval_qdrant_vector_ablation_cli_writes_report(monkeypatch, tmp_path):
             "dimension": 1024,
         }
     }
+    pairwise = next(
+        comparison
+        for comparison in payload["pairwise"]
+        if comparison["candidate"] == "caption" and comparison["baseline"] == "text"
+    )
+    assert pairwise["shared_query_count"] == 1
+    assert pairwise["candidate_win_rate"] == 1.0
+    assert pairwise["mean_target_coverage_delta"] == 1.0
     assert calls.count((("caption_dense",), False)) == 2
 
 
@@ -1638,6 +1657,7 @@ def test_gate_qdrant_vector_ablation_passes_required_mode():
     gate = gate_qdrant_vector_ablation(
         report,
         mode="caption_image",
+        baseline_mode="image",
         min_recall_at_k=1.0,
         min_target_coverage_at_k=1.0,
         min_target_ndcg_at_k=1.0,
@@ -1651,8 +1671,12 @@ def test_gate_qdrant_vector_ablation_passes_required_mode():
 
     assert gate.passed
     assert gate.mode == "caption_image"
+    assert gate.baseline_mode == "image"
     assert gate.vector_names == ["caption_dense", "image_dense"]
     assert gate.metrics["failed_query_count"] == 0.0
+    assert gate.baseline_metrics["failed_query_count"] == 1.0
+    assert gate.pairwise_metrics["pairwise_candidate_win_rate"] == 1.0
+    assert gate.pairwise_metrics["pairwise_mean_target_coverage_delta"] == 1.0
     assert gate.metrics["target_type.asset.coverage_at_k"] == 1.0
     assert gate.target_metrics["asset"]["coverage_at_k"] == 1.0
     assert gate.metrics["source_family.visual.target_coverage_at_k"] == 1.0
@@ -1713,6 +1737,8 @@ def test_gate_qdrant_vector_ablation_cli_writes_report(tmp_path):
             str(report_path),
             "--mode",
             "caption_image",
+            "--baseline-mode",
+            "image",
             "--min-recall-at-k",
             "1.0",
             "--min-target-coverage-at-k",
@@ -1735,7 +1761,10 @@ def test_gate_qdrant_vector_ablation_cli_writes_report(tmp_path):
     payload = json.loads(output.read_text(encoding="utf-8"))
     assert payload["passed"] is True
     assert payload["mode"] == "caption_image"
+    assert payload["baseline_mode"] == "image"
     assert payload["vector_names"] == ["caption_dense", "image_dense"]
+    assert payload["baseline_metrics"]["recall_at_k"] == 0.0
+    assert payload["pairwise_metrics"]["pairwise_candidate_win_rate"] == 1.0
     assert payload["target_metrics"]["asset"]["coverage_at_k"] == 1.0
     assert payload["source_family_metrics"]["visual"]["target_coverage_at_k"] == 1.0
     assert payload["case_group_metrics"]["case_source"]["visual_object_probe"][
@@ -1885,6 +1914,14 @@ def test_eval_retrieval_ablation_cli_compares_visual_lexical_modes(tmp_path):
     assert rows["bm25_text"]["evaluation"]["recall_at_k"] == 0.0
     assert rows["bm25_visual"]["evaluation"]["recall_at_k"] == 1.0
     assert payload["best_by_recall"] == "bm25_visual"
+    pairwise = next(
+        comparison
+        for comparison in payload["pairwise"]
+        if comparison["candidate"] == "bm25_visual"
+        and comparison["baseline"] == "bm25_text"
+    )
+    assert pairwise["candidate_win_rate"] == 1.0
+    assert pairwise["mean_target_coverage_delta"] == 1.0
 
 
 def test_gate_retrieval_ablation_cli_writes_lift_report(tmp_path):
@@ -1927,6 +1964,8 @@ def test_gate_retrieval_ablation_cli_writes_lift_report(tmp_path):
     assert payload["baseline_mode"] == "bm25_text"
     assert payload["metrics"]["recall_at_k"] == 1.0
     assert payload["baseline_metrics"]["recall_at_k"] == 0.0
+    assert payload["pairwise_metrics"]["pairwise_candidate_win_rate"] == 1.0
+    assert payload["pairwise_metrics"]["pairwise_mean_target_coverage_delta"] == 1.0
     assert payload["case_group_metrics"]["case_source"]["visual_lexical_probe"][
         "target_coverage_at_k"
     ] == 1.0
