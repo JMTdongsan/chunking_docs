@@ -4,6 +4,7 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 from chunking_docs.cli import app
+from chunking_docs.evaluation.case_audit import audit_retrieval_cases
 from chunking_docs.evaluation.casegen import generate_retrieval_case_skeleton
 from chunking_docs.io import write_jsonl
 from chunking_docs.models import (
@@ -241,6 +242,41 @@ def test_generate_retrieval_case_skeleton_can_use_salient_terms():
     assert cases[0].metadata["query_mode"] == "salient_terms"
     assert cases[0].metadata["case_source"] == "page"
     assert cases[0].metadata["selection_score"] > 0
+
+
+def test_generate_retrieval_case_skeleton_can_use_question_queries():
+    chunk = DocumentChunk(
+        chunk_id="chunk-1",
+        doc_id="doc",
+        page_start=1,
+        page_end=1,
+        kind=ChunkKind.TEXT,
+        text="Transit corridor station access evidence.",
+    )
+
+    cases = generate_retrieval_case_skeleton(
+        [chunk],
+        [],
+        [],
+        page_limit=1,
+        query_mode="question",
+        min_query_terms=3,
+        max_query_terms=3,
+    )
+    report = audit_retrieval_cases(
+        cases,
+        profiles=[],
+        chunks=[chunk],
+        assets=[],
+        triples=[],
+        max_target_query_overlap_ratio=0.75,
+    )
+
+    assert cases[0].query == "Which evidence explains Transit corridor evidence?"
+    assert cases[0].metadata["query_mode"] == "question"
+    assert cases[0].metadata["query_terms"] == ["Transit", "corridor", "evidence"]
+    assert report.passed is True
+    assert report.max_target_query_overlap_ratio <= 0.75
 
 
 def test_generate_retrieval_case_skeleton_can_rank_by_salience():

@@ -69,7 +69,7 @@ _STOP_TERMS = {
 VISUAL_OBJECT_METADATA_KEYS = ("objects", "detected_objects", "visual_objects", "detections", "regions", "areas")
 VISUAL_FEATURE_METADATA_KEYS = ("visual_elements",)
 
-QueryMode = Literal["snippet", "salient_terms"]
+QueryMode = Literal["snippet", "salient_terms", "question"]
 SelectionStrategy = Literal["document_order", "salience"]
 
 
@@ -382,7 +382,7 @@ def visual_probe_query_from_asset(
         for position, term, key in extracted_terms(visual_text)
         if key not in linked_term_keys
     ]
-    if mode == "salient_terms":
+    if mode in {"salient_terms", "question"}:
         selected = select_salient_terms(
             scored_terms,
             min_query_terms=min_query_terms,
@@ -399,7 +399,7 @@ def visual_probe_query_from_asset(
     selected_by_position = sorted(selected, key=lambda item: item[1])
     query_terms = [term for _, _, term, _ in selected_by_position]
     return QueryDraft(
-        query=trim_query(" ".join(query_terms), max_chars=max_chars),
+        query=terms_to_query(query_terms, mode=mode, max_chars=max_chars),
         score=sum(score for score, _, _, _ in selected),
         terms=tuple(query_terms),
     )
@@ -573,7 +573,7 @@ def visual_object_probe_query_from_object(
             min_query_terms=min_query_terms,
             max_query_terms=max_query_terms,
         )
-        if mode == "salient_terms"
+        if mode in {"salient_terms", "question"}
         else first_distinct_terms(
             scored_terms,
             min_query_terms=min_query_terms,
@@ -585,7 +585,7 @@ def visual_object_probe_query_from_object(
     selected_by_position = sorted(selected, key=lambda item: item[1])
     query_terms = [term for _, _, term, _ in selected_by_position]
     return QueryDraft(
-        query=trim_query(" ".join(query_terms), max_chars=max_chars),
+        query=terms_to_query(query_terms, mode=mode, max_chars=max_chars),
         score=sum(score for score, _, _, _ in selected),
         terms=tuple(query_terms),
     )
@@ -881,7 +881,7 @@ def query_from_text(
     normalized = meaningful_query_text(text)
     if not normalized:
         return QueryDraft(query="")
-    if mode == "salient_terms":
+    if mode in {"salient_terms", "question"}:
         return salient_terms_query(
             normalized,
             term_df=term_df or {},
@@ -889,6 +889,7 @@ def query_from_text(
             max_chars=max_chars,
             min_query_terms=min_query_terms,
             max_query_terms=max_query_terms,
+            question=mode == "question",
         )
     return QueryDraft(query=trim_query(normalized, max_chars=max_chars))
 
@@ -918,6 +919,7 @@ def salient_terms_query(
     max_chars: int,
     min_query_terms: int = 3,
     max_query_terms: int = 8,
+    question: bool = False,
 ) -> QueryDraft:
     terms = extracted_terms(text)
     if not terms:
@@ -931,12 +933,37 @@ def salient_terms_query(
         return QueryDraft(query="")
     selected_by_position = sorted(selected, key=lambda item: item[1])
     query_terms = [term for _, _, term, _ in selected_by_position]
-    query = trim_query(" ".join(query_terms), max_chars=max_chars)
+    query = terms_to_query(
+        query_terms,
+        mode="question" if question else "salient_terms",
+        max_chars=max_chars,
+    )
     return QueryDraft(
         query=query,
         score=sum(score for score, _, _, _ in selected),
         terms=tuple(query_terms),
     )
+
+
+def terms_to_query(
+    terms: list[str],
+    mode: QueryMode,
+    max_chars: int,
+) -> str:
+    term_text = " ".join(terms)
+    if mode != "question":
+        return trim_query(term_text, max_chars=max_chars)
+    return trim_query(question_from_terms(term_text), max_chars=max_chars)
+
+
+def question_from_terms(term_text: str) -> str:
+    if contains_hangul(term_text):
+        return f"어떤 근거가 {term_text} 내용을 설명하는가"
+    return f"Which evidence explains {term_text}?"
+
+
+def contains_hangul(text: str) -> bool:
+    return any("\uac00" <= character <= "\ud7a3" for character in text)
 
 
 def extracted_terms(text: str) -> list[tuple[int, str, str]]:
@@ -1169,8 +1196,8 @@ def validate_casegen_options(
     min_query_terms: int,
     max_query_terms: int,
 ) -> None:
-    if query_mode not in {"snippet", "salient_terms"}:
-        raise ValueError("query_mode must be one of: snippet, salient_terms")
+    if query_mode not in {"snippet", "salient_terms", "question"}:
+        raise ValueError("query_mode must be one of: snippet, salient_terms, question")
     if selection_strategy not in {"document_order", "salience"}:
         raise ValueError("selection_strategy must be one of: document_order, salience")
     if min_query_terms < 1:
