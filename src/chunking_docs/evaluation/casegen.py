@@ -19,6 +19,7 @@ from chunking_docs.models import DocumentChunk, GraphTriple, VisualAsset
 
 _WHITESPACE_RE = re.compile(r"\s+")
 _MARKDOWN_RE = re.compile(r"[|#*_`>\[\]()]")
+_VISUAL_CONTEXT_RE = re.compile(r"(?:^|\n)Visual context:\s*", flags=re.IGNORECASE)
 _TERM_RE = re.compile(
     r"[A-Za-z][A-Za-z0-9_./%+-]{2,}|"
     r"[0-9]+(?:[.,][0-9]+)*(?:[%A-Za-z가-힣㎡²³]*)?|"
@@ -356,11 +357,7 @@ def visual_probe_query_from_asset(
     visual_text = meaningful_query_text(asset_text(asset))
     if not visual_text:
         return QueryDraft(query="")
-    linked_term_keys = {
-        key
-        for chunk in linked_chunks
-        for _, _, key in extracted_terms(meaningful_query_text(chunk.text))
-    }
+    linked_term_keys = linked_non_visual_term_keys(linked_chunks)
     scored_terms = [
         (term_score(key, term_df=term_df, document_count=document_count), position, term, key)
         for position, term, key in extracted_terms(visual_text)
@@ -482,11 +479,7 @@ def visual_object_probe_query_from_object(
             min_query_terms=min_query_terms,
             max_query_terms=max_query_terms,
         )
-    linked_term_keys = {
-        key
-        for chunk in linked_chunks
-        for _, _, key in extracted_terms(meaningful_query_text(chunk.text))
-    }
+    linked_term_keys = linked_non_visual_term_keys(linked_chunks)
     scored_terms = [
         (term_score(key, term_df=term_df, document_count=document_count), position, term, key)
         for position, term, key in extracted_terms(object_text)
@@ -686,6 +679,23 @@ def chunks_by_asset_id(chunks: list[DocumentChunk]) -> dict[str, list[DocumentCh
         for asset_id in chunk_asset_ids(chunk):
             indexed.setdefault(asset_id, []).append(chunk)
     return indexed
+
+
+def linked_non_visual_term_keys(chunks: list[DocumentChunk]) -> set[str]:
+    keys: set[str] = set()
+    for chunk in chunks:
+        text = non_visual_chunk_text(chunk)
+        keys.update(key for _, _, key in extracted_terms(meaningful_query_text(text)))
+    return keys
+
+
+def non_visual_chunk_text(chunk: DocumentChunk) -> str:
+    if chunk.metadata.get("chunking_strategy") == "visual_asset_text":
+        return ""
+    match = _VISUAL_CONTEXT_RE.search(chunk.text)
+    if match is None:
+        return chunk.text
+    return chunk.text[: match.start()]
 
 
 def triple_cases(

@@ -9,6 +9,15 @@ from chunking_docs.graph.provenance import chunk_asset_ids
 from chunking_docs.models import DocumentChunk, VisualAsset
 from chunking_docs.storage.records import EmbeddingRecord
 
+VISUAL_OBJECT_METADATA_KEYS = (
+    "objects",
+    "detected_objects",
+    "visual_objects",
+    "detections",
+    "regions",
+    "areas",
+)
+
 
 def point_id(chunk_id: str, vector_name: str) -> str:
     return str(uuid.uuid5(uuid.NAMESPACE_URL, f"chunking-docs:{chunk_id}:{vector_name}"))
@@ -150,7 +159,7 @@ def asset_metadata_text_parts(metadata: dict[str, Any]) -> list[str]:
     objects = dedupe_metadata_values(
         [
             object_text
-            for key in ["objects", "detected_objects", "visual_objects"]
+            for key in VISUAL_OBJECT_METADATA_KEYS
             for object_text in metadata_object_items(metadata.get(key), limit=8)
         ],
         limit=8,
@@ -191,6 +200,11 @@ def metadata_object_items(value: Any, limit: int) -> list[str]:
         candidates = [value]
     elif isinstance(value, list):
         candidates = value
+    elif isinstance(value, dict):
+        if metadata_first_string(value, ["label", "name", "title", "object", "type", "category"]):
+            candidates = [value]
+        else:
+            candidates = metadata_object_mapping_items(value)
     else:
         candidates = [value]
 
@@ -219,6 +233,23 @@ def metadata_object_items(value: Any, limit: int) -> list[str]:
             if value_text:
                 objects.append(value_text)
     return dedupe_metadata_values(objects, limit=limit)
+
+
+def metadata_object_mapping_items(value: dict[str, Any]) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    for label, details in value.items():
+        label_text = metadata_text_value(label)
+        if not label_text:
+            continue
+        if isinstance(details, dict):
+            item = {**details}
+            item.setdefault("label", label_text)
+        elif isinstance(details, str):
+            item = {"label": label_text, "description": details}
+        else:
+            item = {"label": label_text}
+        items.append(item)
+    return items
 
 
 def metadata_first_string(payload: dict[str, Any], keys: list[str]) -> str:

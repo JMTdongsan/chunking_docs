@@ -190,6 +190,46 @@ def test_bm25_indexes_structured_visual_metadata_text():
     assert "Objects: station marker: red circle, north edge" in asset_text(assets[0])
 
 
+def test_bm25_indexes_visual_object_metadata_aliases():
+    chunks = [
+        DocumentChunk(
+            chunk_id="a",
+            doc_id="doc",
+            page_start=1,
+            page_end=1,
+            kind=ChunkKind.TEXT,
+            text="base text",
+            asset_ids=["asset-1"],
+        )
+    ]
+    assets = [
+        VisualAsset(
+            asset_id="asset-1",
+            doc_id="doc",
+            page_no=1,
+            kind=AssetKind.FIGURE,
+            metadata={
+                "detections": {
+                    "signal marker": {
+                        "description": "green square",
+                        "location": "lower left",
+                    }
+                },
+                "regions": [{"label": "transfer deck", "attributes": ["blue platform"]}],
+                "areas": ["pedestrian access zone"],
+            },
+        )
+    ]
+
+    indexed_text = chunk_lexical_texts(chunks, assets)[0]
+    results = BM25LexicalIndex(chunks, texts=[indexed_text]).search("transfer deck", top_k=1)
+
+    assert results[0][0].chunk_id == "a"
+    assert "signal marker: green square, lower left" in asset_text(assets[0])
+    assert "transfer deck: blue platform" in indexed_text
+    assert "pedestrian access zone" in indexed_text
+
+
 def test_bm25_manifest_records_tokenizer_config(tmp_path):
     chunks = [
         DocumentChunk(

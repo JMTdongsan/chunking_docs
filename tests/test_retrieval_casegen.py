@@ -505,6 +505,62 @@ def test_generate_retrieval_case_skeleton_object_probes_prefer_visual_only_terms
     ]
 
 
+def test_generate_retrieval_case_skeleton_object_probes_ignore_generated_visual_context():
+    base_chunk = DocumentChunk(
+        chunk_id="chunk-1",
+        doc_id="doc",
+        page_start=1,
+        page_end=1,
+        kind=ChunkKind.TEXT,
+        text=(
+            "Transit corridor station access evidence.\n\n"
+            "Visual context:\nObjects: transfer hub marker: blue circle, north gate"
+        ),
+        asset_ids=["asset-1"],
+        metadata={"visual_context_added": True},
+    )
+    visual_chunk = DocumentChunk(
+        chunk_id="visual-1",
+        doc_id="doc",
+        page_start=1,
+        page_end=1,
+        kind=ChunkKind.MAP,
+        text="Visual asset kind: map\nObjects: transfer hub marker: blue circle, north gate",
+        asset_ids=["asset-1"],
+        source_refs=["asset:asset-1"],
+        metadata={"chunking_strategy": "visual_asset_text"},
+    )
+    asset = VisualAsset(
+        asset_id="asset-1",
+        doc_id="doc",
+        page_no=1,
+        kind=AssetKind.MAP,
+        metadata={
+            "objects": [
+                {
+                    "label": "transfer hub marker",
+                    "attributes": ["blue circle", "north gate"],
+                }
+            ]
+        },
+    )
+
+    cases = generate_retrieval_case_skeleton(
+        [base_chunk, visual_chunk],
+        [asset],
+        [],
+        include_pages=False,
+        include_assets=False,
+        include_triples=False,
+        object_probe_limit=1,
+    )
+
+    assert len(cases) == 1
+    assert cases[0].query == "transfer hub marker blue circle north gate"
+    assert cases[0].metadata["linked_chunk_ids"] == ["chunk-1", "visual-1"]
+    assert cases[0].metadata["object_probe_visual_only"] is True
+
+
 def test_generate_retrieval_case_skeleton_can_disable_visual_only_object_probe_terms():
     chunk = DocumentChunk(
         chunk_id="chunk-1",
