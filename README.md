@@ -678,7 +678,7 @@ chunking-docs write-experiment-report \
   --output outputs/package/experiment_report.json
 ```
 
-The report records package artifact checksums, JSONL record counts, BM25 tokenizer settings, Qdrant named-vector configuration, readiness, evaluation, audit, gate artifact variants, visual run comparison summaries, top-level and component-level validation pass/fail summaries, chunking quality metrics, linked visual text coverage, retrieval recall@k, MRR, target coverage@k, target nDCG@k, precision@k, latency, failed queries, and the best candidate by retrieval behavior. This makes chunking changes reviewable and repeatable before new defaults are adopted.
+The report records package artifact checksums, JSONL record counts, BM25 tokenizer settings, Qdrant named-vector configuration, readiness, evaluation, audit, gate artifact variants, visual run comparison summaries, top-level and component-level validation pass/fail summaries, chunking quality metrics, linked visual text coverage, retrieval recall@k, MRR, target coverage@k, target nDCG@k, precision@k, latency, failed queries, case-group metrics such as visual object probe coverage, paired confidence metrics from chunking gates, and the best candidate by retrieval behavior. This makes chunking changes reviewable and repeatable before new defaults are adopted.
 
 ## Development Checks
 

@@ -381,6 +381,12 @@ def is_validation_payload(payload: dict[str, Any]) -> bool:
             "failed_checks",
             "failed_components",
             "metrics",
+            "target_metrics",
+            "source_family_metrics",
+            "chunk_strategy_metrics",
+            "retrieval_role_metrics",
+            "case_group_metrics",
+            "pairwise_metrics",
             *SUMMARY_METRIC_KEYS,
         )
     )
@@ -429,7 +435,70 @@ def validation_summary_metrics(payload: dict[str, Any]) -> dict[str, float]:
     metrics = summary_metrics(payload)
     nested_metrics = payload.get("metrics")
     metrics.update(summary_metrics(nested_metrics))
+    metrics.update(dynamic_metric_payload(payload))
     return metrics
+
+
+def dynamic_metric_payload(payload: dict[str, Any]) -> dict[str, float]:
+    metrics: dict[str, float] = {}
+    metrics.update(flat_metric_group(payload.get("target_metrics"), "target_type"))
+    metrics.update(flat_metric_group(payload.get("source_family_metrics"), "source_family"))
+    metrics.update(flat_metric_group(payload.get("chunk_strategy_metrics"), "chunk_strategy"))
+    metrics.update(flat_metric_group(payload.get("retrieval_role_metrics"), "retrieval_role"))
+    metrics.update(flat_case_group_metrics(payload.get("case_group_metrics")))
+    metrics.update(numeric_prefixed_metrics(payload.get("pairwise_metrics"), "pairwise_"))
+    return metrics
+
+
+def flat_metric_group(value: Any, prefix: str) -> dict[str, float]:
+    if not isinstance(value, dict):
+        return {}
+    metrics: dict[str, float] = {}
+    for group, group_metrics in value.items():
+        if not isinstance(group_metrics, dict):
+            continue
+        for metric_name, metric_value in group_metrics.items():
+            numeric_value = optional_numeric_metric(metric_value)
+            if numeric_value is not None:
+                metrics[f"{prefix}.{group}.{metric_name}"] = numeric_value
+    return metrics
+
+
+def flat_case_group_metrics(value: Any) -> dict[str, float]:
+    if not isinstance(value, dict):
+        return {}
+    metrics: dict[str, float] = {}
+    for group_name, group_values in value.items():
+        if not isinstance(group_values, dict):
+            continue
+        for group_value, group_metrics in group_values.items():
+            if not isinstance(group_metrics, dict):
+                continue
+            for metric_name, metric_value in group_metrics.items():
+                numeric_value = optional_numeric_metric(metric_value)
+                if numeric_value is not None:
+                    metrics[f"case_group.{group_name}.{group_value}.{metric_name}"] = (
+                        numeric_value
+                    )
+    return metrics
+
+
+def numeric_prefixed_metrics(value: Any, prefix: str) -> dict[str, float]:
+    if not isinstance(value, dict):
+        return {}
+    return {
+        key: numeric_value
+        for key, metric_value in value.items()
+        if isinstance(key, str)
+        and key.startswith(prefix)
+        and (numeric_value := optional_numeric_metric(metric_value)) is not None
+    }
+
+
+def optional_numeric_metric(value: Any) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return None
+    return float(value)
 
 
 def numeric_metric(value: Any) -> float:

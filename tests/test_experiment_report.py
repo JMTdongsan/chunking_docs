@@ -37,6 +37,7 @@ def test_build_experiment_report_summarizes_artifacts_and_candidates(tmp_path):
     assert artifacts["ingestion_readiness.final.json"].exists is True
     assert artifacts["retrieval_gate.final.json"].exists is True
     assert artifacts["qdrant_eval.final.json"].exists is True
+    assert artifacts["chunking_comparison_gate.final.json"].exists is True
     assert artifacts["graph_audit.final.json"].exists is True
     assert artifacts["visual_gate.final.json"].exists is True
     assert artifacts["visual_run_comparison.json"].exists is True
@@ -52,9 +53,24 @@ def test_build_experiment_report_summarizes_artifacts_and_candidates(tmp_path):
     assert validations["retrieval_gate.final.json"].metrics[
         "retrieval_role.child.target_coverage_at_k"
     ] == 1.0
+    assert validations["retrieval_gate.final.json"].metrics[
+        "case_group.case_source.visual_object_probe.target_coverage_at_k"
+    ] == 1.0
     assert validations["qdrant_eval.final.json"].metrics["target_coverage_at_k"] == 1.0
     assert validations["qdrant_eval.final.json"].metrics["mean_latency_ms"] == 8.0
     assert validations["qdrant_eval.final.json"].metrics["case_count"] == 1.0
+    assert validations["qdrant_eval.final.json"].metrics[
+        "case_group.modality.vision_object.ndcg_at_k"
+    ] == 0.8
+    assert validations["chunking_comparison_gate.final.json"].metrics[
+        "case_group.case_source.visual_object_probe.target_coverage_at_k"
+    ] == 0.9
+    assert validations["chunking_comparison_gate.final.json"].metrics[
+        "pairwise_target_ndcg_delta_ci_low"
+    ] == 0.03
+    assert validations["chunking_comparison_gate.final.json"].metrics[
+        "pairwise_candidate_win_rate"
+    ] == 0.7
     assert validations["graph_audit.final.json"].metrics["orphan_count"] == 0.0
     assert validations["visual_gate.final.json"].metrics["vlm_summary_coverage"] == 1.0
     assert (
@@ -223,6 +239,14 @@ def write_minimal_package(tmp_path):
                     "chunk_strategy.visual_asset_text.target_coverage_at_k": 1.0,
                     "retrieval_role.child.target_coverage_at_k": 1.0,
                 },
+                "case_group_metrics": {
+                    "case_source": {
+                        "visual_object_probe": {
+                            "target_coverage_at_k": 1.0,
+                            "ndcg_at_k": 1.0,
+                        }
+                    }
+                },
             },
             indent=2,
         ),
@@ -237,6 +261,40 @@ def write_minimal_package(tmp_path):
                 "mean_target_ndcg_at_k": 1.0,
                 "mean_latency_ms": 8.0,
                 "case_count": 1,
+                "case_group_metrics": {
+                    "modality": {
+                        "vision_object": {
+                            "target_coverage_at_k": 1.0,
+                            "ndcg_at_k": 0.8,
+                        }
+                    }
+                },
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    (package_dir / "chunking_comparison_gate.final.json").write_text(
+        json.dumps(
+            {
+                "passed": True,
+                "failed_checks": [],
+                "candidate": "multimodal",
+                "metrics": {"retrieval_target_coverage_at_k": 0.9},
+                "case_group_metrics": {
+                    "case_source": {
+                        "visual_object_probe": {
+                            "target_coverage_at_k": 0.9,
+                            "precision_at_k": 0.75,
+                        }
+                    }
+                },
+                "pairwise_metrics": {
+                    "pairwise_candidate_win_rate": 0.7,
+                    "pairwise_mean_target_ndcg_delta": 0.05,
+                    "pairwise_target_ndcg_delta_ci_low": 0.03,
+                    "pairwise_target_ndcg_delta_ci_high": 0.08,
+                },
             },
             indent=2,
         ),
