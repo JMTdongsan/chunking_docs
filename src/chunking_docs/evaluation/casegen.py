@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from chunking_docs.embeddings.records import asset_text
-from chunking_docs.evaluation.retrieval import RetrievalCase
+from chunking_docs.evaluation.retrieval import CASE_GROUP_METADATA_KEYS, RetrievalCase
 from chunking_docs.graph.provenance import (
     chunk_asset_ids,
     chunk_id_alias_map,
@@ -349,6 +349,9 @@ def visual_lexical_probe_cases(
             update={
                 "metadata": {
                     **case.metadata,
+                    "case_family": "visual",
+                    "evidence_family": "visual_text",
+                    "modality": "visual_text",
                     "linked_chunk_ids": [chunk.chunk_id for chunk in linked_chunks],
                 }
             }
@@ -1111,10 +1114,8 @@ def merge_retrieval_cases(
     right: RetrievalCase,
     merged_count: int,
 ) -> RetrievalCase:
-    metadata = {
-        **left.metadata,
-        "merged_case_count": merged_count,
-    }
+    metadata = merge_case_metadata(left.metadata, right.metadata)
+    metadata["merged_case_count"] = merged_count
     return left.model_copy(
         update={
             "expected_pages": merge_stable_values(left.expected_pages, right.expected_pages),
@@ -1125,6 +1126,40 @@ def merge_retrieval_cases(
             "metadata": metadata,
         }
     )
+
+
+def merge_case_metadata(
+    left: dict,
+    right: dict,
+) -> dict:
+    metadata = dict(left)
+    for key, value in right.items():
+        if key == "merged_case_count":
+            continue
+        if key not in metadata:
+            metadata[key] = value
+            continue
+        if key in CASE_GROUP_METADATA_KEYS or key in {
+            "linked_chunk_ids",
+            "query_terms",
+        }:
+            metadata[key] = merge_stable_values(
+                metadata_values(metadata[key]),
+                metadata_values(value),
+            )
+        elif key == "selection_score":
+            metadata[key] = max(float(metadata[key]), float(value))
+        elif key == "object_probe_visual_only":
+            metadata[key] = bool(metadata[key]) and bool(value)
+    return metadata
+
+
+def metadata_values(value) -> list:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return value
+    return [value]
 
 
 def merge_stable_values(left: list, right: list) -> list:

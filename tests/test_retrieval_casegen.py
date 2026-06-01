@@ -371,6 +371,49 @@ def test_generate_retrieval_case_skeleton_dedupes_queries_by_default():
     assert cases[0].expected_chunk_ids == ["chunk-1", "chunk-2"]
 
 
+def test_generate_retrieval_case_skeleton_merges_case_group_metadata():
+    chunk = DocumentChunk(
+        chunk_id="chunk-1",
+        doc_id="doc",
+        page_start=1,
+        page_end=1,
+        kind=ChunkKind.TEXT,
+        text="Shared retrieval phrase.",
+        asset_ids=["asset-1"],
+    )
+    asset = VisualAsset(
+        asset_id="asset-1",
+        doc_id="doc",
+        page_no=1,
+        kind=AssetKind.MAP,
+        caption="Shared retrieval phrase.",
+    )
+
+    cases = generate_retrieval_case_skeleton(
+        [chunk],
+        [asset],
+        [],
+        page_limit=1,
+        asset_limit=1,
+    )
+    report = audit_retrieval_cases(
+        cases,
+        profiles=[],
+        chunks=[chunk],
+        assets=[asset],
+        triples=[],
+    )
+
+    assert len(cases) == 1
+    assert cases[0].expected_chunk_ids == ["chunk-1"]
+    assert cases[0].expected_asset_ids == ["asset-1"]
+    assert cases[0].metadata["case_source"] == ["page", "asset"]
+    assert cases[0].metadata["merged_case_count"] == 2
+    assert report.case_group_counts["case_source"]["page"] == 1
+    assert report.case_group_counts["case_source"]["asset"] == 1
+    assert report.case_group_distinct_target_counts["case_source"]["asset"]["asset"] == 1
+
+
 def test_generate_retrieval_case_skeleton_can_create_visual_lexical_probes():
     chunk = DocumentChunk(
         chunk_id="chunk-1",
@@ -404,6 +447,9 @@ def test_generate_retrieval_case_skeleton_can_create_visual_lexical_probes():
     assert cases[0].expected_pages == [1]
     assert cases[0].expected_asset_ids == ["asset-1"]
     assert cases[0].metadata["case_source"] == "visual_lexical_probe"
+    assert cases[0].metadata["case_family"] == "visual"
+    assert cases[0].metadata["evidence_family"] == "visual_text"
+    assert cases[0].metadata["modality"] == "visual_text"
     assert cases[0].metadata["linked_chunk_ids"] == ["chunk-1"]
     assert cases[0].metadata["query_terms"] == ["map", "legend", "signal"]
 
