@@ -78,7 +78,7 @@
    - `text_dense`: chunk text, OCR text, VLM summaries, and any visual context included by the selected strategy.
    - `caption_dense`: asset caption, OCR, VLM summary text, and structured VLM metadata.
    - `image_dense`: rendered page or visual asset image.
-   - `triple_dense`: graph triple text built from subject, predicate, object, and selected provenance hints.
+   - `triple_dense`: graph triple text built from subject, predicate, object, and selected provenance hints, with resolved chunk payload fields for page, kind, section, and strategy filters.
    - Default hashing embedders make the pipeline testable without model downloads.
    - `embed-package` regenerates artifacts with model-backed text and image embedders.
    - `embedding_manifest.json` records vector files, dimensions, counts, checksums, backend names, model IDs, devices, and batch sizes.

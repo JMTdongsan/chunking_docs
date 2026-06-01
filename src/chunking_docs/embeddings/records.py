@@ -5,7 +5,13 @@ from typing import Any
 
 from chunking_docs.embeddings.interfaces import DenseTextEmbedder
 from chunking_docs.embeddings.interfaces import DenseImageEmbedder
-from chunking_docs.graph.provenance import chunk_asset_ids, triple_asset_ids
+from chunking_docs.graph.provenance import (
+    chunk_asset_ids,
+    chunk_id_alias_map,
+    chunk_ids_by_asset_id,
+    triple_asset_ids,
+    triple_resolved_chunk_ids,
+)
 from chunking_docs.models import DocumentChunk, GraphTriple, VisualAsset
 from chunking_docs.storage.records import EmbeddingRecord
 
@@ -133,6 +139,7 @@ def make_triple_embedding_records(
     embedder: DenseTextEmbedder,
     vector_name: str = "triple_dense",
     batch_size: int = 32,
+    chunks: list[DocumentChunk] | None = None,
 ) -> list[EmbeddingRecord]:
     records: list[EmbeddingRecord] = []
     for start in range(0, len(triples), batch_size):
@@ -140,31 +147,85 @@ def make_triple_embedding_records(
         texts = [triple_text(triple) for triple in batch]
         vectors = embedder.embed_texts(texts)
         for triple, text, vector in zip(batch, texts, vectors):
-            asset_ids = sorted(triple_asset_ids(triple))
+            chunk = resolved_triple_chunk(triple, chunks or [])
+            payload = triple_record_payload(triple, text, chunk)
+            record_chunk_id = payload.get("chunk_id")
             records.append(
                 EmbeddingRecord(
                     point_id=point_id(triple.triple_id, vector_name),
-                    chunk_id=triple.chunk_id,
+                    chunk_id=str(record_chunk_id or triple.chunk_id),
                     doc_id=triple.doc_id,
                     vector_name=vector_name,
                     vector=vector,
-                    payload={
-                        "triple_id": triple.triple_id,
-                        "chunk_id": triple.chunk_id,
-                        "doc_id": triple.doc_id,
-                        "kind": "graph_triple",
-                        "subject": triple.subject,
-                        "predicate": triple.predicate,
-                        "object": triple.object,
-                        "text": text,
-                        "asset_id": asset_ids,
-                        "asset_ids": asset_ids,
-                        "confidence": triple.confidence,
-                        "qualifiers": triple.qualifiers,
-                    },
+                    payload=payload,
                 )
             )
     return records
+
+
+def resolved_triple_chunk(triple: GraphTriple, chunks: list[DocumentChunk]) -> DocumentChunk | None:
+    if not chunks:
+        return None
+    chunk_by_id = {chunk.chunk_id: chunk for chunk in chunks}
+    resolved_ids = triple_resolved_chunk_ids(
+        triple,
+        set(chunk_by_id),
+        chunk_id_alias_map(chunks),
+        chunk_ids_by_asset_id(chunks),
+    )
+    return chunk_by_id.get(resolved_ids[0]) if resolved_ids else None
+
+
+def triple_record_payload(
+    triple: GraphTriple,
+    text: str,
+    chunk: DocumentChunk | None = None,
+) -> dict[str, Any]:
+    chunk_asset_id_values = chunk_asset_ids(chunk) if chunk is not None else []
+    asset_ids = ordered_unique([*sorted(triple_asset_ids(triple)), *chunk_asset_id_values])
+    payload: dict[str, Any] = {}
+    if chunk is not None:
+        payload.update(
+            {
+                "chunk_id": chunk.chunk_id,
+                "doc_id": chunk.doc_id,
+                "page_start": chunk.page_start,
+                "page_end": chunk.page_end,
+                "kind": chunk.kind,
+                "section": chunk.section.model_dump(),
+                "asset_id": asset_ids,
+                "asset_ids": asset_ids,
+                "source_refs": chunk.source_refs,
+                **chunk.metadata,
+            }
+        )
+    else:
+        payload.update(
+            {
+                "chunk_id": triple.chunk_id,
+                "doc_id": triple.doc_id,
+                "kind": "graph_triple",
+                "asset_id": asset_ids,
+                "asset_ids": asset_ids,
+            }
+        )
+        for key in ("page_start", "page_end", "page_no"):
+            if key in triple.qualifiers:
+                payload[key] = triple.qualifiers[key]
+    payload.update(
+        {
+            "record_kind": "graph_triple",
+            "triple_id": triple.triple_id,
+            "source_triple_chunk_id": triple.chunk_id,
+            "subject": triple.subject,
+            "predicate": triple.predicate,
+            "object": triple.object,
+            "text": text,
+            "confidence": triple.confidence,
+            "qualifiers": triple.qualifiers,
+        }
+    )
+    return payload
 
 
 def triple_text(triple: GraphTriple) -> str:
@@ -174,6 +235,17 @@ def triple_text(triple: GraphTriple) -> str:
     if source_field:
         parts.append(f"source field {source_field}")
     return " ".join(str(part).strip() for part in parts if str(part).strip())
+
+
+def ordered_unique(values: list[str]) -> list[str]:
+    seen = set()
+    result = []
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        result.append(value)
+    return result
 
 
 def asset_text(asset: VisualAsset) -> str:

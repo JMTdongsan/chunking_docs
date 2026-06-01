@@ -169,6 +169,14 @@ def test_caption_embedding_records_include_structured_visual_metadata(tmp_path):
 
 
 def test_write_embedding_artifacts_supports_triple_vectors(tmp_path):
+    chunk = DocumentChunk(
+        chunk_id="chunk-1",
+        doc_id="doc",
+        page_start=7,
+        page_end=7,
+        kind=ChunkKind.TEXT,
+        text="chunk text",
+    )
     triple = GraphTriple(
         triple_id="triple-1",
         doc_id="doc",
@@ -181,7 +189,7 @@ def test_write_embedding_artifacts_supports_triple_vectors(tmp_path):
 
     result = write_embedding_artifacts(
         output_dir=tmp_path,
-        chunks=[],
+        chunks=[chunk],
         assets=[],
         triples=[triple],
         triple_embedder=FakeTextEmbedder(6),
@@ -204,6 +212,9 @@ def test_write_embedding_artifacts_supports_triple_vectors(tmp_path):
         for line in (tmp_path / "qdrant_triple_records.jsonl").read_text(encoding="utf-8").splitlines()
     ]
     assert triple_records[0].payload["triple_id"] == "triple-1"
+    assert triple_records[0].payload["kind"] == "text"
+    assert triple_records[0].payload["record_kind"] == "graph_triple"
+    assert triple_records[0].payload["page_start"] == 7
     assert triple_records[0].payload["text"] == "map panel mentions entity station marker"
     manifest = json.loads((tmp_path / "embedding_manifest.json").read_text(encoding="utf-8"))
     assert manifest["vectors"]["triple_dense"]["file"] == "qdrant_triple_records.jsonl"

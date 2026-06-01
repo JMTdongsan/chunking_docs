@@ -280,7 +280,7 @@ chunking-docs embed-package \
   --device cuda
 ```
 
-This regenerates Qdrant text, caption, image, and graph triple records using the selected model dimensions. `triple_dense` embeds normalized `subject predicate object` text so graph relationships can be evaluated as a vector source as well as through symbolic graph expansion. It also writes `embedding_manifest.json` so vector files, record counts, dimensions, checksums, backend names, model IDs, devices, and batch sizes can be compared across embedding runs.
+This regenerates Qdrant text, caption, image, and graph triple records using the selected model dimensions. `triple_dense` embeds normalized `subject predicate object` text so graph relationships can be evaluated as a vector source as well as through symbolic graph expansion. Triple records keep `record_kind=graph_triple` while copying resolved chunk page, kind, section, strategy, and asset-link payload fields, so chunk-level filters still work when triple vectors participate in hybrid search. It also writes `embedding_manifest.json` so vector files, record counts, dimensions, checksums, backend names, model IDs, devices, and batch sizes can be compared across embedding runs.
 
 ## Qdrant
 

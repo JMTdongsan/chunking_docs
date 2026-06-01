@@ -274,6 +274,7 @@ def write_embedding_artifacts(
             triples or [],
             triple_embedder,
             batch_size=triple_batch_size,
+            chunks=chunks,
         )
         write_jsonl(output_dir / QDRANT_RECORD_FILES["triple_dense"], triple_records)
         named_vectors["triple_dense"] = vector_config(

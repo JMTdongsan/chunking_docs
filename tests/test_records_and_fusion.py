@@ -88,6 +88,16 @@ def test_make_caption_embedding_records():
 
 
 def test_make_triple_embedding_records():
+    chunk = DocumentChunk(
+        chunk_id="chunk-1",
+        doc_id="doc",
+        page_start=3,
+        page_end=4,
+        kind=ChunkKind.TEXT,
+        text="chunk text",
+        asset_ids=["asset-2"],
+        metadata={"chunking_strategy": "semantic"},
+    )
     triple = GraphTriple(
         triple_id="triple-1",
         doc_id="doc",
@@ -99,16 +109,57 @@ def test_make_triple_embedding_records():
         confidence=0.8,
     )
 
-    records = make_triple_embedding_records([triple], HashingTextEmbedder(embedding_dim=8))
+    records = make_triple_embedding_records(
+        [triple],
+        HashingTextEmbedder(embedding_dim=8),
+        chunks=[chunk],
+    )
 
     assert len(records) == 1
     assert records[0].vector_name == "triple_dense"
     assert records[0].chunk_id == "chunk-1"
     assert records[0].payload["triple_id"] == "triple-1"
-    assert records[0].payload["kind"] == "graph_triple"
-    assert records[0].payload["asset_id"] == ["asset-1"]
+    assert records[0].payload["record_kind"] == "graph_triple"
+    assert records[0].payload["kind"] == "text"
+    assert records[0].payload["page_start"] == 3
+    assert records[0].payload["page_end"] == 4
+    assert records[0].payload["asset_id"] == ["asset-1", "asset-2"]
+    assert records[0].payload["chunking_strategy"] == "semantic"
     assert records[0].payload["text"] == "map panel contains object station marker source field objects"
     assert triple_text(triple) == records[0].payload["text"]
+
+
+def test_make_triple_embedding_records_resolves_asset_backed_chunk():
+    chunk = DocumentChunk(
+        chunk_id="chunk-1",
+        doc_id="doc",
+        page_start=5,
+        page_end=5,
+        kind=ChunkKind.TEXT,
+        text="visual evidence chunk",
+        source_refs=["asset:asset-1"],
+    )
+    triple = GraphTriple(
+        triple_id="triple-1",
+        doc_id="doc",
+        chunk_id="vlm-annotation",
+        subject="map panel",
+        predicate="contains_object",
+        object="station marker",
+        qualifiers={"asset_id": "asset-1"},
+    )
+
+    records = make_triple_embedding_records(
+        [triple],
+        HashingTextEmbedder(embedding_dim=8),
+        chunks=[chunk],
+    )
+
+    assert records[0].chunk_id == "chunk-1"
+    assert records[0].payload["chunk_id"] == "chunk-1"
+    assert records[0].payload["source_triple_chunk_id"] == "vlm-annotation"
+    assert records[0].payload["kind"] == "text"
+    assert records[0].payload["page_start"] == 5
 
 
 def test_reciprocal_rank_fusion_combines_sources():

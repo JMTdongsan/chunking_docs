@@ -15,6 +15,7 @@ QDRANT_PAYLOAD_INDEXES = [
     {"field": "chunk_id", "schema": "keyword"},
     {"field": "asset_id", "schema": "keyword"},
     {"field": "triple_id", "schema": "keyword"},
+    {"field": "record_kind", "schema": "keyword"},
     {"field": "kind", "schema": "keyword"},
     {"field": "predicate", "schema": "keyword"},
     {"field": "chunking_strategy", "schema": "keyword"},
