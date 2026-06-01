@@ -154,6 +154,37 @@ def test_build_experiment_report_summarizes_artifacts_and_candidates(tmp_path):
         ]
         == 1.0
     )
+    assert validations["retrieval_diagnostics.final.json"].metrics["source_hit.bm25"] == 5.0
+    assert (
+        validations["retrieval_diagnostics.final.json"].metrics[
+            "source_family_hit.visual"
+        ]
+        == 4.0
+    )
+    assert (
+        validations["retrieval_diagnostics.final.json"].metrics[
+            "excluded_source_hit.qdrant:image_dense"
+        ]
+        == 1.0
+    )
+    assert (
+        validations["retrieval_diagnostics.final.json"].metrics[
+            "excluded_source_family_hit.visual"
+        ]
+        == 1.0
+    )
+    assert (
+        validations["retrieval_diagnostics.final.json"].metrics[
+            "case_group.case_source.visual_object_probe.source_family_hit.visual"
+        ]
+        == 3.0
+    )
+    assert (
+        validations["retrieval_diagnostics.final.json"].metrics[
+            "case_group.case_source.visual_object_probe.excluded_source_family_hit.visual"
+        ]
+        == 1.0
+    )
     assert (
         validations["ingestion_readiness.final.json#visual_text_coverage"]
         .metrics["visual_text_coverage_ratio"]
@@ -521,6 +552,50 @@ def write_minimal_package(tmp_path):
                 "missing_target_type_counts": {
                     "asset": 1,
                     "triple": 1,
+                },
+                "source_counts": {
+                    "bm25": 5,
+                    "qdrant:image_dense": 4,
+                },
+                "source_family_counts": {
+                    "lexical": 5,
+                    "visual": 4,
+                },
+                "excluded_source_counts": {
+                    "qdrant:image_dense": 1,
+                },
+                "excluded_source_family_counts": {
+                    "visual": 1,
+                },
+                "source_counts_by_case_group": {
+                    "case_source": {
+                        "visual_object_probe": {
+                            "bm25": 2,
+                            "qdrant:image_dense": 3,
+                        }
+                    }
+                },
+                "source_family_counts_by_case_group": {
+                    "case_source": {
+                        "visual_object_probe": {
+                            "lexical": 2,
+                            "visual": 3,
+                        }
+                    }
+                },
+                "excluded_source_counts_by_case_group": {
+                    "case_source": {
+                        "visual_object_probe": {
+                            "qdrant:image_dense": 1,
+                        }
+                    }
+                },
+                "excluded_source_family_counts_by_case_group": {
+                    "case_source": {
+                        "visual_object_probe": {
+                            "visual": 1,
+                        }
+                    }
                 },
                 "reason_counts_by_case_group": {
                     "case_source": {

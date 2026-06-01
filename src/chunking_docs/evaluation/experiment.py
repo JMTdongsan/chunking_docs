@@ -965,9 +965,44 @@ def dynamic_metric_payload(payload: dict[str, Any]) -> dict[str, float]:
     metrics.update(flat_metric_group(payload.get("chunk_strategy_metrics"), "chunk_strategy"))
     metrics.update(flat_metric_group(payload.get("retrieval_role_metrics"), "retrieval_role"))
     metrics.update(flat_case_group_metrics(payload.get("case_group_metrics")))
+    metrics.update(flat_count_metrics(payload.get("source_counts"), "source_hit"))
+    metrics.update(flat_count_metrics(payload.get("source_family_counts"), "source_family_hit"))
+    metrics.update(
+        flat_count_metrics(payload.get("excluded_source_counts"), "excluded_source_hit")
+    )
+    metrics.update(
+        flat_count_metrics(
+            payload.get("excluded_source_family_counts"),
+            "excluded_source_family_hit",
+        )
+    )
     metrics.update(flat_count_metrics(payload.get("reason_counts"), "reason"))
     metrics.update(
         flat_count_metrics(payload.get("missing_target_type_counts"), "missing_target_type")
+    )
+    metrics.update(
+        flat_case_group_count_metrics(
+            payload.get("source_counts_by_case_group"),
+            "source_hit",
+        )
+    )
+    metrics.update(
+        flat_case_group_count_metrics(
+            payload.get("source_family_counts_by_case_group"),
+            "source_family_hit",
+        )
+    )
+    metrics.update(
+        flat_case_group_count_metrics(
+            payload.get("excluded_source_counts_by_case_group"),
+            "excluded_source_hit",
+        )
+    )
+    metrics.update(
+        flat_case_group_count_metrics(
+            payload.get("excluded_source_family_counts_by_case_group"),
+            "excluded_source_family_hit",
+        )
     )
     metrics.update(
         flat_case_group_count_metrics(
