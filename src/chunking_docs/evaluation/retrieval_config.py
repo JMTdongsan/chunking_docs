@@ -25,6 +25,7 @@ class QdrantRetrievalConfigSelection(BaseModel):
     eligibility_failures: list[str] = Field(default_factory=list)
     metrics: dict[str, float] = Field(default_factory=dict)
     case_group_metrics: dict[str, float] = Field(default_factory=dict)
+    pairwise_comparisons: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class QdrantRetrievalConfig(BaseModel):
@@ -97,6 +98,7 @@ def build_qdrant_retrieval_config_from_fusion_sweep(
             eligibility_failures=candidate.eligibility_failures,
             metrics=candidate_metrics(candidate),
             case_group_metrics=candidate_case_group_metrics(candidate, case_group_key),
+            pairwise_comparisons=selected_pairwise_comparisons(report, candidate.name),
         ),
         metadata=config_metadata(report),
     )
@@ -183,6 +185,29 @@ def candidate_case_group_metrics(
     if metric is None:
         return {}
     return retrieval_case_group_metric_payload(metric)
+
+
+def selected_pairwise_comparisons(
+    report: QdrantFusionSweepReport,
+    candidate_name: str,
+) -> list[dict[str, Any]]:
+    comparisons = [
+        comparison
+        for comparison in report.pairwise
+        if comparison.candidate == candidate_name
+    ]
+    comparisons.sort(
+        key=lambda comparison: (
+            -comparison.candidate_win_rate,
+            -comparison.mean_target_coverage_delta,
+            -comparison.mean_target_ndcg_delta,
+            comparison.mean_target_rank_delta
+            if comparison.mean_target_rank_delta is not None
+            else float("inf"),
+            comparison.baseline,
+        )
+    )
+    return [comparison.model_dump() for comparison in comparisons]
 
 
 def retrieval_case_group_metric_payload(metric: RetrievalCaseGroupMetric) -> dict[str, float]:

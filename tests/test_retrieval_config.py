@@ -8,7 +8,11 @@ from chunking_docs.evaluation.fusion_sweep import (
     QdrantFusionSweepCandidate,
     build_qdrant_fusion_sweep_report,
 )
-from chunking_docs.evaluation.retrieval import RetrievalCaseGroupMetric, RetrievalEvaluation
+from chunking_docs.evaluation.retrieval import (
+    RetrievalCaseGroupMetric,
+    RetrievalCaseResult,
+    RetrievalEvaluation,
+)
 from chunking_docs.evaluation.retrieval_config import (
     build_qdrant_retrieval_config_from_fusion_sweep,
 )
@@ -32,6 +36,9 @@ def test_qdrant_retrieval_config_exports_global_recommended_candidate():
     assert config.selection.source == "global_recommended"
     assert config.selection.candidate == "balanced"
     assert config.selection.metrics["target_coverage_at_k"] == pytest.approx(0.96)
+    assert config.selection.pairwise_comparisons[0]["baseline"] == "object_weighted"
+    assert config.selection.pairwise_comparisons[0]["candidate_win_rate"] == 1.0
+    assert config.selection.pairwise_comparisons[0]["mean_target_coverage_delta"] == 1.0
     assert config.metadata["sweep_eligible_count"] == 2
 
 
@@ -78,6 +85,7 @@ def test_export_qdrant_retrieval_config_cli_writes_json(tmp_path):
     payload = json.loads(output_path.read_text(encoding="utf-8"))
     assert payload["backend"] == "qdrant_hybrid"
     assert payload["selection"]["candidate"] == "object_weighted"
+    assert payload["selection"]["pairwise_comparisons"][0]["baseline"] == "balanced"
     assert payload["fusion_weights"] == {"bm25": 1.0, "qdrant:object_dense": 1.4}
 
 
@@ -98,6 +106,15 @@ def fusion_sweep_report():
                 ndcg=0.48,
                 mrr=0.5,
             ),
+            results=[
+                retrieval_result(
+                    "shared redevelopment query",
+                    coverage=1.0,
+                    ndcg=0.9,
+                    reciprocal_rank=1.0,
+                    rank=1,
+                )
+            ],
         ),
     )
     object_weighted = QdrantFusionSweepCandidate(
@@ -116,6 +133,15 @@ def fusion_sweep_report():
                 ndcg=0.88,
                 mrr=0.84,
             ),
+            results=[
+                retrieval_result(
+                    "shared redevelopment query",
+                    coverage=0.0,
+                    ndcg=0.0,
+                    reciprocal_rank=0.0,
+                    rank=None,
+                )
+            ],
         ),
     )
 
@@ -156,6 +182,7 @@ def evaluation(
     failed: int,
     latency: float,
     visual_object_group: RetrievalCaseGroupMetric,
+    results: list[RetrievalCaseResult] | None = None,
 ) -> RetrievalEvaluation:
     return RetrievalEvaluation(
         case_count=10,
@@ -174,7 +201,37 @@ def evaluation(
         p95_latency_ms=latency,
         failed_queries=[f"failed-{index}" for index in range(failed)],
         case_group_metrics={"case_source": {"visual_object_probe": visual_object_group}},
-        results=[],
+        results=results or [],
+    )
+
+
+def retrieval_result(
+    query: str,
+    coverage: float,
+    ndcg: float,
+    reciprocal_rank: float,
+    rank: int | None,
+) -> RetrievalCaseResult:
+    target_ranks = {"page:1": rank} if rank is not None else {}
+    return RetrievalCaseResult(
+        query=query,
+        passed=rank is not None,
+        latency_ms=10.0,
+        top_pages=[1] if rank is not None else [],
+        top_chunk_ids=["chunk-1"] if rank is not None else [],
+        expected_pages=[1],
+        expected_chunk_ids=[],
+        expected_target_count=1,
+        matched_target_count=1 if rank is not None else 0,
+        target_coverage_at_k=coverage,
+        target_ndcg_at_k=ndcg,
+        relevant_hit_count=1 if rank is not None else 0,
+        precision_at_k=0.2 if rank is not None else 0.0,
+        matched_rank=rank,
+        reciprocal_rank=reciprocal_rank,
+        target_matches={"page:1": rank is not None},
+        target_matched_ranks=target_ranks,
+        target_key_matched_ranks=target_ranks,
     )
 
 
