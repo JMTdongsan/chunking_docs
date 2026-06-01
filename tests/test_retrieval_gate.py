@@ -321,6 +321,63 @@ def test_retrieval_gate_checks_exact_source_target_coverage():
     assert failed.failed_checks == ["min_source_target_coverage:qdrant:image_dense"]
 
 
+def test_retrieval_gate_checks_source_precision_at_hits():
+    evaluation = make_evaluation(
+        source_coverage={"qdrant:image_dense": 0.45, "bm25": 0.8},
+        source_family_coverage={"visual": 0.45, "lexical": 0.8},
+        case_group_source_coverage={
+            "case_source": {"visual_object_probe": {"qdrant:image_dense": 0.45}}
+        },
+        case_group_source_family_coverage={
+            "case_source": {"visual_object_probe": {"visual": 0.45}}
+        },
+    )
+
+    report = gate_retrieval_evaluation(
+        evaluation,
+        min_source_precision_at_hits={"qdrant:image_dense": 0.4},
+        min_source_family_precision_at_hits={"visual": 0.4},
+        min_case_group_source_precision_at_hits={
+            "case_source:visual_object_probe:qdrant:image_dense": 0.4
+        },
+        min_case_group_source_family_precision_at_hits={
+            "case_source:visual_object_probe:visual": 0.4
+        },
+    )
+
+    assert report.passed is True
+    assert report.metrics["source.qdrant:image_dense.precision_at_hits"] == 0.45
+    assert report.metrics["source_family.visual.precision_at_hits"] == 0.45
+    assert report.metrics[
+        "case_group_source.case_source.visual_object_probe.qdrant:image_dense.precision_at_hits"
+    ] == 0.45
+    assert report.metrics[
+        "case_group_source_family.case_source.visual_object_probe.visual.precision_at_hits"
+    ] == 0.45
+
+    failed = gate_retrieval_evaluation(
+        evaluation,
+        min_source_precision_at_hits={"qdrant:image_dense": 0.5},
+        min_source_family_precision_at_hits={"visual": 0.5},
+        min_case_group_source_precision_at_hits={
+            "case_source:visual_object_probe:qdrant:image_dense": 0.5
+        },
+        min_case_group_source_family_precision_at_hits={
+            "case_source:visual_object_probe:visual": 0.5
+        },
+    )
+
+    assert failed.passed is False
+    assert failed.failed_checks == [
+        "min_source_precision_at_hits:qdrant:image_dense",
+        "min_source_family_precision_at_hits:visual",
+        "min_case_group_source_precision_at_hits:"
+        "case_source:visual_object_probe:qdrant:image_dense",
+        "min_case_group_source_family_precision_at_hits:"
+        "case_source:visual_object_probe:visual",
+    ]
+
+
 def test_retrieval_gate_checks_source_excluded_target_hit_rate():
     evaluation = make_evaluation(
         source_coverage={"qdrant:image_dense": 0.8, "bm25": 1.0},
@@ -626,6 +683,61 @@ def test_gate_retrieval_cli_checks_exact_source_target_coverage(tmp_path):
     assert "min_source_target_coverage:qdrant:image_dense" in result.output
     payload = output.read_text(encoding="utf-8")
     assert "source.qdrant:image_dense.target_coverage_at_k" in payload
+
+
+def test_gate_retrieval_cli_checks_source_precision_at_hits(tmp_path):
+    evaluation_path = tmp_path / "retrieval_eval.json"
+    output = tmp_path / "retrieval_gate.json"
+    evaluation_path.write_text(
+        make_evaluation(
+            source_coverage={"qdrant:image_dense": 0.45},
+            source_family_coverage={"visual": 0.45},
+            case_group_source_coverage={
+                "case_source": {
+                    "visual_object_probe": {"qdrant:image_dense": 0.45}
+                }
+            },
+            case_group_source_family_coverage={
+                "case_source": {"visual_object_probe": {"visual": 0.45}}
+            },
+        ).model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "gate-retrieval",
+            str(evaluation_path),
+            "--min-source-precision-at-hits",
+            "qdrant:image_dense=0.8",
+            "--min-source-family-precision-at-hits",
+            "visual=0.8",
+            "--min-case-group-source-precision-at-hits",
+            "case_source:visual_object_probe:qdrant:image_dense=0.8",
+            "--min-case-group-source-family-precision-at-hits",
+            "case_source:visual_object_probe:visual=0.8",
+            "--output",
+            str(output),
+            "--no-fail",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "min_source_precision_at_hits:qdrant:image_dense" in result.output
+    assert "min_source_family_precision_at_hits:visual" in result.output
+    assert "min_case_group_source_precision_at_hits" in result.output
+    payload = output.read_text(encoding="utf-8")
+    assert "source.qdrant:image_dense.precision_at_hits" in payload
+    assert "source_family.visual.precision_at_hits" in payload
+    assert (
+        "case_group_source.case_source.visual_object_probe."
+        "qdrant:image_dense.precision_at_hits"
+    ) in payload
+    assert (
+        "case_group_source_family.case_source.visual_object_probe.visual."
+        "precision_at_hits"
+    ) in payload
 
 
 def test_gate_retrieval_cli_checks_source_excluded_target_hit_rate(tmp_path):

@@ -66,8 +66,12 @@ def gate_retrieval_evaluation(
     min_target_type_coverage: dict[str, float] | None = None,
     min_source_target_coverage: dict[str, float] | None = None,
     min_source_family_target_coverage: dict[str, float] | None = None,
+    min_source_precision_at_hits: dict[str, float] | None = None,
+    min_source_family_precision_at_hits: dict[str, float] | None = None,
     min_case_group_source_target_coverage: dict[str, float] | None = None,
     min_case_group_source_family_target_coverage: dict[str, float] | None = None,
+    min_case_group_source_precision_at_hits: dict[str, float] | None = None,
+    min_case_group_source_family_precision_at_hits: dict[str, float] | None = None,
     max_source_excluded_target_hit_rate: dict[str, float] | None = None,
     max_source_family_excluded_target_hit_rate: dict[str, float] | None = None,
     min_chunk_strategy_target_coverage: dict[str, float] | None = None,
@@ -250,6 +254,18 @@ def gate_retrieval_evaluation(
         )
     )
     checks.extend(
+        source_precision_at_hits_checks(
+            metrics,
+            min_source_precision_at_hits or {},
+        )
+    )
+    checks.extend(
+        source_family_precision_at_hits_checks(
+            metrics,
+            min_source_family_precision_at_hits or {},
+        )
+    )
+    checks.extend(
         case_group_source_target_coverage_checks(
             metrics,
             min_case_group_source_target_coverage or {},
@@ -260,6 +276,20 @@ def gate_retrieval_evaluation(
         case_group_source_target_coverage_checks(
             metrics,
             min_case_group_source_family_target_coverage or {},
+            family=True,
+        )
+    )
+    checks.extend(
+        case_group_source_precision_at_hits_checks(
+            metrics,
+            min_case_group_source_precision_at_hits or {},
+            family=False,
+        )
+    )
+    checks.extend(
+        case_group_source_precision_at_hits_checks(
+            metrics,
+            min_case_group_source_family_precision_at_hits or {},
             family=True,
         )
     )
@@ -775,6 +805,46 @@ def source_target_coverage_checks(
     return checks
 
 
+def source_precision_at_hits_checks(
+    metrics: dict[str, float],
+    thresholds: dict[str, float],
+) -> list[RetrievalGateCheck]:
+    checks = []
+    for source, threshold in sorted(thresholds.items()):
+        normalized_source = source.strip().lower()
+        metric = source_metric_key(normalized_source, "precision_at_hits")
+        metrics.setdefault(metric, 0.0)
+        checks.append(
+            minimum_check(
+                f"min_source_precision_at_hits:{normalized_source}",
+                metric,
+                metrics,
+                threshold,
+            )
+        )
+    return checks
+
+
+def source_family_precision_at_hits_checks(
+    metrics: dict[str, float],
+    thresholds: dict[str, float],
+) -> list[RetrievalGateCheck]:
+    checks = []
+    for family, threshold in sorted(thresholds.items()):
+        normalized_family = family.strip().lower()
+        metric = source_family_metric_key(normalized_family, "precision_at_hits")
+        metrics.setdefault(metric, 0.0)
+        checks.append(
+            minimum_check(
+                f"min_source_family_precision_at_hits:{normalized_family}",
+                metric,
+                metrics,
+                threshold,
+            )
+        )
+    return checks
+
+
 def source_excluded_target_hit_rate_checks(
     metrics: dict[str, float],
     thresholds: dict[str, float],
@@ -906,6 +976,37 @@ def case_group_source_target_coverage_checks(
             "min_case_group_source_family_target_coverage"
             if family
             else "min_case_group_source_target_coverage"
+        )
+        checks.append(
+            minimum_check(
+                f"{check_prefix}:{group_name}:{group_value}:{source}",
+                metric,
+                metrics,
+                threshold,
+            )
+        )
+    return checks
+
+
+def case_group_source_precision_at_hits_checks(
+    metrics: dict[str, float],
+    thresholds: dict[str, float],
+    family: bool = False,
+) -> list[RetrievalGateCheck]:
+    checks = []
+    for spec, threshold in sorted(thresholds.items()):
+        group_name, group_value, source = parse_case_group_source_spec(spec)
+        metric_key_fn = (
+            case_group_source_family_metric_key
+            if family
+            else case_group_source_metric_key
+        )
+        metric = metric_key_fn(group_name, group_value, source, "precision_at_hits")
+        metrics.setdefault(metric, 0.0)
+        check_prefix = (
+            "min_case_group_source_family_precision_at_hits"
+            if family
+            else "min_case_group_source_precision_at_hits"
         )
         checks.append(
             minimum_check(
