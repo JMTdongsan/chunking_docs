@@ -15,7 +15,12 @@ from chunking_docs.vision.jobs import (
     run_visual_jobs,
 )
 from chunking_docs.vision.manual_annotations import AssetAnnotation
-from chunking_docs.vision.prompts import MAP_SUMMARY_PROMPT_KO, VISUAL_PROMPT_SCHEMA_VERSION
+from chunking_docs.vision.annotate import prompt_for_asset, prompt_name_for_asset
+from chunking_docs.vision.prompts import CHART_SUMMARY_PROMPT_KO
+from chunking_docs.vision.prompts import FIGURE_SUMMARY_PROMPT_KO
+from chunking_docs.vision.prompts import MAP_SUMMARY_PROMPT_KO
+from chunking_docs.vision.prompts import TABLE_SUMMARY_PROMPT_KO
+from chunking_docs.vision.prompts import VISUAL_PROMPT_SCHEMA_VERSION
 from chunking_docs.vision.quality import evaluate_visual_results, visual_results_from_assets
 from chunking_docs.vision.report import summarize_visual_results
 
@@ -422,6 +427,25 @@ def test_map_prompt_requires_single_json_object():
     assert "최대 3개" in MAP_SUMMARY_PROMPT_KO
     assert "기호만 단독" in MAP_SUMMARY_PROMPT_KO
     assert "반복하지" in MAP_SUMMARY_PROMPT_KO
+
+
+def test_prompt_for_asset_uses_kind_specific_visual_prompts():
+    table = VisualAsset(asset_id="table", doc_id="doc", page_no=1, kind=AssetKind.TABLE)
+    chart = VisualAsset(asset_id="chart", doc_id="doc", page_no=1, kind=AssetKind.CHART)
+    figure = VisualAsset(asset_id="figure", doc_id="doc", page_no=1, kind=AssetKind.FIGURE)
+
+    assert prompt_for_asset(table) == TABLE_SUMMARY_PROMPT_KO
+    assert prompt_name_for_asset(table) == "table_summary_ko"
+    assert "열/행 헤더" in TABLE_SUMMARY_PROMPT_KO
+    assert "단위" in TABLE_SUMMARY_PROMPT_KO
+    assert prompt_for_asset(chart) == CHART_SUMMARY_PROMPT_KO
+    assert prompt_name_for_asset(chart) == "chart_summary_ko"
+    assert "축 이름" in CHART_SUMMARY_PROMPT_KO
+    assert "주요 추세" in CHART_SUMMARY_PROMPT_KO
+    assert prompt_for_asset(figure) == FIGURE_SUMMARY_PROMPT_KO
+    assert prompt_name_for_asset(figure) == "figure_summary_ko"
+    assert "구성 요소" in FIGURE_SUMMARY_PROMPT_KO
+    assert "objects" in FIGURE_SUMMARY_PROMPT_KO
 
 
 def test_summarize_visual_results_reports_backend_metrics(tmp_path):

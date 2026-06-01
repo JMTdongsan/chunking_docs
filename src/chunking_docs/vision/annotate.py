@@ -3,7 +3,11 @@ from __future__ import annotations
 from chunking_docs.graph.provenance import chunk_asset_ids
 from chunking_docs.models import AssetKind, DocumentChunk, VisualAsset
 from chunking_docs.vision.interfaces import OCRBackend, VLMBackend
-from chunking_docs.vision.prompts import MAP_SUMMARY_PROMPT_KO, PAGE_SUMMARY_PROMPT_KO
+from chunking_docs.vision.prompts import CHART_SUMMARY_PROMPT_KO
+from chunking_docs.vision.prompts import FIGURE_SUMMARY_PROMPT_KO
+from chunking_docs.vision.prompts import MAP_SUMMARY_PROMPT_KO
+from chunking_docs.vision.prompts import PAGE_SUMMARY_PROMPT_KO
+from chunking_docs.vision.prompts import TABLE_SUMMARY_PROMPT_KO
 
 
 def annotate_assets(
@@ -44,12 +48,24 @@ def annotate_assets(
 def prompt_for_asset(asset: VisualAsset) -> str:
     if asset.kind == AssetKind.MAP:
         return MAP_SUMMARY_PROMPT_KO
+    if asset.kind == AssetKind.TABLE:
+        return TABLE_SUMMARY_PROMPT_KO
+    if asset.kind == AssetKind.CHART:
+        return CHART_SUMMARY_PROMPT_KO
+    if asset.kind == AssetKind.FIGURE:
+        return FIGURE_SUMMARY_PROMPT_KO
     return PAGE_SUMMARY_PROMPT_KO
 
 
 def prompt_name_for_asset(asset: VisualAsset) -> str:
     if asset.kind == AssetKind.MAP:
         return "map_summary_ko"
+    if asset.kind == AssetKind.TABLE:
+        return "table_summary_ko"
+    if asset.kind == AssetKind.CHART:
+        return "chart_summary_ko"
+    if asset.kind == AssetKind.FIGURE:
+        return "figure_summary_ko"
     return "page_summary_ko"
 
 

@@ -53,6 +53,7 @@
    - Preserve tile parent, grid, and text-quality metadata in jobs, and prioritize tile crops for dense pages when batch limits are used.
    - Filter jobs by page range or asset kind to run bounded OCR/VLM batches.
    - Run jobs in bounded batches and store `visual_job_results.jsonl` plus `visual_annotations.jsonl`.
+   - Select asset-kind-specific VLM prompts so maps, tables, charts, and figures extract the right spatial, numeric, structural, and object cues.
    - Parse structured VLM JSON into captions, summaries, metadata, normalized object detections, and triple candidates.
    - Preserve object attributes, descriptions, locations, bbox coordinates, confidence, and source-field provenance for retrieval text and graph qualifiers.
    - Lift entities, visual elements, and detected objects into derived graph triples when explicit relationships are missing.
