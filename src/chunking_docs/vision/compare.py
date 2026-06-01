@@ -22,6 +22,10 @@ class VisualRunComparisonRow(BaseModel):
     vlm_summary_coverage: float | None = None
     mean_vlm_summary_chars: float | None = None
     vlm_json_parse_rate: float | None = None
+    vlm_object_count: int = 0
+    vlm_object_coverage: float | None = None
+    objects_per_vlm_job: float | None = None
+    object_bbox_coverage: float | None = None
     triple_count: int
     triples_per_vlm_job: float | None = None
     total_mean_latency_ms: float | None = None
@@ -60,6 +64,7 @@ def compare_visual_runs(
             row.completion_rate,
             row.vlm_summary_coverage if row.vlm_summary_coverage is not None else -1.0,
             row.vlm_json_parse_rate if row.vlm_json_parse_rate is not None else -1.0,
+            row.vlm_object_coverage if row.vlm_object_coverage is not None else -1.0,
             row.triples_per_vlm_job if row.triples_per_vlm_job is not None else -1.0,
             -(row.total_mean_latency_ms or 0.0),
         ),
@@ -101,6 +106,10 @@ def visual_run_row(name: str, results: list[VisualJobRunResult]) -> VisualRunCom
         vlm_summary_coverage=report.vlm_summary_coverage if report.vlm_job_count else None,
         mean_vlm_summary_chars=report.mean_vlm_summary_chars if report.vlm_job_count else None,
         vlm_json_parse_rate=report.vlm_json_parse_rate if report.vlm_job_count else None,
+        vlm_object_count=report.vlm_object_count,
+        vlm_object_coverage=report.vlm_object_coverage if report.vlm_job_count else None,
+        objects_per_vlm_job=report.objects_per_vlm_job if report.vlm_job_count else None,
+        object_bbox_coverage=report.object_bbox_coverage if report.vlm_object_count else None,
         triple_count=report.triple_count,
         triples_per_vlm_job=report.triples_per_vlm_job if report.vlm_job_count else None,
         total_mean_latency_ms=mean(total_durations),
@@ -132,6 +141,7 @@ def visual_run_quality_score(report: VisualQualityReport) -> float:
             [
                 (report.vlm_summary_coverage, 0.20),
                 (report.vlm_json_parse_rate, 0.15),
+                (report.vlm_object_coverage, 0.05),
                 (min(report.triples_per_vlm_job, 1.0), 0.10),
                 (min(report.mean_vlm_summary_chars / 240.0, 1.0), 0.05),
             ]

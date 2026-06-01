@@ -49,6 +49,20 @@ class JsonVLM:
         """
 
 
+class ObjectJsonVLM:
+    def summarize(self, image_path: Path, prompt: str):
+        return """
+        {
+          "title": "Control Panel",
+          "summary": "Shows panel objects.",
+          "objects": [
+            {"label": "toggle", "bbox": [0.1, 0.2, 0.3, 0.4], "confidence": 0.8},
+            {"label": "indicator", "confidence": 0.7}
+          ]
+        }
+        """
+
+
 def test_plan_visual_jobs_prioritizes_maps_and_missing_annotations(tmp_path):
     map_path = tmp_path / "map.png"
     page_path = tmp_path / "page.png"
@@ -296,6 +310,39 @@ def test_run_visual_jobs_parses_json_vlm_triples(tmp_path):
     assert annotation.metadata["vlm_parse_status"] == "json_object"
 
 
+def test_run_visual_jobs_records_vlm_object_metrics(tmp_path):
+    image_path = tmp_path / "panel.png"
+    image_path.write_bytes(b"panel")
+    assets = [
+        VisualAsset(
+            asset_id="panel",
+            doc_id="doc",
+            page_no=1,
+            kind=AssetKind.FIGURE,
+            path=image_path,
+            metadata={"requires_ocr": False, "requires_vlm": True},
+        )
+    ]
+    jobs = plan_visual_jobs(assets, include_ocr=False)
+
+    results = run_visual_jobs(jobs, assets, vlm_backend=ObjectJsonVLM())
+    annotation = completed_annotations(results)[0]
+    report = evaluate_visual_results(
+        results,
+        min_vlm_object_coverage=1.0,
+        min_objects_per_vlm_job=2.0,
+        min_object_bbox_coverage=0.5,
+    )
+
+    assert results[0].metadata["object_count"] == 2
+    assert results[0].metadata["object_bbox_count"] == 1
+    assert annotation.metadata["derived_triple_count"] == 2
+    assert report.passed is True
+    assert report.vlm_object_coverage == 1.0
+    assert report.objects_per_vlm_job == 2.0
+    assert report.object_bbox_coverage == 0.5
+
+
 def test_map_prompt_requires_single_json_object():
     assert "JSON 객체 하나만" in MAP_SUMMARY_PROMPT_KO
     assert '"triples"' in MAP_SUMMARY_PROMPT_KO
@@ -488,6 +535,7 @@ def test_evaluate_visual_results_gates_annotation_quality():
         min_ocr_text_coverage=1.0,
         min_vlm_summary_coverage=1.0,
         min_vlm_json_parse_rate=0.8,
+        min_vlm_object_coverage=1.0,
         min_triples_per_vlm_job=0.5,
         max_failed_count=0,
     )
@@ -497,8 +545,10 @@ def test_evaluate_visual_results_gates_annotation_quality():
     assert report.ocr_text_coverage == 1.0
     assert report.vlm_summary_coverage == 0.5
     assert report.vlm_json_parse_rate == 0.5
+    assert report.vlm_object_coverage == 0.0
     assert report.triples_per_vlm_job == 0.5
     assert "min_completion_rate" in report.failed_checks
+    assert "min_vlm_object_coverage" in report.failed_checks
     assert "max_failed_count" in report.failed_checks
     assert report.issues[0].code == "visual_job_failed"
 

@@ -15,6 +15,7 @@ class ParsedVLMOutput(BaseModel):
 
 
 DERIVED_VISUAL_TRIPLE_LIMIT = 12
+VISUAL_OBJECT_KEYS = ["objects", "detected_objects", "visual_objects", "detections", "regions", "areas"]
 
 
 def parse_vlm_output(text: str) -> ParsedVLMOutput:
@@ -238,14 +239,19 @@ def normalize_text_items(value: Any, limit: int) -> list[str]:
 
 def visual_objects_from_payload(payload: dict[str, Any]) -> list[dict[str, Any]]:
     objects = []
-    for key in ["objects", "detected_objects", "visual_objects"]:
-        objects.extend(normalize_visual_objects(payload.get(key), limit=8))
+    for key in VISUAL_OBJECT_KEYS:
+        objects.extend(normalize_visual_objects(payload.get(key), limit=8, source_key=key))
     return dedupe_visual_objects(objects, limit=8)
 
 
-def normalize_visual_objects(value: Any, limit: int) -> list[dict[str, Any]]:
+def normalize_visual_objects(value: Any, limit: int, source_key: str | None = None) -> list[dict[str, Any]]:
     if isinstance(value, str):
         value = [value]
+    elif isinstance(value, dict):
+        if first_string(value, ["label", "name", "title", "object", "type", "category"]):
+            value = [value]
+        else:
+            value = object_mapping_items(value)
     if not isinstance(value, list):
         return []
 
@@ -254,12 +260,17 @@ def normalize_visual_objects(value: Any, limit: int) -> list[dict[str, Any]]:
         if isinstance(item, str):
             label = item.strip()
             if label:
-                objects.append({"label": label})
+                normalized = {"label": label}
+                if source_key:
+                    normalized["source_key"] = source_key
+                objects.append(normalized)
         elif isinstance(item, dict):
             label = first_string(item, ["label", "name", "title", "object", "type", "category"])
             if not label:
                 continue
             normalized: dict[str, Any] = {"label": label}
+            if source_key:
+                normalized["source_key"] = source_key
             attributes = normalize_text_items(
                 item.get("attributes") or item.get("features") or item.get("descriptors"),
                 limit=6,
@@ -267,18 +278,48 @@ def normalize_visual_objects(value: Any, limit: int) -> list[dict[str, Any]]:
             description = first_string(item, ["description", "summary", "text"])
             if description and description not in attributes:
                 attributes.append(description)
+                normalized["description"] = description
             if attributes:
                 normalized["attributes"] = attributes[:6]
-            bbox = normalize_bbox(item.get("bbox") or item.get("box") or item.get("bounding_box"))
+            bbox = normalize_bbox(first_present(item, ["bbox", "box", "bounding_box", "boundingBox", "bounds"]))
             if bbox is not None:
                 normalized["bbox"] = bbox
-            confidence = normalize_confidence(item.get("confidence") or item.get("score"))
+            location = normalize_location(first_present(item, ["location", "position", "region"]))
+            if location:
+                normalized["location"] = location
+            confidence = normalize_confidence(first_present(item, ["confidence", "score"]))
             if confidence is not None:
                 normalized["confidence"] = confidence
             objects.append(normalized)
         if len(objects) >= limit:
             break
     return objects
+
+
+def first_present(payload: dict[str, Any], keys: list[str]) -> Any:
+    for key in keys:
+        if key in payload and payload[key] is not None:
+            return payload[key]
+    return None
+
+
+def object_mapping_items(value: dict[str, Any]) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    for label, details in value.items():
+        label_text = str(label).strip()
+        if not label_text:
+            continue
+        if isinstance(details, dict):
+            item = {**details}
+            item.setdefault("label", label_text)
+        elif isinstance(details, list) and len(details) == 4:
+            item = {"label": label_text, "bbox": details}
+        elif isinstance(details, str):
+            item = {"label": label_text, "description": details}
+        else:
+            item = {"label": label_text}
+        items.append(item)
+    return items
 
 
 def dedupe_visual_objects(objects: list[dict[str, Any]], limit: int) -> list[dict[str, Any]]:
@@ -288,6 +329,9 @@ def dedupe_visual_objects(objects: list[dict[str, Any]], limit: int) -> list[dic
         key = (
             str(item.get("label", "")).casefold(),
             tuple(str(value).casefold() for value in item.get("attributes", [])),
+            str(item.get("description", "")).casefold(),
+            str(item.get("location", "")).casefold(),
+            tuple(item.get("bbox", [])),
         )
         if not key[0] or key in seen:
             continue
@@ -299,21 +343,70 @@ def dedupe_visual_objects(objects: list[dict[str, Any]], limit: int) -> list[dic
 
 
 def normalize_bbox(value: Any) -> list[float] | None:
+    if isinstance(value, dict):
+        value = bbox_values_from_mapping(value)
+    if isinstance(value, tuple):
+        value = list(value)
+    if isinstance(value, str):
+        value = [part.strip() for part in re.split(r"[, ]+", value) if part.strip()]
     if not isinstance(value, list) or len(value) != 4:
         return None
     try:
-        return [float(item) for item in value]
+        return [round(float(item), 6) for item in value]
     except (TypeError, ValueError):
         return None
+
+
+def bbox_values_from_mapping(value: dict[str, Any]) -> list[Any] | None:
+    for keys in [
+        ("x_min", "y_min", "x_max", "y_max"),
+        ("xmin", "ymin", "xmax", "ymax"),
+        ("left", "top", "right", "bottom"),
+    ]:
+        if all(key in value for key in keys):
+            return [value[key] for key in keys]
+    if all(key in value for key in ["x", "y", "width", "height"]):
+        try:
+            x = float(value["x"])
+            y = float(value["y"])
+            width = float(value["width"])
+            height = float(value["height"])
+        except (TypeError, ValueError):
+            return None
+        return [x, y, x + width, y + height]
+    return None
+
+
+def normalize_location(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        text = value.strip()
+        return text or None
+    if isinstance(value, dict):
+        parts = []
+        for key, item in value.items():
+            item_text = str(item).strip()
+            if item_text:
+                parts.append(f"{key}: {item_text}")
+        return "; ".join(parts) or None
+    text = str(value).strip()
+    return text or None
 
 
 def normalize_confidence(value: Any) -> float | None:
     if value is None:
         return None
+    if isinstance(value, str):
+        value = value.strip()
+        if value.endswith("%"):
+            value = value[:-1].strip()
     try:
         confidence = float(value)
     except (TypeError, ValueError):
         return None
+    if confidence > 1.0 and confidence <= 100.0:
+        confidence = confidence / 100.0
     return max(0.0, min(1.0, confidence))
 
 
@@ -382,7 +475,7 @@ def derived_visual_triples(payload: dict[str, Any], existing: list[dict[str, Any
             extra={
                 key: value
                 for key, value in visual_object.items()
-                if key in {"attributes", "bbox"}
+                if key in {"attributes", "bbox", "description", "location", "source_key"}
             },
         )
     return triples
@@ -458,6 +551,9 @@ def object_summary_lines(objects: list[dict[str, Any]]) -> list[str]:
         if not label:
             continue
         attributes = [str(value).strip() for value in item.get("attributes", []) if str(value).strip()]
+        location = str(item.get("location", "")).strip()
+        if location and location not in attributes:
+            attributes.append(location)
         if attributes:
             lines.append(f"{label}: {', '.join(attributes)}")
         else:
@@ -481,6 +577,16 @@ def object_metadata(payload: dict[str, Any], repaired: bool = False) -> dict[str
     objects = visual_objects_from_payload(payload)
     if objects:
         metadata["objects"] = objects
+    metadata["entity_count"] = len(entities)
+    metadata["visual_element_count"] = len(visual_elements)
+    metadata["object_count"] = len(objects)
+    metadata["object_bbox_count"] = sum(1 for item in objects if item.get("bbox"))
+    metadata["explicit_triple_count"] = len(
+        normalize_triples(payload.get("triples") or payload.get("relationships") or [])
+    )
+    metadata["derived_triple_count"] = len(
+        [triple for triple in visual_triples_from_payload(payload) if triple.get("derived_from_vlm_field")]
+    )
     if repaired:
         metadata["vlm_parse_repaired"] = True
     return metadata

@@ -30,6 +30,10 @@ class VisualRunSummary(BaseModel):
     status_counts: dict[str, int] = Field(default_factory=dict)
     operation_counts: dict[str, int] = Field(default_factory=dict)
     annotation_count: int
+    entity_count: int = 0
+    visual_element_count: int = 0
+    object_count: int = 0
+    object_bbox_count: int = 0
     triple_count: int
     vlm_prompt_counts: dict[str, int] = Field(default_factory=dict)
     parse_status_counts: dict[str, int] = Field(default_factory=dict)
@@ -44,6 +48,10 @@ def summarize_visual_results(results: list[VisualJobRunResult]) -> VisualRunSumm
     durations_by_operation: dict[tuple[str, str], list[float]] = defaultdict(list)
     output_chars_by_operation: Counter[tuple[str, str]] = Counter()
     status_by_operation: dict[tuple[str, str], Counter[str]] = defaultdict(Counter)
+    entity_count = 0
+    visual_element_count = 0
+    object_count = 0
+    object_bbox_count = 0
     triple_count = 0
 
     for result in results:
@@ -65,6 +73,10 @@ def summarize_visual_results(results: list[VisualJobRunResult]) -> VisualRunSumm
         if result.annotation is None:
             continue
         triple_count += len(result.annotation.triples)
+        entity_count += int(numeric_metadata(result.annotation.metadata, "entity_count") or 0)
+        visual_element_count += int(numeric_metadata(result.annotation.metadata, "visual_element_count") or 0)
+        object_count += int(numeric_metadata(result.annotation.metadata, "object_count") or 0)
+        object_bbox_count += int(numeric_metadata(result.annotation.metadata, "object_bbox_count") or 0)
         prompt_key = vlm_prompt_key(result.annotation.metadata)
         if prompt_key:
             vlm_prompt_counts[prompt_key] += 1
@@ -88,6 +100,10 @@ def summarize_visual_results(results: list[VisualJobRunResult]) -> VisualRunSumm
         status_counts=dict(status_counts),
         operation_counts=dict(operation_counts),
         annotation_count=sum(1 for result in results if result.annotation is not None),
+        entity_count=entity_count,
+        visual_element_count=visual_element_count,
+        object_count=object_count,
+        object_bbox_count=object_bbox_count,
         triple_count=triple_count,
         vlm_prompt_counts=dict(vlm_prompt_counts),
         parse_status_counts=dict(parse_status_counts),

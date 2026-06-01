@@ -49,6 +49,12 @@ class VisualQualityReport(BaseModel):
     mean_vlm_summary_chars: float = 0.0
     vlm_json_parse_count: int = 0
     vlm_json_parse_rate: float = 0.0
+    vlm_object_count: int = 0
+    vlm_object_job_count: int = 0
+    vlm_object_coverage: float = 0.0
+    objects_per_vlm_job: float = 0.0
+    object_bbox_count: int = 0
+    object_bbox_coverage: float = 0.0
     triple_count: int = 0
     triples_per_vlm_job: float = 0.0
     parse_status_counts: dict[str, int] = Field(default_factory=dict)
@@ -104,6 +110,8 @@ def visual_asset_result_metadata(asset: VisualAsset, operations: list[str]) -> d
         "ocr_text_chars": asset.metadata.get("ocr_text_chars", len((asset.ocr_text or "").strip())),
         "vlm_output_chars": asset.metadata.get("vlm_output_chars", len((asset.vlm_summary or "").strip())),
         "vlm_parse_status": asset.metadata.get("vlm_parse_status"),
+        "object_count": asset.metadata.get("object_count"),
+        "object_bbox_count": asset.metadata.get("object_bbox_count"),
     }
     for key in [
         "ocr_language",
@@ -127,6 +135,9 @@ def evaluate_visual_results(
     min_ocr_text_coverage: float = 0.0,
     min_vlm_summary_coverage: float = 0.0,
     min_vlm_json_parse_rate: float = 0.0,
+    min_vlm_object_coverage: float = 0.0,
+    min_objects_per_vlm_job: float = 0.0,
+    min_object_bbox_coverage: float = 0.0,
     min_triples_per_vlm_job: float = 0.0,
     min_mean_ocr_text_chars: float = 0.0,
     min_mean_vlm_summary_chars: float = 0.0,
@@ -146,6 +157,9 @@ def evaluate_visual_results(
     ocr_job_count = 0
     vlm_job_count = 0
     vlm_json_parse_count = 0
+    object_count = 0
+    object_job_count = 0
+    object_bbox_count = 0
     triple_count = 0
     issues: list[VisualQualityIssue] = []
 
@@ -190,6 +204,12 @@ def evaluate_visual_results(
                 parse_status_counts[parse_status] = parse_status_counts.get(parse_status, 0) + 1
             if parse_status in STRUCTURED_VLM_PARSE_STATUSES:
                 vlm_json_parse_count += 1
+            result_object_count = vlm_object_count(result)
+            result_object_bbox_count = vlm_object_bbox_count(result)
+            object_count += result_object_count
+            object_bbox_count += result_object_bbox_count
+            if result_object_count > 0:
+                object_job_count += 1
 
         if result.annotation is not None:
             triple_count += len(result.annotation.triples)
@@ -202,6 +222,9 @@ def evaluate_visual_results(
         "vlm_summary_coverage": nonempty_count(vlm_summary_chars) / vlm_job_count if vlm_job_count else 0.0,
         "mean_vlm_summary_chars": mean(vlm_summary_chars),
         "vlm_json_parse_rate": vlm_json_parse_count / vlm_job_count if vlm_job_count else 0.0,
+        "vlm_object_coverage": object_job_count / vlm_job_count if vlm_job_count else 0.0,
+        "objects_per_vlm_job": object_count / vlm_job_count if vlm_job_count else 0.0,
+        "object_bbox_coverage": object_bbox_count / object_count if object_count else 0.0,
         "triples_per_vlm_job": triple_count / vlm_job_count if vlm_job_count else 0.0,
         "failed_count": float(failed_count),
         "skipped_count": float(skipped_count),
@@ -217,6 +240,9 @@ def evaluate_visual_results(
             min_vlm_summary_coverage,
         ),
         min_check("min_vlm_json_parse_rate", "vlm_json_parse_rate", metrics, min_vlm_json_parse_rate),
+        min_check("min_vlm_object_coverage", "vlm_object_coverage", metrics, min_vlm_object_coverage),
+        min_check("min_objects_per_vlm_job", "objects_per_vlm_job", metrics, min_objects_per_vlm_job),
+        min_check("min_object_bbox_coverage", "object_bbox_coverage", metrics, min_object_bbox_coverage),
         min_check("min_triples_per_vlm_job", "triples_per_vlm_job", metrics, min_triples_per_vlm_job),
         min_check("min_mean_ocr_text_chars", "mean_ocr_text_chars", metrics, min_mean_ocr_text_chars),
         min_check(
@@ -251,6 +277,12 @@ def evaluate_visual_results(
         mean_vlm_summary_chars=metrics["mean_vlm_summary_chars"],
         vlm_json_parse_count=vlm_json_parse_count,
         vlm_json_parse_rate=metrics["vlm_json_parse_rate"],
+        vlm_object_count=object_count,
+        vlm_object_job_count=object_job_count,
+        vlm_object_coverage=metrics["vlm_object_coverage"],
+        objects_per_vlm_job=metrics["objects_per_vlm_job"],
+        object_bbox_count=object_bbox_count,
+        object_bbox_coverage=metrics["object_bbox_coverage"],
         triple_count=triple_count,
         triples_per_vlm_job=metrics["triples_per_vlm_job"],
         parse_status_counts=dict(sorted(parse_status_counts.items())),
@@ -289,6 +321,44 @@ def vlm_parse_status(result: VisualJobRunResult) -> str:
             return str(value)
     value = result.metadata.get("vlm_parse_status")
     return str(value) if value else ""
+
+
+def vlm_object_count(result: VisualJobRunResult) -> int:
+    value = object_count_from_metadata(result.annotation.metadata if result.annotation else {})
+    if value is not None:
+        return value
+    value = object_count_from_metadata(result.metadata)
+    return value or 0
+
+
+def vlm_object_bbox_count(result: VisualJobRunResult) -> int:
+    value = numeric_metadata(result.annotation.metadata if result.annotation else {}, "object_bbox_count")
+    if value is not None:
+        return max(0, int(value))
+    value = numeric_metadata(result.metadata, "object_bbox_count")
+    if value is not None:
+        return max(0, int(value))
+    objects = metadata_objects(result.annotation.metadata if result.annotation else {})
+    if not objects:
+        objects = metadata_objects(result.metadata)
+    return sum(1 for item in objects if isinstance(item, dict) and item.get("bbox"))
+
+
+def object_count_from_metadata(metadata: dict[str, Any]) -> int | None:
+    value = numeric_metadata(metadata, "object_count")
+    if value is not None:
+        return max(0, int(value))
+    objects = metadata_objects(metadata)
+    if objects:
+        return len(objects)
+    return None
+
+
+def metadata_objects(metadata: dict[str, Any]) -> list[Any]:
+    objects = metadata.get("objects") or metadata.get("detected_objects") or metadata.get("visual_objects")
+    if isinstance(objects, list):
+        return objects
+    return []
 
 
 def numeric_metadata(metadata: dict[str, Any], key: str) -> float | None:

@@ -184,6 +184,12 @@ def run_visual_jobs(
                     "vlm_output_chars": annotation.metadata.get("vlm_output_chars"),
                     "triple_count": len(annotation.triples),
                     "vlm_parse_status": annotation.metadata.get("vlm_parse_status"),
+                    "entity_count": annotation.metadata.get("entity_count"),
+                    "visual_element_count": annotation.metadata.get("visual_element_count"),
+                    "object_count": annotation.metadata.get("object_count"),
+                    "object_bbox_count": annotation.metadata.get("object_bbox_count"),
+                    "explicit_triple_count": annotation.metadata.get("explicit_triple_count"),
+                    "derived_triple_count": annotation.metadata.get("derived_triple_count"),
                 },
             )
         )

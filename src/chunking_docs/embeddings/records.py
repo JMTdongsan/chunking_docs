@@ -207,6 +207,9 @@ def metadata_object_items(value: Any, limit: int) -> list[str]:
             description = metadata_first_string(item, ["description", "summary", "text"])
             if description and description not in attributes:
                 attributes.append(description)
+            location = metadata_first_string(item, ["location", "position", "region"])
+            if location and location not in attributes:
+                attributes.append(location)
             if attributes:
                 objects.append(f"{label}: {', '.join(attributes[:6])}")
             else:

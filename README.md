@@ -157,10 +157,10 @@ chunking-docs plan-vlm-experiments \
   --output outputs/package/vlm_experiment_plan.json
 ```
 
-Default VLM prompts request a single JSON object with `title`, `summary`, `key_points`, `visual_elements`, `objects`, `entities`, and `triples`. When those fields are present, the runner converts them into captions, searchable VLM summaries, and graph triple candidates. Entity, visual element, and object fields are also lifted into derived triple candidates and included in visual asset lexical/caption text so useful VLM detections remain searchable even when the model does not emit explicit relationships.
+Default VLM prompts request a single JSON object with `title`, `summary`, `key_points`, `visual_elements`, `objects`, `entities`, and `triples`. When those fields are present, the runner converts them into captions, searchable VLM summaries, normalized object detections, and graph triple candidates. Object detections can carry attributes, descriptions, locations, bbox coordinates, confidence, and source-field provenance. Entity, visual element, and object fields are also lifted into derived triple candidates and included in visual asset lexical/caption text so useful VLM detections remain searchable even when the model does not emit explicit relationships.
 Triples generated from visual annotations include provenance qualifiers such as asset ID, page number, asset kind, annotation source, visual job ID, prompt name, prompt schema version, and prompt hash when available.
 
-Visual job results include OCR language, backend configuration, VLM prompt name, prompt SHA-256, prompt length, latency, output size, parse status, and triple count. `--ocr-model-lang`, `--ocr-device`, `--ocr-engine`, `--ocr-min-confidence`, `--ocr-enable-mkldnn`, `--vlm-device-map`, `--vlm-torch-dtype`, `--vlm-max-new-tokens`, and optional `--vlm-attn-implementation` are recorded in backend configuration. This keeps OCR/VLM experiments reproducible without storing document-specific assumptions in the library.
+Visual job results include OCR language, backend configuration, VLM prompt name, prompt SHA-256, prompt length, latency, output size, parse status, entity count, visual element count, object count, object bbox count, explicit triple count, derived triple count, and total triple count. `--ocr-model-lang`, `--ocr-device`, `--ocr-engine`, `--ocr-min-confidence`, `--ocr-enable-mkldnn`, `--vlm-device-map`, `--vlm-torch-dtype`, `--vlm-max-new-tokens`, and optional `--vlm-attn-implementation` are recorded in backend configuration. This keeps OCR/VLM experiments reproducible without storing document-specific assumptions in the library.
 
 Summarize visual job runs when comparing OCR/VLM backends:
 
@@ -170,7 +170,7 @@ chunking-docs summarize-visual-results \
   --output outputs/package/visual_job_summary.json
 ```
 
-The summary groups completion counts, backend latency, output size, VLM prompt usage, parse status, and extracted triple counts by operation. Compare separate runs when testing multiple OCR/VLM backends on the same job set:
+The summary groups completion counts, backend latency, output size, VLM prompt usage, parse status, object detection counts, and extracted triple counts by operation. Compare separate runs when testing multiple OCR/VLM backends on the same job set:
 
 ```bash
 chunking-docs compare-visual-runs \
@@ -180,7 +180,7 @@ chunking-docs compare-visual-runs \
   --require-same-jobs
 ```
 
-The comparison ranks OCR/VLM runs by completion rate, annotation coverage, OCR text coverage, VLM summary coverage, JSON parse rate, triple density, and total latency. It also reports shared and missing visual job IDs, and `--require-same-jobs` fails the command when runs were produced from different job sets.
+The comparison ranks OCR/VLM runs by completion rate, annotation coverage, OCR text coverage, VLM summary coverage, JSON parse rate, object coverage, triple density, and total latency. It also reports shared and missing visual job IDs, and `--require-same-jobs` fails the command when runs were produced from different job sets.
 
 Gate a visual run before applying annotations to retrieval artifacts:
 
@@ -190,6 +190,9 @@ chunking-docs gate-visual-results \
   --min-completion-rate 0.95 \
   --min-ocr-text-coverage 0.8 \
   --min-vlm-summary-coverage 0.9 \
+  --min-vlm-json-parse-rate 0.9 \
+  --min-vlm-object-coverage 0.5 \
+  --min-object-bbox-coverage 0.5 \
   --max-failed-count 0 \
   --output outputs/package/visual_quality.json
 ```
@@ -206,6 +209,8 @@ chunking-docs gate-visual-assets \
   --min-ocr-text-coverage 0.8 \
   --min-vlm-summary-coverage 0.95 \
   --min-vlm-json-parse-rate 0.95 \
+  --min-vlm-object-coverage 0.5 \
+  --min-object-bbox-coverage 0.5 \
   --output outputs/package/visual_asset_quality.json
 ```
 

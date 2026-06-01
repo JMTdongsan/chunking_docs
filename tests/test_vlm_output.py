@@ -53,11 +53,17 @@ def test_parse_vlm_output_derives_visual_field_triples_and_objects():
     assert parsed.metadata["objects"] == [
         {
             "label": "station marker",
+            "source_key": "objects",
             "attributes": ["red circle", "north side"],
             "bbox": [0.1, 0.2, 0.3, 0.4],
             "confidence": 0.91,
         }
     ]
+    assert parsed.metadata["object_count"] == 1
+    assert parsed.metadata["object_bbox_count"] == 1
+    assert parsed.metadata["entity_count"] == 2
+    assert parsed.metadata["visual_element_count"] == 2
+    assert parsed.metadata["derived_triple_count"] == 5
     assert {
         (triple["predicate"], triple["object"])
         for triple in parsed.triples
@@ -73,6 +79,43 @@ def test_parse_vlm_output_derives_visual_field_triples_and_objects():
     assert object_triple["attributes"] == ["red circle", "north side"]
     assert object_triple["bbox"] == [0.1, 0.2, 0.3, 0.4]
     assert object_triple["confidence"] == 0.91
+    assert object_triple["source_key"] == "objects"
+
+
+def test_parse_vlm_output_accepts_detection_regions_and_percent_confidence():
+    parsed = parse_vlm_output(
+        """
+        {
+          "title": "Equipment Photo",
+          "summary": "Shows two labeled regions.",
+          "detections": {
+            "control panel": {
+              "description": "front interface",
+              "boundingBox": {"x": 0.1, "y": 0.2, "width": 0.3, "height": 0.4},
+              "confidence": "92%",
+              "position": "upper left"
+            },
+            "status light": [0.7, 0.1, 0.8, 0.2]
+          }
+        }
+        """
+    )
+
+    assert parsed.metadata["object_count"] == 2
+    assert parsed.metadata["object_bbox_count"] == 2
+    assert parsed.metadata["objects"][0] == {
+        "label": "control panel",
+        "source_key": "detections",
+        "description": "front interface",
+        "attributes": ["front interface"],
+        "bbox": [0.1, 0.2, 0.4, 0.6],
+        "location": "upper left",
+        "confidence": 0.92,
+    }
+    assert "control panel: front interface, upper left" in parsed.summary
+    object_triples = [triple for triple in parsed.triples if triple["predicate"] == "contains_object"]
+    assert {triple["object"] for triple in object_triples} == {"control panel", "status light"}
+    assert object_triples[0]["source_key"] == "detections"
 
 
 def test_parse_vlm_output_falls_back_to_raw_text():

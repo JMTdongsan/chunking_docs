@@ -170,6 +170,9 @@ def build_ingestion_readiness_report(
                     "ocr_text_coverage": visual_quality.ocr_text_coverage,
                     "vlm_summary_coverage": visual_quality.vlm_summary_coverage,
                     "vlm_json_parse_rate": visual_quality.vlm_json_parse_rate,
+                    "vlm_object_coverage": visual_quality.vlm_object_coverage,
+                    "objects_per_vlm_job": visual_quality.objects_per_vlm_job,
+                    "object_bbox_coverage": visual_quality.object_bbox_coverage,
                 },
             )
         )
