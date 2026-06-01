@@ -1524,6 +1524,36 @@ def test_evaluate_search_results_matches_visual_asset_provenance_triple_from_pay
     assert result.source_family_metrics["visual"].target_coverage_at_k == 1.0
 
 
+def test_evaluate_search_results_matches_triple_id_from_payload():
+    chunk = DocumentChunk(
+        chunk_id="chunk-1",
+        doc_id="doc",
+        page_start=6,
+        page_end=6,
+        kind=ChunkKind.TEXT,
+        text="station access",
+    )
+
+    class PayloadHit:
+        def __init__(self):
+            self.chunk = chunk
+            self.sources = ["qdrant:triple_dense"]
+            self.evidence_chunks = []
+            self.payloads = [{"triple_id": "triple-map"}]
+
+    result = evaluate_search_results(
+        cases=[RetrievalCase(query="station access map", expected_triple_ids=["triple-map"])],
+        search_fn=lambda case, graph_expand: [PayloadHit()],
+    )
+
+    assert result.recall_at_k == 1.0
+    assert result.results[0].top_triple_ids == [["triple-map"]]
+    assert result.results[0].top_matched_targets == [["triple:triple-map"]]
+    assert result.results[0].matched_triple_id == "triple-map"
+    assert result.source_metrics["qdrant:triple_dense"].target_coverage_at_k == 1.0
+    assert result.source_family_metrics["graph"].target_coverage_at_k == 1.0
+
+
 def test_evaluate_retrieval_ablation_compares_modes():
     chunks = [
         DocumentChunk(

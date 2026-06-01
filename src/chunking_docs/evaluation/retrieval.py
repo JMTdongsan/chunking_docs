@@ -622,6 +622,10 @@ def hit_triple_ids(
     triples_by_asset = triples_by_asset or {}
     seen: set[str] = set()
     triple_ids: list[str] = []
+    for payload in getattr(hit, "payloads", []):
+        if isinstance(payload, dict):
+            add_triple_id_value(triple_ids, seen, payload.get("triple_id"))
+            add_triple_id_value(triple_ids, seen, payload.get("triple_ids"))
     chunk = hit_chunk(hit)
     if chunk is not None:
         add_triple_ids_for_chunk(triple_ids, seen, chunk, triples_by_chunk)
@@ -647,6 +651,13 @@ def add_triple_ids(triple_ids: list[str], seen: set[str], triples: list[GraphTri
         if triple.triple_id not in seen:
             seen.add(triple.triple_id)
             triple_ids.append(triple.triple_id)
+
+
+def add_triple_id_value(triple_ids: list[str], seen: set[str], value: Any) -> None:
+    for triple_id in string_values(value):
+        if triple_id not in seen:
+            seen.add(triple_id)
+            triple_ids.append(triple_id)
 
 
 def index_triples_by_chunk(triples: list[GraphTriple]) -> dict[str, list[GraphTriple]]:
