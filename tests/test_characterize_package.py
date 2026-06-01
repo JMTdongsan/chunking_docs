@@ -66,6 +66,7 @@ def test_characterize_package_reports_strategy_observations(tmp_path):
     assert "compare_multimodal_hierarchical_chunking" in recommendation_codes
     assert "build_triple_vector_artifacts" in recommendation_codes
     assert "maintain_retrieval_benchmark" in recommendation_codes
+    assert "validate_qdrant_rag_context" in recommendation_codes
     chunking_recommendation = next(
         item for item in report.recommendations if item.code == "compare_multimodal_hierarchical_chunking"
     )
@@ -120,6 +121,26 @@ def test_characterize_package_reports_strategy_observations(tmp_path):
     )
     assert "--min-query-terms-per-case 3" in benchmark_recommendation.commands[0]
     assert "--max-duplicate-queries 0" in benchmark_recommendation.commands[0]
+    qdrant_recommendation = next(
+        item for item in report.recommendations if item.code == "validate_qdrant_rag_context"
+    )
+    assert qdrant_recommendation.metadata["recommended_vector_names"] == [
+        "text_dense",
+        "caption_dense",
+        "object_dense",
+        "image_dense",
+        "triple_dense",
+    ]
+    assert "sweep-qdrant-fusion" in qdrant_recommendation.commands[1]
+    assert "--vector-names text_dense,caption_dense,object_dense,image_dense,triple_dense" in (
+        qdrant_recommendation.commands[1]
+    )
+    assert "--weight-grid qdrant:object_dense=0.5,1.0,1.5" in qdrant_recommendation.commands[1]
+    assert "--weight-grid qdrant:image_dense=0.0,0.25,0.5" in qdrant_recommendation.commands[1]
+    assert "export-qdrant-retrieval-config" in qdrant_recommendation.commands[2]
+    assert "eval-qdrant-rag-context-config" in qdrant_recommendation.commands[4]
+    assert "gate-rag-context" in qdrant_recommendation.commands[5]
+    assert "--min-target-type-coverage triple=0.7" in qdrant_recommendation.commands[5]
     tile_recommendation = next(
         item for item in report.recommendations if item.code == "build_page_tiles"
     )

@@ -45,7 +45,9 @@ def test_build_ingestion_workflow_plan_orders_runtime_visual_embedding_and_readi
         "visual_annotations",
     ]
     assert "build_embedding_artifacts" in step_ids
-    assert step_ids[-3] == "refresh_package_indexes"
+    assert "validate_qdrant_rag_context" in step_ids
+    assert step_ids.index("refresh_package_indexes") < step_ids.index("build_embedding_artifacts")
+    assert step_ids.index("build_embedding_artifacts") < step_ids.index("validate_qdrant_rag_context")
     assert step_ids[-2] == "refresh_package_metadata"
     assert step_ids[-1] == "ingestion_readiness"
     assert plan.metadata["required_step_count"] >= 5
@@ -74,11 +76,27 @@ def test_build_ingestion_workflow_plan_orders_runtime_visual_embedding_and_readi
     assert "--min-retrieval-score-per-embedding-kchar 0.0008" in chunking_commands[1]
     assert "--min-retrieval-score-per-mean-latency-ms 0.0005" in chunking_commands[1]
     assert "--min-target-coverage-per-p95-latency-ms 0.0005" in chunking_commands[1]
+    qdrant_commands = next(
+        step.commands
+        for step in plan.steps
+        if step.step_id == "validate_qdrant_rag_context"
+    )
+    assert "sweep-qdrant-fusion" in qdrant_commands[1]
+    assert "--vector-names text_dense,caption_dense,image_dense" in qdrant_commands[1]
+    assert "export-qdrant-retrieval-config" in qdrant_commands[2]
+    assert "eval-qdrant-retrieval-config" in qdrant_commands[3]
+    assert "eval-qdrant-rag-context-config" in qdrant_commands[4]
+    assert "gate-rag-context" in qdrant_commands[5]
     readiness_command = plan.steps[-1].commands[0]
     assert "--chunking-comparison" in readiness_command
     assert "--min-chunking-retrieval-score-per-embedding-kchar 0.0008" in readiness_command
     assert "--min-chunking-retrieval-score-per-mean-latency-ms 0.0005" in readiness_command
     assert "--min-chunking-target-coverage-per-p95-latency-ms 0.0005" in readiness_command
+    assert "--qdrant-retrieval-config" in readiness_command
+    assert "--require-qdrant-retrieval-config" in readiness_command
+    assert "--rag-context-evaluation" in readiness_command
+    assert "--require-rag-context-evaluation" in readiness_command
+    assert "--max-rag-context-mean-context-char-count 12000" in readiness_command
     assert all("outputs/package" not in command for step in plan.steps for command in step.commands)
     assert any(str(cases) in command for step in plan.steps for command in step.commands)
 

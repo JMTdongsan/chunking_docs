@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 from chunking_docs.analysis.chunking_defaults import CHUNKING_READINESS_GATE_ARGS
 from chunking_docs.analysis.characterize import PackageCharacteristics, ProcessingRecommendation
+from chunking_docs.analysis.qdrant_defaults import QDRANT_RAG_READINESS_GATE_ARGS
 
 
 class WorkflowStep(BaseModel):
@@ -36,14 +37,22 @@ RECOMMENDATION_ORDER = [
     "prioritize_visual_annotations",
     "preserve_table_structure",
     "add_graph_signals",
-    "build_embedding_artifacts",
-    "evaluate_visual_vectors",
-    "build_triple_vector_artifacts",
     "generate_visual_image_probe_cases",
     "generate_visual_object_probe_cases",
     "compare_multimodal_hierarchical_chunking",
     "maintain_retrieval_benchmark",
+    "build_embedding_artifacts",
+    "evaluate_visual_vectors",
+    "build_triple_vector_artifacts",
+    "validate_qdrant_rag_context",
 ]
+
+POST_INDEX_RECOMMENDATIONS = {
+    "build_embedding_artifacts",
+    "evaluate_visual_vectors",
+    "build_triple_vector_artifacts",
+    "validate_qdrant_rag_context",
+}
 
 
 def build_ingestion_workflow_plan(
@@ -83,18 +92,30 @@ def build_ingestion_workflow_plan(
 
     for code in RECOMMENDATION_ORDER:
         recommendation = recommendations_by_code.get(code)
-        if recommendation is None or code in handled_codes:
+        if recommendation is None or code in handled_codes or code in POST_INDEX_RECOMMENDATIONS:
             continue
         steps.append(recommendation_step(recommendation, package_dir, retrieval_cases))
         handled_codes.add(code)
 
     for recommendation in characteristics.recommendations:
-        if recommendation.code in handled_codes:
+        if recommendation.code in handled_codes or recommendation.code in POST_INDEX_RECOMMENDATIONS:
             continue
         steps.append(recommendation_step(recommendation, package_dir, retrieval_cases))
         handled_codes.add(recommendation.code)
 
     steps.append(index_refresh_step(package_dir))
+    for code in RECOMMENDATION_ORDER:
+        recommendation = recommendations_by_code.get(code)
+        if recommendation is None or code in handled_codes or code not in POST_INDEX_RECOMMENDATIONS:
+            continue
+        steps.append(recommendation_step(recommendation, package_dir, retrieval_cases))
+        handled_codes.add(code)
+    for recommendation in characteristics.recommendations:
+        if recommendation.code in handled_codes or recommendation.code not in POST_INDEX_RECOMMENDATIONS:
+            continue
+        steps.append(recommendation_step(recommendation, package_dir, retrieval_cases))
+        handled_codes.add(recommendation.code)
+
     steps.append(metadata_refresh_step(package_dir))
     steps.append(
         readiness_step(
@@ -102,6 +123,7 @@ def build_ingestion_workflow_plan(
             retrieval_cases,
             include_chunking_comparison="compare_multimodal_hierarchical_chunking"
             in recommendations_by_code,
+            include_qdrant_rag_context="validate_qdrant_rag_context" in recommendations_by_code,
         )
     )
     return IngestionWorkflowPlan(
@@ -208,6 +230,7 @@ def readiness_step(
     package_dir: Path,
     retrieval_cases: Path,
     include_chunking_comparison: bool = False,
+    include_qdrant_rag_context: bool = False,
 ) -> WorkflowStep:
     command_parts = [
         "chunking-docs ingestion-readiness",
@@ -227,6 +250,16 @@ def readiness_step(
             )
             for option in CHUNKING_READINESS_GATE_ARGS
         )
+    if include_qdrant_rag_context:
+        command_parts.extend(
+            option.format(
+                qdrant_retrieval_config=path_arg(package_dir / "qdrant_retrieval_config.json"),
+                rag_context_evaluation=path_arg(
+                    package_dir / "qdrant_rag_context_config_eval.json"
+                ),
+            )
+            for option in QDRANT_RAG_READINESS_GATE_ARGS
+        )
     command_parts.extend(["--output", path_arg(package_dir / "ingestion_readiness.json")])
     return WorkflowStep(
         step_id="ingestion_readiness",
@@ -235,7 +268,10 @@ def readiness_step(
         priority="required",
         reason="Run the combined readiness gate before loading Qdrant, PostgreSQL, or a RAG service.",
         commands=[" ".join(command_parts)],
-        metadata={"include_chunking_comparison": include_chunking_comparison},
+        metadata={
+            "include_chunking_comparison": include_chunking_comparison,
+            "include_qdrant_rag_context": include_qdrant_rag_context,
+        },
     )
 
 

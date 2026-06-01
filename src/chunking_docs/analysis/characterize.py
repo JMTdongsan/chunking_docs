@@ -11,6 +11,7 @@ from chunking_docs.analysis.chunking_defaults import (
     CHUNKING_COMPARISON_GATE_ARGS,
     CHUNKING_SWEEP_SELECTION_ARGS,
 )
+from chunking_docs.analysis.qdrant_defaults import qdrant_rag_validation_commands
 from chunking_docs.embeddings.records import (
     VISUAL_FEATURE_METADATA_KEYS,
     VISUAL_OBJECT_METADATA_KEYS,
@@ -709,7 +710,41 @@ def recommendations(
             },
         )
     )
+    qdrant_vector_names = recommended_qdrant_vector_names(chunks, visual, graph)
+    result.append(
+        ProcessingRecommendation(
+            code="validate_qdrant_rag_context",
+            area="evaluation",
+            priority="required",
+            message=(
+                "Export a Qdrant hybrid retrieval config, regression-test it with benchmark cases, and gate "
+                "the final RAG context bundle before service ingestion."
+            ),
+            commands=qdrant_rag_validation_commands(qdrant_vector_names),
+            metadata={
+                "recommended_vector_names": qdrant_vector_names,
+                "requires_image_query_encoder": "image_dense" in qdrant_vector_names,
+            },
+        )
+    )
     return result
+
+
+def recommended_qdrant_vector_names(
+    chunks: ChunkCharacteristics,
+    visual: VisualCharacteristics,
+    graph: GraphCharacteristics,
+) -> list[str]:
+    names = ["text_dense"]
+    if chunks.chunks_with_assets or visual.asset_kind_counts:
+        names.append("caption_dense")
+    if visual.vlm_object_count or visual.vlm_visual_feature_count:
+        names.append("object_dense")
+    if visual.rendered_asset_count or visual.asset_kind_counts:
+        names.append("image_dense")
+    if graph.triple_count:
+        names.append("triple_dense")
+    return names
 
 
 def bounded_threshold(value: int, cap: int = 5) -> int:
