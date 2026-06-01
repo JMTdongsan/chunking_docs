@@ -49,6 +49,11 @@ from .retrieval import (
     evaluate_search_results,
     load_retrieval_cases,
 )
+from .retrieval_config import (
+    QdrantRetrievalConfig,
+    QdrantRetrievalConfigSelection,
+    build_qdrant_retrieval_config_from_fusion_sweep,
+)
 from .sweep import ChunkingSweepCandidate, ChunkingSweepReport, run_chunking_sweep
 
 __all__ = [
@@ -67,6 +72,8 @@ __all__ = [
     "QdrantFusionCaseGroupRecommendation",
     "QdrantFusionSweepCandidate",
     "QdrantFusionSweepReport",
+    "QdrantRetrievalConfig",
+    "QdrantRetrievalConfigSelection",
     "ReadinessComponent",
     "RetrievalAblationMode",
     "RetrievalAblationGateReport",
@@ -89,6 +96,7 @@ __all__ = [
     "build_fusion_weight_grid",
     "build_ingestion_readiness_report",
     "build_qdrant_fusion_sweep_report",
+    "build_qdrant_retrieval_config_from_fusion_sweep",
     "audit_retrieval_cases",
     "compare_processing_packages",
     "degraded_page_ratio",

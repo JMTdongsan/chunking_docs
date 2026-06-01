@@ -56,6 +56,7 @@ from chunking_docs.evaluation.delta import compare_processing_packages
 from chunking_docs.evaluation.experiment import build_experiment_report
 from chunking_docs.evaluation.fusion_sweep import (
     QdrantFusionSweepCandidate,
+    QdrantFusionSweepReport,
     build_fusion_weight_grid,
     build_qdrant_fusion_sweep_report,
     fusion_weight_candidate_name,
@@ -66,6 +67,9 @@ from chunking_docs.evaluation.retrieval import (
     evaluate_retrieval,
     evaluate_search_results,
     load_retrieval_cases,
+)
+from chunking_docs.evaluation.retrieval_config import (
+    build_qdrant_retrieval_config_from_fusion_sweep,
 )
 from chunking_docs.evaluation.sweep import (
     ChunkingSweepCandidate,
@@ -1293,6 +1297,13 @@ def sweep_qdrant_fusion_command(
             "repeat": repeat,
             "collapse_hierarchical": collapse_hierarchical,
             "query_encoders": prepared["query_encoders"],
+            "lexical_tokenizer": {
+                "strategy": lexical_tokenizer,
+                "min_n": ngram_min,
+                "max_n": ngram_max,
+                "ngram_cjk_only": ngram_cjk_only,
+                "deduplicate": deduplicate_tokens,
+            },
         },
     )
     if output is not None:
@@ -1342,6 +1353,53 @@ def sweep_qdrant_fusion_command(
                 }
                 for candidate in report.candidates[: max(summary_limit, 0)]
             ],
+        }
+    )
+
+
+@app.command(name="export-qdrant-retrieval-config")
+def export_qdrant_retrieval_config_command(
+    report: Path,
+    output: Path | None = None,
+    candidate: str = typer.Option(
+        "",
+        "--candidate",
+        help="Exact fusion sweep candidate name to export. Overrides --case-group selection.",
+    ),
+    case_group: str = typer.Option(
+        "",
+        "--case-group",
+        help="Case-group recommendation to export, such as case_source:visual_object_probe.",
+    ),
+):
+    """Export a service-ready Qdrant retrieval config from a fusion sweep report."""
+    try:
+        sweep_report = QdrantFusionSweepReport.model_validate_json(
+            report.read_text(encoding="utf-8")
+        )
+        config = build_qdrant_retrieval_config_from_fusion_sweep(
+            sweep_report,
+            candidate_name=candidate or None,
+            case_group=case_group or None,
+            source_report=str(report),
+        )
+    except OSError as exc:
+        raise typer.BadParameter(f"Could not read fusion sweep report: {exc}") from exc
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+    if output is not None:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(config.model_dump_json(indent=2), encoding="utf-8")
+    print(
+        {
+            "output": str(output) if output is not None else None,
+            "backend": config.backend,
+            "vector_names": config.vector_names,
+            "graph_expand": config.graph_expand,
+            "top_k": config.top_k,
+            "fusion_weights": config.fusion_weights,
+            "selection": config.selection.model_dump(),
         }
     )
 

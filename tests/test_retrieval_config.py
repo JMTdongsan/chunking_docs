@@ -1,0 +1,198 @@
+import json
+
+import pytest
+from typer.testing import CliRunner
+
+from chunking_docs.cli import app
+from chunking_docs.evaluation.fusion_sweep import (
+    QdrantFusionSweepCandidate,
+    build_qdrant_fusion_sweep_report,
+)
+from chunking_docs.evaluation.retrieval import RetrievalCaseGroupMetric, RetrievalEvaluation
+from chunking_docs.evaluation.retrieval_config import (
+    build_qdrant_retrieval_config_from_fusion_sweep,
+)
+
+
+def test_qdrant_retrieval_config_exports_global_recommended_candidate():
+    report = fusion_sweep_report()
+
+    config = build_qdrant_retrieval_config_from_fusion_sweep(report)
+
+    assert config.backend == "qdrant_hybrid"
+    assert config.vector_names == ["text_dense", "caption_dense", "object_dense"]
+    assert config.top_k == 7
+    assert config.collapse_hierarchical is True
+    assert config.fusion_weights == {"bm25": 1.0, "qdrant:caption_dense": 1.0}
+    assert config.query_encoders["object_dense"] == "BAAI/bge-m3"
+    assert config.lexical_tokenizer["strategy"] == "mixed"
+    assert config.selection.source == "global_recommended"
+    assert config.selection.candidate == "balanced"
+    assert config.selection.metrics["target_coverage_at_k"] == pytest.approx(0.96)
+    assert config.metadata["sweep_eligible_count"] == 2
+
+
+def test_qdrant_retrieval_config_exports_case_group_recommendation():
+    report = fusion_sweep_report()
+
+    config = build_qdrant_retrieval_config_from_fusion_sweep(
+        report,
+        case_group="visual_object_probe",
+        source_report="qdrant_fusion_sweep.json",
+    )
+
+    assert config.selection.source == "case_group_recommended"
+    assert config.selection.source_report == "qdrant_fusion_sweep.json"
+    assert config.selection.global_recommended == "balanced"
+    assert config.selection.case_group == "case_source:visual_object_probe"
+    assert config.selection.candidate == "object_weighted"
+    assert config.selection.case_group_recommended_from_globally_eligible is True
+    assert config.fusion_weights == {"bm25": 1.0, "qdrant:object_dense": 1.4}
+    assert config.selection.case_group_metrics["target_coverage_at_k"] == pytest.approx(0.9)
+
+
+def test_export_qdrant_retrieval_config_cli_writes_json(tmp_path):
+    report_path = tmp_path / "qdrant_fusion_sweep.json"
+    output_path = tmp_path / "qdrant_retrieval_config.json"
+    report_path.write_text(
+        fusion_sweep_report().model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "export-qdrant-retrieval-config",
+            str(report_path),
+            "--output",
+            str(output_path),
+            "--case-group",
+            "case_source:visual_object_probe",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(output_path.read_text(encoding="utf-8"))
+    assert payload["backend"] == "qdrant_hybrid"
+    assert payload["selection"]["candidate"] == "object_weighted"
+    assert payload["fusion_weights"] == {"bm25": 1.0, "qdrant:object_dense": 1.4}
+
+
+def fusion_sweep_report():
+    balanced = QdrantFusionSweepCandidate(
+        name="balanced",
+        fusion_weights={"bm25": 1.0, "qdrant:caption_dense": 1.0},
+        evaluation=evaluation(
+            recall=0.96,
+            coverage=0.96,
+            ndcg=0.92,
+            mrr=0.9,
+            precision=0.22,
+            failed=0,
+            latency=25.0,
+            visual_object_group=case_group_metric(
+                coverage=0.5,
+                ndcg=0.48,
+                mrr=0.5,
+            ),
+        ),
+    )
+    object_weighted = QdrantFusionSweepCandidate(
+        name="object_weighted",
+        fusion_weights={"bm25": 1.0, "qdrant:object_dense": 1.4},
+        evaluation=evaluation(
+            recall=0.9,
+            coverage=0.9,
+            ndcg=0.86,
+            mrr=0.82,
+            precision=0.2,
+            failed=0,
+            latency=35.0,
+            visual_object_group=case_group_metric(
+                coverage=0.9,
+                ndcg=0.88,
+                mrr=0.84,
+            ),
+        ),
+    )
+
+    return build_qdrant_fusion_sweep_report(
+        [balanced, object_weighted],
+        vector_names=["text_dense", "caption_dense", "object_dense"],
+        min_recall_at_k=0.8,
+        min_target_coverage_at_k=0.8,
+        max_failed_queries=1,
+        metadata={
+            "top_k": 7,
+            "collapse_hierarchical": True,
+            "query_encoders": {
+                "text_dense": "BAAI/bge-m3",
+                "caption_dense": "BAAI/bge-m3",
+                "object_dense": "BAAI/bge-m3",
+            },
+            "lexical_tokenizer": {
+                "strategy": "mixed",
+                "min_n": 2,
+                "max_n": 4,
+                "ngram_cjk_only": True,
+                "deduplicate": False,
+            },
+        },
+    )
+
+
+def evaluation(
+    recall: float,
+    coverage: float,
+    ndcg: float,
+    mrr: float,
+    precision: float,
+    failed: int,
+    latency: float,
+    visual_object_group: RetrievalCaseGroupMetric,
+) -> RetrievalEvaluation:
+    return RetrievalEvaluation(
+        case_count=10,
+        expected_case_count=10,
+        passed_count=10 - failed,
+        failed_count=failed,
+        hit_rate=recall,
+        recall_at_k=recall,
+        mrr=mrr,
+        target_coverage_at_k=coverage,
+        mean_target_ndcg_at_k=ndcg,
+        mean_precision_at_k=precision,
+        top_k=5,
+        total_query_latency_ms=latency * 10,
+        mean_latency_ms=latency,
+        p95_latency_ms=latency,
+        failed_queries=[f"failed-{index}" for index in range(failed)],
+        case_group_metrics={"case_source": {"visual_object_probe": visual_object_group}},
+        results=[],
+    )
+
+
+def case_group_metric(
+    coverage: float,
+    ndcg: float,
+    mrr: float,
+    recall: float = 1.0,
+    precision: float = 0.2,
+    failed: int = 0,
+    latency: float = 20.0,
+) -> RetrievalCaseGroupMetric:
+    return RetrievalCaseGroupMetric(
+        case_count=5,
+        expected_case_count=5,
+        passed_count=5 - failed,
+        failed_count=failed,
+        recall_at_k=recall,
+        mrr=mrr,
+        target_count=10,
+        matched_target_count=int(round(coverage * 10)),
+        target_coverage_at_k=coverage,
+        ndcg_at_k=ndcg,
+        precision_at_k=precision,
+        mean_latency_ms=latency,
+        failed_queries=[f"group-failed-{index}" for index in range(failed)],
+    )

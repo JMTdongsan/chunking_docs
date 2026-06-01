@@ -594,6 +594,9 @@ chunking-docs sweep-qdrant-fusion examples/retrieval_cases.jsonl \
   --min-target-ndcg-at-k 0.7 \
   --max-failed-queries 3 \
   --output outputs/package/qdrant_fusion_sweep.json
+chunking-docs export-qdrant-retrieval-config outputs/package/qdrant_fusion_sweep.json \
+  --case-group case_source:visual_object_probe \
+  --output outputs/package/qdrant_retrieval_config.json
 chunking-docs gate-qdrant-vector-ablation outputs/package/qdrant_vector_ablation.json \
   --mode caption_image \
   --baseline-mode caption \
@@ -643,7 +646,7 @@ Pairwise ablation gates can also cap first-relevant-rank and mean-target-rank de
 
 Qdrant vector ablation modes include `text`, `caption`, `object`, `image`, `triple`, `text_caption`, `text_object`, `caption_object`, `text_triple`, `text_image`, `caption_image`, `all`, `all_with_object`, `all_with_triple`, `all_with_object_triple`, `text_caption_graph`, `text_object_graph`, `text_triple_graph`, `all_graph`, `all_with_object_graph`, `all_with_triple_graph`, and `all_with_object_triple_graph`. Object and triple modes use the text query encoder. Image modes require an `image_dense` record file and a compatible image-query encoder.
 
-Hybrid retrieval commands accept repeatable `--fusion-weight source=weight` values. Sources can be exact names such as `qdrant:caption_dense` or families such as `qdrant`, `bm25`, `dense`, and `graph`. `sweep-qdrant-fusion` accepts repeatable `--weight-grid source=v1,v2` values plus `--fixed-fusion-weight` defaults and records every candidate's recall, target coverage, nDCG, MRR, latency, failed queries, eligibility failures, and selection score. It also reports case-group recommendations, so subsets such as `case_source:visual_object_probe` or `case_source:visual_image_probe` can show a different best weight profile from the aggregate benchmark. Graph hits score exact subject, predicate, and object phrase matches above loose token overlap, which helps graph-style benchmark queries find the intended evidence chunk. When a triple carries visual asset provenance, graph retrieval can also resolve the chunk linked to that asset. Use `--reranker lexical` for dependency-free overlap reranking, or `--reranker cross-encoder --reranker-model <model>` when the embeddings extra is installed.
+Hybrid retrieval commands accept repeatable `--fusion-weight source=weight` values. Sources can be exact names such as `qdrant:caption_dense` or families such as `qdrant`, `bm25`, `dense`, and `graph`. `sweep-qdrant-fusion` accepts repeatable `--weight-grid source=v1,v2` values plus `--fixed-fusion-weight` defaults and records every candidate's recall, target coverage, nDCG, MRR, latency, failed queries, eligibility failures, and selection score. It also reports case-group recommendations, so subsets such as `case_source:visual_object_probe` or `case_source:visual_image_probe` can show a different best weight profile from the aggregate benchmark. `export-qdrant-retrieval-config` converts the selected global or case-group recommendation into a service-ready JSON config with vector names, Qdrant/BM25/graph fusion weights, top-k, query encoders, tokenizer settings, and the metric evidence behind the selection. Graph hits score exact subject, predicate, and object phrase matches above loose token overlap, which helps graph-style benchmark queries find the intended evidence chunk. When a triple carries visual asset provenance, graph retrieval can also resolve the chunk linked to that asset. Use `--reranker lexical` for dependency-free overlap reranking, or `--reranker cross-encoder --reranker-model <model>` when the embeddings extra is installed.
 
 Generate a benchmark skeleton from existing package targets, then edit the queries for the document family:
 

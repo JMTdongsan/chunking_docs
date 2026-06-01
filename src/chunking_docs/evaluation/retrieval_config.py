@@ -1,0 +1,177 @@
+from __future__ import annotations
+
+from typing import Any
+
+from pydantic import BaseModel, Field
+
+from chunking_docs.evaluation.fusion_sweep import (
+    QdrantFusionCaseGroupRecommendation,
+    QdrantFusionSweepCandidate,
+    QdrantFusionSweepReport,
+)
+from chunking_docs.evaluation.gate import parse_case_group_spec
+from chunking_docs.evaluation.retrieval import RetrievalCaseGroupMetric
+
+
+class QdrantRetrievalConfigSelection(BaseModel):
+    candidate: str
+    source: str
+    source_report: str | None = None
+    global_recommended: str | None = None
+    case_group: str | None = None
+    case_group_recommended_from_globally_eligible: bool | None = None
+    candidate_rank: int = 0
+    candidate_eligible: bool = True
+    eligibility_failures: list[str] = Field(default_factory=list)
+    metrics: dict[str, float] = Field(default_factory=dict)
+    case_group_metrics: dict[str, float] = Field(default_factory=dict)
+
+
+class QdrantRetrievalConfig(BaseModel):
+    config_version: int = 1
+    backend: str = "qdrant_hybrid"
+    vector_names: list[str] = Field(default_factory=list)
+    graph_expand: bool = False
+    fusion_weights: dict[str, float] = Field(default_factory=dict)
+    top_k: int = 5
+    collapse_hierarchical: bool = False
+    query_encoders: dict[str, Any] = Field(default_factory=dict)
+    lexical_tokenizer: dict[str, Any] = Field(default_factory=dict)
+    selection: QdrantRetrievalConfigSelection
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+def build_qdrant_retrieval_config_from_fusion_sweep(
+    report: QdrantFusionSweepReport,
+    candidate_name: str | None = None,
+    case_group: str | None = None,
+    source_report: str | None = None,
+) -> QdrantRetrievalConfig:
+    selected_name = candidate_name.strip() if candidate_name else None
+    selection_source = "candidate" if selected_name else "global_recommended"
+    case_group_key = None
+    group_recommendation = None
+    if case_group:
+        group_name, group_value = parse_case_group_spec(case_group)
+        case_group_key = f"{group_name}:{group_value}"
+        group_recommendation = group_recommendation_for(report, group_name, group_value)
+    if selected_name is None and group_recommendation is not None:
+        selected_name = group_recommendation.recommended
+        selection_source = "case_group_recommended"
+    if selected_name is None:
+        selected_name = report.recommended
+    if not selected_name:
+        raise ValueError("Fusion sweep report has no recommended candidate.")
+
+    candidate = candidate_by_name(report, selected_name)
+    metadata = report.metadata
+    query_encoders = metadata.get("query_encoders")
+    lexical_tokenizer = metadata.get("lexical_tokenizer")
+    return QdrantRetrievalConfig(
+        vector_names=report.vector_names,
+        graph_expand=report.graph_expand,
+        fusion_weights=dict(candidate.fusion_weights),
+        top_k=int(metadata.get("top_k") or 5),
+        collapse_hierarchical=bool(metadata.get("collapse_hierarchical") or False),
+        query_encoders=query_encoders if isinstance(query_encoders, dict) else {},
+        lexical_tokenizer=lexical_tokenizer if isinstance(lexical_tokenizer, dict) else {},
+        selection=QdrantRetrievalConfigSelection(
+            candidate=candidate.name,
+            source=selection_source,
+            source_report=source_report,
+            global_recommended=report.recommended,
+            case_group=case_group_key,
+            case_group_recommended_from_globally_eligible=(
+                group_recommendation.recommended_from_globally_eligible
+                if group_recommendation is not None
+                else None
+            ),
+            candidate_rank=candidate.rank,
+            candidate_eligible=candidate.eligible,
+            eligibility_failures=candidate.eligibility_failures,
+            metrics=candidate_metrics(candidate),
+            case_group_metrics=candidate_case_group_metrics(candidate, case_group_key),
+        ),
+        metadata=config_metadata(report),
+    )
+
+
+def group_recommendation_for(
+    report: QdrantFusionSweepReport,
+    group_name: str,
+    group_value: str,
+) -> QdrantFusionCaseGroupRecommendation:
+    group_recommendation = report.case_group_recommendations.get(group_name, {}).get(group_value)
+    if group_recommendation is None:
+        raise ValueError(f"Fusion sweep report has no case-group recommendation for {group_name}:{group_value}.")
+    if not group_recommendation.recommended:
+        raise ValueError(f"Case-group recommendation {group_name}:{group_value} has no candidate.")
+    return group_recommendation
+
+
+def candidate_by_name(
+    report: QdrantFusionSweepReport,
+    candidate_name: str,
+) -> QdrantFusionSweepCandidate:
+    for candidate in report.candidates:
+        if candidate.name == candidate_name:
+            return candidate
+    raise ValueError(f"Fusion sweep report has no candidate named {candidate_name}.")
+
+
+def candidate_metrics(candidate: QdrantFusionSweepCandidate) -> dict[str, float]:
+    evaluation = candidate.evaluation
+    return {
+        "selection_score": candidate.selection_score,
+        "recall_at_k": evaluation.recall_at_k,
+        "target_coverage_at_k": evaluation.target_coverage_at_k,
+        "mean_target_ndcg_at_k": evaluation.mean_target_ndcg_at_k,
+        "mrr": evaluation.mrr,
+        "mean_precision_at_k": evaluation.mean_precision_at_k,
+        "mean_latency_ms": evaluation.mean_latency_ms,
+        "p95_latency_ms": evaluation.p95_latency_ms,
+        "failed_query_count": float(len(evaluation.failed_queries)),
+    }
+
+
+def candidate_case_group_metrics(
+    candidate: QdrantFusionSweepCandidate,
+    case_group: str | None,
+) -> dict[str, float]:
+    if not case_group:
+        return {}
+    group_name, group_value = parse_case_group_spec(case_group)
+    metric = candidate.evaluation.case_group_metrics.get(group_name, {}).get(group_value)
+    if metric is None:
+        return {}
+    return retrieval_case_group_metric_payload(metric)
+
+
+def retrieval_case_group_metric_payload(metric: RetrievalCaseGroupMetric) -> dict[str, float]:
+    return {
+        "case_count": float(metric.case_count),
+        "passed_count": float(metric.passed_count),
+        "failed_count": float(metric.failed_count),
+        "recall_at_k": metric.recall_at_k,
+        "target_coverage_at_k": metric.target_coverage_at_k,
+        "ndcg_at_k": metric.ndcg_at_k,
+        "mrr": metric.mrr,
+        "precision_at_k": metric.precision_at_k,
+        "mean_latency_ms": metric.mean_latency_ms,
+    }
+
+
+def config_metadata(report: QdrantFusionSweepReport) -> dict[str, Any]:
+    metadata = dict(report.metadata)
+    metadata.update(
+        {
+            "sweep_candidate_count": report.candidate_count,
+            "sweep_eligible_count": report.eligible_count,
+            "sweep_best_by_recall": report.best_by_recall,
+            "sweep_best_by_target_coverage": report.best_by_target_coverage,
+            "sweep_best_by_target_ndcg": report.best_by_target_ndcg,
+            "sweep_best_by_mrr": report.best_by_mrr,
+            "sweep_fastest_by_mean_latency": report.fastest_by_mean_latency,
+        }
+    )
+    return metadata
