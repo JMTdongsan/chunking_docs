@@ -7,7 +7,9 @@ from chunking_docs.evaluation.compare import (
     PAIRWISE_BOOTSTRAP_SAMPLES,
     PAIRWISE_CONFIDENCE_LEVEL,
     bootstrap_mean_interval,
+    case_mean_target_rank,
     compare_case_results,
+    first_relevant_rank,
     mean,
     results_by_query,
     stable_seed,
@@ -67,6 +69,8 @@ class AblationPairwiseComparison(BaseModel):
     mean_target_coverage_delta: float = 0.0
     mean_target_ndcg_delta: float = 0.0
     mean_precision_delta: float = 0.0
+    mean_first_relevant_rank_delta: float | None = None
+    mean_target_rank_delta: float | None = None
     mean_latency_delta_ms: float | None = None
     bootstrap_samples: int = 0
     confidence_level: float = 0.95
@@ -78,6 +82,10 @@ class AblationPairwiseComparison(BaseModel):
     target_ndcg_delta_ci_high: float | None = None
     precision_delta_ci_low: float | None = None
     precision_delta_ci_high: float | None = None
+    first_relevant_rank_delta_ci_low: float | None = None
+    first_relevant_rank_delta_ci_high: float | None = None
+    target_rank_delta_ci_low: float | None = None
+    target_rank_delta_ci_high: float | None = None
     latency_delta_ci_low_ms: float | None = None
     latency_delta_ci_high_ms: float | None = None
 
@@ -396,6 +404,10 @@ def gate_retrieval_ablation(
     min_pairwise_target_ndcg_ci_low: float | None = None,
     min_pairwise_mrr_ci_low: float | None = None,
     min_pairwise_precision_ci_low: float | None = None,
+    max_pairwise_mean_first_relevant_rank_delta: float | None = None,
+    max_pairwise_mean_target_rank_delta: float | None = None,
+    max_pairwise_first_relevant_rank_delta_ci_high: float | None = None,
+    max_pairwise_target_rank_delta_ci_high: float | None = None,
     max_pairwise_mean_latency_delta_ms: float | None = None,
     require_best_by_recall: bool = False,
     require_best_by_target_coverage: bool = False,
@@ -429,6 +441,10 @@ def gate_retrieval_ablation(
         min_pairwise_target_ndcg_ci_low,
         min_pairwise_mrr_ci_low,
         min_pairwise_precision_ci_low,
+        max_pairwise_mean_first_relevant_rank_delta,
+        max_pairwise_mean_target_rank_delta,
+        max_pairwise_first_relevant_rank_delta_ci_high,
+        max_pairwise_target_rank_delta_ci_high,
         max_pairwise_mean_latency_delta_ms,
     ):
         raise ValueError("A baseline mode is required for lift, latency-ratio, or pairwise checks.")
@@ -561,6 +577,16 @@ def gate_retrieval_ablation(
                 min_pairwise_target_ndcg_ci_low=min_pairwise_target_ndcg_ci_low,
                 min_pairwise_mrr_ci_low=min_pairwise_mrr_ci_low,
                 min_pairwise_precision_ci_low=min_pairwise_precision_ci_low,
+                max_pairwise_mean_first_relevant_rank_delta=(
+                    max_pairwise_mean_first_relevant_rank_delta
+                ),
+                max_pairwise_mean_target_rank_delta=max_pairwise_mean_target_rank_delta,
+                max_pairwise_first_relevant_rank_delta_ci_high=(
+                    max_pairwise_first_relevant_rank_delta_ci_high
+                ),
+                max_pairwise_target_rank_delta_ci_high=(
+                    max_pairwise_target_rank_delta_ci_high
+                ),
                 max_pairwise_mean_latency_delta_ms=max_pairwise_mean_latency_delta_ms,
             )
         )
@@ -701,6 +727,10 @@ def pairwise_threshold_checks(
     min_pairwise_target_ndcg_ci_low: float | None = None,
     min_pairwise_mrr_ci_low: float | None = None,
     min_pairwise_precision_ci_low: float | None = None,
+    max_pairwise_mean_first_relevant_rank_delta: float | None = None,
+    max_pairwise_mean_target_rank_delta: float | None = None,
+    max_pairwise_first_relevant_rank_delta_ci_high: float | None = None,
+    max_pairwise_target_rank_delta_ci_high: float | None = None,
     max_pairwise_mean_latency_delta_ms: float | None = None,
 ) -> list[RetrievalGateCheck]:
     checks = [
@@ -765,6 +795,30 @@ def pairwise_threshold_checks(
             "pairwise_precision_delta_ci_low",
             pairwise_metrics,
             min_pairwise_precision_ci_low,
+        ),
+        pairwise_maximum_check(
+            "max_pairwise_mean_first_relevant_rank_delta",
+            "pairwise_mean_first_relevant_rank_delta",
+            pairwise_metrics,
+            max_pairwise_mean_first_relevant_rank_delta,
+        ),
+        pairwise_maximum_check(
+            "max_pairwise_mean_target_rank_delta",
+            "pairwise_mean_target_rank_delta",
+            pairwise_metrics,
+            max_pairwise_mean_target_rank_delta,
+        ),
+        pairwise_maximum_check(
+            "max_pairwise_first_relevant_rank_delta_ci_high",
+            "pairwise_first_relevant_rank_delta_ci_high",
+            pairwise_metrics,
+            max_pairwise_first_relevant_rank_delta_ci_high,
+        ),
+        pairwise_maximum_check(
+            "max_pairwise_target_rank_delta_ci_high",
+            "pairwise_target_rank_delta_ci_high",
+            pairwise_metrics,
+            max_pairwise_target_rank_delta_ci_high,
         ),
         pairwise_maximum_check(
             "max_pairwise_mean_latency_delta_ms",
@@ -912,7 +966,12 @@ def compare_ablation_rows_pairwise(
     target_coverage_deltas = []
     target_ndcg_deltas = []
     precision_deltas = []
+    first_relevant_rank_deltas = []
+    target_rank_deltas = []
     latency_deltas = []
+    missing_rank = float(
+        max(candidate_row.evaluation.top_k, baseline_row.evaluation.top_k) + 1
+    )
     for query in shared_queries:
         candidate_result = candidate_results[query]
         baseline_result = baseline_results[query]
@@ -933,6 +992,14 @@ def compare_ablation_rows_pairwise(
             candidate_result.target_ndcg_at_k - baseline_result.target_ndcg_at_k
         )
         precision_deltas.append(candidate_result.precision_at_k - baseline_result.precision_at_k)
+        first_relevant_rank_deltas.append(
+            first_relevant_rank(candidate_result, missing_rank)
+            - first_relevant_rank(baseline_result, missing_rank)
+        )
+        target_rank_deltas.append(
+            case_mean_target_rank(candidate_result, missing_rank)
+            - case_mean_target_rank(baseline_result, missing_rank)
+        )
         latency_deltas.append(candidate_result.latency_ms - baseline_result.latency_ms)
 
     candidate_name = candidate_row.mode.name
@@ -954,6 +1021,14 @@ def compare_ablation_rows_pairwise(
         precision_deltas,
         seed=stable_seed(candidate_name, baseline_name, "precision"),
     )
+    first_rank_ci = bootstrap_mean_interval(
+        first_relevant_rank_deltas,
+        seed=stable_seed(candidate_name, baseline_name, "first-rank"),
+    )
+    target_rank_ci = bootstrap_mean_interval(
+        target_rank_deltas,
+        seed=stable_seed(candidate_name, baseline_name, "target-rank"),
+    )
     latency_ci = bootstrap_mean_interval(
         latency_deltas,
         seed=stable_seed(candidate_name, baseline_name, "latency"),
@@ -971,6 +1046,8 @@ def compare_ablation_rows_pairwise(
         mean_target_coverage_delta=mean(target_coverage_deltas),
         mean_target_ndcg_delta=mean(target_ndcg_deltas),
         mean_precision_delta=mean(precision_deltas),
+        mean_first_relevant_rank_delta=mean(first_relevant_rank_deltas),
+        mean_target_rank_delta=mean(target_rank_deltas),
         mean_latency_delta_ms=mean(latency_deltas),
         bootstrap_samples=PAIRWISE_BOOTSTRAP_SAMPLES,
         confidence_level=PAIRWISE_CONFIDENCE_LEVEL,
@@ -982,6 +1059,10 @@ def compare_ablation_rows_pairwise(
         target_ndcg_delta_ci_high=target_ndcg_ci[1],
         precision_delta_ci_low=precision_ci[0],
         precision_delta_ci_high=precision_ci[1],
+        first_relevant_rank_delta_ci_low=first_rank_ci[0],
+        first_relevant_rank_delta_ci_high=first_rank_ci[1],
+        target_rank_delta_ci_low=target_rank_ci[0],
+        target_rank_delta_ci_high=target_rank_ci[1],
         latency_delta_ci_low_ms=latency_ci[0],
         latency_delta_ci_high_ms=latency_ci[1],
     )
@@ -1015,6 +1096,8 @@ def ablation_pairwise_metrics(
             "pairwise_mean_target_coverage_delta": None,
             "pairwise_mean_target_ndcg_delta": None,
             "pairwise_mean_precision_delta": None,
+            "pairwise_mean_first_relevant_rank_delta": None,
+            "pairwise_mean_target_rank_delta": None,
             "pairwise_mean_latency_delta_ms": None,
             "pairwise_bootstrap_samples": None,
             "pairwise_confidence_level": None,
@@ -1026,6 +1109,10 @@ def ablation_pairwise_metrics(
             "pairwise_target_ndcg_delta_ci_high": None,
             "pairwise_precision_delta_ci_low": None,
             "pairwise_precision_delta_ci_high": None,
+            "pairwise_first_relevant_rank_delta_ci_low": None,
+            "pairwise_first_relevant_rank_delta_ci_high": None,
+            "pairwise_target_rank_delta_ci_low": None,
+            "pairwise_target_rank_delta_ci_high": None,
             "pairwise_latency_delta_ci_low_ms": None,
             "pairwise_latency_delta_ci_high_ms": None,
         }
@@ -1040,6 +1127,8 @@ def ablation_pairwise_metrics(
         "pairwise_mean_target_coverage_delta": pairwise.mean_target_coverage_delta,
         "pairwise_mean_target_ndcg_delta": pairwise.mean_target_ndcg_delta,
         "pairwise_mean_precision_delta": pairwise.mean_precision_delta,
+        "pairwise_mean_first_relevant_rank_delta": pairwise.mean_first_relevant_rank_delta,
+        "pairwise_mean_target_rank_delta": pairwise.mean_target_rank_delta,
         "pairwise_mean_latency_delta_ms": pairwise.mean_latency_delta_ms,
         "pairwise_bootstrap_samples": float(pairwise.bootstrap_samples),
         "pairwise_confidence_level": pairwise.confidence_level,
@@ -1051,6 +1140,14 @@ def ablation_pairwise_metrics(
         "pairwise_target_ndcg_delta_ci_high": pairwise.target_ndcg_delta_ci_high,
         "pairwise_precision_delta_ci_low": pairwise.precision_delta_ci_low,
         "pairwise_precision_delta_ci_high": pairwise.precision_delta_ci_high,
+        "pairwise_first_relevant_rank_delta_ci_low": (
+            pairwise.first_relevant_rank_delta_ci_low
+        ),
+        "pairwise_first_relevant_rank_delta_ci_high": (
+            pairwise.first_relevant_rank_delta_ci_high
+        ),
+        "pairwise_target_rank_delta_ci_low": pairwise.target_rank_delta_ci_low,
+        "pairwise_target_rank_delta_ci_high": pairwise.target_rank_delta_ci_high,
         "pairwise_latency_delta_ci_low_ms": pairwise.latency_delta_ci_low_ms,
         "pairwise_latency_delta_ci_high_ms": pairwise.latency_delta_ci_high_ms,
     }
@@ -1177,6 +1274,10 @@ def gate_qdrant_vector_ablation(
     min_pairwise_target_ndcg_ci_low: float | None = None,
     min_pairwise_mrr_ci_low: float | None = None,
     min_pairwise_precision_ci_low: float | None = None,
+    max_pairwise_mean_first_relevant_rank_delta: float | None = None,
+    max_pairwise_mean_target_rank_delta: float | None = None,
+    max_pairwise_first_relevant_rank_delta_ci_high: float | None = None,
+    max_pairwise_target_rank_delta_ci_high: float | None = None,
     max_pairwise_mean_latency_delta_ms: float | None = None,
     require_best_by_recall: bool = False,
     require_best_by_target_coverage: bool = False,
@@ -1203,6 +1304,10 @@ def gate_qdrant_vector_ablation(
         min_pairwise_target_ndcg_ci_low,
         min_pairwise_mrr_ci_low,
         min_pairwise_precision_ci_low,
+        max_pairwise_mean_first_relevant_rank_delta,
+        max_pairwise_mean_target_rank_delta,
+        max_pairwise_first_relevant_rank_delta_ci_high,
+        max_pairwise_target_rank_delta_ci_high,
         max_pairwise_mean_latency_delta_ms,
     ):
         raise ValueError("A baseline mode is required for pairwise checks.")
@@ -1313,6 +1418,16 @@ def gate_qdrant_vector_ablation(
                 min_pairwise_target_ndcg_ci_low=min_pairwise_target_ndcg_ci_low,
                 min_pairwise_mrr_ci_low=min_pairwise_mrr_ci_low,
                 min_pairwise_precision_ci_low=min_pairwise_precision_ci_low,
+                max_pairwise_mean_first_relevant_rank_delta=(
+                    max_pairwise_mean_first_relevant_rank_delta
+                ),
+                max_pairwise_mean_target_rank_delta=max_pairwise_mean_target_rank_delta,
+                max_pairwise_first_relevant_rank_delta_ci_high=(
+                    max_pairwise_first_relevant_rank_delta_ci_high
+                ),
+                max_pairwise_target_rank_delta_ci_high=(
+                    max_pairwise_target_rank_delta_ci_high
+                ),
                 max_pairwise_mean_latency_delta_ms=max_pairwise_mean_latency_delta_ms,
             )
         )

@@ -1042,6 +1042,10 @@ def gate_qdrant_vector_ablation_command(
     min_pairwise_target_ndcg_ci_low: float | None = None,
     min_pairwise_mrr_ci_low: float | None = None,
     min_pairwise_precision_ci_low: float | None = None,
+    max_pairwise_mean_first_relevant_rank_delta: float | None = None,
+    max_pairwise_mean_target_rank_delta: float | None = None,
+    max_pairwise_first_relevant_rank_delta_ci_high: float | None = None,
+    max_pairwise_target_rank_delta_ci_high: float | None = None,
     max_pairwise_mean_latency_delta_ms: float | None = None,
     require_best_by_recall: bool = False,
     require_best_by_target_coverage: bool = False,
@@ -1099,6 +1103,14 @@ def gate_qdrant_vector_ablation_command(
             min_pairwise_target_ndcg_ci_low=min_pairwise_target_ndcg_ci_low,
             min_pairwise_mrr_ci_low=min_pairwise_mrr_ci_low,
             min_pairwise_precision_ci_low=min_pairwise_precision_ci_low,
+            max_pairwise_mean_first_relevant_rank_delta=(
+                max_pairwise_mean_first_relevant_rank_delta
+            ),
+            max_pairwise_mean_target_rank_delta=max_pairwise_mean_target_rank_delta,
+            max_pairwise_first_relevant_rank_delta_ci_high=(
+                max_pairwise_first_relevant_rank_delta_ci_high
+            ),
+            max_pairwise_target_rank_delta_ci_high=max_pairwise_target_rank_delta_ci_high,
             max_pairwise_mean_latency_delta_ms=max_pairwise_mean_latency_delta_ms,
             require_best_by_recall=require_best_by_recall,
             require_best_by_target_coverage=require_best_by_target_coverage,
@@ -2553,6 +2565,10 @@ def ingestion_readiness_command(
     min_retrieval_ablation_pairwise_target_ndcg_ci_low: float | None = None,
     min_retrieval_ablation_pairwise_mrr_ci_low: float | None = None,
     min_retrieval_ablation_pairwise_precision_ci_low: float | None = None,
+    max_retrieval_ablation_pairwise_mean_first_relevant_rank_delta: float | None = None,
+    max_retrieval_ablation_pairwise_mean_target_rank_delta: float | None = None,
+    max_retrieval_ablation_pairwise_first_relevant_rank_delta_ci_high: float | None = None,
+    max_retrieval_ablation_pairwise_target_rank_delta_ci_high: float | None = None,
     max_retrieval_ablation_pairwise_mean_latency_delta_ms: float | None = None,
     require_retrieval_ablation_best_by_recall: bool = False,
     require_retrieval_ablation_best_by_target_coverage: bool = False,
@@ -2572,6 +2588,10 @@ def ingestion_readiness_command(
     min_qdrant_vector_pairwise_target_ndcg_ci_low: float | None = None,
     min_qdrant_vector_pairwise_mrr_ci_low: float | None = None,
     min_qdrant_vector_pairwise_precision_ci_low: float | None = None,
+    max_qdrant_vector_pairwise_mean_first_relevant_rank_delta: float | None = None,
+    max_qdrant_vector_pairwise_mean_target_rank_delta: float | None = None,
+    max_qdrant_vector_pairwise_first_relevant_rank_delta_ci_high: float | None = None,
+    max_qdrant_vector_pairwise_target_rank_delta_ci_high: float | None = None,
     max_qdrant_vector_pairwise_mean_latency_delta_ms: float | None = None,
     min_qdrant_vector_recall_at_k: float = 0.0,
     min_qdrant_vector_target_coverage_at_k: float = 0.0,
@@ -2853,6 +2873,18 @@ def ingestion_readiness_command(
             "min_pairwise_precision_ci_low": (
                 min_retrieval_ablation_pairwise_precision_ci_low
             ),
+            "max_pairwise_mean_first_relevant_rank_delta": (
+                max_retrieval_ablation_pairwise_mean_first_relevant_rank_delta
+            ),
+            "max_pairwise_mean_target_rank_delta": (
+                max_retrieval_ablation_pairwise_mean_target_rank_delta
+            ),
+            "max_pairwise_first_relevant_rank_delta_ci_high": (
+                max_retrieval_ablation_pairwise_first_relevant_rank_delta_ci_high
+            ),
+            "max_pairwise_target_rank_delta_ci_high": (
+                max_retrieval_ablation_pairwise_target_rank_delta_ci_high
+            ),
             "max_pairwise_mean_latency_delta_ms": (
                 max_retrieval_ablation_pairwise_mean_latency_delta_ms
             ),
@@ -2888,6 +2920,18 @@ def ingestion_readiness_command(
             ),
             "min_pairwise_mrr_ci_low": min_qdrant_vector_pairwise_mrr_ci_low,
             "min_pairwise_precision_ci_low": min_qdrant_vector_pairwise_precision_ci_low,
+            "max_pairwise_mean_first_relevant_rank_delta": (
+                max_qdrant_vector_pairwise_mean_first_relevant_rank_delta
+            ),
+            "max_pairwise_mean_target_rank_delta": (
+                max_qdrant_vector_pairwise_mean_target_rank_delta
+            ),
+            "max_pairwise_first_relevant_rank_delta_ci_high": (
+                max_qdrant_vector_pairwise_first_relevant_rank_delta_ci_high
+            ),
+            "max_pairwise_target_rank_delta_ci_high": (
+                max_qdrant_vector_pairwise_target_rank_delta_ci_high
+            ),
             "max_pairwise_mean_latency_delta_ms": (
                 max_qdrant_vector_pairwise_mean_latency_delta_ms
             ),
@@ -3411,6 +3455,10 @@ def gate_retrieval_ablation_command(
     min_pairwise_target_ndcg_ci_low: float | None = None,
     min_pairwise_mrr_ci_low: float | None = None,
     min_pairwise_precision_ci_low: float | None = None,
+    max_pairwise_mean_first_relevant_rank_delta: float | None = None,
+    max_pairwise_mean_target_rank_delta: float | None = None,
+    max_pairwise_first_relevant_rank_delta_ci_high: float | None = None,
+    max_pairwise_target_rank_delta_ci_high: float | None = None,
     max_pairwise_mean_latency_delta_ms: float | None = None,
     require_best_by_recall: bool = False,
     require_best_by_target_coverage: bool = False,
@@ -3473,6 +3521,14 @@ def gate_retrieval_ablation_command(
             min_pairwise_target_ndcg_ci_low=min_pairwise_target_ndcg_ci_low,
             min_pairwise_mrr_ci_low=min_pairwise_mrr_ci_low,
             min_pairwise_precision_ci_low=min_pairwise_precision_ci_low,
+            max_pairwise_mean_first_relevant_rank_delta=(
+                max_pairwise_mean_first_relevant_rank_delta
+            ),
+            max_pairwise_mean_target_rank_delta=max_pairwise_mean_target_rank_delta,
+            max_pairwise_first_relevant_rank_delta_ci_high=(
+                max_pairwise_first_relevant_rank_delta_ci_high
+            ),
+            max_pairwise_target_rank_delta_ci_high=max_pairwise_target_rank_delta_ci_high,
             max_pairwise_mean_latency_delta_ms=max_pairwise_mean_latency_delta_ms,
             require_best_by_recall=require_best_by_recall,
             require_best_by_target_coverage=require_best_by_target_coverage,

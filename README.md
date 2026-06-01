@@ -442,6 +442,7 @@ chunking-docs ingestion-readiness \
   --min-retrieval-ablation-recall-lift 0.2 \
   --min-retrieval-ablation-pairwise-win-rate 0.55 \
   --min-retrieval-ablation-pairwise-target-coverage-lift 0.02 \
+  --max-retrieval-ablation-pairwise-mean-target-rank-delta 0 \
   --max-retrieval-ablation-mean-target-rank 3 \
   --min-retrieval-ablation-target-type-coverage asset=0.9 \
   --min-retrieval-ablation-case-group-target-coverage case_source:visual_lexical_probe=0.7 \
@@ -450,6 +451,7 @@ chunking-docs ingestion-readiness \
   --qdrant-vector-baseline-mode text \
   --min-qdrant-vector-pairwise-win-rate 0.55 \
   --min-qdrant-vector-pairwise-target-coverage-lift 0.02 \
+  --max-qdrant-vector-pairwise-mean-target-rank-delta 0 \
   --min-qdrant-vector-recall-at-k 0.8 \
   --min-qdrant-vector-target-coverage-at-k 0.75 \
   --max-qdrant-vector-mean-target-rank 3 \
@@ -527,6 +529,8 @@ chunking-docs gate-qdrant-vector-ablation outputs/package/qdrant_vector_ablation
   --max-mean-target-rank 3 \
   --min-pairwise-win-rate 0.55 \
   --min-pairwise-target-coverage-lift 0.02 \
+  --max-pairwise-mean-target-rank-delta 0 \
+  --max-pairwise-target-rank-delta-ci-high 0 \
   --min-target-type-coverage asset=0.9 \
   --min-source-family-target-coverage visual=0.75 \
   --min-case-group-target-coverage case_source:visual_object_probe=0.7 \
@@ -545,6 +549,8 @@ chunking-docs gate-retrieval-ablation outputs/package/retrieval_ablation.json \
   --max-mean-target-rank 3 \
   --min-pairwise-win-rate 0.55 \
   --min-pairwise-target-coverage-lift 0.02 \
+  --max-pairwise-mean-target-rank-delta 0 \
+  --max-pairwise-target-rank-delta-ci-high 0 \
   --min-target-type-coverage asset=0.9 \
   --min-source-family-target-coverage lexical=0.75 \
   --min-case-group-target-coverage case_source:visual_lexical_probe=0.7 \
@@ -554,6 +560,8 @@ chunking-docs compare-packages outputs/package.baseline outputs/package \
 ```
 
 `audit-package` checks structural completeness, orphan triples, remaining OCR/VLM work, Qdrant vector dimensions, required payload fields, payload index definitions, embedding manifest record counts, dimensions, bytes, checksums, and whether configured text/image/caption vector records cover the expected chunk and visual asset IDs. `audit-retrieval-cases` verifies that benchmark queries are not empty or TODO placeholders, expected page/chunk/asset/triple targets exist in the package, duplicate queries stay within the configured limit, target families and distinct target IDs have enough coverage, case-group target diversity is sufficient, case concentration per target stays within configured limits, queries have enough distinct terms, required metadata groups such as `case_source:visual_object_probe` are present, and visual object probes can be required to use visual-only object terms. `eval-chunking` reports page coverage, chunk size distribution, section coverage, visual asset linkage, visual annotation coverage, linked visual text coverage at asset and text-part levels, standalone visual text chunk counts, retrieval recall@k, MRR, target coverage@k, target nDCG@k, precision@k, failed queries, and an aggregate quality score. `eval-retrieval` also records per-query latency samples plus mean and p95 latency when `--repeat` is greater than one. `diagnose-retrieval` groups failed or partially covered queries by reasons such as no hits, missing target type, low target nDCG@k, or low precision@k. `gate-retrieval` turns retrieval metrics into pass/fail checks for absolute floors, target rank limits, target-type coverage, source-family target coverage, chunking-strategy coverage, retrieval-role coverage, case metadata group coverage, and optional baseline regression limits such as recall drop or latency ratio. Retrieval reports include target-specific recall, MRR, target nDCG@k, source-family contribution metrics, chunking-strategy and retrieval-role contribution metrics, case group metrics for metadata such as `case_source` and `query_mode`, rank metrics that penalize missing targets as `top_k + 1`, and coverage for page, chunk, visual asset, and graph triple expectations. Visual vector hits are credited for graph triple targets when triples carry visual asset provenance, so VLM-derived relationships can be measured through caption or image retrieval. `eval-qdrant-retrieval` runs the same benchmark cases through Qdrant named vectors, BM25, and optional graph expansion so the production retrieval path can be validated. `eval-qdrant-vector-ablation` compares Qdrant text, visual caption, optional image, and graph-expanded modes on the same cases. `gate-qdrant-vector-ablation` turns a selected Qdrant vector mode into a pass/fail benchmark gate for recall, target coverage, target nDCG, target rank limits, precision, failed-query count, latency, target-type coverage, source-family target coverage, metadata case-group coverage, strategy/role contribution metrics, and optional best-mode requirements. `eval-retrieval-ablation` compares dense-only, BM25-only, graph-only, hybrid, graph-expanded hybrid, and text-only versus visual-asset-enriched lexical modes so the effect and runtime cost of each retrieval signal is visible. Retrieval and Qdrant vector ablation reports also include case-group best-mode summaries plus query-paired candidate-vs-baseline win rates, metric deltas, confidence intervals, and rank metrics that penalize missing targets as `top_k + 1`, making it clear which signal wins on subsets such as VLM object probes rather than only on the aggregate benchmark. `gate-retrieval-ablation` turns a selected ablation mode into a pass/fail gate using absolute thresholds, baseline lift, target rank limits, target-type coverage, source-family coverage, metadata case-group coverage, strategy/role contribution metrics, best-mode requirements, latency limits, and query-paired baseline metrics when a baseline mode is supplied. Retrieval cases are JSONL:
+
+Pairwise ablation gates can also cap first-relevant-rank and mean-target-rank deltas, including bootstrap CI high bounds, so a candidate cannot pass by improving aggregate recall while pushing expected evidence deeper than the baseline.
 
 Qdrant vector ablation modes include `text`, `caption`, `image`, `text_caption`, `text_image`, `caption_image`, `all`, `text_caption_graph`, and `all_graph`. Image modes require an `image_dense` record file and a compatible image-query encoder.
 

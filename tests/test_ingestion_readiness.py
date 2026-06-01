@@ -7,6 +7,7 @@ from typer.testing import CliRunner
 from chunking_docs.cli import app
 from chunking_docs.embeddings.bm25 import BM25LexicalIndex, chunk_lexical_texts
 from chunking_docs.evaluation.ablation import (
+    AblationPairwiseComparison,
     QdrantVectorAblationMode,
     QdrantVectorAblationReport,
     QdrantVectorAblationRow,
@@ -304,6 +305,7 @@ def test_ingestion_readiness_includes_qdrant_vector_ablation_gate(tmp_path):
         qdrant_vector_ablation=qdrant_vector_ablation_report(),
         qdrant_vector_ablation_mode="text",
         qdrant_vector_ablation_gate_options={
+            "baseline_mode": "caption",
             "min_recall_at_k": 1.0,
             "min_target_coverage_at_k": 1.0,
             "max_failed_queries": 0,
@@ -311,6 +313,7 @@ def test_ingestion_readiness_includes_qdrant_vector_ablation_gate(tmp_path):
             "min_source_family_target_coverage": {"dense_text": 1.0},
             "min_case_group_target_coverage": {"case_source:visual_object_probe": 1.0},
             "max_mean_target_rank": 1.0,
+            "max_pairwise_mean_target_rank_delta": 0.0,
             "require_best_by_recall": True,
         },
     )
@@ -318,8 +321,15 @@ def test_ingestion_readiness_includes_qdrant_vector_ablation_gate(tmp_path):
     assert report.passed is True
     assert report.qdrant_vector_ablation_gate is not None
     assert report.qdrant_vector_ablation_gate.mode == "text"
+    assert report.qdrant_vector_ablation_gate.baseline_mode == "caption"
     assert report.qdrant_vector_ablation_gate.metrics["failed_query_count"] == 0.0
     assert report.qdrant_vector_ablation_gate.metrics["mean_target_rank"] == 1.0
+    assert (
+        report.qdrant_vector_ablation_gate.pairwise_metrics[
+            "pairwise_mean_target_rank_delta"
+        ]
+        == -5.0
+    )
     assert report.qdrant_vector_ablation_gate.target_metrics["asset"]["coverage_at_k"] == 1.0
     assert (
         report.qdrant_vector_ablation_gate.source_family_metrics["dense_text"][
@@ -350,6 +360,7 @@ def test_ingestion_readiness_includes_retrieval_ablation_lift_gate(tmp_path):
             "min_source_family_target_coverage": {"lexical": 1.0},
             "min_case_group_target_coverage": {"case_source:visual_lexical_probe": 1.0},
             "max_mean_target_rank": 1.0,
+            "max_pairwise_mean_target_rank_delta": 0.0,
             "require_best_by_recall": True,
         },
     )
@@ -362,6 +373,12 @@ def test_ingestion_readiness_includes_retrieval_ablation_lift_gate(tmp_path):
     assert report.retrieval_ablation_gate.metrics["mean_target_rank"] == 1.0
     assert report.retrieval_ablation_gate.baseline_metrics["recall_at_k"] == 0.0
     assert report.retrieval_ablation_gate.baseline_metrics["mean_target_rank"] == 6.0
+    assert (
+        report.retrieval_ablation_gate.pairwise_metrics[
+            "pairwise_mean_target_rank_delta"
+        ]
+        == -5.0
+    )
     component = next(
         component for component in report.components if component.name == "retrieval_ablation_gate"
     )
@@ -1420,6 +1437,16 @@ def retrieval_ablation_report():
         best_by_target_ndcg="bm25_visual",
         best_by_mrr="bm25_visual",
         fastest_by_mean_latency="bm25_text",
+        pairwise=[
+            AblationPairwiseComparison(
+                candidate="bm25_visual",
+                baseline="bm25_text",
+                shared_query_count=1,
+                candidate_win_count=1,
+                candidate_win_rate=1.0,
+                mean_target_rank_delta=-5.0,
+            )
+        ],
     )
 
 
@@ -1475,6 +1502,16 @@ def qdrant_vector_ablation_report():
         best_by_target_ndcg="text",
         best_by_mrr="text",
         fastest_by_mean_latency="caption",
+        pairwise=[
+            AblationPairwiseComparison(
+                candidate="text",
+                baseline="caption",
+                shared_query_count=1,
+                candidate_win_count=1,
+                candidate_win_rate=1.0,
+                mean_target_rank_delta=-5.0,
+            )
+        ],
     )
 
 
