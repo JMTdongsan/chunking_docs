@@ -546,6 +546,72 @@ def qdrant_fusion_sweep_metrics(
         failed_queries = evaluation.get("failed_queries")
         if isinstance(failed_queries, list):
             metrics["failed_query_count"] = float(len(failed_queries))
+    metrics.update(qdrant_fusion_case_group_recommendation_metrics(payload))
+    return metrics
+
+
+def qdrant_fusion_case_group_recommendation_metrics(payload: dict[str, Any]) -> dict[str, float]:
+    recommendations = payload.get("case_group_recommendations")
+    if not isinstance(recommendations, dict):
+        return {}
+    metrics: dict[str, float] = {
+        "case_group_recommendation_count": float(
+            sum(
+                1
+                for group_values in recommendations.values()
+                if isinstance(group_values, dict)
+                for recommendation in group_values.values()
+                if isinstance(recommendation, dict)
+            )
+        )
+    }
+    for group_name, group_values in recommendations.items():
+        if not isinstance(group_name, str) or not isinstance(group_values, dict):
+            continue
+        for group_value, recommendation in group_values.items():
+            if not isinstance(group_value, str) or not isinstance(recommendation, dict):
+                continue
+            prefix = f"case_group_recommendation.{group_name}.{group_value}"
+            for key in ("candidate_count", "eligible_count"):
+                if (value := optional_numeric_metric(recommendation.get(key))) is not None:
+                    metrics[f"{prefix}.{key}"] = value
+            metrics[f"{prefix}.recommended_from_globally_eligible"] = (
+                1.0 if recommendation.get("recommended_from_globally_eligible") else 0.0
+            )
+            top_candidate = first_mapping(recommendation.get("top_candidates"))
+            if top_candidate:
+                metrics.update(qdrant_fusion_case_group_candidate_metrics(prefix, top_candidate))
+    return metrics
+
+
+def first_mapping(value: Any) -> dict[str, Any]:
+    if not isinstance(value, list):
+        return {}
+    return next((item for item in value if isinstance(item, dict)), {})
+
+
+def qdrant_fusion_case_group_candidate_metrics(
+    prefix: str,
+    candidate: dict[str, Any],
+) -> dict[str, float]:
+    metrics = {}
+    for key in (
+        "global_rank",
+        "selection_score",
+        "case_count",
+        "recall_at_k",
+        "target_coverage_at_k",
+        "ndcg_at_k",
+        "mrr",
+        "precision_at_k",
+        "mean_latency_ms",
+        "failed_query_count",
+    ):
+        if (value := optional_numeric_metric(candidate.get(key))) is not None:
+            metrics[f"{prefix}.top_candidate.{key}"] = value
+    metrics[f"{prefix}.top_candidate.globally_eligible"] = (
+        1.0 if candidate.get("globally_eligible") is not False else 0.0
+    )
     return metrics
 
 

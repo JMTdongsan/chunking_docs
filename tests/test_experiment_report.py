@@ -73,6 +73,25 @@ def test_build_experiment_report_summarizes_artifacts_and_candidates(tmp_path):
     assert validations["qdrant_fusion_sweep.final.json"].metrics["selection_score"] == 4.2
     assert validations["qdrant_fusion_sweep.final.json"].metrics["target_coverage_at_k"] == 0.98
     assert validations["qdrant_fusion_sweep.final.json"].metrics["failed_query_count"] == 1.0
+    assert (
+        validations["qdrant_fusion_sweep.final.json"]
+        .metrics["case_group_recommendation_count"]
+        == 1.0
+    )
+    assert (
+        validations["qdrant_fusion_sweep.final.json"]
+        .metrics[
+            "case_group_recommendation.case_source.visual_object_probe.top_candidate.target_coverage_at_k"
+        ]
+        == 0.9
+    )
+    assert (
+        validations["qdrant_fusion_sweep.final.json"]
+        .metrics[
+            "case_group_recommendation.case_source.visual_object_probe.recommended_from_globally_eligible"
+        ]
+        == 1.0
+    )
     assert validations["qdrant_retrieval_config.final.json"].passed is True
     assert validations["qdrant_retrieval_config.final.json"].candidate == "caption_weighted"
     assert validations["qdrant_retrieval_config.final.json"].metrics["vector_count"] == 2.0
@@ -360,6 +379,38 @@ def write_minimal_package(tmp_path):
                 "eligible_count": 1,
                 "recommended": "caption_weighted",
                 "best_by_target_ndcg": "caption_weighted",
+                "case_group_recommendations": {
+                    "case_source": {
+                        "visual_object_probe": {
+                            "group_name": "case_source",
+                            "group_value": "visual_object_probe",
+                            "candidate_count": 2,
+                            "eligible_count": 1,
+                            "recommended": "caption_weighted",
+                            "recommended_from_globally_eligible": True,
+                            "top_candidates": [
+                                {
+                                    "name": "caption_weighted",
+                                    "fusion_weights": {
+                                        "bm25": 1.2,
+                                        "qdrant:caption_dense": 1.1,
+                                    },
+                                    "global_rank": 1,
+                                    "globally_eligible": True,
+                                    "selection_score": 4.2,
+                                    "case_count": 3,
+                                    "recall_at_k": 1.0,
+                                    "target_coverage_at_k": 0.9,
+                                    "ndcg_at_k": 0.88,
+                                    "mrr": 0.75,
+                                    "precision_at_k": 0.4,
+                                    "mean_latency_ms": 34.0,
+                                    "failed_query_count": 0,
+                                }
+                            ],
+                        }
+                    }
+                },
                 "candidates": [
                     {
                         "name": "caption_weighted",
