@@ -5,7 +5,11 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
-from chunking_docs.evaluation.compare import ChunkingComparison, ChunkingComparisonRow
+from chunking_docs.evaluation.compare import (
+    ChunkingComparison,
+    ChunkingComparisonRow,
+    ChunkingPairwiseComparison,
+)
 from chunking_docs.evaluation.gate import (
     chunk_strategy_metric_key,
     retrieval_role_metric_key,
@@ -38,6 +42,7 @@ class ChunkingComparisonGateReport(BaseModel):
     chunk_strategy_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
     retrieval_role_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
     baseline_metrics: dict[str, float | None] = Field(default_factory=dict)
+    pairwise_metrics: dict[str, float | None] = Field(default_factory=dict)
     failed_checks: list[str] = Field(default_factory=list)
     checks: list[ChunkingComparisonGateCheck] = Field(default_factory=list)
 
@@ -81,11 +86,19 @@ def gate_chunking_comparison(
     max_precision_drop: float | None = None,
     max_mean_latency_ratio: float | None = None,
     max_p95_latency_ratio: float | None = None,
+    min_pairwise_shared_queries: int | None = None,
+    min_pairwise_win_rate: float | None = None,
+    min_pairwise_target_coverage_lift: float | None = None,
+    min_pairwise_target_ndcg_lift: float | None = None,
+    min_pairwise_mrr_lift: float | None = None,
+    min_pairwise_precision_lift: float | None = None,
+    max_pairwise_mean_latency_delta_ms: float | None = None,
 ) -> ChunkingComparisonGateReport:
     selected_name = select_candidate_name(comparison, candidate)
     selected_row = find_row(comparison, selected_name)
     metrics = row_metrics(selected_row)
     baseline_metrics: dict[str, float | None] = {}
+    pairwise_metrics: dict[str, float | None] = {}
     checks = [
         minimum_check(
             "min_quality_score",
@@ -252,6 +265,77 @@ def gate_chunking_comparison(
                 },
             )
         )
+        if any(
+            value is not None
+            for value in [
+                min_pairwise_shared_queries,
+                min_pairwise_win_rate,
+                min_pairwise_target_coverage_lift,
+                min_pairwise_target_ndcg_lift,
+                min_pairwise_mrr_lift,
+                min_pairwise_precision_lift,
+                max_pairwise_mean_latency_delta_ms,
+            ]
+        ):
+            pairwise = find_pairwise_comparison(comparison, selected_name, baseline_candidate)
+            pairwise_metrics = pairwise_comparison_metrics(pairwise)
+            checks.extend(
+                check
+                for check in [
+                    optional_minimum_check(
+                        "min_pairwise_shared_queries",
+                        selected_name,
+                        "pairwise_shared_query_count",
+                        pairwise_metrics,
+                        float(min_pairwise_shared_queries)
+                        if min_pairwise_shared_queries is not None
+                        else None,
+                    ),
+                    optional_minimum_check(
+                        "min_pairwise_win_rate",
+                        selected_name,
+                        "pairwise_candidate_win_rate",
+                        pairwise_metrics,
+                        min_pairwise_win_rate,
+                    ),
+                    optional_minimum_check(
+                        "min_pairwise_target_coverage_lift",
+                        selected_name,
+                        "pairwise_mean_target_coverage_delta",
+                        pairwise_metrics,
+                        min_pairwise_target_coverage_lift,
+                    ),
+                    optional_minimum_check(
+                        "min_pairwise_target_ndcg_lift",
+                        selected_name,
+                        "pairwise_mean_target_ndcg_delta",
+                        pairwise_metrics,
+                        min_pairwise_target_ndcg_lift,
+                    ),
+                    optional_minimum_check(
+                        "min_pairwise_mrr_lift",
+                        selected_name,
+                        "pairwise_mean_reciprocal_rank_delta",
+                        pairwise_metrics,
+                        min_pairwise_mrr_lift,
+                    ),
+                    optional_minimum_check(
+                        "min_pairwise_precision_lift",
+                        selected_name,
+                        "pairwise_mean_precision_delta",
+                        pairwise_metrics,
+                        min_pairwise_precision_lift,
+                    ),
+                    optional_maximum_check(
+                        "max_pairwise_mean_latency_delta_ms",
+                        selected_name,
+                        "pairwise_mean_latency_delta_ms",
+                        pairwise_metrics,
+                        max_pairwise_mean_latency_delta_ms,
+                    ),
+                ]
+                if check is not None
+            )
 
     failed_checks = [check.name for check in checks if not check.passed]
     return ChunkingComparisonGateReport(
@@ -264,6 +348,7 @@ def gate_chunking_comparison(
         chunk_strategy_metrics=selected_row.chunk_strategy_metrics,
         retrieval_role_metrics=selected_row.retrieval_role_metrics,
         baseline_metrics=baseline_metrics,
+        pairwise_metrics=pairwise_metrics,
         failed_checks=failed_checks,
         checks=checks,
     )
@@ -325,6 +410,49 @@ def row_metrics(row: ChunkingComparisonRow) -> dict[str, float | None]:
         for key, value in role_metrics.items():
             metrics[retrieval_role_metric_key(role, key)] = value
     return metrics
+
+
+def find_pairwise_comparison(
+    comparison: ChunkingComparison,
+    candidate: str,
+    baseline: str,
+) -> ChunkingPairwiseComparison | None:
+    for pairwise in comparison.pairwise:
+        if pairwise.candidate == candidate and pairwise.baseline == baseline:
+            return pairwise
+    return None
+
+
+def pairwise_comparison_metrics(
+    pairwise: ChunkingPairwiseComparison | None,
+) -> dict[str, float | None]:
+    if pairwise is None:
+        return {
+            "pairwise_shared_query_count": None,
+            "pairwise_candidate_win_count": None,
+            "pairwise_baseline_win_count": None,
+            "pairwise_tie_count": None,
+            "pairwise_candidate_win_rate": None,
+            "pairwise_baseline_win_rate": None,
+            "pairwise_mean_reciprocal_rank_delta": None,
+            "pairwise_mean_target_coverage_delta": None,
+            "pairwise_mean_target_ndcg_delta": None,
+            "pairwise_mean_precision_delta": None,
+            "pairwise_mean_latency_delta_ms": None,
+        }
+    return {
+        "pairwise_shared_query_count": float(pairwise.shared_query_count),
+        "pairwise_candidate_win_count": float(pairwise.candidate_win_count),
+        "pairwise_baseline_win_count": float(pairwise.baseline_win_count),
+        "pairwise_tie_count": float(pairwise.tie_count),
+        "pairwise_candidate_win_rate": pairwise.candidate_win_rate,
+        "pairwise_baseline_win_rate": pairwise.baseline_win_rate,
+        "pairwise_mean_reciprocal_rank_delta": pairwise.mean_reciprocal_rank_delta,
+        "pairwise_mean_target_coverage_delta": pairwise.mean_target_coverage_delta,
+        "pairwise_mean_target_ndcg_delta": pairwise.mean_target_ndcg_delta,
+        "pairwise_mean_precision_delta": pairwise.mean_precision_delta,
+        "pairwise_mean_latency_delta_ms": pairwise.mean_latency_delta_ms,
+    }
 
 
 def target_type_coverage_checks(
@@ -552,4 +680,5 @@ def chunking_gate_summary_payload(report: ChunkingComparisonGateReport) -> dict:
         "chunk_strategy_metrics": report.chunk_strategy_metrics,
         "retrieval_role_metrics": report.retrieval_role_metrics,
         "baseline_metrics": report.baseline_metrics,
+        "pairwise_metrics": report.pairwise_metrics,
     }

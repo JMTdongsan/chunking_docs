@@ -3377,6 +3377,13 @@ def gate_chunking_comparison_command(
     max_precision_drop: float | None = None,
     max_mean_latency_ratio: float | None = None,
     max_p95_latency_ratio: float | None = None,
+    min_pairwise_shared_queries: int | None = None,
+    min_pairwise_win_rate: float | None = None,
+    min_pairwise_target_coverage_lift: float | None = None,
+    min_pairwise_target_ndcg_lift: float | None = None,
+    min_pairwise_mrr_lift: float | None = None,
+    min_pairwise_precision_lift: float | None = None,
+    max_pairwise_mean_latency_delta_ms: float | None = None,
     fail: bool = typer.Option(
         True,
         "--fail/--no-fail",
@@ -3431,6 +3438,13 @@ def gate_chunking_comparison_command(
         max_precision_drop=max_precision_drop,
         max_mean_latency_ratio=max_mean_latency_ratio,
         max_p95_latency_ratio=max_p95_latency_ratio,
+        min_pairwise_shared_queries=min_pairwise_shared_queries,
+        min_pairwise_win_rate=min_pairwise_win_rate,
+        min_pairwise_target_coverage_lift=min_pairwise_target_coverage_lift,
+        min_pairwise_target_ndcg_lift=min_pairwise_target_ndcg_lift,
+        min_pairwise_mrr_lift=min_pairwise_mrr_lift,
+        min_pairwise_precision_lift=min_pairwise_precision_lift,
+        max_pairwise_mean_latency_delta_ms=max_pairwise_mean_latency_delta_ms,
     )
     payload = report.model_dump()
     if output is not None:

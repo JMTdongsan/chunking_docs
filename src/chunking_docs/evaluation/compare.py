@@ -9,6 +9,7 @@ from chunking_docs.evaluation.gate import (
     retrieval_source_family_metrics,
     retrieval_target_metrics,
 )
+from chunking_docs.evaluation.retrieval import RetrievalCaseResult
 
 
 class ChunkingComparisonRow(BaseModel):
@@ -40,11 +41,28 @@ class ChunkingComparisonRow(BaseModel):
     issue_codes: list[str]
 
 
+class ChunkingPairwiseComparison(BaseModel):
+    candidate: str
+    baseline: str
+    shared_query_count: int
+    candidate_win_count: int = 0
+    baseline_win_count: int = 0
+    tie_count: int = 0
+    candidate_win_rate: float = 0.0
+    baseline_win_rate: float = 0.0
+    mean_reciprocal_rank_delta: float = 0.0
+    mean_target_coverage_delta: float = 0.0
+    mean_target_ndcg_delta: float = 0.0
+    mean_precision_delta: float = 0.0
+    mean_latency_delta_ms: float | None = None
+
+
 class ChunkingComparison(BaseModel):
     rows: list[ChunkingComparisonRow]
     best_by_quality: str | None
     best_by_retrieval: str | None
     fastest_by_mean_latency: str | None
+    pairwise: list[ChunkingPairwiseComparison] = Field(default_factory=list)
 
 
 def compare_chunking_reports(
@@ -129,4 +147,113 @@ def compare_chunking_reports(
         fastest_by_mean_latency=min(latency_rows, key=lambda row: row.retrieval_mean_latency_ms or 0.0).name
         if latency_rows
         else None,
+        pairwise=pairwise_comparisons(reports),
     )
+
+
+def pairwise_comparisons(
+    reports: dict[str, ChunkingQualityReport],
+) -> list[ChunkingPairwiseComparison]:
+    comparisons = []
+    for candidate_name, candidate_report in reports.items():
+        for baseline_name, baseline_report in reports.items():
+            if candidate_name == baseline_name:
+                continue
+            comparison = compare_retrieval_results_pairwise(
+                candidate_name,
+                candidate_report,
+                baseline_name,
+                baseline_report,
+            )
+            if comparison is not None:
+                comparisons.append(comparison)
+    return comparisons
+
+
+def compare_retrieval_results_pairwise(
+    candidate_name: str,
+    candidate_report: ChunkingQualityReport,
+    baseline_name: str,
+    baseline_report: ChunkingQualityReport,
+) -> ChunkingPairwiseComparison | None:
+    if candidate_report.retrieval is None or baseline_report.retrieval is None:
+        return None
+    candidate_results = results_by_query(candidate_report.retrieval.results)
+    baseline_results = results_by_query(baseline_report.retrieval.results)
+    shared_queries = sorted(candidate_results.keys() & baseline_results.keys())
+    if not shared_queries:
+        return None
+
+    candidate_wins = 0
+    baseline_wins = 0
+    ties = 0
+    reciprocal_rank_deltas = []
+    target_coverage_deltas = []
+    target_ndcg_deltas = []
+    precision_deltas = []
+    latency_deltas = []
+    for query in shared_queries:
+        candidate_result = candidate_results[query]
+        baseline_result = baseline_results[query]
+        winner = compare_case_results(candidate_result, baseline_result)
+        if winner > 0:
+            candidate_wins += 1
+        elif winner < 0:
+            baseline_wins += 1
+        else:
+            ties += 1
+        reciprocal_rank_deltas.append(
+            candidate_result.reciprocal_rank - baseline_result.reciprocal_rank
+        )
+        target_coverage_deltas.append(
+            candidate_result.target_coverage_at_k - baseline_result.target_coverage_at_k
+        )
+        target_ndcg_deltas.append(
+            candidate_result.target_ndcg_at_k - baseline_result.target_ndcg_at_k
+        )
+        precision_deltas.append(candidate_result.precision_at_k - baseline_result.precision_at_k)
+        latency_deltas.append(candidate_result.latency_ms - baseline_result.latency_ms)
+
+    shared_count = len(shared_queries)
+    return ChunkingPairwiseComparison(
+        candidate=candidate_name,
+        baseline=baseline_name,
+        shared_query_count=shared_count,
+        candidate_win_count=candidate_wins,
+        baseline_win_count=baseline_wins,
+        tie_count=ties,
+        candidate_win_rate=candidate_wins / shared_count,
+        baseline_win_rate=baseline_wins / shared_count,
+        mean_reciprocal_rank_delta=mean(reciprocal_rank_deltas),
+        mean_target_coverage_delta=mean(target_coverage_deltas),
+        mean_target_ndcg_delta=mean(target_ndcg_deltas),
+        mean_precision_delta=mean(precision_deltas),
+        mean_latency_delta_ms=mean(latency_deltas),
+    )
+
+
+def results_by_query(results: list[RetrievalCaseResult]) -> dict[str, RetrievalCaseResult]:
+    return {result.query: result for result in results}
+
+
+def compare_case_results(candidate: RetrievalCaseResult, baseline: RetrievalCaseResult) -> int:
+    candidate_score = case_score(candidate)
+    baseline_score = case_score(baseline)
+    if candidate_score > baseline_score:
+        return 1
+    if candidate_score < baseline_score:
+        return -1
+    return 0
+
+
+def case_score(result: RetrievalCaseResult) -> tuple[float, float, float, float]:
+    return (
+        result.target_coverage_at_k,
+        result.target_ndcg_at_k,
+        result.reciprocal_rank,
+        result.precision_at_k,
+    )
+
+
+def mean(values: list[float]) -> float:
+    return sum(values) / len(values) if values else 0.0

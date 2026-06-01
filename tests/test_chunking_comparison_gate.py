@@ -7,7 +7,11 @@ from chunking_docs.evaluation.chunking_gate import (
     gate_chunking_comparison,
     load_chunking_comparison,
 )
-from chunking_docs.evaluation.compare import ChunkingComparison, ChunkingComparisonRow
+from chunking_docs.evaluation.compare import (
+    ChunkingComparison,
+    ChunkingComparisonRow,
+    ChunkingPairwiseComparison,
+)
 
 
 def test_gate_chunking_comparison_passes_selected_candidate_against_baseline():
@@ -82,6 +86,49 @@ def test_gate_chunking_comparison_flags_retrieval_regressions():
     assert "max_mean_latency_ms_ratio" in report.failed_checks
 
 
+def test_gate_chunking_comparison_checks_pairwise_lift():
+    comparison = comparison_report()
+
+    report = gate_chunking_comparison(
+        comparison,
+        candidate="strong",
+        baseline_candidate="weak",
+        min_pairwise_shared_queries=10,
+        min_pairwise_win_rate=0.6,
+        min_pairwise_target_coverage_lift=0.2,
+        min_pairwise_target_ndcg_lift=0.2,
+        min_pairwise_mrr_lift=0.2,
+        min_pairwise_precision_lift=0.2,
+        max_pairwise_mean_latency_delta_ms=10.0,
+    )
+
+    assert report.passed is True
+    assert report.pairwise_metrics["pairwise_shared_query_count"] == 10.0
+    assert report.pairwise_metrics["pairwise_candidate_win_rate"] == 0.7
+    assert report.pairwise_metrics["pairwise_mean_target_ndcg_delta"] == 0.25
+
+
+def test_gate_chunking_comparison_flags_missing_pairwise_lift():
+    comparison = comparison_report()
+
+    report = gate_chunking_comparison(
+        comparison,
+        candidate="weak",
+        baseline_candidate="strong",
+        min_pairwise_win_rate=0.6,
+        min_pairwise_target_coverage_lift=0.0,
+        min_pairwise_target_ndcg_lift=0.0,
+        max_pairwise_mean_latency_delta_ms=0.0,
+    )
+
+    assert report.passed is False
+    assert report.pairwise_metrics["pairwise_candidate_win_rate"] == 0.2
+    assert "min_pairwise_win_rate" in report.failed_checks
+    assert "min_pairwise_target_coverage_lift" in report.failed_checks
+    assert "min_pairwise_target_ndcg_lift" in report.failed_checks
+    assert "max_pairwise_mean_latency_delta_ms" in report.failed_checks
+
+
 def test_load_chunking_comparison_accepts_nested_report_shape(tmp_path):
     path = tmp_path / "chunking_sweep.json"
     path.write_text(json.dumps({"comparison": comparison_report().model_dump()}), encoding="utf-8")
@@ -121,6 +168,8 @@ def test_gate_chunking_comparison_cli_writes_json_and_fails(tmp_path):
             "child=0.8",
             "--max-recall-drop",
             "0.1",
+            "--min-pairwise-win-rate",
+            "0.6",
             "--output",
             str(output_path),
         ],
@@ -140,6 +189,8 @@ def test_gate_chunking_comparison_cli_writes_json_and_fails(tmp_path):
     assert payload["chunk_strategy_metrics"]["visual_asset_text"]["target_coverage_at_k"] == 0.2
     assert payload["retrieval_role_metrics"]["child"]["target_coverage_at_k"] == 0.1
     assert "max_recall_at_k_drop" in payload["failed_checks"]
+    assert "min_pairwise_win_rate" in payload["failed_checks"]
+    assert payload["pairwise_metrics"]["pairwise_candidate_win_rate"] == 0.2
 
 
 def comparison_report() -> ChunkingComparison:
@@ -181,6 +232,38 @@ def comparison_report() -> ChunkingComparison:
         best_by_quality="strong",
         best_by_retrieval="strong",
         fastest_by_mean_latency="strong",
+        pairwise=[
+            ChunkingPairwiseComparison(
+                candidate="strong",
+                baseline="weak",
+                shared_query_count=10,
+                candidate_win_count=7,
+                baseline_win_count=1,
+                tie_count=2,
+                candidate_win_rate=0.7,
+                baseline_win_rate=0.1,
+                mean_reciprocal_rank_delta=0.25,
+                mean_target_coverage_delta=0.3,
+                mean_target_ndcg_delta=0.25,
+                mean_precision_delta=0.2,
+                mean_latency_delta_ms=-18.0,
+            ),
+            ChunkingPairwiseComparison(
+                candidate="weak",
+                baseline="strong",
+                shared_query_count=10,
+                candidate_win_count=2,
+                baseline_win_count=7,
+                tie_count=1,
+                candidate_win_rate=0.2,
+                baseline_win_rate=0.7,
+                mean_reciprocal_rank_delta=-0.25,
+                mean_target_coverage_delta=-0.3,
+                mean_target_ndcg_delta=-0.25,
+                mean_precision_delta=-0.2,
+                mean_latency_delta_ms=18.0,
+            ),
+        ],
     )
 
 

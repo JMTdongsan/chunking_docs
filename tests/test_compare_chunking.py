@@ -71,5 +71,14 @@ def test_compare_chunking_reports_ranks_by_retrieval_then_quality():
     assert comparison.rows[0].visual_text_covered_asset_count == 1
     assert comparison.rows[0].visual_text_coverage_ratio == 1.0
     assert comparison.rows[0].standalone_visual_chunk_count == 0
+    pairwise = next(
+        item
+        for item in comparison.pairwise
+        if item.candidate == "strong" and item.baseline == "weak"
+    )
+    assert pairwise.shared_query_count == 1
+    assert pairwise.candidate_win_rate == 1.0
+    assert pairwise.mean_target_coverage_delta > 0.0
+    assert pairwise.mean_target_ndcg_delta > 0.0
     assert comparison.rows[-1].failed_queries == ["river corridor"]
     assert comparison.rows[-1].visual_text_coverage_ratio == 0.0
