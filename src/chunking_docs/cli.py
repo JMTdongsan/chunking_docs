@@ -1054,6 +1054,8 @@ def gate_qdrant_vector_ablation_command(
             "metrics": gate_report.metrics,
             "target_metrics": gate_report.target_metrics,
             "source_family_metrics": gate_report.source_family_metrics,
+            "chunk_strategy_metrics": gate_report.chunk_strategy_metrics,
+            "retrieval_role_metrics": gate_report.retrieval_role_metrics,
         }
     print(payload)
     if fail and not gate_report.passed:
@@ -3041,6 +3043,10 @@ def gate_retrieval_ablation_command(
             "failed_checks": gate_report.failed_checks,
             "metrics": gate_report.metrics,
             "baseline_metrics": gate_report.baseline_metrics,
+            "target_metrics": gate_report.target_metrics,
+            "source_family_metrics": gate_report.source_family_metrics,
+            "chunk_strategy_metrics": gate_report.chunk_strategy_metrics,
+            "retrieval_role_metrics": gate_report.retrieval_role_metrics,
         }
     print(payload)
     if fail and not gate_report.passed:

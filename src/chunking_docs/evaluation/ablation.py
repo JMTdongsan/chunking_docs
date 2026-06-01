@@ -5,8 +5,12 @@ from pydantic import BaseModel, Field
 from chunking_docs.embeddings.tokenizers import LexicalTokenizerConfig
 from chunking_docs.evaluation.gate import (
     RetrievalGateCheck,
+    chunk_strategy_metric_key,
     maximum_check,
     minimum_check,
+    retrieval_chunk_strategy_metrics,
+    retrieval_role_metric_key,
+    retrieval_role_metrics_payload,
     retrieval_source_family_metrics,
     retrieval_target_metrics,
     source_family_metric_key,
@@ -49,8 +53,12 @@ class RetrievalAblationGateReport(BaseModel):
     baseline_metrics: dict[str, float] = Field(default_factory=dict)
     target_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
     source_family_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
+    chunk_strategy_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
+    retrieval_role_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
     baseline_target_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
     baseline_source_family_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
+    baseline_chunk_strategy_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
+    baseline_retrieval_role_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
     best_by_recall: str | None = None
     best_by_target_coverage: str | None = None
     best_by_target_ndcg: str | None = None
@@ -88,6 +96,8 @@ class QdrantVectorAblationGateReport(BaseModel):
     metrics: dict[str, float]
     target_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
     source_family_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
+    chunk_strategy_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
+    retrieval_role_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
     best_by_recall: str | None = None
     best_by_target_coverage: str | None = None
     best_by_target_ndcg: str | None = None
@@ -323,16 +333,32 @@ def gate_retrieval_ablation(
 
     target_metrics = retrieval_target_metrics(row.evaluation)
     source_family_metrics = retrieval_source_family_metrics(row.evaluation)
-    metrics = qdrant_vector_ablation_metrics(row.evaluation, target_metrics, source_family_metrics)
+    chunk_strategy_metrics = retrieval_chunk_strategy_metrics(row.evaluation)
+    retrieval_role_metrics = retrieval_role_metrics_payload(row.evaluation)
+    metrics = qdrant_vector_ablation_metrics(
+        row.evaluation,
+        target_metrics,
+        source_family_metrics,
+        chunk_strategy_metrics,
+        retrieval_role_metrics,
+    )
     baseline_target_metrics = retrieval_target_metrics(baseline_row.evaluation) if baseline_row else {}
     baseline_source_family_metrics = (
         retrieval_source_family_metrics(baseline_row.evaluation) if baseline_row else {}
+    )
+    baseline_chunk_strategy_metrics = (
+        retrieval_chunk_strategy_metrics(baseline_row.evaluation) if baseline_row else {}
+    )
+    baseline_retrieval_role_metrics = (
+        retrieval_role_metrics_payload(baseline_row.evaluation) if baseline_row else {}
     )
     baseline_metrics = (
         qdrant_vector_ablation_metrics(
             baseline_row.evaluation,
             baseline_target_metrics,
             baseline_source_family_metrics,
+            baseline_chunk_strategy_metrics,
+            baseline_retrieval_role_metrics,
         )
         if baseline_row
         else {}
@@ -431,8 +457,12 @@ def gate_retrieval_ablation(
         baseline_metrics=baseline_metrics,
         target_metrics=target_metrics,
         source_family_metrics=source_family_metrics,
+        chunk_strategy_metrics=chunk_strategy_metrics,
+        retrieval_role_metrics=retrieval_role_metrics,
         baseline_target_metrics=baseline_target_metrics,
         baseline_source_family_metrics=baseline_source_family_metrics,
+        baseline_chunk_strategy_metrics=baseline_chunk_strategy_metrics,
+        baseline_retrieval_role_metrics=baseline_retrieval_role_metrics,
         best_by_recall=report.best_by_recall,
         best_by_target_coverage=report.best_by_target_coverage,
         best_by_target_ndcg=report.best_by_target_ndcg,
@@ -599,7 +629,15 @@ def gate_qdrant_vector_ablation(
 
     target_metrics = retrieval_target_metrics(row.evaluation)
     source_family_metrics = retrieval_source_family_metrics(row.evaluation)
-    metrics = qdrant_vector_ablation_metrics(row.evaluation, target_metrics, source_family_metrics)
+    chunk_strategy_metrics = retrieval_chunk_strategy_metrics(row.evaluation)
+    retrieval_role_metrics = retrieval_role_metrics_payload(row.evaluation)
+    metrics = qdrant_vector_ablation_metrics(
+        row.evaluation,
+        target_metrics,
+        source_family_metrics,
+        chunk_strategy_metrics,
+        retrieval_role_metrics,
+    )
     checks = [
         minimum_check("min_recall_at_k", "recall_at_k", metrics, min_recall_at_k),
         minimum_check(
@@ -692,6 +730,8 @@ def gate_qdrant_vector_ablation(
         metrics=metrics,
         target_metrics=target_metrics,
         source_family_metrics=source_family_metrics,
+        chunk_strategy_metrics=chunk_strategy_metrics,
+        retrieval_role_metrics=retrieval_role_metrics,
         best_by_recall=report.best_by_recall,
         best_by_target_coverage=report.best_by_target_coverage,
         best_by_target_ndcg=report.best_by_target_ndcg,
@@ -716,6 +756,8 @@ def qdrant_vector_ablation_metrics(
     evaluation: RetrievalEvaluation,
     target_metrics: dict[str, dict[str, float]] | None = None,
     source_family_metrics: dict[str, dict[str, float]] | None = None,
+    chunk_strategy_metrics: dict[str, dict[str, float]] | None = None,
+    retrieval_role_metrics: dict[str, dict[str, float]] | None = None,
 ) -> dict[str, float]:
     metrics = {
         "hit_rate": evaluation.hit_rate,
@@ -734,6 +776,12 @@ def qdrant_vector_ablation_metrics(
     for family, family_metrics in (source_family_metrics or {}).items():
         for key, value in family_metrics.items():
             metrics[source_family_metric_key(family, key)] = value
+    for strategy, strategy_metrics in (chunk_strategy_metrics or {}).items():
+        for key, value in strategy_metrics.items():
+            metrics[chunk_strategy_metric_key(strategy, key)] = value
+    for role, role_metrics in (retrieval_role_metrics or {}).items():
+        for key, value in role_metrics.items():
+            metrics[retrieval_role_metric_key(role, key)] = value
     return metrics
 
 

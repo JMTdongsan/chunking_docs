@@ -1232,6 +1232,10 @@ def test_gate_retrieval_ablation_can_require_visual_lift():
     assert gate.baseline_mode == "bm25_text"
     assert gate.metrics["recall_at_k"] == 1.0
     assert gate.baseline_metrics["recall_at_k"] == 0.0
+    assert gate.metrics["chunk_strategy.visual_asset_text.target_coverage_at_k"] == 1.0
+    assert gate.metrics["retrieval_role.child.target_coverage_at_k"] == 1.0
+    assert gate.chunk_strategy_metrics["visual_asset_text"]["target_coverage_at_k"] == 1.0
+    assert gate.retrieval_role_metrics["child"]["target_coverage_at_k"] == 1.0
     assert gate.failed_checks == []
 
 
@@ -1259,6 +1263,10 @@ def visual_lexical_ablation_report():
             kind=ChunkKind.TEXT,
             text="reference overview",
             asset_ids=["asset-1"],
+            metadata={
+                "chunking_strategy": "visual_asset_text",
+                "retrieval_role": "child",
+            },
         )
     ]
     assets = [
@@ -1514,6 +1522,10 @@ def qdrant_vector_ablation_report_for_gate():
         kind=ChunkKind.TEXT,
         text="visual evidence",
         asset_ids=["asset-1"],
+        metadata={
+            "chunking_strategy": "visual_asset_text",
+            "retrieval_role": "child",
+        },
     )
     cases = [RetrievalCase(query="visual evidence", expected_asset_ids=["asset-1"])]
     caption_image_eval = evaluate_search_results(
@@ -1581,6 +1593,10 @@ def test_gate_qdrant_vector_ablation_passes_required_mode():
     assert gate.target_metrics["asset"]["coverage_at_k"] == 1.0
     assert gate.metrics["source_family.visual.target_coverage_at_k"] == 1.0
     assert gate.source_family_metrics["visual"]["target_coverage_at_k"] == 1.0
+    assert gate.metrics["chunk_strategy.visual_asset_text.target_coverage_at_k"] == 1.0
+    assert gate.metrics["retrieval_role.child.target_coverage_at_k"] == 1.0
+    assert gate.chunk_strategy_metrics["visual_asset_text"]["target_coverage_at_k"] == 1.0
+    assert gate.retrieval_role_metrics["child"]["target_coverage_at_k"] == 1.0
     assert gate.failed_checks == []
 
 
@@ -1648,6 +1664,8 @@ def test_gate_qdrant_vector_ablation_cli_writes_report(tmp_path):
     assert payload["vector_names"] == ["caption_dense", "image_dense"]
     assert payload["target_metrics"]["asset"]["coverage_at_k"] == 1.0
     assert payload["source_family_metrics"]["visual"]["target_coverage_at_k"] == 1.0
+    assert payload["chunk_strategy_metrics"]["visual_asset_text"]["target_coverage_at_k"] == 1.0
+    assert payload["retrieval_role_metrics"]["child"]["target_coverage_at_k"] == 1.0
 
 
 def test_gate_qdrant_vector_ablation_cli_can_report_without_failing(tmp_path):
