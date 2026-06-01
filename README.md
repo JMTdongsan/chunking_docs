@@ -1,6 +1,6 @@
 # chunking_docs
 
-`chunking_docs` is a Python library and CLI for preparing complex PDF documents for RAG systems. It focuses on chunking strategy, multimodal document assets, hybrid retrieval artifacts, and storage-ready outputs rather than on a single target document.
+`chunking_docs` is a Python library and CLI for preparing complex PDF documents for RAG systems. It focuses on chunking strategy, multimodal document assets, hybrid retrieval artifacts, and storage-ready outputs rather than on any one source PDF.
 
 ## What It Does
 
@@ -390,7 +390,7 @@ Qdrant search, evaluation, ablation, and RAG context outputs include `query_enco
 
 ## PostgreSQL
 
-PostgreSQL is intended for source metadata, page profiles, chunks, BM25 token artifacts, visual asset links, assets, graph triples, and embedding artifact provenance. Vector search is handled by Qdrant by default, while PostgreSQL stores vector file names, dimensions, counts, checksums, backend/model metadata, and collection names so embedding runs remain auditable.
+PostgreSQL is intended for source metadata, page profiles, chunks, BM25 token artifacts, visual asset links, assets, normalized VLM object rows, graph triples, and embedding artifact provenance. Vector search is handled by Qdrant by default, while PostgreSQL stores vector file names, dimensions, counts, checksums, backend/model metadata, and collection names so embedding runs remain auditable.
 
 ```bash
 chunking-docs postgres-schema --output outputs/package/postgres_schema.sql
@@ -403,7 +403,7 @@ chunking-docs postgres-upsert "postgresql://user:password@localhost:5432/chunkin
   --package-dir outputs/package
 ```
 
-`postgres-schema` writes the SQL contract without opening a database connection. `postgres-check-schema` validates required tables, columns, column types, indexes, and the pgvector extension before metadata rows are upserted. BM25 token rows from `bm25_tokens.json` are stored in `chunk_lexical_tokens` with the tokenizer config and token array, so lexical experiments can be audited or migrated to a PostgreSQL-backed search service later. Chunk-to-asset links are stored in a normalized `chunk_asset_links` table and also preserved in chunk metadata for auditability. Asset-backed graph triples are remapped to an available chunk before PostgreSQL row export while retaining the original chunk ID in qualifiers. Use `--apply-schema` when bootstrapping a new database; omit it when checking an existing schema for drift.
+`postgres-schema` writes the SQL contract without opening a database connection. `postgres-check-schema` validates required tables, columns, column types, indexes, and the pgvector extension before metadata rows are upserted. BM25 token rows from `bm25_tokens.json` are stored in `chunk_lexical_tokens` with the tokenizer config and token array, so lexical experiments can be audited or migrated to a PostgreSQL-backed search service later. Chunk-to-asset links are stored in a normalized `chunk_asset_links` table and also preserved in chunk metadata for auditability. Structured VLM object metadata from visual assets is exported to `visual_objects` with label, bbox region, attributes, description, confidence, object text, and asset/page provenance so object-detection probes can be joined without parsing asset JSON. Asset-backed graph triples are remapped to an available chunk before PostgreSQL row export while retaining the original chunk ID in qualifiers. Use `--apply-schema` when bootstrapping a new database; omit it when checking an existing schema for drift.
 
 ## Ingestion Readiness
 

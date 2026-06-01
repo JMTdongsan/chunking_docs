@@ -17,6 +17,7 @@ from chunking_docs.storage.postgres_records import (
     embedding_artifact_rows,
     page_row,
     triple_row,
+    visual_object_rows,
 )
 
 SCHEMA_PATH = Path(__file__).with_name("postgres_schema.sql")
@@ -70,6 +71,24 @@ EXPECTED_POSTGRES_SCHEMA = {
         "vlm_summary": "text",
         "metadata": "jsonb",
     },
+    "visual_objects": {
+        "object_id": "text",
+        "doc_id": "text",
+        "asset_id": "text",
+        "page_no": "integer",
+        "kind": "text",
+        "object_index": "integer",
+        "label": "text",
+        "source_key": "text",
+        "bbox": "double precision[]",
+        "bbox_region": "text",
+        "attributes": "jsonb",
+        "description": "text",
+        "location": "text",
+        "confidence": "double precision",
+        "text": "text",
+        "metadata": "jsonb",
+    },
     "chunk_asset_links": {
         "chunk_id": "text",
         "asset_id": "text",
@@ -118,6 +137,11 @@ EXPECTED_POSTGRES_INDEXES = {
     "embedding_artifacts_collection_idx": "embedding_artifacts",
     "pages_text_quality_idx": "pages",
     "triples_spo_idx": "triples",
+    "visual_objects_asset_idx": "visual_objects",
+    "visual_objects_bbox_region_idx": "visual_objects",
+    "visual_objects_doc_idx": "visual_objects",
+    "visual_objects_label_idx": "visual_objects",
+    "visual_objects_source_key_idx": "visual_objects",
 }
 
 
@@ -200,6 +224,7 @@ class PostgresDocumentStore:
                 upsert_chunks(cursor, rows["chunks"])
                 upsert_chunk_lexical_tokens(cursor, rows["chunk_lexical_tokens"])
                 upsert_assets(cursor, rows["assets"])
+                upsert_visual_objects(cursor, rows["visual_objects"])
                 upsert_chunk_asset_links(cursor, rows["chunk_asset_links"])
                 upsert_triples(cursor, rows["triples"])
                 upsert_embedding_artifacts(cursor, rows["embedding_artifacts"])
@@ -209,6 +234,7 @@ class PostgresDocumentStore:
             "chunks": len(rows["chunks"]),
             "chunk_lexical_tokens": len(rows["chunk_lexical_tokens"]),
             "assets": len(rows["assets"]),
+            "visual_objects": len(rows["visual_objects"]),
             "chunk_asset_links": len(rows["chunk_asset_links"]),
             "triples": len(rows["triples"]),
             "embedding_artifacts": len(rows["embedding_artifacts"]),
@@ -227,6 +253,7 @@ def manifest_rows(manifest: ProcessingManifest, base_dir: Path | None = None) ->
             package_dir=base_dir,
         ),
         "assets": [asset_row(asset, base_dir=base_dir) for asset in manifest.assets],
+        "visual_objects": visual_object_rows(manifest.assets),
         "chunk_asset_links": chunk_asset_link_rows(
             manifest.chunks,
             valid_asset_ids={asset.asset_id for asset in manifest.assets},
@@ -468,6 +495,41 @@ def upsert_assets(cursor, rows: list[dict[str, Any]]) -> None:
             metadata = excluded.metadata
         """,
         [with_json(row, "metadata") for row in rows],
+    )
+
+
+def upsert_visual_objects(cursor, rows: list[dict[str, Any]]) -> None:
+    if not rows:
+        return
+    cursor.executemany(
+        """
+        insert into visual_objects (
+            object_id, doc_id, asset_id, page_no, kind, object_index, label,
+            source_key, bbox, bbox_region, attributes, description, location,
+            confidence, text, metadata
+        )
+        values (
+            %(object_id)s, %(doc_id)s, %(asset_id)s, %(page_no)s, %(kind)s,
+            %(object_index)s, %(label)s, %(source_key)s, %(bbox)s,
+            %(bbox_region)s, %(attributes)s::jsonb, %(description)s,
+            %(location)s, %(confidence)s, %(text)s, %(metadata)s::jsonb
+        )
+        on conflict (object_id) do update set
+            page_no = excluded.page_no,
+            kind = excluded.kind,
+            object_index = excluded.object_index,
+            label = excluded.label,
+            source_key = excluded.source_key,
+            bbox = excluded.bbox,
+            bbox_region = excluded.bbox_region,
+            attributes = excluded.attributes,
+            description = excluded.description,
+            location = excluded.location,
+            confidence = excluded.confidence,
+            text = excluded.text,
+            metadata = excluded.metadata
+        """,
+        [with_json(with_json(row, "attributes"), "metadata") for row in rows],
     )
 
 

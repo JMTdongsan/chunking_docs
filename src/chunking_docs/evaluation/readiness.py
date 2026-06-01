@@ -1170,6 +1170,7 @@ def postgres_rows_component(
         "chunks": len(rows["chunks"]),
         "chunk_lexical_tokens": len(rows["chunk_lexical_tokens"]),
         "assets": len(rows["assets"]),
+        "visual_objects": len(rows["visual_objects"]),
         "chunk_asset_links": len(rows["chunk_asset_links"]),
         "triples": len(rows["triples"]),
         "embedding_artifacts": len(rows["embedding_artifacts"]),

@@ -17,7 +17,7 @@ def test_public_audit_passes_clean_repository_shape(tmp_path):
     raw_dir.mkdir(parents=True)
     (raw_dir / "source.pdf").write_bytes(b"%PDF ignored generated input")
 
-    report = audit_public_artifacts(tmp_path, forbidden_patterns=["private target"])
+    report = audit_public_artifacts(tmp_path, forbidden_patterns=["forbidden fixture"])
 
     assert report.passed is True
     assert report.scanned_file_count == 2
@@ -28,11 +28,11 @@ def test_public_audit_passes_clean_repository_shape(tmp_path):
 def test_public_audit_detects_forbidden_public_text(tmp_path):
     write_default_gitignore(tmp_path)
     (tmp_path / "README.md").write_text(
-        "This line mentions a private target document.\n",
+        "This line mentions a forbidden fixture string.\n",
         encoding="utf-8",
     )
 
-    report = audit_public_artifacts(tmp_path, forbidden_patterns=["PRIVATE TARGET"])
+    report = audit_public_artifacts(tmp_path, forbidden_patterns=["FORBIDDEN FIXTURE"])
 
     assert report.passed is False
     assert report.forbidden_match_count == 1
@@ -66,7 +66,7 @@ def test_public_audit_requires_generated_artifact_gitignore_patterns(tmp_path):
 
 def test_audit_publication_cli_writes_report(tmp_path):
     write_default_gitignore(tmp_path)
-    (tmp_path / "README.md").write_text("private target\n", encoding="utf-8")
+    (tmp_path / "README.md").write_text("forbidden fixture\n", encoding="utf-8")
     output = tmp_path / "audit.json"
 
     result = CliRunner().invoke(
@@ -75,7 +75,7 @@ def test_audit_publication_cli_writes_report(tmp_path):
             "audit-publication",
             str(tmp_path),
             "--forbidden-pattern",
-            "private target",
+            "forbidden fixture",
             "--output",
             str(output),
         ],

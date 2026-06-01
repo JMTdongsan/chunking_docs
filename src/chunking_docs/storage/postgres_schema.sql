@@ -53,6 +53,25 @@ create table if not exists assets (
     metadata jsonb not null default '{}'::jsonb
 );
 
+create table if not exists visual_objects (
+    object_id text primary key,
+    doc_id text not null references documents(doc_id) on delete cascade,
+    asset_id text not null references assets(asset_id) on delete cascade,
+    page_no integer not null,
+    kind text not null,
+    object_index integer not null,
+    label text not null,
+    source_key text,
+    bbox double precision[],
+    bbox_region text,
+    attributes jsonb not null default '[]'::jsonb,
+    description text,
+    location text,
+    confidence double precision,
+    text text not null,
+    metadata jsonb not null default '{}'::jsonb
+);
+
 create table if not exists chunk_asset_links (
     chunk_id text not null references chunks(chunk_id) on delete cascade,
     asset_id text not null references assets(asset_id) on delete cascade,
@@ -98,6 +117,11 @@ create index if not exists assets_scope_idx on assets ((metadata->>'asset_scope'
 create index if not exists assets_text_quality_idx on assets ((metadata->>'text_quality'));
 create index if not exists assets_parent_asset_idx on assets ((metadata->>'parent_asset_id'));
 create index if not exists assets_tile_idx on assets(doc_id, page_no, (metadata->>'tile_index'));
+create index if not exists visual_objects_doc_idx on visual_objects(doc_id, page_no);
+create index if not exists visual_objects_asset_idx on visual_objects(asset_id, object_index);
+create index if not exists visual_objects_label_idx on visual_objects(label);
+create index if not exists visual_objects_bbox_region_idx on visual_objects(bbox_region);
+create index if not exists visual_objects_source_key_idx on visual_objects(source_key);
 create index if not exists chunk_asset_links_asset_idx on chunk_asset_links(asset_id, chunk_id);
 create index if not exists chunk_asset_links_doc_idx on chunk_asset_links(doc_id, asset_id);
 create index if not exists triples_spo_idx on triples(subject, predicate, object);

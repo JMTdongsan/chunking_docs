@@ -4,10 +4,28 @@ import json
 from pathlib import Path
 from typing import Any
 
+from chunking_docs.embeddings.records import visual_object_embedding_items
 from chunking_docs.graph.provenance import asset_ids_from_ref, chunk_asset_ids
 from chunking_docs.models import DocumentChunk, GraphTriple, PageProfile, SourceDocument, VisualAsset
 
 BM25_TOKEN_MANIFEST = "bm25_tokens.json"
+VISUAL_OBJECT_ROW_KEYS = {
+    "object_id",
+    "doc_id",
+    "asset_id",
+    "page_no",
+    "kind",
+    "object_index",
+    "label",
+    "source_key",
+    "bbox",
+    "bbox_region",
+    "attributes",
+    "description",
+    "location",
+    "confidence",
+    "text",
+}
 
 
 def document_row(document: SourceDocument) -> dict[str, Any]:
@@ -106,6 +124,41 @@ def asset_row(asset: VisualAsset, base_dir: Path | None = None) -> dict[str, Any
         "ocr_text": asset.ocr_text,
         "vlm_summary": asset.vlm_summary,
         "metadata": asset.metadata,
+    }
+
+
+def visual_object_rows(assets: list[VisualAsset]) -> list[dict[str, Any]]:
+    rows = []
+    for item in visual_object_embedding_items(assets):
+        rows.append(visual_object_row(item))
+    return rows
+
+
+def visual_object_row(item: dict[str, Any]) -> dict[str, Any]:
+    bbox = item.get("bbox")
+    metadata = {
+        key: value
+        for key, value in item.items()
+        if key not in VISUAL_OBJECT_ROW_KEYS and value not in (None, "", [], {})
+    }
+    metadata["record_kind"] = "visual_object"
+    return {
+        "object_id": str(item["object_id"]),
+        "doc_id": str(item["doc_id"]),
+        "asset_id": str(item["asset_id"]),
+        "page_no": int(item["page_no"]),
+        "kind": str(item["kind"]),
+        "object_index": int(item["object_index"]),
+        "label": str(item["label"]),
+        "source_key": item.get("source_key"),
+        "bbox": list(bbox) if isinstance(bbox, list) else None,
+        "bbox_region": item.get("bbox_region"),
+        "attributes": item.get("attributes") or [],
+        "description": item.get("description"),
+        "location": item.get("location"),
+        "confidence": item.get("confidence"),
+        "text": str(item["text"]),
+        "metadata": metadata,
     }
 
 

@@ -81,6 +81,7 @@ DEFAULT_PUBLIC_AUDIT_EXCLUDES = [
     ".pytest_cache/**",
     ".ruff_cache/**",
     "__pycache__/**",
+    "**/__pycache__/**",
     "dist/**",
     "*.egg-info/**",
     "data/raw/**",

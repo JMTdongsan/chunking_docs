@@ -112,7 +112,7 @@
 14. **Storage**
     - Qdrant stores named vectors and payloads.
     - Text vector payloads preserve chunk IDs, page ranges, source refs, and visual asset link IDs for filtering and downstream context assembly.
-    - PostgreSQL stores normalized document, page, chunk, asset, triple, and embedding artifact metadata.
+    - PostgreSQL stores normalized document, page, chunk, asset, visual object, triple, and embedding artifact metadata.
     - BM25 can remain as a local manifest or be replaced by a dedicated lexical search service.
 
 15. **Ingestion Readiness**
@@ -228,11 +228,12 @@ Tables:
 - `chunks`
 - `chunk_lexical_tokens`
 - `assets`
+- `visual_objects`
 - `chunk_asset_links`
 - `triples`
 - `embedding_artifacts`
 
-The writer upserts in dependency order: documents, pages, chunks, BM25 token rows, assets, chunk-to-asset links, triples, embedding artifacts. `chunk_lexical_tokens` mirrors `bm25_tokens.json` with tokenizer configuration, token counts, and token arrays, which keeps lexical retrieval experiments reproducible and leaves room for a PostgreSQL-backed lexical service later. Chunk metadata preserves visual asset IDs derived from both direct asset links and `asset:` source refs, and `chunk_asset_links` stores the same relationships in normalized rows for joins and audits. Asset-backed graph triples are remapped to an available chunk before PostgreSQL rows are written, preserving the original chunk ID in qualifiers so VLM-derived triples satisfy relational foreign keys without losing provenance. The `embedding_artifacts` table stores vector file names, dimensions, counts, checksums, Qdrant collection names, backend/model metadata, and payload index metadata from `embedding_manifest.json`; vector values remain in Qdrant record files and Qdrant itself.
+The writer upserts in dependency order: documents, pages, chunks, BM25 token rows, assets, visual objects, chunk-to-asset links, triples, embedding artifacts. `chunk_lexical_tokens` mirrors `bm25_tokens.json` with tokenizer configuration, token counts, and token arrays, which keeps lexical retrieval experiments reproducible and leaves room for a PostgreSQL-backed lexical service later. Chunk metadata preserves visual asset IDs derived from both direct asset links and `asset:` source refs, and `chunk_asset_links` stores the same relationships in normalized rows for joins and audits. `visual_objects` normalizes structured VLM object metadata from assets into object-level rows with labels, bbox regions, attributes, descriptions, confidence, object text, and asset/page provenance so object-detection probes can be joined and audited without parsing nested asset JSON. Asset-backed graph triples are remapped to an available chunk before PostgreSQL rows are written, preserving the original chunk ID in qualifiers so VLM-derived triples satisfy relational foreign keys without losing provenance. The `embedding_artifacts` table stores vector file names, dimensions, counts, checksums, Qdrant collection names, backend/model metadata, and payload index metadata from `embedding_manifest.json`; vector values remain in Qdrant record files and Qdrant itself.
 
 `postgres-schema` exports the SQL contract for review or migration tooling without requiring a live database. `postgres-check-schema` validates the live PostgreSQL schema before upsert. It checks required tables, columns, column types, relational/search indexes, and the pgvector extension so metadata ingestion failures and slow-path schema drift are caught before batch writes.
 

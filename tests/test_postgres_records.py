@@ -21,6 +21,7 @@ from chunking_docs.storage.postgres_records import (
     embedding_artifact_rows,
     page_row,
     triple_row,
+    visual_object_rows,
 )
 from chunking_docs.storage.postgres_store import (
     EXPECTED_POSTGRES_INDEXES,
@@ -132,6 +133,70 @@ def test_chunk_asset_link_rows_mark_standalone_visual_chunks():
     assert rows[0]["metadata"]["chunking_strategy"] == "visual_asset_text"
 
 
+def test_visual_object_rows_normalize_vlm_object_metadata():
+    asset = VisualAsset(
+        asset_id="asset",
+        doc_id="doc",
+        page_no=2,
+        kind=AssetKind.FIGURE,
+        caption="system diagram",
+        vlm_summary="A pump is shown near a gauge.",
+        metadata={
+            "page_type": "diagram",
+            "objects": [
+                {
+                    "label": "pump",
+                    "bbox": [0.1, 0.2, 0.3, 0.4],
+                    "attributes": ["blue"],
+                    "description": "main pump",
+                    "confidence": "92%",
+                }
+            ],
+        },
+    )
+
+    rows = visual_object_rows([asset])
+
+    assert rows == [
+        {
+            "object_id": "asset:object:0",
+            "doc_id": "doc",
+            "asset_id": "asset",
+            "page_no": 2,
+            "kind": "figure",
+            "object_index": 0,
+            "label": "pump",
+            "source_key": "objects",
+            "bbox": [0.1, 0.2, 0.3, 0.4],
+            "bbox_region": "upper left",
+            "attributes": ["blue", "main pump"],
+            "description": "main pump",
+            "location": None,
+            "confidence": 0.92,
+            "text": (
+                "Object: pump\nAttributes: blue; main pump\nBbox region: upper left\n"
+                "Source field: objects\nPage type: diagram\nCaption: system diagram\n"
+                "VLM summary: A pump is shown near a gauge."
+            ),
+            "metadata": {
+                "caption": "system diagram",
+                "vlm_summary": "A pump is shown near a gauge.",
+                "page_type": "diagram",
+                "objects": [
+                    {
+                        "label": "pump",
+                        "bbox": [0.1, 0.2, 0.3, 0.4],
+                        "attributes": ["blue"],
+                        "description": "main pump",
+                        "confidence": "92%",
+                    }
+                ],
+                "record_kind": "visual_object",
+            },
+        }
+    ]
+
+
 def test_manifest_rows_counts():
     manifest = ProcessingManifest(
         doc=SourceDocument(doc_id="doc", title="title", local_path=Path("/tmp/doc.pdf")),
@@ -146,6 +211,7 @@ def test_manifest_rows_counts():
     assert rows["document"]["doc_id"] == "doc"
     assert rows["pages"] == []
     assert rows["chunk_lexical_tokens"] == []
+    assert rows["visual_objects"] == []
     assert rows["chunk_asset_links"] == []
     assert rows["embedding_artifacts"] == []
 
@@ -193,6 +259,30 @@ def test_manifest_rows_include_normalized_chunk_asset_links():
             },
         }
     ]
+
+
+def test_manifest_rows_include_visual_object_rows():
+    manifest = ProcessingManifest(
+        doc=SourceDocument(doc_id="doc", title="title", local_path=Path("/tmp/doc.pdf")),
+        profiles=[],
+        chunks=[],
+        assets=[
+            VisualAsset(
+                asset_id="asset",
+                doc_id="doc",
+                page_no=1,
+                kind=AssetKind.MAP,
+                metadata={"detected_objects": [{"label": "legend", "bbox_region": "lower right"}]},
+            )
+        ],
+        triples=[],
+    )
+
+    rows = manifest_rows(manifest)
+
+    assert rows["visual_objects"][0]["object_id"] == "asset:object:0"
+    assert rows["visual_objects"][0]["label"] == "legend"
+    assert rows["visual_objects"][0]["bbox_region"] == "lower right"
 
 
 def test_manifest_rows_remap_asset_backed_triples_to_existing_chunks():
