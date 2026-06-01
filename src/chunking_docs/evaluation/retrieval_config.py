@@ -27,6 +27,8 @@ class QdrantRetrievalConfigSelection(BaseModel):
     min_source_precision_at_hits_name: str | None = None
     min_source_family_precision_at_hits: float = 0.0
     min_source_family_precision_at_hits_name: str | None = None
+    source_precision_at_hits: dict[str, float] = Field(default_factory=dict)
+    source_family_precision_at_hits: dict[str, float] = Field(default_factory=dict)
     metrics: dict[str, float] = Field(default_factory=dict)
     case_group_metrics: dict[str, float] = Field(default_factory=dict)
     pairwise_comparisons: list[dict[str, Any]] = Field(default_factory=list)
@@ -138,6 +140,12 @@ def build_qdrant_retrieval_config_from_fusion_sweep(
             min_source_family_precision_at_hits_name=(
                 candidate.min_source_family_precision_at_hits_name
             ),
+            source_precision_at_hits=source_precision_at_hits_map(
+                candidate.evaluation.source_metrics
+            ),
+            source_family_precision_at_hits=source_precision_at_hits_map(
+                candidate.evaluation.source_family_metrics
+            ),
             metrics=candidate_metrics(candidate),
             case_group_metrics=candidate_case_group_metrics(candidate, case_group_key),
             pairwise_comparisons=selected_pairwise_comparisons(report, candidate.name),
@@ -197,6 +205,13 @@ def candidate_metrics(candidate: QdrantFusionSweepCandidate) -> dict[str, float]
         "mean_latency_ms": evaluation.mean_latency_ms,
         "p95_latency_ms": evaluation.p95_latency_ms,
         "failed_query_count": float(len(evaluation.failed_queries)),
+    }
+
+
+def source_precision_at_hits_map(metrics: dict[str, Any]) -> dict[str, float]:
+    return {
+        str(name): metric.precision_at_hits
+        for name, metric in sorted(metrics.items(), key=lambda item: str(item[0]))
     }
 
 

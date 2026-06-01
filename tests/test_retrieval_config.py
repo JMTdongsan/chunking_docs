@@ -49,6 +49,10 @@ def test_qdrant_retrieval_config_exports_global_recommended_candidate():
     assert config.selection.min_source_precision_at_hits_name == "qdrant:caption_dense"
     assert config.selection.min_source_family_precision_at_hits == pytest.approx(0.88)
     assert config.selection.min_source_family_precision_at_hits_name == "visual"
+    assert config.selection.source_precision_at_hits["qdrant:caption_dense"] == pytest.approx(
+        0.82
+    )
+    assert config.selection.source_family_precision_at_hits["visual"] == pytest.approx(0.88)
     assert config.selection.metrics["min_source_precision_at_hits"] == pytest.approx(0.82)
     assert config.selection.metrics["min_source_family_precision_at_hits"] == pytest.approx(0.88)
     assert config.selection.pairwise_comparisons[0]["baseline"] == "object_weighted"
@@ -156,6 +160,9 @@ def test_export_qdrant_retrieval_config_cli_writes_json(tmp_path):
     assert payload["selection"]["candidate"] == "object_weighted"
     assert payload["selection"]["min_source_precision_at_hits"] == pytest.approx(0.74)
     assert payload["selection"]["min_source_precision_at_hits_name"] == "qdrant:object_dense"
+    assert payload["selection"]["source_precision_at_hits"]["qdrant:object_dense"] == pytest.approx(
+        0.74
+    )
     assert payload["selection"]["pairwise_comparisons"][0]["baseline"] == "balanced"
     assert payload["fusion_weights"] == {"bm25": 1.0, "qdrant:object_dense": 1.4}
 

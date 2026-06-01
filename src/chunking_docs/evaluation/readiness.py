@@ -1285,6 +1285,9 @@ def qdrant_retrieval_config_component(
     if bm25_tokenizer_alignment.get("failed_check"):
         failed_checks.append(str(bm25_tokenizer_alignment["failed_check"]))
 
+    selection_precision_alignment = qdrant_config_selection_precision_alignment(config)
+    failed_checks.extend(selection_precision_alignment["failed_checks"])
+
     retrieval_alignment = qdrant_config_evaluation_alignment(
         config,
         retrieval_evaluation,
@@ -1308,6 +1311,7 @@ def qdrant_retrieval_config_component(
             "missing_collection_vectors": missing_collection_vectors,
             "missing_query_encoders": missing_query_encoders,
             "bm25_tokenizer_alignment": bm25_tokenizer_alignment,
+            "selection_precision_alignment": selection_precision_alignment,
             "retrieval_evaluation_alignment": retrieval_alignment,
             "rag_context_evaluation_alignment": rag_alignment,
         }
@@ -1440,6 +1444,82 @@ def bm25_tokenizer_alignment_metadata(
     if actual != expected_tokenizer:
         metadata["failed_check"] = "bm25_tokenizer_mismatch"
     return metadata
+
+
+def qdrant_config_selection_precision_alignment(config: QdrantRetrievalConfig) -> dict[str, Any]:
+    source_thresholds = metadata_float_mapping(config.metadata.get("min_source_precision_at_hits"))
+    family_thresholds = metadata_float_mapping(
+        config.metadata.get("min_source_family_precision_at_hits")
+    )
+    source_precision = metadata_float_mapping(config.selection.source_precision_at_hits)
+    family_precision = metadata_float_mapping(config.selection.source_family_precision_at_hits)
+    failed_checks: list[str] = []
+    if not config.selection.candidate_eligible:
+        failed_checks.append("selected_candidate_ineligible")
+    failed_checks.extend(
+        precision_threshold_failures(
+            source_precision,
+            source_thresholds,
+            failure_prefix="selection_min_source_precision_at_hits",
+        )
+    )
+    failed_checks.extend(
+        precision_threshold_failures(
+            family_precision,
+            family_thresholds,
+            failure_prefix="selection_min_source_family_precision_at_hits",
+        )
+    )
+    return {
+        "source_thresholds": source_thresholds,
+        "source_family_thresholds": family_thresholds,
+        "source_precision_at_hits": source_precision,
+        "source_family_precision_at_hits": family_precision,
+        "min_source_precision_at_hits": config.selection.min_source_precision_at_hits,
+        "min_source_precision_at_hits_name": config.selection.min_source_precision_at_hits_name,
+        "min_source_family_precision_at_hits": (
+            config.selection.min_source_family_precision_at_hits
+        ),
+        "min_source_family_precision_at_hits_name": (
+            config.selection.min_source_family_precision_at_hits_name
+        ),
+        "candidate_eligible": config.selection.candidate_eligible,
+        "eligibility_failures": list(config.selection.eligibility_failures),
+        "failed_checks": failed_checks,
+        "matches": not failed_checks,
+    }
+
+
+def precision_threshold_failures(
+    observed: dict[str, float],
+    thresholds: dict[str, float],
+    failure_prefix: str,
+) -> list[str]:
+    failures = []
+    for name, threshold in sorted(thresholds.items()):
+        actual = observed.get(name)
+        if actual is None or actual < threshold:
+            failures.append(f"{failure_prefix}:{name}")
+    return failures
+
+
+def metadata_float_mapping(value: Any) -> dict[str, float]:
+    if not isinstance(value, dict):
+        return {}
+    parsed: dict[str, float] = {}
+    for raw_name, raw_value in value.items():
+        name = normalize_metric_name(raw_name)
+        if not name:
+            continue
+        try:
+            parsed[name] = float(raw_value)
+        except (TypeError, ValueError):
+            continue
+    return parsed
+
+
+def normalize_metric_name(value: Any) -> str:
+    return str(value).strip().lower()
 
 
 def qdrant_config_evaluation_alignment(

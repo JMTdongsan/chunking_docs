@@ -985,8 +985,53 @@ def test_ingestion_readiness_validates_qdrant_retrieval_config(tmp_path):
     assert component.metadata["collection_vectors"] == ["text_dense"]
     assert component.metadata["missing_collection_vectors"] == []
     assert component.metadata["bm25_tokenizer_alignment"]["matches"] is True
+    assert component.metadata["selection_precision_alignment"]["matches"] is True
+    assert component.metadata["selection_precision_alignment"]["source_thresholds"] == {
+        "qdrant:text_dense": 0.8
+    }
+    assert component.metadata["selection_precision_alignment"]["source_precision_at_hits"] == {
+        "qdrant:text_dense": 0.9
+    }
     assert component.metadata["retrieval_evaluation_alignment"]["matches"] is True
     assert component.metadata["rag_context_evaluation_alignment"]["matches"] is True
+
+
+def test_ingestion_readiness_flags_qdrant_retrieval_config_source_precision_gap(tmp_path):
+    package_dir, manifest = write_ready_package(tmp_path)
+    config = readiness_qdrant_retrieval_config(package_dir)
+    config = config.model_copy(
+        update={
+            "selection": config.selection.model_copy(
+                update={
+                    "source_precision_at_hits": {"qdrant:text_dense": 0.4},
+                    "source_family_precision_at_hits": {"dense_text": 0.6},
+                }
+            )
+        }
+    )
+
+    report = build_ingestion_readiness_report(
+        package_dir,
+        manifest,
+        qdrant_retrieval_config=config,
+    )
+
+    component = next(
+        component
+        for component in report.components
+        if component.name == "qdrant_retrieval_config"
+    )
+    assert report.passed is False
+    assert "qdrant_retrieval_config" in report.failed_components
+    assert (
+        "selection_min_source_precision_at_hits:qdrant:text_dense"
+        in component.metadata["failed_checks"]
+    )
+    assert (
+        "selection_min_source_family_precision_at_hits:dense_text"
+        in component.metadata["failed_checks"]
+    )
+    assert component.metadata["selection_precision_alignment"]["matches"] is False
 
 
 def test_ingestion_readiness_flags_qdrant_retrieval_config_mismatch(tmp_path):
@@ -2849,7 +2894,17 @@ def readiness_qdrant_retrieval_config(package_dir: Path) -> QdrantRetrievalConfi
             source="global_recommended",
             candidate_rank=1,
             candidate_eligible=True,
+            min_source_precision_at_hits=0.9,
+            min_source_precision_at_hits_name="qdrant:text_dense",
+            min_source_family_precision_at_hits=0.9,
+            min_source_family_precision_at_hits_name="dense_text",
+            source_precision_at_hits={"qdrant:text_dense": 0.9},
+            source_family_precision_at_hits={"dense_text": 0.9},
         ),
+        metadata={
+            "min_source_precision_at_hits": {"qdrant:text_dense": 0.8},
+            "min_source_family_precision_at_hits": {"dense_text": 0.8},
+        },
     )
 
 
