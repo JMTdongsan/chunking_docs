@@ -33,6 +33,7 @@ from chunking_docs.evaluation.readiness import build_ingestion_readiness_report,
 from chunking_docs.evaluation.retrieval import (
     RetrievalCase,
     RetrievalEvaluation,
+    RetrievalSourceMetric,
     evaluate_search_results,
 )
 from chunking_docs.evaluation.retrieval_config import (
@@ -2184,6 +2185,74 @@ def test_ingestion_readiness_cli_can_validate_qdrant_retrieval_config(tmp_path):
         if component["name"] == "retrieval_gate"
     )
     assert retrieval_component["metadata"]["metrics"]["target_coverage_at_k"] == 1.0
+
+
+def test_ingestion_readiness_cli_can_gate_retrieval_source_precision(tmp_path):
+    package_dir, _ = write_ready_package(tmp_path)
+    retrieval_eval_path = tmp_path / "retrieval_eval.json"
+    output = tmp_path / "readiness.json"
+    source_metric = RetrievalSourceMetric(
+        query_count=1,
+        relevant_query_count=1,
+        hit_count=1,
+        relevant_hit_count=1,
+        precision_at_hits=0.9,
+        target_coverage_at_k=1.0,
+    )
+    retrieval_eval_path.write_text(
+        readiness_retrieval_evaluation(target_coverage=1.0)
+        .model_copy(
+            update={
+                "source_metrics": {"qdrant:text_dense": source_metric},
+                "source_family_metrics": {"dense_text": source_metric},
+                "case_group_source_metrics": {
+                    "retrieval_route": {"default": {"qdrant:text_dense": source_metric}}
+                },
+                "case_group_source_family_metrics": {
+                    "retrieval_route": {"default": {"dense_text": source_metric}}
+                },
+            }
+        )
+        .model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "ingestion-readiness",
+            "--package-dir",
+            str(package_dir),
+            "--retrieval-evaluation",
+            str(retrieval_eval_path),
+            "--require-retrieval-evaluation",
+            "--min-retrieval-source-precision-at-hits",
+            "qdrant:text_dense=0.8",
+            "--min-retrieval-source-family-precision-at-hits",
+            "dense_text=0.8",
+            "--min-retrieval-case-group-source-precision-at-hits",
+            "retrieval_route:default:qdrant:text_dense=0.8",
+            "--min-retrieval-case-group-source-family-precision-at-hits",
+            "retrieval_route:default:dense_text=0.8",
+            "--output",
+            str(output),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    component = next(
+        component
+        for component in payload["components"]
+        if component["name"] == "retrieval_gate"
+    )
+    assert payload["passed"] is True
+    assert component["metadata"]["source_metrics"]["qdrant:text_dense"][
+        "precision_at_hits"
+    ] == 0.9
+    assert component["metadata"]["source_family_metrics"]["dense_text"][
+        "precision_at_hits"
+    ] == 0.9
 
 
 def test_ingestion_readiness_cli_can_gate_retrieval_ablation_lift(tmp_path):

@@ -11,6 +11,7 @@ from chunking_docs.analysis.characterize import PackageCharacteristics, Processi
 from chunking_docs.analysis.qdrant_defaults import (
     QDRANT_ADAPTIVE_ROUTE_READINESS_GATE_ARGS,
     QDRANT_RAG_READINESS_GATE_ARGS,
+    qdrant_source_precision_readiness_gate_args,
 )
 
 
@@ -153,6 +154,9 @@ def build_ingestion_workflow_plan(
     qdrant_route_preset = qdrant_retrieval_route_preset(
         recommendations_by_code.get("validate_qdrant_rag_context")
     )
+    qdrant_vector_names = qdrant_retrieval_vector_names(
+        recommendations_by_code.get("validate_qdrant_rag_context")
+    )
     steps.append(
         readiness_step(
             package_dir,
@@ -172,6 +176,7 @@ def build_ingestion_workflow_plan(
             in recommendations_by_code,
             include_qdrant_rag_context=needs_qdrant_rag_context,
             qdrant_route_preset=qdrant_route_preset,
+            qdrant_vector_names=qdrant_vector_names,
         )
     )
     return IngestionWorkflowPlan(
@@ -334,6 +339,17 @@ def qdrant_retrieval_route_preset(recommendation: ProcessingRecommendation | Non
         return ""
     value = recommendation.metadata.get("retrieval_route_preset")
     return str(value).strip() if value is not None else ""
+
+
+def qdrant_retrieval_vector_names(
+    recommendation: ProcessingRecommendation | None,
+) -> list[str]:
+    if recommendation is None:
+        return []
+    value = recommendation.metadata.get("recommended_vector_names")
+    if not isinstance(value, list):
+        return []
+    return [str(item).strip() for item in value if str(item).strip()]
 
 
 def plan_visual_jobs_command(
@@ -506,6 +522,7 @@ def readiness_step(
     include_chunking_comparison: bool = False,
     include_qdrant_rag_context: bool = False,
     qdrant_route_preset: str = "",
+    qdrant_vector_names: list[str] | None = None,
 ) -> WorkflowStep:
     command_parts = [
         "chunking-docs ingestion-readiness",
@@ -543,6 +560,7 @@ def readiness_step(
         )
     if include_qdrant_rag_context:
         qdrant_gate_args = list(QDRANT_RAG_READINESS_GATE_ARGS)
+        qdrant_gate_args.extend(qdrant_source_precision_readiness_gate_args(qdrant_vector_names or []))
         if qdrant_route_preset in {"adaptive", "visual-object-graph"}:
             qdrant_gate_args.extend(QDRANT_ADAPTIVE_ROUTE_READINESS_GATE_ARGS)
         command_parts.extend(

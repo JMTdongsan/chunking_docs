@@ -53,6 +53,7 @@ def qdrant_rag_validation_commands(
         )
     if has_image:
         fusion_gate_args.append("--max-source-excluded-target-hit-rate qdrant:image_dense=0.0")
+    fusion_gate_args.extend(qdrant_source_precision_sweep_gate_args(vector_names))
 
     rag_context_gate_args = [
         "--min-target-coverage 0.8",
@@ -144,6 +145,48 @@ def qdrant_route_preset_for_vectors(vector_names: list[str]) -> str:
     return ""
 
 
+def qdrant_source_precision_sweep_gate_args(vector_names: list[str]) -> list[str]:
+    return qdrant_source_precision_gate_args(
+        vector_names,
+        source_option="--min-source-precision-at-hits",
+        family_option="--min-source-family-precision-at-hits",
+    )
+
+
+def qdrant_source_precision_readiness_gate_args(vector_names: list[str]) -> list[str]:
+    return qdrant_source_precision_gate_args(
+        vector_names,
+        source_option="--min-retrieval-source-precision-at-hits",
+        family_option="--min-retrieval-source-family-precision-at-hits",
+    )
+
+
+def qdrant_source_precision_gate_args(
+    vector_names: list[str],
+    source_option: str,
+    family_option: str,
+) -> list[str]:
+    names = set(vector_names)
+    args = []
+    exact_thresholds = {
+        "text_dense": 0.5,
+        "caption_dense": 0.5,
+        "object_dense": 0.3,
+        "image_dense": 0.5,
+        "triple_dense": 0.5,
+    }
+    for vector_name, threshold in exact_thresholds.items():
+        if vector_name in names:
+            args.append(f"{source_option} qdrant:{vector_name}={threshold}")
+    if "text_dense" in names:
+        args.append(f"{family_option} dense_text=0.5")
+    if names.intersection({"caption_dense", "object_dense", "image_dense"}):
+        args.append(f"{family_option} visual=0.5")
+    if "triple_dense" in names:
+        args.append(f"{family_option} graph=0.5")
+    return args
+
+
 QDRANT_RAG_READINESS_GATE_ARGS = [
     "--qdrant-retrieval-config {qdrant_retrieval_config}",
     "--require-qdrant-retrieval-config",
@@ -168,6 +211,10 @@ QDRANT_ADAPTIVE_ROUTE_READINESS_GATE_ARGS = [
     "--min-retrieval-case-group-source-target-coverage retrieval_route:visual_object:qdrant:object_dense=0.3",
     "--min-retrieval-case-group-source-family-target-coverage retrieval_route:graph_triple:graph=0.7",
     "--min-retrieval-case-group-source-family-target-coverage retrieval_route:visual_object:visual=0.3",
+    "--min-retrieval-case-group-source-precision-at-hits retrieval_route:graph_triple:qdrant:triple_dense=0.5",
+    "--min-retrieval-case-group-source-precision-at-hits retrieval_route:visual_object:qdrant:object_dense=0.3",
+    "--min-retrieval-case-group-source-family-precision-at-hits retrieval_route:graph_triple:graph=0.5",
+    "--min-retrieval-case-group-source-family-precision-at-hits retrieval_route:visual_object:visual=0.3",
     "--min-rag-context-case-group-target-coverage retrieval_route:graph_triple=0.7",
     "--min-rag-context-case-group-target-coverage retrieval_route:visual_object=0.7",
 ]

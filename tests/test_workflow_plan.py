@@ -112,6 +112,11 @@ def test_build_ingestion_workflow_plan_orders_runtime_visual_embedding_and_readi
     )
     assert "sweep-qdrant-fusion" in qdrant_commands[1]
     assert "--vector-names text_dense,caption_dense,image_dense" in qdrant_commands[1]
+    assert "--min-source-precision-at-hits qdrant:text_dense=0.5" in qdrant_commands[1]
+    assert "--min-source-precision-at-hits qdrant:caption_dense=0.5" in qdrant_commands[1]
+    assert "--min-source-precision-at-hits qdrant:image_dense=0.5" in qdrant_commands[1]
+    assert "--min-source-family-precision-at-hits dense_text=0.5" in qdrant_commands[1]
+    assert "--min-source-family-precision-at-hits visual=0.5" in qdrant_commands[1]
     assert "export-qdrant-retrieval-config" in qdrant_commands[2]
     assert "eval-qdrant-retrieval-config" in qdrant_commands[3]
     assert "--image-query-backend clip" in qdrant_commands[3]
@@ -142,6 +147,11 @@ def test_build_ingestion_workflow_plan_orders_runtime_visual_embedding_and_readi
     assert "--min-target-coverage-at-k 0.8" in readiness_command
     assert "--min-target-ndcg-at-k 0.7" in readiness_command
     assert "--max-retrieval-failed-queries 3" in readiness_command
+    assert "--min-retrieval-source-precision-at-hits qdrant:text_dense=0.5" in readiness_command
+    assert "--min-retrieval-source-precision-at-hits qdrant:caption_dense=0.5" in readiness_command
+    assert "--min-retrieval-source-precision-at-hits qdrant:image_dense=0.5" in readiness_command
+    assert "--min-retrieval-source-family-precision-at-hits dense_text=0.5" in readiness_command
+    assert "--min-retrieval-source-family-precision-at-hits visual=0.5" in readiness_command
     assert "--rag-context-evaluation" in readiness_command
     assert "--require-rag-context-evaluation" in readiness_command
     assert "--max-rag-context-mean-context-char-count 12000" in readiness_command
@@ -244,6 +254,9 @@ def test_workflow_plan_exports_adaptive_qdrant_route_for_visual_object_graph_pac
     assert "--vector-names text_dense,caption_dense,object_dense,image_dense,triple_dense" in (
         qdrant_commands[1]
     )
+    assert "--min-source-precision-at-hits qdrant:object_dense=0.3" in qdrant_commands[1]
+    assert "--min-source-precision-at-hits qdrant:triple_dense=0.5" in qdrant_commands[1]
+    assert "--min-source-family-precision-at-hits graph=0.5" in qdrant_commands[1]
     assert "export-qdrant-retrieval-config" in qdrant_commands[2]
     assert "--route-preset adaptive" in qdrant_commands[2]
     assert "eval-qdrant-retrieval-config" in qdrant_commands[3]
@@ -281,6 +294,38 @@ def test_workflow_plan_exports_adaptive_qdrant_route_for_visual_object_graph_pac
     )
     assert (
         "--min-retrieval-case-group-source-family-target-coverage "
+        "retrieval_route:visual_object:visual=0.3"
+        in readiness_command
+    )
+    assert (
+        "--min-retrieval-source-precision-at-hits qdrant:object_dense=0.3"
+        in readiness_command
+    )
+    assert (
+        "--min-retrieval-source-precision-at-hits qdrant:triple_dense=0.5"
+        in readiness_command
+    )
+    assert (
+        "--min-retrieval-source-family-precision-at-hits graph=0.5"
+        in readiness_command
+    )
+    assert (
+        "--min-retrieval-case-group-source-precision-at-hits "
+        "retrieval_route:graph_triple:qdrant:triple_dense=0.5"
+        in readiness_command
+    )
+    assert (
+        "--min-retrieval-case-group-source-precision-at-hits "
+        "retrieval_route:visual_object:qdrant:object_dense=0.3"
+        in readiness_command
+    )
+    assert (
+        "--min-retrieval-case-group-source-family-precision-at-hits "
+        "retrieval_route:graph_triple:graph=0.5"
+        in readiness_command
+    )
+    assert (
+        "--min-retrieval-case-group-source-family-precision-at-hits "
         "retrieval_route:visual_object:visual=0.3"
         in readiness_command
     )

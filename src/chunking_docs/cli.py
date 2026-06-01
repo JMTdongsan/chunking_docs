@@ -5019,6 +5019,16 @@ def ingestion_readiness_command(
         "--min-retrieval-source-target-coverage",
         help="Require retrieval exact-source target coverage such as qdrant:caption_dense=0.8.",
     ),
+    min_retrieval_source_precision_at_hits: list[str] = typer.Option(
+        None,
+        "--min-retrieval-source-precision-at-hits",
+        help="Require retrieval exact-source hit precision such as qdrant:image_dense=0.5.",
+    ),
+    min_retrieval_source_family_precision_at_hits: list[str] = typer.Option(
+        None,
+        "--min-retrieval-source-family-precision-at-hits",
+        help="Require retrieval source-family hit precision such as visual=0.5.",
+    ),
     min_retrieval_case_group_target_coverage: list[str] = typer.Option(
         None,
         "--min-retrieval-case-group-target-coverage",
@@ -5037,6 +5047,22 @@ def ingestion_readiness_command(
         "--min-retrieval-case-group-source-family-target-coverage",
         help=(
             "Require retrieval source-family coverage inside a case group, such as "
+            "retrieval_route:graph_triple:graph=0.5."
+        ),
+    ),
+    min_retrieval_case_group_source_precision_at_hits: list[str] = typer.Option(
+        None,
+        "--min-retrieval-case-group-source-precision-at-hits",
+        help=(
+            "Require retrieval exact-source hit precision inside a case group, such as "
+            "retrieval_route:visual_object:qdrant:object_dense=0.3."
+        ),
+    ),
+    min_retrieval_case_group_source_family_precision_at_hits: list[str] = typer.Option(
+        None,
+        "--min-retrieval-case-group-source-family-precision-at-hits",
+        help=(
+            "Require retrieval source-family hit precision inside a case group, such as "
             "retrieval_route:graph_triple:graph=0.5."
         ),
     ),
@@ -5696,6 +5722,14 @@ def ingestion_readiness_command(
         min_retrieval_source_target_coverage,
         "retrieval source target coverage",
     )
+    retrieval_source_precision_thresholds = parse_named_float_thresholds(
+        min_retrieval_source_precision_at_hits,
+        "retrieval source precision at hits",
+    )
+    retrieval_source_family_precision_thresholds = parse_named_float_thresholds(
+        min_retrieval_source_family_precision_at_hits,
+        "retrieval source family precision at hits",
+    )
     retrieval_target_type_thresholds = parse_named_float_thresholds(
         min_retrieval_target_type_coverage,
         "retrieval target type coverage",
@@ -5711,6 +5745,14 @@ def ingestion_readiness_command(
     retrieval_case_group_source_family_thresholds = parse_named_float_thresholds(
         min_retrieval_case_group_source_family_target_coverage,
         "retrieval case group source family target coverage",
+    )
+    retrieval_case_group_source_precision_thresholds = parse_named_float_thresholds(
+        min_retrieval_case_group_source_precision_at_hits,
+        "retrieval case group source precision at hits",
+    )
+    retrieval_case_group_source_family_precision_thresholds = parse_named_float_thresholds(
+        min_retrieval_case_group_source_family_precision_at_hits,
+        "retrieval case group source family precision at hits",
     )
     rag_context_target_type_thresholds = parse_named_float_thresholds(
         min_rag_context_target_type_coverage,
@@ -5879,10 +5921,20 @@ def ingestion_readiness_command(
             "min_target_type_coverage": retrieval_target_type_thresholds,
             "min_source_target_coverage": retrieval_source_thresholds,
             "min_source_family_target_coverage": retrieval_source_family_thresholds,
+            "min_source_precision_at_hits": retrieval_source_precision_thresholds,
+            "min_source_family_precision_at_hits": (
+                retrieval_source_family_precision_thresholds
+            ),
             "min_case_group_target_coverage": retrieval_case_group_thresholds,
             "min_case_group_source_target_coverage": retrieval_case_group_source_thresholds,
             "min_case_group_source_family_target_coverage": (
                 retrieval_case_group_source_family_thresholds
+            ),
+            "min_case_group_source_precision_at_hits": (
+                retrieval_case_group_source_precision_thresholds
+            ),
+            "min_case_group_source_family_precision_at_hits": (
+                retrieval_case_group_source_family_precision_thresholds
             ),
         },
         qdrant_retrieval_config=parsed_qdrant_retrieval_config,
