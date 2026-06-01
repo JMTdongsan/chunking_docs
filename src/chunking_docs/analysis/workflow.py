@@ -60,6 +60,20 @@ EMBEDDING_REBUILD_RECOMMENDATIONS = {
     "build_triple_vector_artifacts",
 }
 
+VISUAL_READINESS_GATE_ARGS = [
+    "--require-visual-annotations",
+    "--require-visual-quality",
+    "--min-vlm-summary-coverage 0.9",
+    "--min-vlm-json-parse-rate 0.9",
+    "--min-vlm-object-coverage 0.5",
+    "--min-object-bbox-coverage 0.5",
+    "--max-visual-failed-count 0",
+    "--visual-run-comparison {visual_run_comparison}",
+    "--require-visual-run-comparison",
+    "--require-visual-run-same-jobs",
+    "--min-visual-run-count 2",
+]
+
 
 def build_ingestion_workflow_plan(
     characteristics: PackageCharacteristics,
@@ -132,6 +146,7 @@ def build_ingestion_workflow_plan(
         readiness_step(
             package_dir,
             retrieval_cases,
+            include_visual_quality="prioritize_visual_annotations" in recommendations_by_code,
             include_chunking_comparison="compare_multimodal_hierarchical_chunking"
             in recommendations_by_code,
             include_qdrant_rag_context=needs_qdrant_rag_context,
@@ -204,6 +219,7 @@ def visual_annotation_step(
             f"--vlm-profile {vlm_profiles[0] if vlm_profiles else 'qwen2_5_vl_7b'} --apply"
         ),
         f"chunking-docs gate-visual-results --results {path_arg(package_dir / 'visual_job_results.jsonl')}",
+        visual_run_comparison_command(package_dir, vlm_profiles),
     ]
     return WorkflowStep(
         step_id="visual_annotations",
@@ -215,6 +231,22 @@ def visual_annotation_step(
         recommendation_codes=[recommendation.code],
         metadata=recommendation.metadata,
     )
+
+
+def visual_run_comparison_command(package_dir: Path, vlm_profiles: list[str]) -> str:
+    profiles = vlm_profiles or ["qwen2_5_vl_7b"]
+    command_parts = ["chunking-docs compare-visual-runs"]
+    for profile in profiles:
+        run_path = package_dir / f"visual_job_results.{profile}.jsonl"
+        command_parts.extend(["--run", shlex.quote(f"{profile}={path_text(run_path)}")])
+    command_parts.extend(
+        [
+            "--output",
+            path_arg(package_dir / "visual_run_comparison.json"),
+            "--require-same-jobs",
+        ]
+    )
+    return " ".join(command_parts)
 
 
 def recommendation_step(
@@ -240,6 +272,7 @@ def recommendation_step(
 def readiness_step(
     package_dir: Path,
     retrieval_cases: Path,
+    include_visual_quality: bool = False,
     include_chunking_comparison: bool = False,
     include_qdrant_rag_context: bool = False,
 ) -> WorkflowStep:
@@ -254,6 +287,13 @@ def readiness_step(
         "--min-retrieval-query-terms-per-case",
         "3",
     ]
+    if include_visual_quality:
+        command_parts.extend(
+            option.format(
+                visual_run_comparison=path_arg(package_dir / "visual_run_comparison.json")
+            )
+            for option in VISUAL_READINESS_GATE_ARGS
+        )
     if include_chunking_comparison:
         command_parts.extend(
             option.format(
@@ -280,6 +320,7 @@ def readiness_step(
         reason="Run the combined readiness gate before loading Qdrant, PostgreSQL, or a RAG service.",
         commands=[" ".join(command_parts)],
         metadata={
+            "include_visual_quality": include_visual_quality,
             "include_chunking_comparison": include_chunking_comparison,
             "include_qdrant_rag_context": include_qdrant_rag_context,
         },

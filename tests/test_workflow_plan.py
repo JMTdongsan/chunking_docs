@@ -59,6 +59,10 @@ def test_build_ingestion_workflow_plan_orders_runtime_visual_embedding_and_readi
     assert any("--profiles qwen2_5_vl_7b,llava_next_7b" in command for command in visual_commands)
     assert any("--batch-size 25" in command for command in visual_commands)
     assert any("--ocr paddleocr --vlm hf" in command for command in visual_commands)
+    assert any("compare-visual-runs" in command for command in visual_commands)
+    assert any("qwen2_5_vl_7b=" in command for command in visual_commands)
+    assert any("llava_next_7b=" in command for command in visual_commands)
+    assert any("visual_run_comparison.json" in command for command in visual_commands)
     assert any(
         "apply-chunking-sweep" in command
         for step in plan.steps
@@ -89,6 +93,13 @@ def test_build_ingestion_workflow_plan_orders_runtime_visual_embedding_and_readi
     assert "eval-qdrant-rag-context-config" in qdrant_commands[4]
     assert "gate-rag-context" in qdrant_commands[5]
     readiness_command = plan.steps[-1].commands[0]
+    assert "--require-visual-annotations" in readiness_command
+    assert "--require-visual-quality" in readiness_command
+    assert "--min-vlm-json-parse-rate 0.9" in readiness_command
+    assert "--visual-run-comparison" in readiness_command
+    assert "--require-visual-run-comparison" in readiness_command
+    assert "--require-visual-run-same-jobs" in readiness_command
+    assert "--min-visual-run-count 2" in readiness_command
     assert "--chunking-comparison" in readiness_command
     assert "--min-chunking-retrieval-score-per-embedding-kchar 0.0008" in readiness_command
     assert "--min-chunking-retrieval-score-per-mean-latency-ms 0.0005" in readiness_command
@@ -167,6 +178,7 @@ def test_workflow_plan_rebuilds_embeddings_after_index_refresh_for_indexed_text_
     readiness_command = plan.steps[-1].commands[0]
     assert "--require-qdrant-retrieval-config" in readiness_command
     assert "--require-rag-context-evaluation" in readiness_command
+    assert "--require-visual-run-comparison" not in readiness_command
 
 
 def make_workflow_package(tmp_path: Path):
