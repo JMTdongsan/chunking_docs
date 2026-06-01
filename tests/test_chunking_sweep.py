@@ -239,6 +239,11 @@ def test_sweep_pareto_dominance_accounts_for_quality_and_cost():
         "p95_target_rank": 1.0,
         "mean_latency_ms": 10.0,
         "chunk_count": 20.0,
+        "total_chunk_chars": 1200.0,
+        "mean_chunk_chars": 60.0,
+        "p95_chunk_chars": 80.0,
+        "embedding_text_kchars": 1.2,
+        "standalone_visual_chunk_count": 0.0,
     }
     weaker = {
         "retrieval_recall_at_k": 0.8,
@@ -252,12 +257,34 @@ def test_sweep_pareto_dominance_accounts_for_quality_and_cost():
         "p95_target_rank": 3.0,
         "mean_latency_ms": 12.0,
         "chunk_count": 25.0,
+        "total_chunk_chars": 1800.0,
+        "mean_chunk_chars": 72.0,
+        "p95_chunk_chars": 100.0,
+        "embedding_text_kchars": 1.8,
+        "standalone_visual_chunk_count": 1.0,
     }
     tradeoff = {**stronger, "target_coverage_at_k": 0.82, "mean_latency_ms": 14.0}
+    embedding_text_tradeoff = {
+        **stronger,
+        "target_coverage_at_k": 0.82,
+        "total_chunk_chars": 2200.0,
+        "mean_chunk_chars": 110.0,
+        "p95_chunk_chars": 180.0,
+        "embedding_text_kchars": 2.2,
+    }
+    leaner_same_quality = {
+        **stronger,
+        "total_chunk_chars": 900.0,
+        "mean_chunk_chars": 45.0,
+        "p95_chunk_chars": 70.0,
+        "embedding_text_kchars": 0.9,
+    }
 
     assert dominates(stronger, weaker)
     assert not dominates(weaker, stronger)
     assert not dominates(stronger, tradeoff)
+    assert not dominates(embedding_text_tradeoff, stronger)
+    assert dominates(leaner_same_quality, stronger)
 
 
 def test_sweep_chunking_cli_writes_report(tmp_path):

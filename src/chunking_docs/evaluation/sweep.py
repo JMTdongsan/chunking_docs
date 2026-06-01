@@ -75,6 +75,28 @@ SWEEP_SELECTION_WEIGHTS = {
     "chunk_count_efficiency": 0.02,
 }
 
+PARETO_HIGHER_IS_BETTER = [
+    "retrieval_recall_at_k",
+    "target_coverage_at_k",
+    "target_ndcg_at_k",
+    "precision_at_k",
+    "quality_score",
+    "visual_text_coverage_ratio",
+    "target_rank_efficiency",
+]
+
+PARETO_LOWER_IS_BETTER = [
+    "mean_target_rank",
+    "p95_target_rank",
+    "mean_latency_ms",
+    "chunk_count",
+    "total_chunk_chars",
+    "mean_chunk_chars",
+    "p95_chunk_chars",
+    "embedding_text_kchars",
+    "standalone_visual_chunk_count",
+]
+
 MIN_SELECTION_CONSTRAINTS = {
     "min_retrieval_recall_at_k": "retrieval_recall_at_k",
     "min_target_coverage_at_k": "target_coverage_at_k",
@@ -398,29 +420,19 @@ def dominates(
     candidate: dict[str, float | None],
     baseline: dict[str, float | None],
 ) -> bool:
-    higher_is_better = [
-        "retrieval_recall_at_k",
-        "target_coverage_at_k",
-        "target_ndcg_at_k",
-        "precision_at_k",
-        "quality_score",
-        "visual_text_coverage_ratio",
-        "target_rank_efficiency",
-    ]
-    lower_is_better = ["mean_target_rank", "p95_target_rank", "mean_latency_ms", "chunk_count"]
     no_worse = all(
         metric_value(candidate, metric) >= metric_value(baseline, metric)
-        for metric in higher_is_better
+        for metric in PARETO_HIGHER_IS_BETTER
     ) and all(
         cost_value(candidate, metric) <= cost_value(baseline, metric)
-        for metric in lower_is_better
+        for metric in PARETO_LOWER_IS_BETTER
     )
     strictly_better = any(
         metric_value(candidate, metric) > metric_value(baseline, metric)
-        for metric in higher_is_better
+        for metric in PARETO_HIGHER_IS_BETTER
     ) or any(
         cost_value(candidate, metric) < cost_value(baseline, metric)
-        for metric in lower_is_better
+        for metric in PARETO_LOWER_IS_BETTER
     )
     return no_worse and strictly_better
 
