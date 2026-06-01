@@ -9,6 +9,7 @@ from chunking_docs.evaluation.retrieval import (
     CASE_GROUP_METADATA_KEYS,
     RetrievalCaseResult,
     RetrievalEvaluation,
+    metric_source_keys,
 )
 
 
@@ -23,6 +24,9 @@ class RetrievalDiagnosticRow(BaseModel):
     missing_targets: list[str] = Field(default_factory=list)
     excluded_targets: list[str] = Field(default_factory=list)
     matched_excluded_targets: list[str] = Field(default_factory=list)
+    excluded_source_counts: dict[str, int] = Field(default_factory=dict)
+    excluded_source_family_counts: dict[str, int] = Field(default_factory=dict)
+    top_excluded_sources: list[list[str]] = Field(default_factory=list)
     target_coverage_at_k: float = 0.0
     target_ndcg_at_k: float = 0.0
     precision_at_k: float = 0.0
@@ -46,6 +50,14 @@ class RetrievalDiagnosticsReport(BaseModel):
         default_factory=dict
     )
     source_counts: dict[str, int]
+    excluded_source_counts: dict[str, int] = Field(default_factory=dict)
+    excluded_source_family_counts: dict[str, int] = Field(default_factory=dict)
+    excluded_source_counts_by_case_group: dict[str, dict[str, dict[str, int]]] = Field(
+        default_factory=dict
+    )
+    excluded_source_family_counts_by_case_group: dict[str, dict[str, dict[str, int]]] = Field(
+        default_factory=dict
+    )
     rows: list[RetrievalDiagnosticRow]
 
 
@@ -62,6 +74,10 @@ def analyze_retrieval_evaluation(
     group_reason_counters: dict[str, dict[str, Counter[str]]] = {}
     group_missing_type_counters: dict[str, dict[str, Counter[str]]] = {}
     source_counter: Counter[str] = Counter()
+    excluded_source_counter: Counter[str] = Counter()
+    excluded_source_family_counter: Counter[str] = Counter()
+    group_excluded_source_counters: dict[str, dict[str, Counter[str]]] = {}
+    group_excluded_source_family_counters: dict[str, dict[str, Counter[str]]] = {}
 
     for result in evaluation.results:
         for source_list in result.top_sources:
@@ -78,8 +94,20 @@ def analyze_retrieval_evaluation(
         reason_counter.update(row.reasons)
         missing_types = [target_type(target) for target in row.missing_targets]
         missing_type_counter.update(missing_types)
+        excluded_source_counter.update(row.excluded_source_counts)
+        excluded_source_family_counter.update(row.excluded_source_family_counts)
         update_case_group_counters(group_reason_counters, row.case_groups, row.reasons)
         update_case_group_counters(group_missing_type_counters, row.case_groups, missing_types)
+        update_case_group_counter_mapping(
+            group_excluded_source_counters,
+            row.case_groups,
+            row.excluded_source_counts,
+        )
+        update_case_group_counter_mapping(
+            group_excluded_source_family_counters,
+            row.case_groups,
+            row.excluded_source_family_counts,
+        )
 
     return RetrievalDiagnosticsReport(
         case_count=evaluation.case_count,
@@ -105,6 +133,14 @@ def analyze_retrieval_evaluation(
             group_missing_type_counters
         ),
         source_counts=dict(sorted(source_counter.items())),
+        excluded_source_counts=dict(sorted(excluded_source_counter.items())),
+        excluded_source_family_counts=dict(sorted(excluded_source_family_counter.items())),
+        excluded_source_counts_by_case_group=serializable_group_counters(
+            group_excluded_source_counters
+        ),
+        excluded_source_family_counts_by_case_group=serializable_group_counters(
+            group_excluded_source_family_counters
+        ),
         rows=rows,
     )
 
@@ -119,6 +155,8 @@ def diagnostic_row(
     missing_targets = sorted_targets(set(expected_targets) - set(matched_targets))
     excluded_targets = sorted_targets(excluded_result_targets(result))
     matched_excluded_targets = sorted_targets(matched_excluded_result_targets(result))
+    excluded_source_counts = excluded_sources_for_result(result, family=False)
+    excluded_source_family_counts = excluded_sources_for_result(result, family=True)
     reasons = diagnostic_reasons(
         result,
         matched_targets,
@@ -138,6 +176,9 @@ def diagnostic_row(
         missing_targets=missing_targets,
         excluded_targets=excluded_targets,
         matched_excluded_targets=matched_excluded_targets,
+        excluded_source_counts=excluded_source_counts,
+        excluded_source_family_counts=excluded_source_family_counts,
+        top_excluded_sources=top_excluded_sources(result),
         target_coverage_at_k=result.target_coverage_at_k,
         target_ndcg_at_k=result.target_ndcg_at_k,
         precision_at_k=result.precision_at_k,
@@ -164,6 +205,17 @@ def update_case_group_counters(
     counters: dict[str, dict[str, Counter[str]]],
     groups: dict[str, str],
     values: list[str],
+) -> None:
+    if not values:
+        return
+    for group_name, group_value in groups.items():
+        counters.setdefault(group_name, {}).setdefault(group_value, Counter()).update(values)
+
+
+def update_case_group_counter_mapping(
+    counters: dict[str, dict[str, Counter[str]]],
+    groups: dict[str, str],
+    values: dict[str, int],
 ) -> None:
     if not values:
         return
@@ -241,6 +293,32 @@ def excluded_result_targets(result: RetrievalCaseResult) -> set[str]:
 
 def matched_excluded_result_targets(result: RetrievalCaseResult) -> set[str]:
     return {target for targets in result.top_excluded_targets for target in targets}
+
+
+def excluded_sources_for_result(
+    result: RetrievalCaseResult,
+    family: bool = False,
+) -> dict[str, int]:
+    counts: Counter[str] = Counter()
+    for index, targets in enumerate(result.top_excluded_targets):
+        if not targets:
+            continue
+        sources = result.top_sources[index] if index < len(result.top_sources) else []
+        target_count = len(set(targets))
+        for source in sorted(metric_source_keys(sources, family=family)):
+            counts[source] += target_count
+    return dict(sorted(counts.items()))
+
+
+def top_excluded_sources(result: RetrievalCaseResult) -> list[list[str]]:
+    values = []
+    for index, targets in enumerate(result.top_excluded_targets):
+        if not targets:
+            values.append([])
+            continue
+        sources = result.top_sources[index] if index < len(result.top_sources) else []
+        values.append(sorted(metric_source_keys(sources)))
+    return values
 
 
 def sorted_targets(targets) -> list[str]:

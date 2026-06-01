@@ -4675,9 +4675,17 @@ def diagnose_retrieval_command(
             "low_target_ndcg_count": report.low_target_ndcg_count,
             "reason_counts": report.reason_counts,
             "missing_target_type_counts": report.missing_target_type_counts,
+            "excluded_source_counts": report.excluded_source_counts,
+            "excluded_source_family_counts": report.excluded_source_family_counts,
             "reason_counts_by_case_group": report.reason_counts_by_case_group,
             "missing_target_type_counts_by_case_group": (
                 report.missing_target_type_counts_by_case_group
+            ),
+            "excluded_source_counts_by_case_group": (
+                report.excluded_source_counts_by_case_group
+            ),
+            "excluded_source_family_counts_by_case_group": (
+                report.excluded_source_family_counts_by_case_group
             ),
         }
     print(payload)

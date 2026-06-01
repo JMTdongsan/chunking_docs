@@ -9,9 +9,9 @@ from chunking_docs.models import ChunkKind, DocumentChunk
 
 
 class Hit:
-    def __init__(self, chunk):
+    def __init__(self, chunk, sources=None):
         self.chunk = chunk
-        self.sources = ["test"]
+        self.sources = sources or ["test"]
         self.evidence_chunks = []
         self.payloads = []
 
@@ -106,7 +106,9 @@ def test_analyze_retrieval_evaluation_reports_excluded_target_hits():
                 metadata={"case_source": "hard_negative"},
             )
         ],
-        search_fn=lambda case, graph_expand: [Hit(chunk)],
+        search_fn=lambda case, graph_expand: [
+            Hit(chunk, sources=["bm25", "qdrant:image_dense"])
+        ],
         top_k=1,
     )
 
@@ -115,11 +117,23 @@ def test_analyze_retrieval_evaluation_reports_excluded_target_hits():
     assert report.failed_count == 1
     assert report.reason_counts["excluded_target_retrieved"] == 1
     assert report.reason_counts["excluded_asset_hit"] == 1
+    assert report.excluded_source_counts == {"bm25": 1, "qdrant:image_dense": 1}
+    assert report.excluded_source_family_counts == {"lexical": 1, "visual": 1}
+    assert report.excluded_source_counts_by_case_group["case_source"]["hard_negative"] == {
+        "bm25": 1,
+        "qdrant:image_dense": 1,
+    }
+    assert report.excluded_source_family_counts_by_case_group["case_source"][
+        "hard_negative"
+    ] == {"lexical": 1, "visual": 1}
     row = report.rows[0]
     assert row.expected_targets == ["page:1"]
     assert row.matched_targets == ["page:1"]
     assert row.excluded_targets == ["asset:asset-a"]
     assert row.matched_excluded_targets == ["asset:asset-a"]
+    assert row.excluded_source_counts == {"bm25": 1, "qdrant:image_dense": 1}
+    assert row.excluded_source_family_counts == {"lexical": 1, "visual": 1}
+    assert row.top_excluded_sources == [["bm25", "qdrant:image_dense"]]
     assert row.reasons == ["excluded_target_retrieved", "excluded_asset_hit"]
 
 
@@ -147,5 +161,7 @@ def test_diagnose_retrieval_cli_writes_report(tmp_path):
     payload = json.loads(output_path.read_text(encoding="utf-8"))
     assert payload["no_hit_count"] == 1
     assert payload["low_target_ndcg_count"] == 0
+    assert payload["excluded_source_counts"] == {}
+    assert payload["excluded_source_family_counts"] == {}
     assert payload["rows"][0]["query"] == "empty"
     assert payload["reason_counts_by_case_group"] == {}
