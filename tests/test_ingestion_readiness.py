@@ -1308,6 +1308,48 @@ def test_ingestion_readiness_cli_can_gate_retrieval_query_strength(tmp_path):
     assert component["metadata"]["min_query_term_count"] == 1
 
 
+def test_ingestion_readiness_cli_can_gate_retrieval_expected_targets_per_case(tmp_path):
+    package_dir, _ = write_ready_package(tmp_path)
+    cases_path = tmp_path / "cases.jsonl"
+    output = tmp_path / "readiness.json"
+    write_jsonl(
+        cases_path,
+        [
+            RetrievalCase(
+                query="specific visual target",
+                expected_pages=[1],
+                expected_asset_ids=["asset-1"],
+            ),
+        ],
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "ingestion-readiness",
+            "--package-dir",
+            str(package_dir),
+            "--retrieval-cases",
+            str(cases_path),
+            "--max-retrieval-expected-targets-per-case",
+            "1",
+            "--output",
+            str(output),
+            "--no-fail",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["passed"] is False
+    component = next(
+        component for component in payload["components"] if component["name"] == "retrieval_case_audit"
+    )
+    assert component["metadata"]["failed_checks"] == ["max_expected_targets_per_case"]
+    assert component["metadata"]["max_expected_targets_per_case"] == 2
+    assert component["metadata"]["oversized_expected_target_case_count"] == 1
+
+
 def test_ingestion_readiness_cli_can_gate_visual_quality_from_assets(tmp_path):
     package_dir, _ = write_ready_package(tmp_path)
     assets = [

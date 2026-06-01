@@ -93,6 +93,7 @@ def test_characterize_package_reports_strategy_observations(tmp_path):
     assert "--image-probe-limit 20" in image_probe_recommendation.commands[0]
     assert "--min-case-group-count case_source:visual_image_probe=1" in image_probe_audit_command
     assert "--min-case-group-distinct-targets case_source:visual_image_probe:asset=1" in image_probe_audit_command
+    assert "--max-expected-targets-per-case 5" in image_probe_audit_command
     assert "--min-source-target-coverage qdrant:image_dense=0.5" in image_probe_recommendation.commands[2]
     assert "case_source:visual_image_probe=0.7" in image_probe_recommendation.commands[2]
     assert image_probe_recommendation.metadata["recommended_image_probe_case_threshold"] == 1
@@ -111,6 +112,7 @@ def test_characterize_package_reports_strategy_observations(tmp_path):
     assert "--min-distinct-asset-targets 1" in object_probe_audit_command
     assert "--min-case-group-distinct-targets case_source:visual_object_probe:asset=1" in object_probe_audit_command
     assert "--max-asset-cases-per-target 3" in object_probe_audit_command
+    assert "--max-expected-targets-per-case 5" in object_probe_audit_command
     assert "--min-query-terms-per-case 3" in object_probe_audit_command
     assert "--require-visual-only-object-probes" in object_probe_audit_command
     assert object_probe_recommendation.metadata["vlm_visual_feature_count"] == 1
@@ -121,6 +123,7 @@ def test_characterize_package_reports_strategy_observations(tmp_path):
     )
     assert "--min-query-terms-per-case 3" in benchmark_recommendation.commands[0]
     assert "--max-duplicate-queries 0" in benchmark_recommendation.commands[0]
+    assert "--max-expected-targets-per-case 5" in benchmark_recommendation.commands[0]
     qdrant_recommendation = next(
         item for item in report.recommendations if item.code == "validate_qdrant_rag_context"
     )

@@ -777,6 +777,59 @@ def test_generate_retrieval_case_skeleton_can_create_visual_object_probes():
     assert cases[0].metadata["linked_chunk_ids"] == ["chunk-1"]
 
 
+def test_visual_object_probe_duplicate_queries_keep_one_expected_target_per_case():
+    chunk_1 = DocumentChunk(
+        chunk_id="chunk-1",
+        doc_id="doc",
+        page_start=1,
+        page_end=1,
+        kind=ChunkKind.TEXT,
+        text="Transit corridor evidence.",
+        asset_ids=["asset-1"],
+    )
+    chunk_2 = DocumentChunk(
+        chunk_id="chunk-2",
+        doc_id="doc",
+        page_start=2,
+        page_end=2,
+        kind=ChunkKind.TEXT,
+        text="Station area evidence.",
+        asset_ids=["asset-2"],
+    )
+    assets = [
+        VisualAsset(
+            asset_id="asset-1",
+            doc_id="doc",
+            page_no=1,
+            kind=AssetKind.MAP,
+            metadata={"visual_elements": [{"label": "legend color symbol meaning"}]},
+        ),
+        VisualAsset(
+            asset_id="asset-2",
+            doc_id="doc",
+            page_no=2,
+            kind=AssetKind.MAP,
+            metadata={"visual_elements": [{"label": "legend color symbol meaning"}]},
+        ),
+    ]
+
+    cases = generate_retrieval_case_skeleton(
+        [chunk_1, chunk_2],
+        assets,
+        [],
+        include_pages=False,
+        include_assets=False,
+        include_triples=False,
+        object_probe_limit=5,
+    )
+
+    assert len(cases) == 1
+    assert len(cases[0].expected_pages) == 1
+    assert len(cases[0].expected_asset_ids) == 1
+    assert cases[0].metadata["duplicate_query_candidate_count"] == 2
+    assert "merged_case_count" not in cases[0].metadata
+
+
 def test_generate_retrieval_case_skeleton_uses_bbox_region_for_object_probes():
     chunk = DocumentChunk(
         chunk_id="chunk-1",

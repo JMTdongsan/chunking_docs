@@ -526,6 +526,7 @@ def recommendations(
                         f"--min-case-group-count case_source:visual_image_probe={image_probe_threshold} "
                         f"--min-distinct-asset-targets {image_probe_threshold} "
                         f"--min-case-group-distinct-targets case_source:visual_image_probe:asset={image_probe_threshold} "
+                        "--max-expected-targets-per-case 5 "
                         "--min-query-terms-per-case 3"
                     ),
                     (
@@ -563,6 +564,7 @@ def recommendations(
                         f"--min-distinct-asset-targets {object_probe_asset_threshold} "
                         f"--min-case-group-distinct-targets case_source:visual_object_probe:asset={object_probe_asset_threshold} "
                         "--max-asset-cases-per-target 3 "
+                        "--max-expected-targets-per-case 5 "
                         "--min-query-terms-per-case 3 "
                         "--require-visual-only-object-probes"
                     ),
@@ -703,7 +705,7 @@ def recommendations(
                 "a chunking strategy is an improvement."
             ),
             commands=[
-                "chunking-docs audit-retrieval-cases examples/retrieval_cases.jsonl --package-dir outputs/package --min-query-terms-per-case 3 --max-duplicate-queries 0",
+                "chunking-docs audit-retrieval-cases examples/retrieval_cases.jsonl --package-dir outputs/package --min-query-terms-per-case 3 --max-duplicate-queries 0 --max-expected-targets-per-case 5",
                 "chunking-docs eval-retrieval examples/retrieval_cases.jsonl --package-dir outputs/package --repeat 3",
                 "chunking-docs gate-retrieval outputs/package/retrieval_eval.json",
             ],

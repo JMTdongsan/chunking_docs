@@ -278,6 +278,12 @@ def build_ingestion_readiness_report(
                     "mean_target_query_overlap_terms": (
                         retrieval_case_audit.mean_target_query_overlap_terms
                     ),
+                    "max_expected_targets_per_case": (
+                        retrieval_case_audit.max_expected_targets_per_case
+                    ),
+                    "oversized_expected_target_case_count": (
+                        retrieval_case_audit.oversized_expected_target_case_count
+                    ),
                     "missing_target_counts": retrieval_case_audit.missing_target_counts,
                 },
             )

@@ -4039,6 +4039,14 @@ def ingestion_readiness_command(
         "--min-retrieval-terms-for-target-overlap",
         help="Only apply retrieval target-query overlap checks to queries with this many terms.",
     ),
+    max_retrieval_expected_targets_per_case: int | None = typer.Option(
+        None,
+        "--max-retrieval-expected-targets-per-case",
+        help=(
+            "Fail retrieval case readiness when one case declares more expected "
+            "page/chunk/asset/triple targets than this ceiling."
+        ),
+    ),
     min_retrieval_case_group_distinct_targets: list[str] = typer.Option(
         None,
         "--min-retrieval-case-group-distinct-targets",
@@ -4568,6 +4576,7 @@ def ingestion_readiness_command(
             "max_target_query_overlap_ratio": max_retrieval_target_query_overlap_ratio,
             "max_target_query_overlap_terms": max_retrieval_target_query_overlap_terms,
             "min_terms_for_target_overlap": min_retrieval_terms_for_target_overlap,
+            "max_expected_targets_per_case": max_retrieval_expected_targets_per_case,
             "max_duplicate_queries": max_duplicate_queries,
         },
         retrieval_evaluation=parsed_retrieval,
@@ -5222,6 +5231,14 @@ def audit_retrieval_cases_command(
         "--min-terms-for-target-overlap",
         help="Only apply target-query overlap checks to queries with at least this many distinct terms.",
     ),
+    max_expected_targets_per_case: int | None = typer.Option(
+        None,
+        "--max-expected-targets-per-case",
+        help=(
+            "Fail when one retrieval case declares more expected page/chunk/asset/triple "
+            "targets than this ceiling."
+        ),
+    ),
     min_case_group_distinct_targets: list[str] = typer.Option(
         None,
         "--min-case-group-distinct-targets",
@@ -5284,6 +5301,7 @@ def audit_retrieval_cases_command(
         max_target_query_overlap_ratio=max_target_query_overlap_ratio,
         max_target_query_overlap_terms=max_target_query_overlap_terms,
         min_terms_for_target_overlap=min_terms_for_target_overlap,
+        max_expected_targets_per_case=max_expected_targets_per_case,
         max_duplicate_queries=max_duplicate_queries,
     )
     payload = report.model_dump()
@@ -5313,6 +5331,8 @@ def audit_retrieval_cases_command(
             "mean_target_query_overlap_ratio": report.mean_target_query_overlap_ratio,
             "max_target_query_overlap_terms": report.max_target_query_overlap_terms,
             "mean_target_query_overlap_terms": report.mean_target_query_overlap_terms,
+            "max_expected_targets_per_case": report.max_expected_targets_per_case,
+            "oversized_expected_target_case_count": report.oversized_expected_target_case_count,
             "missing_target_counts": report.missing_target_counts,
             "excluded_missing_target_counts": report.excluded_missing_target_counts,
             "failed_checks": report.failed_checks,

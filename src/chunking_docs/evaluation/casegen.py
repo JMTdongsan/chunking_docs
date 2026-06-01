@@ -352,7 +352,7 @@ def asset_cases(
                 order=(asset_priority(asset), asset.page_no, asset.asset_id),
             )
         )
-    return select_candidates(merge_case_candidates_by_query(candidates), limit, selection_strategy)
+    return select_candidates(dedupe_case_candidates_by_query(candidates, selection_strategy), limit, selection_strategy)
 
 
 def visual_lexical_probe_cases(
@@ -413,7 +413,7 @@ def visual_lexical_probe_cases(
                 order=(asset_priority(asset), asset.page_no, asset.asset_id),
             )
         )
-    return select_candidates(merge_case_candidates_by_query(candidates), limit, selection_strategy)
+    return select_candidates(dedupe_case_candidates_by_query(candidates, selection_strategy), limit, selection_strategy)
 
 
 def visual_probe_query_from_asset(
@@ -517,7 +517,7 @@ def visual_image_probe_cases(
                 order=(asset_priority(asset), asset.page_no, asset.asset_id),
             )
         )
-    return select_candidates(merge_case_candidates_by_query(candidates), limit, selection_strategy)
+    return select_candidates(dedupe_case_candidates_by_query(candidates, selection_strategy), limit, selection_strategy)
 
 
 def visual_object_probe_cases(
@@ -587,7 +587,7 @@ def visual_object_probe_cases(
                     order=(asset_priority(asset), asset.page_no, asset.asset_id, object_index),
                 )
             )
-    return select_candidates(merge_case_candidates_by_query(candidates), limit, selection_strategy)
+    return select_candidates(dedupe_case_candidates_by_query(candidates, selection_strategy), limit, selection_strategy)
 
 
 def visual_object_probe_query_from_object(
@@ -1157,6 +1157,46 @@ def merge_case_candidates_by_query(candidates: list[CaseCandidate]) -> list[Case
             order=min(existing.order, candidate.order),
         )
     return list(merged.values())
+
+
+def dedupe_case_candidates_by_query(
+    candidates: list[CaseCandidate],
+    strategy: SelectionStrategy,
+) -> list[CaseCandidate]:
+    ordered = (
+        sorted(candidates, key=lambda item: (-item.score, item.order))
+        if strategy == "salience"
+        else sorted(candidates, key=lambda item: item.order)
+    )
+    selected: dict[str, CaseCandidate] = {}
+    duplicate_counts: dict[str, int] = {}
+    for candidate in ordered:
+        key = normalize_query_text(candidate.case.query).lower()
+        duplicate_counts[key] = duplicate_counts.get(key, 0) + 1
+        if key in selected:
+            continue
+        selected[key] = candidate
+    result = []
+    for key, candidate in selected.items():
+        duplicate_count = duplicate_counts.get(key, 1)
+        if duplicate_count <= 1:
+            result.append(candidate)
+            continue
+        result.append(
+            CaseCandidate(
+                case=candidate.case.model_copy(
+                    update={
+                        "metadata": {
+                            **candidate.case.metadata,
+                            "duplicate_query_candidate_count": duplicate_count,
+                        }
+                    }
+                ),
+                score=candidate.score,
+                order=candidate.order,
+            )
+        )
+    return result
 
 
 def merge_retrieval_cases(

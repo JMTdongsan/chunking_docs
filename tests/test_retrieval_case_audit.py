@@ -261,6 +261,41 @@ def test_audit_retrieval_cases_checks_distinct_target_counts():
     assert check.threshold == 2
 
 
+def test_audit_retrieval_cases_checks_expected_targets_per_case():
+    profiles, chunks, assets, triples = package_records()
+    assets.append(
+        VisualAsset(
+            asset_id="asset-2",
+            doc_id="doc",
+            page_no=2,
+            kind=AssetKind.MAP,
+            caption="second visual target",
+        )
+    )
+    cases = [
+        RetrievalCase(
+            query="broad visual target",
+            expected_pages=[1, 2],
+            expected_asset_ids=["asset-1", "asset-2"],
+        )
+    ]
+
+    report = audit_retrieval_cases(
+        cases,
+        profiles=profiles,
+        chunks=chunks,
+        assets=assets,
+        triples=triples,
+        max_expected_targets_per_case=3,
+    )
+
+    assert report.passed is False
+    assert report.max_expected_targets_per_case == 4
+    assert report.oversized_expected_target_case_count == 1
+    assert "max_expected_targets_per_case" in report.failed_checks
+    assert "too_many_expected_targets" in {issue.code for issue in report.issues}
+
+
 def test_audit_retrieval_cases_checks_target_concentration():
     profiles, chunks, assets, triples = package_records()
     cases = [
@@ -461,6 +496,8 @@ def test_audit_retrieval_cases_cli_writes_report(tmp_path):
             "2",
             "--min-terms-for-target-overlap",
             "2",
+            "--max-expected-targets-per-case",
+            "1",
             "--output",
             str(output_path),
         ],
@@ -480,6 +517,8 @@ def test_audit_retrieval_cases_cli_writes_report(tmp_path):
     assert payload["short_query_count"] == 0
     assert payload["min_query_term_count"] == 2
     assert payload["max_target_query_overlap_terms"] == 2
+    assert payload["max_expected_targets_per_case"] == 1
+    assert payload["oversized_expected_target_case_count"] == 0
 
 
 def write_package(tmp_path):

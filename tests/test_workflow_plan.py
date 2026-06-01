@@ -110,6 +110,7 @@ def test_build_ingestion_workflow_plan_orders_runtime_visual_embedding_and_readi
     assert "--require-visual-run-comparison" in readiness_command
     assert "--require-visual-run-same-jobs" in readiness_command
     assert "--min-visual-run-count 2" in readiness_command
+    assert "--max-retrieval-expected-targets-per-case 5" in readiness_command
     assert "--chunking-comparison" in readiness_command
     assert "--min-chunking-retrieval-score-per-embedding-kchar 0.0008" in readiness_command
     assert "--min-chunking-retrieval-score-per-mean-latency-ms 0.0005" in readiness_command

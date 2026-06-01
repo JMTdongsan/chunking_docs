@@ -83,6 +83,8 @@ class RetrievalCaseAuditReport(BaseModel):
     mean_target_query_overlap_ratio: float = 0.0
     max_target_query_overlap_terms: int = 0
     mean_target_query_overlap_terms: float = 0.0
+    max_expected_targets_per_case: int = 0
+    oversized_expected_target_case_count: int = 0
     missing_target_counts: dict[str, int] = Field(default_factory=dict)
     excluded_missing_target_counts: dict[str, int] = Field(default_factory=dict)
     failed_checks: list[str] = Field(default_factory=list)
@@ -116,6 +118,7 @@ def audit_retrieval_cases(
     max_target_query_overlap_ratio: float | None = None,
     max_target_query_overlap_terms: int | None = None,
     min_terms_for_target_overlap: int = 4,
+    max_expected_targets_per_case: int | None = None,
     max_duplicate_queries: int = 0,
     max_issues: int = 200,
 ) -> RetrievalCaseAuditReport:
@@ -141,6 +144,8 @@ def audit_retrieval_cases(
     target_query_overlap_terms: list[int] = []
     target_query_overlap_check_ratios: list[float] = []
     target_query_overlap_check_terms: list[int] = []
+    expected_target_counts: list[int] = []
+    oversized_expected_target_case_count = 0
     target_query_overlap_count = 0
     target_query_overlap_term_count = 0
 
@@ -159,6 +164,28 @@ def audit_retrieval_cases(
         )
         target_query_overlap_ratios.append(target_overlap_ratio)
         target_query_overlap_terms.append(target_overlap_terms)
+        expected_target_count = retrieval_case_expected_target_count(case)
+        expected_target_counts.append(expected_target_count)
+        if (
+            max_expected_targets_per_case is not None
+            and expected_target_count > max_expected_targets_per_case
+        ):
+            oversized_expected_target_case_count += 1
+            append_issue(
+                issues,
+                max_issues,
+                issue(
+                    "warning",
+                    "too_many_expected_targets",
+                    "Retrieval case has more expected targets than the configured per-case ceiling.",
+                    index,
+                    case,
+                    {
+                        "expected_target_count": expected_target_count,
+                        "max_expected_targets_per_case": max_expected_targets_per_case,
+                    },
+                ),
+            )
         if len(query_terms) >= min_terms_for_target_overlap:
             target_query_overlap_check_ratios.append(target_overlap_ratio)
             target_query_overlap_check_terms.append(target_overlap_terms)
@@ -397,6 +424,8 @@ def audit_retrieval_cases(
         "min_query_term_count": min_query_term_count,
         "max_target_query_overlap_ratio": max_target_query_overlap,
         "max_target_query_overlap_terms": max_target_query_overlap_term_count,
+        "max_expected_targets_per_case": max(expected_target_counts, default=0),
+        "oversized_expected_target_case_count": oversized_expected_target_case_count,
     }
     checks = [
         min_check("min_case_count", "case_count", metrics, min_case_count),
@@ -457,6 +486,15 @@ def audit_retrieval_cases(
                 max_target_query_overlap_terms,
             )
         )
+    if max_expected_targets_per_case is not None:
+        checks.append(
+            max_check(
+                "max_expected_targets_per_case",
+                "max_expected_targets_per_case",
+                metrics,
+                max_expected_targets_per_case,
+            )
+        )
     checks.extend(
         max_cases_per_target_checks(
             metrics,
@@ -512,6 +550,8 @@ def audit_retrieval_cases(
         mean_target_query_overlap_ratio=mean_target_query_overlap,
         max_target_query_overlap_terms=max_target_query_overlap_term_count,
         mean_target_query_overlap_terms=mean_target_query_overlap_term_count,
+        max_expected_targets_per_case=metrics["max_expected_targets_per_case"],
+        oversized_expected_target_case_count=oversized_expected_target_case_count,
         missing_target_counts=missing_target_counts,
         excluded_missing_target_counts=excluded_missing_target_counts,
         failed_checks=failed_checks,
@@ -527,6 +567,15 @@ def count_retrieval_case_targets(cases: list[RetrievalCase]) -> dict[str, int]:
         "asset": sum(1 for case in cases if case.expected_asset_ids),
         "triple": sum(1 for case in cases if case.expected_triple_ids),
     }
+
+
+def retrieval_case_expected_target_count(case: RetrievalCase) -> int:
+    return (
+        len(case.expected_pages)
+        + len(case.expected_chunk_ids)
+        + len(case.expected_asset_ids)
+        + len(case.expected_triple_ids)
+    )
 
 
 def count_retrieval_case_distinct_targets(cases: list[RetrievalCase]) -> dict[str, int]:

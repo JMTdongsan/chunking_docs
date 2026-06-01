@@ -421,6 +421,8 @@ def readiness_step(
         "--require-retrieval-cases",
         "--min-retrieval-query-terms-per-case",
         "3",
+        "--max-retrieval-expected-targets-per-case",
+        "5",
     ]
     if include_visual_quality:
         command_parts.extend(BASE_VISUAL_READINESS_GATE_ARGS)
