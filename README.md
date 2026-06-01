@@ -285,9 +285,13 @@ chunking-docs repair-visual-triples \
   --package-dir outputs/package \
   --in-place \
   --export-graph
+
+chunking-docs repair-visual-text \
+  --package-dir outputs/package \
+  --in-place
 ```
 
-Normalization collapses whitespace, canonicalizes predicate names, recomputes stable triple IDs, and can remove semantic duplicates within the same chunk. `repair-visual-triples` uses structured metadata already stored in `assets.jsonl` to add missing VLM-derived entity, visual-element, and object triples with asset/page/prompt provenance, or to merge asset IDs into an equivalent existing triple. When run in place, it clears stale embedding artifacts because triple vectors must be rebuilt. The audit report counts duplicates, triples that would change under normalization, orphan chunk references, empty fields, invalid confidence values, and normalized predicate frequencies.
+Normalization collapses whitespace, canonicalizes predicate names, recomputes stable triple IDs, and can remove semantic duplicates within the same chunk. `repair-visual-triples` uses structured metadata already stored in `assets.jsonl` to add missing VLM-derived entity, visual-element, and object triples with asset/page/prompt provenance, or to merge asset IDs into an equivalent existing triple. `repair-visual-text` appends missing linked asset text parts, including entities and visual elements, to `chunks.jsonl` so dense chunk vectors and chunk-level context include the same visual evidence that BM25 and caption vectors see. When either repair command changes package text or triples in place, rebuild model-backed embeddings afterward. The audit report counts duplicates, triples that would change under normalization, orphan chunk references, empty fields, invalid confidence values, and normalized predicate frequencies.
 When `--export-graph` is used, graph nodes include degree, direction, predicate, document, and chunk provenance metadata, while `graph_summary.json` records connectivity, predicate counts, document counts, and top-degree nodes for browsing and retrieval-signal review.
 
 ## Embeddings

@@ -100,7 +100,11 @@ from chunking_docs.retrieval.rerank import (
 )
 from chunking_docs.runtime import inspect_runtime
 from chunking_docs.storage.records import EmbeddingRecord
-from chunking_docs.vision.annotate import annotate_assets, merge_asset_annotations_into_chunks
+from chunking_docs.vision.annotate import (
+    annotate_assets,
+    merge_asset_annotations_into_chunks,
+    repair_visual_text_chunks,
+)
 from chunking_docs.vision.assets import (
     attach_assets_to_chunks,
     build_page_tile_assets,
@@ -2756,6 +2760,55 @@ def repair_visual_triples_command(
             "graph_nodes_output": str(graph_nodes_output) if graph_nodes_output else None,
             "graph_edges_output": str(graph_edges_output) if graph_edges_output else None,
             "graph_summary_output": str(graph_summary_output) if graph_summary_output else None,
+            "cleared_embedding_artifacts": cleared_embedding_artifacts,
+            "requires_embedding_rebuild": bool(in_place and changed),
+            "next_embedding_command": (
+                f"chunking-docs embed-package --package-dir {shlex.quote(package_dir.as_posix())}"
+                if in_place and changed
+                else None
+            ),
+        }
+    )
+
+
+@app.command(name="repair-visual-text")
+def repair_visual_text_command(
+    package_dir: Path = Path("outputs/package"),
+    output: Path | None = None,
+    in_place: bool = False,
+    rebuild_search: bool = True,
+    clear_stale_embeddings: bool = True,
+):
+    """Append missing structured visual asset text to linked chunks."""
+    from dataclasses import asdict
+
+    manifest = load_processing_package(package_dir)
+    repaired_chunks, report = repair_visual_text_chunks(manifest.chunks, manifest.assets)
+    output_path = package_dir / "chunks.jsonl" if in_place else output
+    if output_path is None:
+        output_path = package_dir / "chunks.visual_text_repaired.jsonl"
+    write_jsonl(output_path, repaired_chunks)
+
+    cleared_embedding_artifacts = []
+    changed = report.updated_chunks > 0
+    if in_place and rebuild_search:
+        rebuild_search_artifacts(
+            package_dir,
+            repaired_chunks,
+            assets=manifest.assets,
+            triples=manifest.triples,
+            tokenizer_config=manifest_tokenizer_config(manifest),
+        )
+    if in_place and clear_stale_embeddings and changed:
+        cleared_embedding_artifacts = clear_embedding_artifacts(package_dir)
+
+    print_json(
+        {
+            **asdict(report),
+            "source": str(package_dir / "chunks.jsonl"),
+            "output": str(output_path),
+            "in_place": in_place,
+            "rebuilt_search": bool(in_place and rebuild_search),
             "cleared_embedding_artifacts": cleared_embedding_artifacts,
             "requires_embedding_rebuild": bool(in_place and changed),
             "next_embedding_command": (

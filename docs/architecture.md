@@ -253,6 +253,7 @@ Recommended checks:
 - `audit-publication`: public repository scan for forbidden text, accidental binary/document artifacts, oversized files, and required generated-artifact ignore patterns.
 - `audit-package`: structural completeness, orphan checks, OCR/VLM gaps, optional VLM-derived visual triple coverage, Qdrant vector dimensions, required payload fields, payload index definitions, text/caption/object/image payload freshness, and embedding manifest count/checksum consistency.
 - `repair-visual-triples`: rebuild missing VLM-derived entity, visual-element, and object triples from structured asset metadata, merging asset provenance into equivalent existing triples when possible.
+- `repair-visual-text`: append missing structured asset text parts to linked chunks so dense chunk vectors, BM25, and RAG context share the same visual evidence.
 - `qdrant-check-collection`: live Qdrant collection contract validation for named-vector dimensions, payload indexes, and payload index schemas.
 - `postgres-schema`: offline PostgreSQL SQL contract export for review or migration tooling.
 - `postgres-check-schema`: live PostgreSQL schema contract validation for required extensions, tables, columns, column types, and indexes.
