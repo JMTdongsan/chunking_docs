@@ -51,13 +51,27 @@ def test_characterize_package_reports_strategy_observations(tmp_path):
     assert "visual_annotation_pending" in observation_codes
     assert "dense_visual_pages_need_tiling" in observation_codes
     assert "vlm_objects_available" in observation_codes
+    assert "object_vector_records_missing" in observation_codes
+    assert "triple_vector_records_missing" in observation_codes
     assert "graph_triples_missing" not in observation_codes
     assert "prioritize_visual_annotations" in recommendation_codes
     assert "build_page_tiles" in recommendation_codes
     assert "evaluate_visual_vectors" in recommendation_codes
     assert "generate_visual_object_probe_cases" in recommendation_codes
     assert "compare_multimodal_hierarchical_chunking" in recommendation_codes
+    assert "build_triple_vector_artifacts" in recommendation_codes
     assert "maintain_retrieval_benchmark" in recommendation_codes
+    visual_vector_recommendation = next(
+        item for item in report.recommendations if item.code == "evaluate_visual_vectors"
+    )
+    assert "--object-backend same-as-caption" in visual_vector_recommendation.commands[0]
+    assert "--triple-backend same-as-text" in visual_vector_recommendation.commands[0]
+    triple_vector_recommendation = next(
+        item for item in report.recommendations if item.code == "build_triple_vector_artifacts"
+    )
+    assert "--export-graph" in triple_vector_recommendation.commands[0]
+    assert "--triple-backend same-as-text" in triple_vector_recommendation.commands[1]
+    assert "all_with_triple_graph" in triple_vector_recommendation.commands[2]
     object_probe_recommendation = next(
         item for item in report.recommendations if item.code == "generate_visual_object_probe_cases"
     )
@@ -223,4 +237,6 @@ def make_characteristic_package(tmp_path: Path):
     (package_dir / "bm25_tokens.json").write_text("{}", encoding="utf-8")
     (package_dir / "embedding_manifest.json").write_text("{}", encoding="utf-8")
     (package_dir / "qdrant_text_records.jsonl").write_text("", encoding="utf-8")
+    (package_dir / "qdrant_caption_records.jsonl").write_text("", encoding="utf-8")
+    (package_dir / "qdrant_image_records.jsonl").write_text("", encoding="utf-8")
     return package_dir, manifest

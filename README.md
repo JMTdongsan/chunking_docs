@@ -78,7 +78,7 @@ chunking-docs characterize-package \
   --output outputs/package/document_characteristics.json
 ```
 
-The report includes observations and processing recommendations for visual annotation, multimodal embeddings, graph signals, and retrieval benchmark coverage. Dense visual pages are reported as tile candidates with a ready `build-tile-assets` command so maps, tables, and diagrams can be processed as overlapping crops before OCR/VLM evaluation. When VLM object metadata is present, it reports object and bbox counts and recommends generating and auditing `visual_object_probe` retrieval cases with visual-only, target-diversity, concentration, and query-strength gates so object detections are evaluated separately from aggregate retrieval scores.
+The report includes observations and processing recommendations for visual annotation, multimodal embeddings, graph signals, and retrieval benchmark coverage. Dense visual pages are reported as tile candidates with a ready `build-tile-assets` command so maps, tables, and diagrams can be processed as overlapping crops before OCR/VLM evaluation. When VLM object metadata or graph triples are present without matching `object_dense` or `triple_dense` records, the report recommends rebuilding those vector families before ablation. When VLM object metadata is present, it reports object and bbox counts and recommends generating and auditing `visual_object_probe` retrieval cases with visual-only, target-diversity, concentration, and query-strength gates so object detections are evaluated separately from aggregate retrieval scores.
 
 ## Document Structure
 

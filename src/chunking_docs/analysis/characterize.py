@@ -310,6 +310,30 @@ def observations(
                 message="No graph triples are present; VLM JSON or external annotations can add graph retrieval signals.",
             )
         )
+    if graph.triple_count and not qdrant_record_present(artifacts, "triple_dense"):
+        result.append(
+            CharacteristicObservation(
+                code="triple_vector_records_missing",
+                severity="warning",
+                message="Graph triples are present but triple_dense Qdrant records are missing.",
+                metadata={
+                    "triple_count": graph.triple_count,
+                    "qdrant_record_files": artifacts.qdrant_record_files,
+                },
+            )
+        )
+    if visual.vlm_object_count and not qdrant_record_present(artifacts, "object_dense"):
+        result.append(
+            CharacteristicObservation(
+                code="object_vector_records_missing",
+                severity="warning",
+                message="Structured VLM objects are present but object_dense Qdrant records are missing.",
+                metadata={
+                    "vlm_object_count": visual.vlm_object_count,
+                    "qdrant_record_files": artifacts.qdrant_record_files,
+                },
+            )
+        )
     if not artifacts.bm25_tokens:
         result.append(
             CharacteristicObservation(
@@ -401,6 +425,12 @@ def recommendations(
             )
         )
     if visual.asset_kind_counts.get("map", 0) or visual.asset_kind_counts.get("chart", 0):
+        embed_command = "chunking-docs embed-package --package-dir outputs/package --image-backend clip"
+        if visual.vlm_object_count or graph.triple_count:
+            embed_command = (
+                "chunking-docs embed-package --package-dir outputs/package --image-backend clip "
+                "--object-backend same-as-caption --triple-backend same-as-text"
+            )
         result.append(
             ProcessingRecommendation(
                 code="evaluate_visual_vectors",
@@ -411,7 +441,7 @@ def recommendations(
                     "can be measured instead of assumed."
                 ),
                 commands=[
-                    "chunking-docs embed-package --package-dir outputs/package --image-backend clip",
+                    embed_command,
                     "chunking-docs eval-qdrant-vector-ablation examples/retrieval_cases.jsonl --package-dir outputs/package --modes text,caption,object,text_object,all_with_object_graph",
                 ],
                 metadata={"asset_kind_counts": visual.asset_kind_counts},
@@ -509,6 +539,27 @@ def recommendations(
                 },
             )
         )
+    if graph.triple_count and not qdrant_record_present(artifacts, "triple_dense"):
+        result.append(
+            ProcessingRecommendation(
+                code="build_triple_vector_artifacts",
+                area="embeddings",
+                priority="required",
+                message=(
+                    "Build triple_dense records so graph relationships can be evaluated as a vector source and not "
+                    "only through symbolic graph expansion."
+                ),
+                commands=[
+                    "chunking-docs normalize-graph-triples --package-dir outputs/package --export-graph",
+                    "chunking-docs embed-package --package-dir outputs/package --triple-backend same-as-text",
+                    "chunking-docs eval-qdrant-vector-ablation examples/retrieval_cases.jsonl --package-dir outputs/package --modes text,triple,text_triple,all_with_triple_graph",
+                ],
+                metadata={
+                    "triple_count": graph.triple_count,
+                    "qdrant_record_files": artifacts.qdrant_record_files,
+                },
+            )
+        )
     if not artifacts.embedding_manifest or not artifacts.qdrant_record_files:
         result.append(
             ProcessingRecommendation(
@@ -553,6 +604,18 @@ def recommendations(
 
 def bounded_threshold(value: int, cap: int = 5) -> int:
     return max(1, min(cap, value))
+
+
+def qdrant_record_present(artifacts: ArtifactCharacteristics, vector_name: str) -> bool:
+    record_file_by_vector = {
+        "text_dense": "qdrant_text_records.jsonl",
+        "caption_dense": "qdrant_caption_records.jsonl",
+        "object_dense": "qdrant_object_records.jsonl",
+        "image_dense": "qdrant_image_records.jsonl",
+        "triple_dense": "qdrant_triple_records.jsonl",
+    }
+    record_file = record_file_by_vector.get(vector_name)
+    return bool(record_file and record_file in artifacts.qdrant_record_files)
 
 
 def page_visual_score(profile: PageProfile) -> int:

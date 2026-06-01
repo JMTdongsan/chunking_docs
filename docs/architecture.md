@@ -22,7 +22,7 @@
    - Classify the text layer as `good`, `degraded`, or `empty` using language-neutral control-character and readable-character signals.
    - Use the profile to decide which pages need OCR, VLM summaries, or visual embeddings.
    - Identify dense visual pages that should be rendered as overlapping tiles before OCR/VLM processing.
-   - Summarize package characteristics and recommended next processing steps for chunking, OCR/VLM, VLM object probes, graph, embeddings, and retrieval benchmarks.
+   - Summarize package characteristics and recommended next processing steps for chunking, OCR/VLM, VLM object probes, graph, embeddings, and retrieval benchmarks, including missing object or triple vector families when the source metadata exists.
 
 3. **Section Mapping**
    - Accept optional section ranges as JSON or JSONL.
