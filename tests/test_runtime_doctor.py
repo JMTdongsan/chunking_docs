@@ -94,11 +94,48 @@ def test_runtime_report_checks_paddle_cuda_when_gpu_ocr_is_required():
         paddle_cuda=(False, 0),
         require_gpu=True,
         require_ocr=True,
+        require_ocr_gpu=True,
     )
 
     failed = [check.name for check in report.checks if not check.passed]
     assert report.passed is False
     assert "paddle_cuda_available" in failed
+
+
+def test_runtime_report_allows_cpu_ocr_with_gpu_vlm():
+    dependencies = {
+        "paddlepaddle": DependencyStatus(
+            name="paddlepaddle",
+            module="paddle",
+            package="paddlepaddle",
+            installed=True,
+            version="1.0",
+        ),
+        "paddleocr": dep("paddleocr", True),
+        **vision_dependencies(),
+    }
+
+    report = build_runtime_report(
+        dependencies=dependencies,
+        gpus=[GPUDevice(name="GPU")],
+        paddle_cuda=(False, 0),
+        torch_cuda_status=TorchCudaStatus(
+            available=True,
+            device_count=1,
+            device_names=["GPU"],
+            compute_capabilities=["8.0"],
+            cuda_version="12.8",
+            compiled_arches=["sm_80"],
+            bfloat16_supported=True,
+        ),
+        require_gpu=True,
+        require_ocr=True,
+        require_vision=True,
+    )
+
+    failed = [check.name for check in report.checks if not check.passed]
+    assert report.passed is True
+    assert "paddle_cuda_available" not in failed
 
 
 def test_runtime_report_checks_vlm_profile_gpu_memory():

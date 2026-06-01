@@ -175,6 +175,11 @@ def doctor_command(
     require_postgres: bool = False,
     require_embeddings: bool = False,
     require_ocr: bool = False,
+    require_ocr_gpu: bool = typer.Option(
+        False,
+        "--require-ocr-gpu",
+        help="Require PaddlePaddle CUDA support for GPU OCR.",
+    ),
     require_vision: bool = False,
     vlm_profile: list[str] = typer.Option(
         None,
@@ -199,6 +204,7 @@ def doctor_command(
         require_postgres=require_postgres,
         require_embeddings=require_embeddings,
         require_ocr=require_ocr,
+        require_ocr_gpu=require_ocr_gpu,
         require_vision=require_vision,
         vlm_profiles=vlm_profile,
         vlm_memory_margin_ratio=vlm_memory_margin_ratio,

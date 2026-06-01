@@ -21,6 +21,7 @@ class VLMExperimentRecipe(BaseModel):
     max_new_tokens: int
     attn_implementation: str = ""
     jobs_file: str
+    doctor_output: str
     results_output: str
     annotations_output: str
     doctor_command: str
@@ -163,6 +164,7 @@ def vlm_experiment_recipe(
     device_map = vlm_device_map if vlm_device_map != "auto" else profile.device_map
     torch_dtype = vlm_torch_dtype if vlm_torch_dtype != "auto" else profile.torch_dtype
     max_new_tokens = vlm_max_new_tokens or profile.max_new_tokens
+    doctor_output = output_dir / f"runtime_doctor.{profile.name}.json"
     results_output = output_dir / f"visual_job_results.{profile.name}.jsonl"
     annotations_output = output_dir / f"visual_annotations.{profile.name}.jsonl"
     selected_vlm_job_count = job_summary.operation_counts.get("vlm", 0)
@@ -172,11 +174,18 @@ def vlm_experiment_recipe(
     doctor_args = [
         "chunking-docs",
         "doctor",
+        "--output",
+        str(doctor_output),
         "--require-gpu",
         "--require-vision",
     ]
     if normalized_effective_ocr in {"paddle", "paddleocr"}:
         doctor_args.append("--require-ocr")
+    if normalized_effective_ocr in {"paddle", "paddleocr"} and requires_ocr_gpu(
+        ocr_device,
+        ocr_use_gpu,
+    ):
+        doctor_args.append("--require-ocr-gpu")
     doctor_args.extend(
         [
             "--vlm-profile",
@@ -260,6 +269,7 @@ def vlm_experiment_recipe(
         max_new_tokens=max_new_tokens,
         attn_implementation=vlm_attn_implementation or profile.attn_implementation,
         jobs_file=str(jobs_file),
+        doctor_output=str(doctor_output),
         results_output=str(results_output),
         annotations_output=str(annotations_output),
         doctor_command=doctor_command,
@@ -474,6 +484,11 @@ def normalize_profile_name(value: str) -> str:
 
 def normalize_ocr_name(value: str) -> str:
     return value.strip().lower().replace("-", "_")
+
+
+def requires_ocr_gpu(ocr_device: str, ocr_use_gpu: bool) -> bool:
+    normalized_device = ocr_device.strip().lower()
+    return ocr_use_gpu or normalized_device.startswith(("gpu", "cuda"))
 
 
 def quote_command(args: list[str]) -> str:

@@ -29,6 +29,9 @@ def test_build_vlm_experiment_plan_writes_profile_commands(tmp_path):
     assert plan.recipes[0].model_name == "Qwen/Qwen2.5-VL-7B-Instruct"
     assert plan.recipes[0].torch_dtype == "float16"
     assert plan.recipes[0].metadata["min_gpu_memory_mib"] == 24576
+    assert plan.recipes[0].doctor_output.endswith("runtime_doctor.qwen2_5_vl_7b.json")
+    assert "--output" in plan.recipes[0].doctor_command
+    assert "runtime_doctor.qwen2_5_vl_7b.json" in plan.recipes[0].doctor_command
     assert plan.recipes[0].doctor_command.endswith(
         "--vlm-profile qwen2_5_vl_7b --vlm-memory-margin-ratio 0.1"
     )
@@ -122,6 +125,7 @@ def test_build_vlm_experiment_plan_summarizes_selected_jobs(tmp_path):
     assert plan.recipes[0].metadata["effective_ocr_backend"] == "paddleocr"
     assert plan.recipes[0].metadata["max_generation_tokens_upper_bound"] == 1024
     assert plan.recipes[0].metadata["batch_count"] == 2
+    assert plan.recipes[0].doctor_output.endswith("runtime_doctor.phi3_5_vision.json")
     assert len(plan.recipes[0].batch_commands) == 2
     assert "visual_job_results.phi3_5_vision.batch_001.jsonl" in plan.recipes[0].batch_commands[0]
     assert "--limit 1" in plan.recipes[0].batch_commands[0]
@@ -135,10 +139,43 @@ def test_build_vlm_experiment_plan_summarizes_selected_jobs(tmp_path):
     assert len(plan.batch_compare_commands) == 2
     assert "visual_run_comparison.batch_001.json" in plan.batch_compare_commands[0]
     assert "--require-ocr" in plan.recipes[0].doctor_command
+    assert "--require-ocr-gpu" not in plan.recipes[0].doctor_command
     assert plan.recipes[0].doctor_command.endswith(
         "--vlm-profile phi3_5_vision --vlm-memory-margin-ratio 0.2"
     )
     assert "--ocr paddleocr" in plan.recipes[0].command
+
+
+def test_build_vlm_experiment_plan_requires_ocr_gpu_only_when_requested(tmp_path):
+    package_dir = tmp_path / "package"
+    package_dir.mkdir()
+    jobs = package_dir / "visual_jobs.priority.jsonl"
+    jobs.write_text(
+        VisualAnnotationJob(
+            job_id="job-a",
+            asset_id="asset-a",
+            doc_id="doc",
+            page_no=2,
+            kind=AssetKind.MAP,
+            asset_path=tmp_path / "a.png",
+            operations=["ocr", "vlm"],
+            priority=1200,
+            reason="missing annotations",
+        ).model_dump_json()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    plan = build_vlm_experiment_plan(
+        package_dir=package_dir,
+        jobs_file=jobs,
+        profiles=["qwen2_5_vl_7b"],
+        ocr_device="gpu:0",
+    )
+
+    assert "--require-ocr" in plan.recipes[0].doctor_command
+    assert "--require-ocr-gpu" in plan.recipes[0].doctor_command
+    assert "--ocr-device gpu:0" in plan.recipes[0].command
 
 
 def test_parse_profile_list_normalizes_names():
@@ -177,6 +214,8 @@ def test_plan_vlm_experiments_cli_writes_json(tmp_path):
     assert payload["profiles"] == ["qwen2_5_vl_7b", "phi3_5_vision"]
     assert payload["job_summary"]["exists"] is True
     assert payload["recipes"][1]["model_class"] == "causal-lm"
+    assert payload["recipes"][1]["doctor_output"].endswith("runtime_doctor.phi3_5_vision.json")
     assert payload["recipes"][1]["doctor_command"].startswith("chunking-docs doctor")
+    assert "runtime_doctor.phi3_5_vision.json" in payload["recipes"][1]["doctor_command"]
     assert "compare-visual-runs" in payload["compare_command"]
     assert "--require-same-jobs" in payload["compare_command"]

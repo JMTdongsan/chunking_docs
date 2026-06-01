@@ -78,6 +78,7 @@ def inspect_runtime(
     require_postgres: bool = False,
     require_embeddings: bool = False,
     require_ocr: bool = False,
+    require_ocr_gpu: bool = False,
     require_vision: bool = False,
     vlm_profiles: list[str] | None = None,
     vlm_memory_margin_ratio: float = 0.0,
@@ -89,13 +90,14 @@ def inspect_runtime(
         gpus=detect_gpus(),
         torch_cuda_status=torch_cuda_status,
         paddle_cuda=detect_paddle_cuda(dependencies.get("paddlepaddle"))
-        if require_gpu and require_ocr
+        if require_ocr_gpu
         else (None, None),
         require_gpu=require_gpu,
         require_qdrant=require_qdrant,
         require_postgres=require_postgres,
         require_embeddings=require_embeddings,
         require_ocr=require_ocr,
+        require_ocr_gpu=require_ocr_gpu,
         require_vision=require_vision,
         vlm_profiles=vlm_profiles,
         vlm_memory_margin_ratio=vlm_memory_margin_ratio,
@@ -113,12 +115,13 @@ def build_runtime_report(
     require_postgres: bool = False,
     require_embeddings: bool = False,
     require_ocr: bool = False,
+    require_ocr_gpu: bool = False,
     require_vision: bool = False,
     vlm_profiles: list[str] | None = None,
     vlm_memory_margin_ratio: float = 0.0,
 ) -> RuntimeReport:
     checks = []
-    if require_gpu:
+    if require_gpu or require_ocr_gpu:
         checks.append(
             RuntimeCheck(
                 name="gpu_available",
@@ -133,7 +136,7 @@ def build_runtime_report(
         checks.extend(dependency_checks(dependencies, ["postgres", "pgvector"]))
     if require_embeddings:
         checks.extend(dependency_checks(dependencies, ["sentence_transformers"]))
-    if require_ocr:
+    if require_ocr or require_ocr_gpu:
         checks.extend(dependency_checks(dependencies, ["paddleocr", "paddlepaddle"]))
     if require_vision:
         checks.extend(dependency_checks(dependencies, ["torch", "torchvision", "transformers", "accelerate"]))
@@ -171,7 +174,11 @@ def build_runtime_report(
                     strict=require_embeddings or require_vision,
                 )
             )
-    if require_gpu and require_ocr and dependencies.get("paddlepaddle") and dependencies["paddlepaddle"].installed:
+    if (
+        require_ocr_gpu
+        and dependencies.get("paddlepaddle")
+        and dependencies["paddlepaddle"].installed
+    ):
         checks.append(
             RuntimeCheck(
                 name="paddle_cuda_available",
