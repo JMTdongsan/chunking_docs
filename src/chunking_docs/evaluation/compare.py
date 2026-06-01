@@ -6,8 +6,10 @@ from pydantic import BaseModel, Field
 
 from chunking_docs.evaluation.chunking_quality import ChunkingQualityReport
 from chunking_docs.evaluation.gate import (
+    result_expected_target_keys,
     retrieval_case_group_metrics,
     retrieval_chunk_strategy_metrics,
+    retrieval_rank_metrics,
     retrieval_role_metrics_payload,
     retrieval_source_family_metrics,
     retrieval_target_metrics,
@@ -27,6 +29,12 @@ class ChunkingComparisonRow(BaseModel):
     retrieval_mean_precision_at_k: float | None
     retrieval_mean_latency_ms: float | None
     retrieval_p95_latency_ms: float | None
+    retrieval_mean_first_relevant_rank: float | None = None
+    retrieval_p95_first_relevant_rank: float | None = None
+    retrieval_mean_target_rank: float | None = None
+    retrieval_p95_target_rank: float | None = None
+    retrieval_ranked_expected_case_count: float | None = None
+    retrieval_ranked_target_count: float | None = None
     target_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
     source_family_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
     chunk_strategy_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
@@ -61,6 +69,8 @@ class ChunkingPairwiseComparison(BaseModel):
     mean_target_coverage_delta: float = 0.0
     mean_target_ndcg_delta: float = 0.0
     mean_precision_delta: float = 0.0
+    mean_first_relevant_rank_delta: float | None = None
+    mean_target_rank_delta: float | None = None
     mean_latency_delta_ms: float | None = None
     bootstrap_samples: int = 0
     confidence_level: float = 0.95
@@ -72,6 +82,10 @@ class ChunkingPairwiseComparison(BaseModel):
     target_ndcg_delta_ci_high: float | None = None
     precision_delta_ci_low: float | None = None
     precision_delta_ci_high: float | None = None
+    first_relevant_rank_delta_ci_low: float | None = None
+    first_relevant_rank_delta_ci_high: float | None = None
+    target_rank_delta_ci_low: float | None = None
+    target_rank_delta_ci_high: float | None = None
     latency_delta_ci_low_ms: float | None = None
     latency_delta_ci_high_ms: float | None = None
 
@@ -98,6 +112,7 @@ def compare_chunking_reports(
         chunk_strategy_metrics = retrieval_chunk_strategy_metrics(report.retrieval)
         retrieval_role_metrics = retrieval_role_metrics_payload(report.retrieval)
         case_group_metrics = retrieval_case_group_metrics(report.retrieval)
+        rank_metrics = retrieval_rank_metrics(report.retrieval) if report.retrieval else {}
         rows.append(
             ChunkingComparisonRow(
                 name=name,
@@ -117,6 +132,14 @@ def compare_chunking_reports(
                 else None,
                 retrieval_mean_latency_ms=report.retrieval.mean_latency_ms if report.retrieval else None,
                 retrieval_p95_latency_ms=report.retrieval.p95_latency_ms if report.retrieval else None,
+                retrieval_mean_first_relevant_rank=rank_metrics.get("mean_first_relevant_rank"),
+                retrieval_p95_first_relevant_rank=rank_metrics.get("p95_first_relevant_rank"),
+                retrieval_mean_target_rank=rank_metrics.get("mean_target_rank"),
+                retrieval_p95_target_rank=rank_metrics.get("p95_target_rank"),
+                retrieval_ranked_expected_case_count=rank_metrics.get(
+                    "ranked_expected_case_count"
+                ),
+                retrieval_ranked_target_count=rank_metrics.get("ranked_target_count"),
                 target_metrics=target_metrics,
                 source_family_metrics=source_family_metrics,
                 chunk_strategy_metrics=chunk_strategy_metrics,
@@ -147,6 +170,7 @@ def compare_chunking_reports(
             row.retrieval_mean_target_ndcg_at_k
             if row.retrieval_mean_target_ndcg_at_k is not None
             else -1.0,
+            rank_sort_value(row.retrieval_mean_target_rank),
             row.retrieval_mrr if row.retrieval_mrr is not None else -1.0,
             row.quality_score,
         ),
@@ -161,6 +185,7 @@ def compare_chunking_reports(
                 row.retrieval_recall_at_k or 0.0,
                 row.retrieval_target_coverage_at_k or 0.0,
                 row.retrieval_mean_target_ndcg_at_k or 0.0,
+                rank_sort_value(row.retrieval_mean_target_rank),
                 row.retrieval_mrr or 0.0,
             ),
         ).name
@@ -219,7 +244,10 @@ def compare_retrieval_results_pairwise(
     target_coverage_deltas = []
     target_ndcg_deltas = []
     precision_deltas = []
+    first_relevant_rank_deltas = []
+    target_rank_deltas = []
     latency_deltas = []
+    missing_rank = float(max(candidate_report.retrieval.top_k, baseline_report.retrieval.top_k) + 1)
     for query in shared_queries:
         candidate_result = candidate_results[query]
         baseline_result = baseline_results[query]
@@ -240,6 +268,14 @@ def compare_retrieval_results_pairwise(
             candidate_result.target_ndcg_at_k - baseline_result.target_ndcg_at_k
         )
         precision_deltas.append(candidate_result.precision_at_k - baseline_result.precision_at_k)
+        first_relevant_rank_deltas.append(
+            first_relevant_rank(candidate_result, missing_rank)
+            - first_relevant_rank(baseline_result, missing_rank)
+        )
+        target_rank_deltas.append(
+            case_mean_target_rank(candidate_result, missing_rank)
+            - case_mean_target_rank(baseline_result, missing_rank)
+        )
         latency_deltas.append(candidate_result.latency_ms - baseline_result.latency_ms)
 
     shared_count = len(shared_queries)
@@ -247,6 +283,14 @@ def compare_retrieval_results_pairwise(
     target_coverage_ci = bootstrap_mean_interval(target_coverage_deltas, seed=stable_seed(candidate_name, baseline_name, "coverage"))
     target_ndcg_ci = bootstrap_mean_interval(target_ndcg_deltas, seed=stable_seed(candidate_name, baseline_name, "ndcg"))
     precision_ci = bootstrap_mean_interval(precision_deltas, seed=stable_seed(candidate_name, baseline_name, "precision"))
+    first_rank_ci = bootstrap_mean_interval(
+        first_relevant_rank_deltas,
+        seed=stable_seed(candidate_name, baseline_name, "first-rank"),
+    )
+    target_rank_ci = bootstrap_mean_interval(
+        target_rank_deltas,
+        seed=stable_seed(candidate_name, baseline_name, "target-rank"),
+    )
     latency_ci = bootstrap_mean_interval(latency_deltas, seed=stable_seed(candidate_name, baseline_name, "latency"))
     return ChunkingPairwiseComparison(
         candidate=candidate_name,
@@ -261,6 +305,8 @@ def compare_retrieval_results_pairwise(
         mean_target_coverage_delta=mean(target_coverage_deltas),
         mean_target_ndcg_delta=mean(target_ndcg_deltas),
         mean_precision_delta=mean(precision_deltas),
+        mean_first_relevant_rank_delta=mean(first_relevant_rank_deltas),
+        mean_target_rank_delta=mean(target_rank_deltas),
         mean_latency_delta_ms=mean(latency_deltas),
         bootstrap_samples=PAIRWISE_BOOTSTRAP_SAMPLES,
         confidence_level=PAIRWISE_CONFIDENCE_LEVEL,
@@ -272,6 +318,10 @@ def compare_retrieval_results_pairwise(
         target_ndcg_delta_ci_high=target_ndcg_ci[1],
         precision_delta_ci_low=precision_ci[0],
         precision_delta_ci_high=precision_ci[1],
+        first_relevant_rank_delta_ci_low=first_rank_ci[0],
+        first_relevant_rank_delta_ci_high=first_rank_ci[1],
+        target_rank_delta_ci_low=target_rank_ci[0],
+        target_rank_delta_ci_high=target_rank_ci[1],
         latency_delta_ci_low_ms=latency_ci[0],
         latency_delta_ci_high_ms=latency_ci[1],
     )
@@ -298,6 +348,25 @@ def case_score(result: RetrievalCaseResult) -> tuple[float, float, float, float]
         result.reciprocal_rank,
         result.precision_at_k,
     )
+
+
+def rank_sort_value(value: float | None) -> float:
+    return -float(value) if value is not None else float("-inf")
+
+
+def first_relevant_rank(result: RetrievalCaseResult, missing_rank: float) -> float:
+    return float(result.matched_rank) if result.matched_rank is not None else missing_rank
+
+
+def case_mean_target_rank(result: RetrievalCaseResult, missing_rank: float) -> float:
+    expected_targets = result_expected_target_keys(result)
+    if not expected_targets:
+        return 0.0
+    ranks = [
+        float(result.target_key_matched_ranks.get(target, missing_rank))
+        for target in expected_targets
+    ]
+    return mean(ranks)
 
 
 def mean(values: list[float]) -> float:

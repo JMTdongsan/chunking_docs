@@ -41,6 +41,8 @@ def test_run_chunking_sweep_writes_candidates_and_comparison(tmp_path):
     assert report.comparison.best_by_retrieval is not None
     assert report.selection.recommended is not None
     assert report.selection.ranking[0].score >= report.selection.ranking[-1].score
+    assert report.selection.ranking[0].metrics["mean_target_rank"] is not None
+    assert report.selection.ranking[0].metrics["target_rank_efficiency"] is not None
     assert set(report.selection.pareto_front)
     assert all(candidate.chunks_file for candidate in report.candidates)
     assert any(candidate.strategy == "hierarchical" for candidate in report.candidates)
@@ -75,6 +77,9 @@ def test_sweep_pareto_dominance_accounts_for_quality_and_cost():
         "precision_at_k": 0.6,
         "quality_score": 0.85,
         "visual_text_coverage_ratio": 1.0,
+        "target_rank_efficiency": 1.0,
+        "mean_target_rank": 1.0,
+        "p95_target_rank": 1.0,
         "mean_latency_ms": 10.0,
         "chunk_count": 20.0,
     }
@@ -85,6 +90,9 @@ def test_sweep_pareto_dominance_accounts_for_quality_and_cost():
         "precision_at_k": 0.5,
         "quality_score": 0.8,
         "visual_text_coverage_ratio": 1.0,
+        "target_rank_efficiency": 1 / 3,
+        "mean_target_rank": 3.0,
+        "p95_target_rank": 3.0,
         "mean_latency_ms": 12.0,
         "chunk_count": 25.0,
     }

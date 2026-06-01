@@ -244,6 +244,7 @@ def test_ingestion_readiness_includes_retrieval_cases_and_chunking_gate(tmp_path
             "baseline_candidate": "baseline",
             "min_quality_score": 0.8,
             "min_recall_at_k": 0.8,
+            "max_mean_target_rank": 2.0,
             "min_visual_text_coverage_ratio": 0.8,
             "min_target_type_coverage": {"asset": 0.8, "triple": 0.8},
             "min_source_family_target_coverage": {"lexical": 0.8},
@@ -271,6 +272,7 @@ def test_ingestion_readiness_includes_retrieval_cases_and_chunking_gate(tmp_path
     assert retrieval_component.metadata["non_visual_only_object_probe_count"] == 0
     assert report.chunking_comparison_gate is not None
     assert report.chunking_comparison_gate.candidate == "candidate"
+    assert report.chunking_comparison_gate.metrics["retrieval_mean_target_rank"] == 1.0
     assert report.chunking_comparison_gate.metrics["visual_text_coverage_ratio"] == 0.9
     assert report.chunking_comparison_gate.metrics["target_type.asset.coverage_at_k"] == 0.9
     assert report.chunking_comparison_gate.metrics["target_type.triple.coverage_at_k"] == 0.9
@@ -1122,6 +1124,8 @@ def test_ingestion_readiness_cli_can_gate_chunking_target_coverage(tmp_path):
             "baseline",
             "--min-chunking-recall-at-k",
             "0.8",
+            "--max-chunking-mean-target-rank",
+            "2.0",
             "--min-chunking-visual-text-coverage-ratio",
             "0.8",
             "--min-chunking-target-type-coverage",
@@ -1144,6 +1148,7 @@ def test_ingestion_readiness_cli_can_gate_chunking_target_coverage(tmp_path):
         if component["name"] == "chunking_comparison_gate"
     )
     assert component["metadata"]["candidate"] == "candidate"
+    assert component["metadata"]["metrics"]["retrieval_mean_target_rank"] == 1.0
     assert component["metadata"]["metrics"]["visual_text_coverage_ratio"] == 0.9
     assert component["metadata"]["metrics"]["target_type.asset.coverage_at_k"] == 0.9
     assert component["metadata"]["metrics"]["target_type.triple.coverage_at_k"] == 0.9
@@ -1281,8 +1286,8 @@ def write_bm25_manifest(
 def chunking_comparison():
     return ChunkingComparison(
         rows=[
-            chunking_row("candidate", quality_score=0.9, recall=0.9),
-            chunking_row("baseline", quality_score=0.85, recall=0.88),
+            chunking_row("candidate", quality_score=0.9, recall=0.9, mean_target_rank=1.0),
+            chunking_row("baseline", quality_score=0.85, recall=0.88, mean_target_rank=2.0),
         ],
         best_by_quality="candidate",
         best_by_retrieval="candidate",
@@ -1290,7 +1295,7 @@ def chunking_comparison():
     )
 
 
-def chunking_row(name: str, quality_score: float, recall: float):
+def chunking_row(name: str, quality_score: float, recall: float, mean_target_rank: float):
     return ChunkingComparisonRow(
         name=name,
         chunk_count=1,
@@ -1303,6 +1308,12 @@ def chunking_row(name: str, quality_score: float, recall: float):
         retrieval_mean_precision_at_k=recall,
         retrieval_mean_latency_ms=5.0,
         retrieval_p95_latency_ms=7.0,
+        retrieval_mean_first_relevant_rank=mean_target_rank,
+        retrieval_p95_first_relevant_rank=mean_target_rank,
+        retrieval_mean_target_rank=mean_target_rank,
+        retrieval_p95_target_rank=mean_target_rank,
+        retrieval_ranked_expected_case_count=2.0,
+        retrieval_ranked_target_count=2.0,
         target_metrics={
             "asset": {"coverage_at_k": recall},
             "triple": {"coverage_at_k": recall},

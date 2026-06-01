@@ -61,6 +61,8 @@ def test_compare_chunking_reports_ranks_by_retrieval_then_quality():
     assert comparison.rows[0].retrieval_target_coverage_at_k == 1.0
     assert comparison.rows[0].retrieval_mean_target_ndcg_at_k == 1.0
     assert comparison.rows[0].retrieval_mean_precision_at_k is not None
+    assert comparison.rows[0].retrieval_mean_first_relevant_rank == 1.0
+    assert comparison.rows[0].retrieval_mean_target_rank == 1.0
     assert comparison.rows[0].retrieval_mean_latency_ms is not None
     assert comparison.rows[0].target_metrics["asset"]["coverage_at_k"] == 1.0
     assert comparison.rows[0].source_family_metrics["lexical"]["target_coverage_at_k"] == 1.0
@@ -87,6 +89,8 @@ def test_compare_chunking_reports_ranks_by_retrieval_then_quality():
     assert pairwise.candidate_win_rate == 1.0
     assert pairwise.mean_target_coverage_delta > 0.0
     assert pairwise.mean_target_ndcg_delta > 0.0
+    assert pairwise.mean_first_relevant_rank_delta <= 0.0
+    assert pairwise.mean_target_rank_delta < 0.0
     assert pairwise.bootstrap_samples == 1000
     assert pairwise.target_coverage_delta_ci_low == pairwise.mean_target_coverage_delta
     assert pairwise.target_ndcg_delta_ci_high == pairwise.mean_target_ndcg_delta

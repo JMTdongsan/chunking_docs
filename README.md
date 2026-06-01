@@ -430,6 +430,7 @@ chunking-docs ingestion-readiness \
   --chunking-comparison outputs/package/chunking_comparison.json \
   --min-chunking-visual-text-coverage-ratio 0.8 \
   --min-chunking-visual-text-part-coverage-ratio 0.8 \
+  --max-chunking-mean-target-rank 3 \
   --min-chunking-target-type-coverage asset=0.9 \
   --min-chunking-target-type-coverage triple=0.9 \
   --min-chunking-source-family-target-coverage lexical=0.75 \
@@ -656,6 +657,7 @@ chunking-docs gate-chunking-comparison outputs/package/chunking_comparison.json 
   --min-target-coverage-at-k 0.75 \
   --min-target-ndcg-at-k 0.7 \
   --min-precision-at-k 0.4 \
+  --max-mean-target-rank 3 \
   --min-visual-text-coverage-ratio 0.8 \
   --min-target-type-coverage asset=0.9 \
   --min-target-type-coverage triple=0.9 \
@@ -673,7 +675,7 @@ chunking-docs gate-chunking-comparison outputs/package/chunking_comparison.json 
   --output outputs/package/chunking_comparison_gate.json
 ```
 
-The `multimodal` strategy keeps semantic text chunks, appends bounded visual context from linked captions, OCR, VLM summaries, and structured VLM metadata, and adds separate visual asset text chunks. Visual links are resolved from both `asset_ids` and `asset:` source refs, so annotations can remain provenance-oriented while still contributing to embedding text. Text-bearing visual assets without a linked parent chunk are emitted as standalone visual chunks instead of being dropped. The `hierarchical` strategy emits coarse parent chunks plus fine child chunks with shared visual context, which supports experiments where broad queries should find a page or section while precise queries should retrieve a smaller evidence span. `--collapse-hierarchical` reports the parent as the final hit while preserving matched child chunks as evidence. Comparison output includes recall@k, MRR, target coverage@k, target nDCG@k, precision@k, target-type coverage, source-family target coverage, chunking-strategy coverage, retrieval-role coverage, linked visual text asset coverage, linked visual text part coverage, latency, failed queries, chunk size issues, query-paired baseline deltas, paired bootstrap confidence intervals, and the best candidate by quality and retrieval behavior. Pairwise gate options such as `--min-pairwise-win-rate`, `--min-pairwise-target-coverage-lift`, `--min-pairwise-target-ndcg-lift`, `--min-pairwise-target-ndcg-ci-low`, and `--max-pairwise-mean-latency-delta-ms` help distinguish broad aggregate gains from stable wins on the same benchmark queries.
+The `multimodal` strategy keeps semantic text chunks, appends bounded visual context from linked captions, OCR, VLM summaries, and structured VLM metadata, and adds separate visual asset text chunks. Visual links are resolved from both `asset_ids` and `asset:` source refs, so annotations can remain provenance-oriented while still contributing to embedding text. Text-bearing visual assets without a linked parent chunk are emitted as standalone visual chunks instead of being dropped. The `hierarchical` strategy emits coarse parent chunks plus fine child chunks with shared visual context, which supports experiments where broad queries should find a page or section while precise queries should retrieve a smaller evidence span. `--collapse-hierarchical` reports the parent as the final hit while preserving matched child chunks as evidence. Comparison output includes recall@k, MRR, target coverage@k, target nDCG@k, precision@k, target rank metrics, target-type coverage, source-family target coverage, chunking-strategy coverage, retrieval-role coverage, linked visual text asset coverage, linked visual text part coverage, latency, failed queries, chunk size issues, query-paired baseline deltas, paired bootstrap confidence intervals, and the best candidate by quality and retrieval behavior. Pairwise gate options such as `--min-pairwise-win-rate`, `--min-pairwise-target-coverage-lift`, `--min-pairwise-target-ndcg-lift`, `--min-pairwise-target-ndcg-ci-low`, and `--max-pairwise-mean-latency-delta-ms` help distinguish broad aggregate gains from stable wins on the same benchmark queries.
 
 Run a parameter sweep when choosing defaults:
 
@@ -695,7 +697,7 @@ chunking-docs sweep-chunking \
   --output outputs/package/chunking_sweep.json
 ```
 
-The sweep writes candidate chunk files under `outputs/package/chunking_sweep/` and ranks them with the same quality, recall@k, MRR, target coverage@k, target nDCG@k, precision@k, target-type coverage, source-family target coverage, chunking-strategy coverage, retrieval-role coverage, linked visual text coverage, latency, and failed-query metrics used by `compare-chunking`. It also emits a `selection` block with a weighted recommendation and Pareto front so a strategy that improves retrieval can be compared against latency and chunk-count cost before becoming the default.
+The sweep writes candidate chunk files under `outputs/package/chunking_sweep/` and ranks them with the same quality, recall@k, MRR, target coverage@k, target nDCG@k, precision@k, target rank, target-type coverage, source-family target coverage, chunking-strategy coverage, retrieval-role coverage, linked visual text coverage, latency, and failed-query metrics used by `compare-chunking`. It also emits a `selection` block with a weighted recommendation and Pareto front so a strategy that improves retrieval can be compared against target rank, latency, and chunk-count cost before becoming the default.
 
 Write a reproducible experiment report for a package:
 
@@ -712,7 +714,7 @@ chunking-docs write-experiment-report \
   --output outputs/package/experiment_report.json
 ```
 
-The report records package artifact checksums, JSONL record counts, BM25 tokenizer settings, Qdrant named-vector configuration, readiness, evaluation, audit, gate artifact variants, visual run comparison summaries, top-level and component-level validation pass/fail summaries, chunking quality metrics, linked visual text coverage, retrieval recall@k, MRR, target coverage@k, target nDCG@k, precision@k, latency, failed queries, case-group metrics such as visual object probe coverage, paired confidence metrics from chunking gates, and the best candidate by retrieval behavior. This makes chunking changes reviewable and repeatable before new defaults are adopted.
+The report records package artifact checksums, JSONL record counts, BM25 tokenizer settings, Qdrant named-vector configuration, readiness, evaluation, audit, gate artifact variants, visual run comparison summaries, top-level and component-level validation pass/fail summaries, chunking quality metrics, linked visual text coverage, retrieval recall@k, MRR, target coverage@k, target nDCG@k, target rank, precision@k, latency, failed queries, case-group metrics such as visual object probe coverage, paired confidence metrics from chunking gates, and the best candidate by retrieval behavior. This makes chunking changes reviewable and repeatable before new defaults are adopted.
 
 ## Development Checks
 

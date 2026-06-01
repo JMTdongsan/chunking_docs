@@ -11,6 +11,7 @@ from chunking_docs.chunking.multimodal import ChunkStrategy, build_strategy_chun
 from chunking_docs.embeddings.tokenizers import LexicalTokenizerConfig
 from chunking_docs.evaluation.chunking_quality import ChunkingQualityReport, evaluate_chunking_quality
 from chunking_docs.evaluation.compare import ChunkingComparison, compare_chunking_reports
+from chunking_docs.evaluation.gate import retrieval_rank_metrics
 from chunking_docs.evaluation.retrieval import RetrievalCase
 from chunking_docs.io import write_jsonl
 from chunking_docs.models import DocumentChunk, GraphTriple, PageProfile, VisualAsset
@@ -48,14 +49,15 @@ class ChunkingSweepReport(BaseModel):
 
 
 SWEEP_SELECTION_WEIGHTS = {
-    "retrieval_recall_at_k": 0.24,
-    "target_coverage_at_k": 0.24,
-    "target_ndcg_at_k": 0.18,
-    "precision_at_k": 0.10,
-    "quality_score": 0.10,
-    "visual_text_coverage_ratio": 0.06,
-    "latency_efficiency": 0.05,
-    "chunk_count_efficiency": 0.03,
+    "retrieval_recall_at_k": 0.22,
+    "target_coverage_at_k": 0.22,
+    "target_ndcg_at_k": 0.16,
+    "target_rank_efficiency": 0.12,
+    "precision_at_k": 0.09,
+    "quality_score": 0.09,
+    "visual_text_coverage_ratio": 0.05,
+    "latency_efficiency": 0.03,
+    "chunk_count_efficiency": 0.02,
 }
 
 
@@ -169,6 +171,7 @@ def build_sweep_selection(candidates: list[ChunkingSweepCandidate]) -> ChunkingS
             row.metrics.get("retrieval_recall_at_k") or 0.0,
             row.metrics.get("target_coverage_at_k") or 0.0,
             row.metrics.get("target_ndcg_at_k") or 0.0,
+            row.metrics.get("target_rank_efficiency") or 0.0,
         ),
         reverse=True,
     )
@@ -183,11 +186,19 @@ def build_sweep_selection(candidates: list[ChunkingSweepCandidate]) -> ChunkingS
 def selection_metrics(candidate: ChunkingSweepCandidate) -> dict[str, float | None]:
     retrieval = candidate.report.retrieval
     mean_latency_ms = retrieval.mean_latency_ms if retrieval else None
+    rank_metrics = retrieval_rank_metrics(retrieval) if retrieval else {}
+    mean_target_rank = rank_metrics.get("mean_target_rank")
+    p95_target_rank = rank_metrics.get("p95_target_rank")
     return {
         "retrieval_recall_at_k": retrieval.recall_at_k if retrieval else None,
         "target_coverage_at_k": retrieval.target_coverage_at_k if retrieval else None,
         "target_ndcg_at_k": retrieval.mean_target_ndcg_at_k if retrieval else None,
         "precision_at_k": retrieval.mean_precision_at_k if retrieval else None,
+        "mean_first_relevant_rank": rank_metrics.get("mean_first_relevant_rank"),
+        "p95_first_relevant_rank": rank_metrics.get("p95_first_relevant_rank"),
+        "mean_target_rank": mean_target_rank,
+        "p95_target_rank": p95_target_rank,
+        "target_rank_efficiency": rank_efficiency(mean_target_rank),
         "mean_latency_ms": mean_latency_ms,
         "latency_efficiency": latency_efficiency(mean_latency_ms),
         "quality_score": candidate.report.quality_score,
@@ -228,8 +239,9 @@ def dominates(
         "precision_at_k",
         "quality_score",
         "visual_text_coverage_ratio",
+        "target_rank_efficiency",
     ]
-    lower_is_better = ["mean_latency_ms", "chunk_count"]
+    lower_is_better = ["mean_target_rank", "p95_target_rank", "mean_latency_ms", "chunk_count"]
     no_worse = all(
         metric_value(candidate, metric) >= metric_value(baseline, metric)
         for metric in higher_is_better
@@ -263,6 +275,14 @@ def latency_efficiency(latency_ms: float | None) -> float:
     if latency_ms <= 0:
         return 1.0
     return 1.0 / latency_ms
+
+
+def rank_efficiency(rank: float | None) -> float:
+    if rank is None:
+        return 0.0
+    if rank <= 0:
+        return 1.0
+    return 1.0 / rank
 
 
 def clamp01(value: float | None) -> float:

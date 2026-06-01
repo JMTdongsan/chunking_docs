@@ -27,6 +27,7 @@ def test_gate_chunking_comparison_passes_selected_candidate_against_baseline():
         min_target_coverage_at_k=0.8,
         min_target_ndcg_at_k=0.75,
         min_precision_at_k=0.5,
+        max_mean_target_rank=2.0,
         min_visual_text_coverage_ratio=0.8,
         min_visual_text_part_coverage_ratio=0.8,
         min_target_type_coverage={"asset": 0.8},
@@ -44,6 +45,7 @@ def test_gate_chunking_comparison_passes_selected_candidate_against_baseline():
     assert report.baseline_candidate == "weak"
     assert report.failed_checks == []
     assert report.metrics["retrieval_recall_at_k"] == 0.9
+    assert report.metrics["retrieval_mean_target_rank"] == 1.0
     assert report.metrics["visual_text_coverage_ratio"] == 0.9
     assert report.metrics["visual_text_part_coverage_ratio"] == 0.9
     assert report.metrics["target_type.asset.coverage_at_k"] == 0.85
@@ -70,6 +72,7 @@ def test_gate_chunking_comparison_flags_retrieval_regressions():
         require_retrieval=True,
         min_recall_at_k=0.8,
         min_target_coverage_at_k=0.75,
+        max_mean_target_rank=2.0,
         min_visual_text_coverage_ratio=0.8,
         min_visual_text_part_coverage_ratio=0.8,
         min_target_type_coverage={"asset": 0.8},
@@ -85,6 +88,7 @@ def test_gate_chunking_comparison_flags_retrieval_regressions():
     assert report.passed is False
     assert "min_recall_at_k" in report.failed_checks
     assert "min_target_coverage_at_k" in report.failed_checks
+    assert "max_mean_target_rank" in report.failed_checks
     assert "min_visual_text_coverage_ratio" in report.failed_checks
     assert "min_visual_text_part_coverage_ratio" in report.failed_checks
     assert "min_target_type_coverage:asset" in report.failed_checks
@@ -180,6 +184,8 @@ def test_gate_chunking_comparison_cli_writes_json_and_fails(tmp_path):
             "--require-retrieval",
             "--min-recall-at-k",
             "0.8",
+            "--max-mean-target-rank",
+            "2.0",
             "--min-target-type-coverage",
             "asset=0.8",
             "--min-visual-text-coverage-ratio",
@@ -209,6 +215,7 @@ def test_gate_chunking_comparison_cli_writes_json_and_fails(tmp_path):
     payload = json.loads(output_path.read_text(encoding="utf-8"))
     assert payload["candidate"] == "weak"
     assert "min_recall_at_k" in payload["failed_checks"]
+    assert "max_mean_target_rank" in payload["failed_checks"]
     assert "min_visual_text_coverage_ratio" in payload["failed_checks"]
     assert "min_visual_text_part_coverage_ratio" in payload["failed_checks"]
     assert "min_target_type_coverage:asset" in payload["failed_checks"]
@@ -244,6 +251,7 @@ def comparison_report() -> ChunkingComparison:
                 precision=0.6,
                 mean_latency=12.0,
                 p95_latency=20.0,
+                mean_target_rank=1.0,
                 failed_queries=[],
                 target_metrics={"asset": {"coverage_at_k": 0.85}},
                 source_family_metrics={"lexical": {"target_coverage_at_k": 0.9}},
@@ -263,6 +271,7 @@ def comparison_report() -> ChunkingComparison:
                 precision=0.25,
                 mean_latency=30.0,
                 p95_latency=55.0,
+                mean_target_rank=6.0,
                 failed_queries=["missing target"],
                 target_metrics={"asset": {"coverage_at_k": 0.2}},
                 source_family_metrics={"lexical": {"target_coverage_at_k": 0.1}},
@@ -345,6 +354,7 @@ def row(
     precision: float,
     mean_latency: float,
     p95_latency: float,
+    mean_target_rank: float,
     failed_queries: list[str],
     target_metrics: dict[str, dict[str, float]] | None = None,
     source_family_metrics: dict[str, dict[str, float]] | None = None,
@@ -369,6 +379,12 @@ def row(
         retrieval_mean_precision_at_k=precision,
         retrieval_mean_latency_ms=mean_latency,
         retrieval_p95_latency_ms=p95_latency,
+        retrieval_mean_first_relevant_rank=mean_target_rank,
+        retrieval_p95_first_relevant_rank=mean_target_rank,
+        retrieval_mean_target_rank=mean_target_rank,
+        retrieval_p95_target_rank=mean_target_rank,
+        retrieval_ranked_expected_case_count=10.0,
+        retrieval_ranked_target_count=10.0,
         target_metrics=target_metrics or {},
         source_family_metrics=source_family_metrics or {},
         chunk_strategy_metrics=chunk_strategy_metrics or {},

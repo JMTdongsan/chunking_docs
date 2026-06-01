@@ -46,6 +46,7 @@ def test_build_experiment_report_summarizes_artifacts_and_candidates(tmp_path):
     assert validations["ingestion_readiness.final.json#retrieval_gate"].metrics["recall_at_k"] == 1.0
     assert validations["retrieval_gate.final.json"].metrics["recall_at_k"] == 1.0
     assert validations["retrieval_gate.final.json"].metrics["mrr"] == 1.0
+    assert validations["retrieval_gate.final.json"].metrics["mean_target_rank"] == 1.0
     assert validations["retrieval_gate.final.json"].metrics["p95_latency_ms"] == 12.0
     assert validations["retrieval_gate.final.json"].metrics[
         "chunk_strategy.visual_asset_text.target_coverage_at_k"
@@ -234,6 +235,8 @@ def write_minimal_package(tmp_path):
                 "metrics": {
                     "recall_at_k": 1.0,
                     "mrr": 1.0,
+                    "mean_target_rank": 1.0,
+                    "p95_target_rank": 1.0,
                     "p95_latency_ms": 12.0,
                     "target_type.asset.coverage_at_k": 1.0,
                     "chunk_strategy.visual_asset_text.target_coverage_at_k": 1.0,
