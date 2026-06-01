@@ -213,14 +213,23 @@ def visual_annotation_step(
             f"--jobs {path_arg(jobs_path)} --profiles {','.join(vlm_profiles)} --ocr {ocr_backend} "
             f"--batch-size 25 --output {path_arg(package_dir / 'vlm_experiment_plan.json')}"
         ),
-        (
-            f"chunking-docs run-visual-jobs --package-dir {path_arg(package_dir)} "
-            f"--jobs {path_arg(jobs_path)} --ocr {ocr_backend} --vlm hf "
-            f"--vlm-profile {vlm_profiles[0] if vlm_profiles else 'qwen2_5_vl_7b'} --apply"
-        ),
-        f"chunking-docs gate-visual-results --results {path_arg(package_dir / 'visual_job_results.jsonl')}",
-        visual_run_comparison_command(package_dir, vlm_profiles),
     ]
+    profiles = vlm_profiles or ["qwen2_5_vl_7b"]
+    commands.extend(
+        visual_profile_run_command(package_dir, jobs_path, ocr_backend, profile)
+        for profile in profiles
+    )
+    commands.extend(
+        [
+            f"chunking-docs gate-visual-results --results {path_arg(visual_profile_results_path(package_dir, profiles[0]))}",
+            visual_run_comparison_command(package_dir, profiles),
+            (
+                f"chunking-docs apply-annotations "
+                f"{path_arg(visual_profile_annotations_path(package_dir, profiles[0]))} "
+                f"--package-dir {path_arg(package_dir)}"
+            ),
+        ]
+    )
     return WorkflowStep(
         step_id="visual_annotations",
         title="Run OCR/VLM visual annotations",
@@ -233,11 +242,34 @@ def visual_annotation_step(
     )
 
 
+def visual_profile_run_command(
+    package_dir: Path,
+    jobs_path: Path,
+    ocr_backend: str,
+    profile: str,
+) -> str:
+    return (
+        f"chunking-docs run-visual-jobs --package-dir {path_arg(package_dir)} "
+        f"--jobs {path_arg(jobs_path)} "
+        f"--results-output {path_arg(visual_profile_results_path(package_dir, profile))} "
+        f"--annotations-output {path_arg(visual_profile_annotations_path(package_dir, profile))} "
+        f"--ocr {shlex.quote(ocr_backend)} --vlm hf --vlm-profile {shlex.quote(profile)}"
+    )
+
+
+def visual_profile_results_path(package_dir: Path, profile: str) -> Path:
+    return package_dir / f"visual_job_results.{profile}.jsonl"
+
+
+def visual_profile_annotations_path(package_dir: Path, profile: str) -> Path:
+    return package_dir / f"visual_annotations.{profile}.jsonl"
+
+
 def visual_run_comparison_command(package_dir: Path, vlm_profiles: list[str]) -> str:
     profiles = vlm_profiles or ["qwen2_5_vl_7b"]
     command_parts = ["chunking-docs compare-visual-runs"]
     for profile in profiles:
-        run_path = package_dir / f"visual_job_results.{profile}.jsonl"
+        run_path = visual_profile_results_path(package_dir, profile)
         command_parts.extend(["--run", shlex.quote(f"{profile}={path_text(run_path)}")])
     command_parts.extend(
         [

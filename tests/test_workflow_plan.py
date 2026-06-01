@@ -59,10 +59,18 @@ def test_build_ingestion_workflow_plan_orders_runtime_visual_embedding_and_readi
     assert any("--profiles qwen2_5_vl_7b,llava_next_7b" in command for command in visual_commands)
     assert any("--batch-size 25" in command for command in visual_commands)
     assert any("--ocr paddleocr --vlm hf" in command for command in visual_commands)
+    assert any("visual_job_results.qwen2_5_vl_7b.jsonl" in command for command in visual_commands)
+    assert any("visual_annotations.qwen2_5_vl_7b.jsonl" in command for command in visual_commands)
+    assert any("visual_job_results.llava_next_7b.jsonl" in command for command in visual_commands)
+    assert any("visual_annotations.llava_next_7b.jsonl" in command for command in visual_commands)
+    assert any("apply-annotations" in command for command in visual_commands)
+    assert any("visual_annotations.qwen2_5_vl_7b.jsonl" in command and "apply-annotations" in command for command in visual_commands)
     assert any("compare-visual-runs" in command for command in visual_commands)
     assert any("qwen2_5_vl_7b=" in command for command in visual_commands)
     assert any("llava_next_7b=" in command for command in visual_commands)
     assert any("visual_run_comparison.json" in command for command in visual_commands)
+    gate_visual_command = next(command for command in visual_commands if "gate-visual-results" in command)
+    assert "visual_job_results.qwen2_5_vl_7b.jsonl" in gate_visual_command
     assert any(
         "apply-chunking-sweep" in command
         for step in plan.steps
