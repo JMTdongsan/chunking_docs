@@ -1904,7 +1904,7 @@ def test_ingestion_readiness_cli_can_gate_qdrant_reranker_ablation(tmp_path):
             "--min-qdrant-reranker-case-group-source-target-coverage",
             "case_source:visual_object_probe:rerank:lexical=1.0",
             "--min-qdrant-reranker-case-group-source-family-target-coverage",
-            "case_source:visual_object_probe:lexical=1.0",
+            "case_source:visual_object_probe:reranker=1.0",
             "--min-qdrant-reranker-pairwise-win-rate",
             "1.0",
             "--max-qdrant-reranker-pairwise-mean-target-rank-delta",
@@ -1936,7 +1936,7 @@ def test_ingestion_readiness_cli_can_gate_qdrant_reranker_ablation(tmp_path):
     ]["rerank:lexical"]["target_coverage_at_k"] == 1.0
     assert component["metadata"]["case_group_source_family_metrics"]["case_source"][
         "visual_object_probe"
-    ]["lexical"]["target_coverage_at_k"] == 1.0
+    ]["reranker"]["target_coverage_at_k"] == 1.0
     assert component["metadata"]["pairwise_metrics"]["pairwise_candidate_win_rate"] == 1.0
 
 

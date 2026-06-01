@@ -482,6 +482,7 @@ def recommendations(
                 "chunking-docs embed-package --package-dir outputs/package --image-backend clip "
                 "--object-backend same-as-caption --triple-backend same-as-text"
             )
+        vector_modes = ",".join(recommended_qdrant_vector_ablation_modes(visual, graph))
         result.append(
             ProcessingRecommendation(
                 code="evaluate_visual_vectors",
@@ -496,7 +497,7 @@ def recommendations(
                     (
                         "chunking-docs eval-qdrant-vector-ablation examples/retrieval_cases.jsonl "
                         "--package-dir outputs/package "
-                        "--modes text,caption,image,text_image,caption_image,all "
+                        f"--modes {vector_modes} "
                         "--image-query-backend clip --image-query-model openai/clip-vit-large-patch14"
                     ),
                 ],
@@ -536,7 +537,11 @@ def recommendations(
                         "chunking-docs gate-qdrant-vector-ablation outputs/package/qdrant_vector_ablation.json "
                         "--mode caption_image --baseline-mode caption "
                         "--min-source-target-coverage qdrant:image_dense=0.5 "
-                        "--min-case-group-target-coverage case_source:visual_image_probe=0.7"
+                        "--min-case-group-target-coverage case_source:visual_image_probe=0.7 "
+                        "--min-case-group-source-target-coverage "
+                        "case_source:visual_image_probe:qdrant:image_dense=0.5 "
+                        "--min-case-group-source-family-target-coverage "
+                        "case_source:visual_image_probe:visual=0.5"
                     ),
                 ],
                 metadata={
@@ -571,7 +576,17 @@ def recommendations(
                         "--min-query-terms-per-case 3 "
                         "--require-visual-only-object-probes"
                     ),
-                    "chunking-docs gate-qdrant-vector-ablation outputs/package/qdrant_vector_ablation.json --mode text_caption --min-case-group-target-coverage case_source:visual_object_probe=0.7",
+                    (
+                        "chunking-docs gate-qdrant-vector-ablation "
+                        "outputs/package/qdrant_vector_ablation.json "
+                        "--mode text_object --baseline-mode text "
+                        "--min-source-target-coverage qdrant:object_dense=0.3 "
+                        "--min-case-group-target-coverage case_source:visual_object_probe=0.7 "
+                        "--min-case-group-source-target-coverage "
+                        "case_source:visual_object_probe:qdrant:object_dense=0.3 "
+                        "--min-case-group-source-family-target-coverage "
+                        "case_source:visual_object_probe:visual=0.3"
+                    ),
                 ],
                 metadata={
                     "vlm_object_asset_count": visual.vlm_object_asset_count,
@@ -757,6 +772,20 @@ def recommended_qdrant_vector_names(
     if graph.triple_count:
         names.append("triple_dense")
     return names
+
+
+def recommended_qdrant_vector_ablation_modes(
+    visual: VisualCharacteristics,
+    graph: GraphCharacteristics,
+) -> list[str]:
+    modes = ["text", "caption", "image", "text_image", "caption_image", "all"]
+    if visual.vlm_object_count or visual.vlm_visual_feature_count:
+        modes.extend(["object", "text_object", "caption_object", "all_with_object"])
+    if graph.triple_count:
+        modes.extend(["triple", "text_triple", "all_with_triple"])
+        if visual.vlm_object_count or visual.vlm_visual_feature_count:
+            modes.append("all_with_object_triple")
+    return modes
 
 
 def bounded_threshold(value: int, cap: int = 5) -> int:

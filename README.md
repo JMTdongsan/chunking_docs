@@ -577,6 +577,7 @@ chunking-docs ingestion-readiness \
   --min-qdrant-reranker-source-target-coverage rerank:lexical=0.75 \
   --min-qdrant-reranker-case-group-target-coverage case_source:visual_object_probe=0.7 \
   --min-qdrant-reranker-case-group-source-target-coverage case_source:visual_object_probe:rerank:lexical=0.7 \
+  --min-qdrant-reranker-case-group-source-family-target-coverage case_source:visual_object_probe:reranker=0.7 \
   --max-qdrant-reranker-failed-queries 0 \
   --qdrant-retrieval-config outputs/package/qdrant_retrieval_config.json \
   --require-qdrant-retrieval-config \
@@ -759,6 +760,8 @@ chunking-docs gate-qdrant-vector-ablation outputs/package/qdrant_vector_ablation
   --max-chunk-strategy-excluded-target-hit-rate visual_asset_text=0.0 \
   --max-retrieval-role-excluded-target-hit-rate child=0.0 \
   --min-case-group-target-coverage case_source:visual_image_probe=0.7 \
+  --min-case-group-source-target-coverage case_source:visual_image_probe:qdrant:image_dense=0.5 \
+  --min-case-group-source-family-target-coverage case_source:visual_image_probe:visual=0.5 \
   --max-failed-queries 0 \
   --require-best-by-recall \
   --output outputs/package/qdrant_vector_ablation_gate.json
@@ -777,6 +780,8 @@ chunking-docs gate-qdrant-reranker-ablation outputs/package/qdrant_reranker_abla
   --min-target-type-coverage asset=0.9 \
   --min-source-target-coverage rerank:lexical=0.75 \
   --min-case-group-target-coverage case_source:visual_object_probe=0.7 \
+  --min-case-group-source-target-coverage case_source:visual_object_probe:rerank:lexical=0.7 \
+  --min-case-group-source-family-target-coverage case_source:visual_object_probe:reranker=0.7 \
   --max-failed-queries 0 \
   --require-best-by-target-ndcg \
   --output outputs/package/qdrant_reranker_ablation_gate.json

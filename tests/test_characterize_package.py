@@ -85,6 +85,8 @@ def test_characterize_package_reports_strategy_observations(tmp_path):
     )
     assert "--object-backend same-as-caption" in visual_vector_recommendation.commands[0]
     assert "--triple-backend same-as-text" in visual_vector_recommendation.commands[0]
+    assert "object,text_object,caption_object,all_with_object" in visual_vector_recommendation.commands[1]
+    assert "triple,text_triple,all_with_triple,all_with_object_triple" in visual_vector_recommendation.commands[1]
     assert "--image-query-backend clip" in visual_vector_recommendation.commands[1]
     image_probe_recommendation = next(
         item for item in report.recommendations if item.code == "generate_visual_image_probe_cases"
@@ -96,6 +98,11 @@ def test_characterize_package_reports_strategy_observations(tmp_path):
     assert "--max-expected-targets-per-case 5" in image_probe_audit_command
     assert "--min-source-target-coverage qdrant:image_dense=0.5" in image_probe_recommendation.commands[2]
     assert "case_source:visual_image_probe=0.7" in image_probe_recommendation.commands[2]
+    assert (
+        "case_source:visual_image_probe:qdrant:image_dense=0.5"
+        in image_probe_recommendation.commands[2]
+    )
+    assert "case_source:visual_image_probe:visual=0.5" in image_probe_recommendation.commands[2]
     assert image_probe_recommendation.metadata["recommended_image_probe_case_threshold"] == 1
     triple_vector_recommendation = next(
         item for item in report.recommendations if item.code == "build_triple_vector_artifacts"
@@ -113,6 +120,13 @@ def test_characterize_package_reports_strategy_observations(tmp_path):
     assert "--min-case-group-distinct-targets case_source:visual_object_probe:asset=1" in object_probe_audit_command
     assert "--max-asset-cases-per-target 3" in object_probe_audit_command
     assert "--max-expected-targets-per-case 5" in object_probe_audit_command
+    assert "--mode text_object --baseline-mode text" in object_probe_recommendation.commands[2]
+    assert "--min-source-target-coverage qdrant:object_dense=0.3" in object_probe_recommendation.commands[2]
+    assert (
+        "case_source:visual_object_probe:qdrant:object_dense=0.3"
+        in object_probe_recommendation.commands[2]
+    )
+    assert "case_source:visual_object_probe:visual=0.3" in object_probe_recommendation.commands[2]
     assert "--min-query-terms-per-case 3" in object_probe_audit_command
     assert "--require-visual-only-object-probes" in object_probe_audit_command
     assert object_probe_recommendation.metadata["vlm_visual_feature_count"] == 1

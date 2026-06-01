@@ -2601,13 +2601,13 @@ def test_gate_qdrant_reranker_ablation_passes_required_mode():
         max_mean_target_rank=1.0,
         min_target_type_coverage={"asset": 1.0},
         min_source_target_coverage={"rerank:lexical": 1.0},
-        min_source_family_target_coverage={"lexical": 1.0},
+        min_source_family_target_coverage={"reranker": 1.0},
         min_case_group_target_coverage={"case_source:visual_object_probe": 1.0},
         min_case_group_source_target_coverage={
             "case_source:visual_object_probe:rerank:lexical": 1.0
         },
         min_case_group_source_family_target_coverage={
-            "case_source:visual_object_probe:lexical": 1.0
+            "case_source:visual_object_probe:reranker": 1.0
         },
         min_pairwise_shared_queries=1,
         min_pairwise_win_rate=1.0,
@@ -2631,7 +2631,7 @@ def test_gate_qdrant_reranker_ablation_passes_required_mode():
     assert gate.pairwise_metrics["pairwise_mean_target_rank_delta"] < 0
     assert gate.target_metrics["asset"]["coverage_at_k"] == 1.0
     assert gate.source_metrics["rerank:lexical"]["target_coverage_at_k"] == 1.0
-    assert gate.source_family_metrics["lexical"]["target_coverage_at_k"] == 1.0
+    assert gate.source_family_metrics["reranker"]["target_coverage_at_k"] == 1.0
     assert (
         gate.case_group_metrics["case_source"]["visual_object_probe"][
             "target_coverage_at_k"
@@ -2642,7 +2642,7 @@ def test_gate_qdrant_reranker_ablation_passes_required_mode():
         "rerank:lexical"
     ]["target_coverage_at_k"] == 1.0
     assert gate.case_group_source_family_metrics["case_source"]["visual_object_probe"][
-        "lexical"
+        "reranker"
     ]["target_coverage_at_k"] == 1.0
 
 
@@ -2672,7 +2672,7 @@ def test_gate_qdrant_reranker_ablation_cli_writes_report(tmp_path):
             "--min-case-group-source-target-coverage",
             "case_source:visual_object_probe:rerank:lexical=1.0",
             "--min-case-group-source-family-target-coverage",
-            "case_source:visual_object_probe:lexical=1.0",
+            "case_source:visual_object_probe:reranker=1.0",
             "--require-best-by-target-ndcg",
             "--output",
             str(output),
@@ -2692,7 +2692,7 @@ def test_gate_qdrant_reranker_ablation_cli_writes_report(tmp_path):
     ]["target_coverage_at_k"] == 1.0
     assert payload["case_group_source_family_metrics"]["case_source"][
         "visual_object_probe"
-    ]["lexical"]["target_coverage_at_k"] == 1.0
+    ]["reranker"]["target_coverage_at_k"] == 1.0
 
 
 def qdrant_vector_ablation_report_for_gate():
