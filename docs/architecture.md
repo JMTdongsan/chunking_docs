@@ -48,6 +48,7 @@
 7. **OCR/VLM Job Planning**
    - Build `visual_jobs.jsonl` from missing OCR/VLM annotations.
    - Prioritize maps, tables, charts, figures, and pages with empty text.
+   - Preserve tile parent, grid, and text-quality metadata in jobs, and prioritize tile crops for dense pages when batch limits are used.
    - Filter jobs by page range or asset kind to run bounded OCR/VLM batches.
    - Run jobs in bounded batches and store `visual_job_results.jsonl` plus `visual_annotations.jsonl`.
    - Parse structured VLM JSON into captions, summaries, metadata, normalized object detections, and triple candidates.

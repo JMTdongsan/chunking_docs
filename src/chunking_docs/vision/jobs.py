@@ -63,7 +63,7 @@ def plan_visual_jobs(
         if job is not None:
             jobs.append(job)
 
-    jobs.sort(key=lambda job: (-job.priority, job.page_no, job.asset_id))
+    jobs.sort(key=visual_job_sort_key)
     if limit is not None:
         return jobs[:limit]
     return jobs
@@ -99,13 +99,45 @@ def visual_job_for_asset(
         priority=visual_job_priority(asset, operations),
         reason=", ".join(reasons),
         section_label=str(asset.metadata.get("section_label", "")),
-        metadata={
-            "text_quality": str(asset.metadata.get("text_quality", "")),
-            "image_block_count": asset.metadata.get("image_block_count"),
-            "embedded_image_count": asset.metadata.get("embedded_image_count"),
-            "drawing_count": asset.metadata.get("drawing_count"),
-        },
+        metadata=visual_job_metadata(asset),
     )
+
+
+def visual_job_sort_key(job: VisualAnnotationJob):
+    return (
+        -job.priority,
+        job.page_no,
+        int(job.metadata.get("tile_index", -1)),
+        job.asset_id,
+    )
+
+
+def visual_job_metadata(asset: VisualAsset) -> dict[str, Any]:
+    metadata = {}
+    for key in (
+        "asset_scope",
+        "parent_asset_id",
+        "tile_index",
+        "tile_row",
+        "tile_col",
+        "tile_rows",
+        "tile_cols",
+        "tile_overlap_ratio",
+        "text_quality",
+        "text_quality_reasons",
+        "control_char_count",
+        "control_char_ratio",
+        "letter_or_number_ratio",
+        "cjk_char_ratio",
+        "image_block_count",
+        "embedded_image_count",
+        "drawing_count",
+    ):
+        if key in asset.metadata:
+            metadata[key] = asset.metadata.get(key)
+    if "text_quality" in metadata:
+        metadata["text_quality"] = str(metadata["text_quality"])
+    return metadata
 
 
 def run_visual_jobs(
@@ -271,6 +303,8 @@ def visual_job_priority(asset: VisualAsset, operations: list[VisualOperation]) -
     if "ocr" in operations:
         priority += 100
     priority += visual_complexity_bonus(asset)
+    if asset.metadata.get("asset_scope") == "tile":
+        priority += 80
     if str(asset.metadata.get("text_quality", "")) == "empty":
         priority += 50
     if asset.metadata.get("section_label"):

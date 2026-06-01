@@ -127,6 +127,8 @@ chunking-docs build-tile-assets \
   --overlap-ratio 0.08
 ```
 
+Tile jobs keep parent asset, tile index, tile grid, text-quality, and visual-complexity metadata, and are prioritized ahead of their full-page parent when OCR/VLM batches are limited.
+
 Run a small batch:
 
 ```bash

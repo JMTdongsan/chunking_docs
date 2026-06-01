@@ -161,6 +161,78 @@ def test_plan_visual_jobs_prioritizes_visually_complex_page_images(tmp_path):
     assert [job.asset_id for job in jobs] == ["diagram", "blank"]
 
 
+def test_plan_visual_jobs_prioritizes_tiles_and_preserves_tile_metadata(tmp_path):
+    page_path = tmp_path / "page.png"
+    tile_b_path = tmp_path / "tile_b.png"
+    tile_a_path = tmp_path / "tile_a.png"
+    for path in (page_path, tile_b_path, tile_a_path):
+        path.write_bytes(path.name.encode("utf-8"))
+    base_metadata = {
+        "requires_ocr": True,
+        "requires_vlm": True,
+        "text_quality": "degraded",
+        "text_quality_reasons": ["high_control_char_ratio"],
+        "control_char_ratio": 0.34,
+        "image_block_count": 3,
+        "embedded_image_count": 3,
+        "drawing_count": 12,
+    }
+    assets = [
+        VisualAsset(
+            asset_id="page",
+            doc_id="doc",
+            page_no=3,
+            kind=AssetKind.MAP,
+            path=page_path,
+            metadata={**base_metadata, "asset_scope": "page"},
+        ),
+        VisualAsset(
+            asset_id="tile-b",
+            doc_id="doc",
+            page_no=3,
+            kind=AssetKind.MAP,
+            path=tile_b_path,
+            metadata={
+                **base_metadata,
+                "asset_scope": "tile",
+                "parent_asset_id": "page",
+                "tile_index": 1,
+                "tile_row": 0,
+                "tile_col": 1,
+                "tile_rows": 1,
+                "tile_cols": 2,
+            },
+        ),
+        VisualAsset(
+            asset_id="tile-a",
+            doc_id="doc",
+            page_no=3,
+            kind=AssetKind.MAP,
+            path=tile_a_path,
+            metadata={
+                **base_metadata,
+                "asset_scope": "tile",
+                "parent_asset_id": "page",
+                "tile_index": 0,
+                "tile_row": 0,
+                "tile_col": 0,
+                "tile_rows": 1,
+                "tile_cols": 2,
+            },
+        ),
+    ]
+
+    jobs = plan_visual_jobs(assets)
+
+    assert [job.asset_id for job in jobs] == ["tile-a", "tile-b", "page"]
+    assert jobs[0].priority > jobs[2].priority
+    assert jobs[0].metadata["asset_scope"] == "tile"
+    assert jobs[0].metadata["parent_asset_id"] == "page"
+    assert jobs[0].metadata["tile_index"] == 0
+    assert jobs[0].metadata["text_quality_reasons"] == ["high_control_char_ratio"]
+    assert jobs[0].metadata["control_char_ratio"] == 0.34
+
+
 def test_plan_visual_jobs_retries_unstructured_vlm_summary(tmp_path):
     image_path = tmp_path / "page.png"
     image_path.write_bytes(b"page")
