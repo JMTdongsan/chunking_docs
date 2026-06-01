@@ -126,6 +126,11 @@ def doctor_command(
     require_embeddings: bool = False,
     require_ocr: bool = False,
     require_vision: bool = False,
+    vlm_profile: list[str] = typer.Option(
+        None,
+        "--vlm-profile",
+        help="Check GPU memory against a VLM profile such as qwen2_5_vl_7b.",
+    ),
     fail: bool = typer.Option(
         True,
         "--fail/--no-fail",
@@ -140,6 +145,7 @@ def doctor_command(
         require_embeddings=require_embeddings,
         require_ocr=require_ocr,
         require_vision=require_vision,
+        vlm_profiles=vlm_profile,
     )
     payload = report.model_dump()
     if output is not None:

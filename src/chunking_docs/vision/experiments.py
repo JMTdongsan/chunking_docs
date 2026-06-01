@@ -157,7 +157,10 @@ def vlm_experiment_recipe(
         results_output=str(results_output),
         annotations_output=str(annotations_output),
         command=quote_command(command_args),
-        metadata={"profile_notes": profile.notes},
+        metadata={
+            "profile_notes": profile.notes,
+            "min_gpu_memory_mib": profile.min_gpu_memory_mib,
+        },
     )
 
 

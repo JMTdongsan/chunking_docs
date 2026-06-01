@@ -24,6 +24,7 @@ def test_build_vlm_experiment_plan_writes_profile_commands(tmp_path):
     assert len(plan.recipes) == 2
     assert plan.recipes[0].model_name == "Qwen/Qwen2.5-VL-7B-Instruct"
     assert plan.recipes[0].torch_dtype == "float16"
+    assert plan.recipes[0].metadata["min_gpu_memory_mib"] == 24576
     assert "--vlm-profile qwen2_5_vl_7b" in plan.recipes[0].command
     assert "--limit 2" in plan.recipes[0].command
     assert "--apply" not in plan.recipes[0].command

@@ -94,3 +94,49 @@ def test_runtime_report_checks_paddle_cuda_when_gpu_ocr_is_required():
     failed = [check.name for check in report.checks if not check.passed]
     assert report.passed is False
     assert "paddle_cuda_available" in failed
+
+
+def test_runtime_report_checks_vlm_profile_gpu_memory():
+    dependencies = {
+        "torch": dep("torch", True),
+        "torchvision": dep("torchvision", True),
+        "transformers": dep("transformers", True),
+        "accelerate": dep("accelerate", True),
+    }
+
+    report = build_runtime_report(
+        dependencies=dependencies,
+        gpus=[GPUDevice(name="RTX", memory_total_mib=24576, driver_version="1")],
+        require_vision=True,
+        vlm_profiles=["qwen2_5_vl_7b", "phi3_5_vision"],
+    )
+
+    checks = {check.name: check for check in report.checks}
+    assert report.passed is True
+    assert checks["vlm_profile_memory:qwen2_5_vl_7b"].passed is True
+    assert checks["vlm_profile_memory:qwen2_5_vl_7b"].metadata["required_memory_mib"] == 24576
+    assert checks["vlm_profile_memory:phi3_5_vision"].metadata["matching_gpus"] == ["RTX"]
+
+
+def test_runtime_report_fails_when_vlm_profile_needs_more_memory():
+    report = build_runtime_report(
+        dependencies={},
+        gpus=[GPUDevice(name="small-gpu", memory_total_mib=12288)],
+        vlm_profiles=["qwen2_5_vl_7b"],
+    )
+
+    failed = [check.name for check in report.checks if not check.passed]
+    assert report.passed is False
+    assert failed == ["vlm_profile_memory:qwen2_5_vl_7b"]
+    assert report.checks[0].metadata["max_gpu_memory_mib"] == 12288
+
+
+def test_runtime_report_fails_unknown_vlm_profile():
+    report = build_runtime_report(
+        dependencies={},
+        gpus=[GPUDevice(name="RTX", memory_total_mib=24576)],
+        vlm_profiles=["unknown_profile"],
+    )
+
+    assert report.passed is False
+    assert report.checks[0].name == "vlm_profile_memory:unknown_profile"

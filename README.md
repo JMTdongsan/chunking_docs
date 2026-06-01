@@ -42,8 +42,11 @@ chunking-docs doctor \
   --require-qdrant \
   --require-embeddings \
   --require-vision \
-  --require-ocr
+  --require-ocr \
+  --vlm-profile qwen2_5_vl_7b
 ```
+
+`--vlm-profile` compares the selected Hugging Face VLM profile with visible GPU memory before a long local run. Current 7B/8B profiles are marked for 24GB-class GPUs, while the compact Phi-3.5 Vision profile is marked for 12GB-class GPUs.
 
 ## Basic Pipeline
 

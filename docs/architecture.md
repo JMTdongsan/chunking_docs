@@ -7,7 +7,7 @@
 0. **Runtime Preflight**
    - Inspect optional dependencies for Qdrant, PostgreSQL, text embeddings, OCR, and VLM backends.
    - Detect visible NVIDIA GPUs and Torch CUDA availability when GPU-backed runs are required.
-   - Fail early when requested runtime capabilities are missing.
+   - Fail early when requested runtime capabilities are missing, including VLM profile GPU-memory fit.
 
 1. **Document Intake**
    - Download or load a PDF.
@@ -266,7 +266,7 @@ For hierarchical candidates, enable parent collapse during `eval-retrieval`, `co
 The library exposes interfaces instead of locking in one model:
 
 - OCR: `TesseractOCRBackend` and `PaddleOCRBackend` for multilingual scanned pages.
-- VLM: `HuggingFaceVLMBackend` with configurable device map, torch dtype, generation length, and optional attention implementation.
+- VLM: `HuggingFaceVLMBackend` with configurable device map, torch dtype, generation length, optional attention implementation, and profile-level GPU memory fit checks through `doctor --vlm-profile`.
 - VLM profiles: named Hugging Face profiles record the model id, loader family, dtype, and generation defaults for reproducible local model comparisons.
 - Text dense: `SentenceTransformerTextEmbedder`.
 - Image dense: `TransformersImageEmbedder`.

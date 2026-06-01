@@ -14,6 +14,7 @@ class VLMModelProfile(BaseModel):
     device_map: str = "auto"
     torch_dtype: str = "bfloat16"
     max_new_tokens: int = 768
+    min_gpu_memory_mib: int | None = None
     attn_implementation: str = ""
     notes: str = ""
     metadata: dict[str, Any] = Field(default_factory=dict)
@@ -24,30 +25,35 @@ VLM_MODEL_PROFILES = {
         name="qwen2_5_vl_7b",
         model_name="Qwen/Qwen2.5-VL-7B-Instruct",
         model_class="image-text-to-text",
+        min_gpu_memory_mib=24576,
         notes="General-purpose instruction VLM profile for 24GB+ local GPUs.",
     ),
     "qwen2_vl_7b": VLMModelProfile(
         name="qwen2_vl_7b",
         model_name="Qwen/Qwen2-VL-7B-Instruct",
         model_class="vision2seq",
+        min_gpu_memory_mib=24576,
         notes="General-purpose instruction VLM profile for 24GB+ local GPUs.",
     ),
     "llava_next_7b": VLMModelProfile(
         name="llava_next_7b",
         model_name="llava-hf/llava-v1.6-mistral-7b-hf",
         model_class="vision2seq",
+        min_gpu_memory_mib=24576,
         notes="LLaVA-NeXT profile for visual summaries and chart/map descriptions.",
     ),
     "idefics2_8b": VLMModelProfile(
         name="idefics2_8b",
         model_name="HuggingFaceM4/idefics2-8b",
         model_class="vision2seq",
+        min_gpu_memory_mib=24576,
         notes="Idefics2 profile for comparing another open VLM family.",
     ),
     "phi3_5_vision": VLMModelProfile(
         name="phi3_5_vision",
         model_name="microsoft/Phi-3.5-vision-instruct",
         model_class="causal-lm",
+        min_gpu_memory_mib=12288,
         notes="Compact VLM profile; trust_remote_code is required.",
     ),
 }

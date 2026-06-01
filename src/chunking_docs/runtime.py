@@ -7,6 +7,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from chunking_docs.vision.hf_vlm import get_vlm_model_profile
+
 
 class DependencyStatus(BaseModel):
     name: str
@@ -62,6 +64,7 @@ def inspect_runtime(
     require_embeddings: bool = False,
     require_ocr: bool = False,
     require_vision: bool = False,
+    vlm_profiles: list[str] | None = None,
 ) -> RuntimeReport:
     dependencies = {name: dependency_status(name, module, package) for name, (module, package) in DEPENDENCIES.items()}
     return build_runtime_report(
@@ -77,6 +80,7 @@ def inspect_runtime(
         require_embeddings=require_embeddings,
         require_ocr=require_ocr,
         require_vision=require_vision,
+        vlm_profiles=vlm_profiles,
     )
 
 
@@ -91,6 +95,7 @@ def build_runtime_report(
     require_embeddings: bool = False,
     require_ocr: bool = False,
     require_vision: bool = False,
+    vlm_profiles: list[str] | None = None,
 ) -> RuntimeReport:
     checks = []
     if require_gpu:
@@ -112,6 +117,8 @@ def build_runtime_report(
         checks.extend(dependency_checks(dependencies, ["paddleocr", "paddlepaddle"]))
     if require_vision:
         checks.extend(dependency_checks(dependencies, ["torch", "torchvision", "transformers", "accelerate"]))
+    if vlm_profiles:
+        checks.extend(vlm_profile_memory_checks(gpus, vlm_profiles))
 
     torch_cuda_available, torch_cuda_device_count = torch_cuda
     paddle_cuda_available, paddle_cuda_device_count = paddle_cuda
@@ -144,6 +151,48 @@ def build_runtime_report(
         dependencies=dependencies,
         checks=checks,
     )
+
+
+def vlm_profile_memory_checks(
+    gpus: list[GPUDevice],
+    profile_names: list[str],
+) -> list[RuntimeCheck]:
+    checks = []
+    max_gpu_memory_mib = max((gpu.memory_total_mib or 0 for gpu in gpus), default=0)
+    for profile_name in profile_names:
+        try:
+            profile = get_vlm_model_profile(profile_name)
+        except ValueError as exc:
+            checks.append(
+                RuntimeCheck(
+                    name=f"vlm_profile_memory:{profile_name}",
+                    passed=False,
+                    message="Requested VLM profile is not supported.",
+                    metadata={"error": str(exc)},
+                )
+            )
+            continue
+        required_mib = profile.min_gpu_memory_mib or 0
+        matching_gpus = [
+            gpu.name
+            for gpu in gpus
+            if gpu.memory_total_mib is not None and gpu.memory_total_mib >= required_mib
+        ]
+        checks.append(
+            RuntimeCheck(
+                name=f"vlm_profile_memory:{profile.name}",
+                passed=required_mib <= 0 or bool(matching_gpus),
+                message="GPU memory is sufficient for the selected VLM profile.",
+                metadata={
+                    "profile": profile.name,
+                    "model_name": profile.model_name,
+                    "required_memory_mib": required_mib,
+                    "max_gpu_memory_mib": max_gpu_memory_mib,
+                    "matching_gpus": matching_gpus,
+                },
+            )
+        )
+    return checks
 
 
 def dependency_checks(
