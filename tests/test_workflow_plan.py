@@ -304,6 +304,16 @@ def test_workflow_plan_exports_adaptive_qdrant_route_for_visual_object_graph_pac
     assert "qdrant_retrieval_config.json" in qdrant_commands[3]
     assert "eval-qdrant-rag-context-config" in qdrant_commands[4]
     readiness_command = plan.steps[-1].commands[0]
+    object_probe_commands = next(
+        step.commands
+        for step in plan.steps
+        if step.step_id == "generate_visual_object_probe_cases"
+    )
+    assert "--merge-existing" in object_probe_commands[0]
+    assert "--no-include-pages --no-include-assets --no-include-triples" in (
+        object_probe_commands[0]
+    )
+    assert "--max-asset-cases-per-target 3" in object_probe_commands[0]
     assert "--qdrant-retrieval-config" in readiness_command
     assert "qdrant_retrieval_config.json" in readiness_command
     assert "--retrieval-evaluation" in readiness_command
@@ -396,7 +406,11 @@ def test_workflow_plan_exports_adaptive_qdrant_route_for_visual_object_graph_pac
         "case_source:visual_object_probe:asset=1"
         in readiness_command
     )
-    assert "--max-retrieval-asset-cases-per-target 3" in readiness_command
+    assert (
+        "--max-retrieval-case-group-cases-per-target "
+        "case_source:visual_object_probe:asset=3"
+        in readiness_command
+    )
     assert "--require-visual-only-object-probes" in readiness_command
 
 

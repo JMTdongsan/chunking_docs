@@ -115,10 +115,18 @@ def test_characterize_package_reports_strategy_observations(tmp_path):
     )
     object_probe_audit_command = object_probe_recommendation.commands[1]
     assert "--query-mode salient_terms" in object_probe_recommendation.commands[0]
+    assert "--merge-existing" in object_probe_recommendation.commands[0]
+    assert "--no-include-pages --no-include-assets --no-include-triples" in (
+        object_probe_recommendation.commands[0]
+    )
+    assert "--max-asset-cases-per-target 3" in object_probe_recommendation.commands[0]
     assert "--min-case-group-count case_source:visual_object_probe=3" in object_probe_audit_command
     assert "--min-distinct-asset-targets 1" in object_probe_audit_command
     assert "--min-case-group-distinct-targets case_source:visual_object_probe:asset=1" in object_probe_audit_command
-    assert "--max-asset-cases-per-target 3" in object_probe_audit_command
+    assert (
+        "--max-case-group-cases-per-target case_source:visual_object_probe:asset=3"
+        in object_probe_audit_command
+    )
     assert "--max-expected-targets-per-case 5" in object_probe_audit_command
     assert "--mode text_object --baseline-mode text" in object_probe_recommendation.commands[2]
     assert "--min-source-target-coverage qdrant:object_dense=0.3" in object_probe_recommendation.commands[2]

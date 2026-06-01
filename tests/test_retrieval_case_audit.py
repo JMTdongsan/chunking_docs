@@ -320,6 +320,65 @@ def test_audit_retrieval_cases_checks_target_concentration():
     assert check.threshold == 1
 
 
+def test_audit_retrieval_cases_checks_case_group_target_concentration():
+    profiles, chunks, assets, triples = package_records()
+    cases = [
+        RetrievalCase(
+            query="visual target one",
+            expected_asset_ids=["asset-1"],
+            metadata={"case_source": "visual_object_probe"},
+        ),
+        RetrievalCase(
+            query="visual target two",
+            expected_asset_ids=["asset-1"],
+            metadata={"case_source": "visual_object_probe"},
+        ),
+        RetrievalCase(
+            query="regular visual target",
+            expected_asset_ids=["asset-1"],
+            metadata={"case_source": "asset"},
+        ),
+    ]
+
+    passing_report = audit_retrieval_cases(
+        cases,
+        profiles=profiles,
+        chunks=chunks,
+        assets=assets,
+        triples=triples,
+        max_case_group_cases_per_target={"case_source:asset:asset": 1},
+    )
+    assert passing_report.passed is True
+    assert passing_report.max_cases_per_target["asset"] == 3
+    assert passing_report.case_group_max_cases_per_target["case_source"]["asset"]["asset"] == 1
+
+    failing_report = audit_retrieval_cases(
+        cases,
+        profiles=profiles,
+        chunks=chunks,
+        assets=assets,
+        triples=triples,
+        max_case_group_cases_per_target={"case_source:visual_object_probe:asset": 1},
+    )
+
+    assert failing_report.passed is False
+    assert (
+        failing_report.case_group_max_cases_per_target["case_source"]["visual_object_probe"]["asset"]
+        == 2
+    )
+    assert (
+        "max_case_group_cases_per_target:case_source:visual_object_probe:asset"
+        in failing_report.failed_checks
+    )
+    check = next(
+        check
+        for check in failing_report.checks
+        if check.name == "max_case_group_cases_per_target:case_source:visual_object_probe:asset"
+    )
+    assert check.actual == 2
+    assert check.threshold == 1
+
+
 def test_audit_retrieval_cases_checks_query_term_strength():
     profiles, chunks, assets, triples = package_records()
     cases = [
@@ -491,6 +550,8 @@ def test_audit_retrieval_cases_cli_writes_report(tmp_path):
             "case_source:visual_object_probe=1",
             "--min-case-group-distinct-targets",
             "case_source:visual_object_probe:asset=1",
+            "--max-case-group-cases-per-target",
+            "case_source:visual_object_probe:asset=1",
             "--require-visual-only-object-probes",
             "--min-query-terms-per-case",
             "2",
@@ -511,6 +572,7 @@ def test_audit_retrieval_cases_cli_writes_report(tmp_path):
     assert payload["max_cases_per_target"]["asset"] == 1
     assert payload["case_group_counts"]["case_source"]["visual_object_probe"] == 1
     assert payload["case_group_distinct_target_counts"]["case_source"]["visual_object_probe"]["asset"] == 1
+    assert payload["case_group_max_cases_per_target"]["case_source"]["visual_object_probe"]["asset"] == 1
     assert payload["visual_object_probe_count"] == 1
     assert payload["visual_only_object_probe_count"] == 1
     assert payload["non_visual_only_object_probe_count"] == 0

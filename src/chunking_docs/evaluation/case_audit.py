@@ -67,6 +67,7 @@ class RetrievalCaseAuditReport(BaseModel):
     max_cases_per_target: dict[str, int] = Field(default_factory=dict)
     case_group_counts: dict[str, dict[str, int]] = Field(default_factory=dict)
     case_group_distinct_target_counts: dict[str, dict[str, dict[str, int]]] = Field(default_factory=dict)
+    case_group_max_cases_per_target: dict[str, dict[str, dict[str, int]]] = Field(default_factory=dict)
     visual_object_probe_count: int = 0
     visual_only_object_probe_count: int = 0
     non_visual_only_object_probe_count: int = 0
@@ -113,6 +114,7 @@ def audit_retrieval_cases(
     max_triple_cases_per_target: int | None = None,
     min_case_group_counts: dict[str, int] | None = None,
     min_case_group_distinct_targets: dict[str, int] | None = None,
+    max_case_group_cases_per_target: dict[str, int] | None = None,
     require_visual_only_object_probes: bool = False,
     min_query_terms_per_case: int = 0,
     max_target_query_overlap_ratio: float | None = None,
@@ -135,6 +137,7 @@ def audit_retrieval_cases(
     max_cases_per_target = count_retrieval_case_max_target_mentions(cases)
     group_counts = count_case_groups(cases)
     group_distinct_target_counts = count_case_group_distinct_targets(cases)
+    group_max_cases_per_target = count_case_group_max_target_mentions(cases)
     visual_object_probe_counts = count_visual_object_probes(cases)
     missing_target_counts = {"page": 0, "chunk": 0, "asset": 0, "triple": 0}
     excluded_missing_target_counts = {"page": 0, "chunk": 0, "asset": 0, "triple": 0}
@@ -522,6 +525,12 @@ def audit_retrieval_cases(
             min_case_group_distinct_targets or {},
         )
     )
+    checks.extend(
+        case_group_max_cases_per_target_checks(
+            group_max_cases_per_target,
+            max_case_group_cases_per_target or {},
+        )
+    )
     failed_checks = [check.name for check in checks if not check.passed]
     return RetrievalCaseAuditReport(
         passed=not failed_checks and not any(item.severity == "error" for item in issues),
@@ -534,6 +543,7 @@ def audit_retrieval_cases(
         max_cases_per_target=max_cases_per_target,
         case_group_counts=group_counts,
         case_group_distinct_target_counts=group_distinct_target_counts,
+        case_group_max_cases_per_target=group_max_cases_per_target,
         visual_object_probe_count=visual_object_probe_counts["total"],
         visual_only_object_probe_count=visual_object_probe_counts["visual_only"],
         non_visual_only_object_probe_count=visual_object_probe_counts["non_visual_only"],
@@ -652,6 +662,22 @@ def count_case_group_distinct_targets(cases: list[RetrievalCase]) -> dict[str, d
                 for target_name, values in sorted(targets.items())
             }
             for group_value, targets in sorted(group_values.items())
+        }
+        for group_name, group_values in sorted(grouped.items())
+    }
+
+
+def count_case_group_max_target_mentions(
+    cases: list[RetrievalCase],
+) -> dict[str, dict[str, dict[str, int]]]:
+    grouped: dict[str, dict[str, list[RetrievalCase]]] = {}
+    for case in cases:
+        for group_name, group_value in case_group_labels(case):
+            grouped.setdefault(group_name, {}).setdefault(group_value, []).append(case)
+    return {
+        group_name: {
+            group_value: count_retrieval_case_max_target_mentions(group_cases)
+            for group_value, group_cases in sorted(group_values.items())
         }
         for group_name, group_values in sorted(grouped.items())
     }
@@ -844,6 +870,27 @@ def case_group_distinct_target_checks(
                 actual=actual,
                 threshold=threshold,
                 passed=actual >= threshold,
+            )
+        )
+    return checks
+
+
+def case_group_max_cases_per_target_checks(
+    group_target_counts: dict[str, dict[str, dict[str, int]]],
+    thresholds: dict[str, int],
+) -> list[RetrievalCaseAuditCheck]:
+    checks = []
+    for group_spec, threshold in sorted(thresholds.items()):
+        group_name, group_value, target_name = parse_case_group_target_spec(group_spec)
+        actual = group_target_counts.get(group_name, {}).get(group_value, {}).get(target_name, 0)
+        checks.append(
+            RetrievalCaseAuditCheck(
+                name=f"max_case_group_cases_per_target:{group_name}:{group_value}:{target_name}",
+                metric=f"case_group.{group_name}.{group_value}.max_{target_name}_cases_per_target",
+                operator="<=",
+                actual=actual,
+                threshold=threshold,
+                passed=actual <= threshold,
             )
         )
     return checks

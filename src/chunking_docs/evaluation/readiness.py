@@ -285,6 +285,9 @@ def build_ingestion_readiness_report(
                     "case_group_distinct_target_counts": (
                         retrieval_case_audit.case_group_distinct_target_counts
                     ),
+                    "case_group_max_cases_per_target": (
+                        retrieval_case_audit.case_group_max_cases_per_target
+                    ),
                     "visual_object_probe_count": retrieval_case_audit.visual_object_probe_count,
                     "visual_only_object_probe_count": (
                         retrieval_case_audit.visual_only_object_probe_count

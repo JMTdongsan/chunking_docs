@@ -1208,6 +1208,54 @@ def test_generate_retrieval_cases_cli_writes_image_probe_cases(tmp_path):
     assert "'image_probe_limit': 1" in result.output
 
 
+def test_generate_retrieval_cases_cli_merges_existing_output(tmp_path):
+    package_dir = write_case_package(tmp_path)
+    output = tmp_path / "cases.jsonl"
+
+    image_result = CliRunner().invoke(
+        app,
+        [
+            "generate-retrieval-cases",
+            "--package-dir",
+            str(package_dir),
+            "--output",
+            str(output),
+            "--no-include-pages",
+            "--no-include-assets",
+            "--no-include-triples",
+            "--image-probe-limit",
+            "1",
+        ],
+    )
+    assert image_result.exit_code == 0, image_result.output
+
+    object_result = CliRunner().invoke(
+        app,
+        [
+            "generate-retrieval-cases",
+            "--package-dir",
+            str(package_dir),
+            "--output",
+            str(output),
+            "--no-include-pages",
+            "--no-include-assets",
+            "--no-include-triples",
+            "--object-probe-limit",
+            "1",
+            "--no-object-probe-visual-only",
+            "--merge-existing",
+        ],
+    )
+
+    assert object_result.exit_code == 0, object_result.output
+    rows = [json.loads(line) for line in output.read_text(encoding="utf-8").splitlines()]
+    case_sources = {row["metadata"]["case_source"] for row in rows}
+    assert case_sources == {"visual_image_probe", "visual_object_probe"}
+    assert "'visual_image_probe_count': 1" in object_result.output
+    assert "'visual_object_probe_count': 1" in object_result.output
+    assert "'merge_existing': True" in object_result.output
+
+
 def test_generate_retrieval_cases_cli_writes_hard_negative_targets(tmp_path):
     package_dir = write_case_package(tmp_path)
     chunks = [

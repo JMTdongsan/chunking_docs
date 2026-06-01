@@ -35,7 +35,10 @@ from chunking_docs.evaluation.ablation import (
     parse_qdrant_vector_ablation_modes,
     qdrant_vector_names_for_modes,
 )
-from chunking_docs.evaluation.casegen import generate_retrieval_case_skeleton
+from chunking_docs.evaluation.casegen import (
+    dedupe_cases_by_query,
+    generate_retrieval_case_skeleton,
+)
 from chunking_docs.evaluation.case_audit import (
     audit_retrieval_cases,
     count_case_groups,
@@ -4972,6 +4975,14 @@ def ingestion_readiness_command(
         "--min-retrieval-case-group-count",
         help="Require retrieval case metadata group counts such as case_source:visual_object_probe=5.",
     ),
+    max_retrieval_case_group_cases_per_target: list[str] = typer.Option(
+        None,
+        "--max-retrieval-case-group-cases-per-target",
+        help=(
+            "Limit target concentration inside a retrieval case metadata group, such as "
+            "case_source:visual_object_probe:asset=3."
+        ),
+    ),
     require_visual_only_object_probes: bool = typer.Option(
         False,
         "--require-visual-only-object-probes",
@@ -5774,6 +5785,10 @@ def ingestion_readiness_command(
         min_retrieval_case_group_distinct_targets,
         "retrieval case group distinct target count",
     )
+    retrieval_case_group_max_target_thresholds = parse_named_int_thresholds(
+        max_retrieval_case_group_cases_per_target,
+        "retrieval case group target concentration",
+    )
     chunking_source_family_thresholds = parse_named_float_thresholds(
         min_chunking_source_family_target_coverage,
         "chunking source family target coverage",
@@ -5895,6 +5910,7 @@ def ingestion_readiness_command(
             "max_triple_cases_per_target": max_retrieval_triple_cases_per_target,
             "min_case_group_counts": retrieval_case_group_count_thresholds,
             "min_case_group_distinct_targets": retrieval_case_group_distinct_thresholds,
+            "max_case_group_cases_per_target": retrieval_case_group_max_target_thresholds,
             "require_visual_only_object_probes": require_visual_only_object_probes,
             "min_query_terms_per_case": min_retrieval_query_terms_per_case,
             "max_target_query_overlap_ratio": max_retrieval_target_query_overlap_ratio,
@@ -6579,6 +6595,14 @@ def generate_retrieval_cases_command(
         "--hard-negative-min-overlap-terms",
         help="Require this many shared target-text terms before a candidate is used as a hard negative.",
     ),
+    merge_existing: bool = typer.Option(
+        False,
+        "--merge-existing",
+        help=(
+            "Merge newly generated cases with the existing output file, deduplicating by query "
+            "while preserving expected targets and case-group metadata."
+        ),
+    ),
 ):
     """Generate retrieval benchmark JSONL drafts from package chunks, assets, and triples."""
     manifest = load_processing_package(package_dir)
@@ -6618,6 +6642,8 @@ def generate_retrieval_cases_command(
     except ValueError as exc:
         raise typer.BadParameter(str(exc)) from exc
     output_path = output or package_dir / "retrieval_cases.skeleton.jsonl"
+    if merge_existing and output_path.exists():
+        cases = dedupe_cases_by_query([*load_retrieval_cases(output_path), *cases])
     write_jsonl(output_path, cases)
     visual_object_probe_counts = count_visual_object_probes(cases)
     print(
@@ -6651,6 +6677,7 @@ def generate_retrieval_cases_command(
             "max_triple_cases_per_target": max_triple_cases_per_target,
             "hard_negative_limit": hard_negative_limit,
             "hard_negative_min_overlap_terms": hard_negative_min_overlap_terms,
+            "merge_existing": merge_existing,
             "include_todo": include_todo,
             "query_mode": query_mode,
             "selection_strategy": selection_strategy,
@@ -6720,6 +6747,14 @@ def audit_retrieval_cases_command(
         "--min-case-group-count",
         help="Require retrieval case metadata group counts such as case_source:visual_object_probe=5.",
     ),
+    max_case_group_cases_per_target: list[str] = typer.Option(
+        None,
+        "--max-case-group-cases-per-target",
+        help=(
+            "Limit target concentration inside a retrieval case metadata group, such as "
+            "case_source:visual_object_probe:asset=3."
+        ),
+    ),
     require_visual_only_object_probes: bool = typer.Option(
         False,
         "--require-visual-only-object-probes",
@@ -6743,6 +6778,10 @@ def audit_retrieval_cases_command(
         min_case_group_distinct_targets,
         "case group distinct target count",
     )
+    case_group_max_target_thresholds = parse_named_int_thresholds(
+        max_case_group_cases_per_target,
+        "case group target concentration",
+    )
     report = audit_retrieval_cases(
         parsed_cases,
         profiles=manifest.profiles,
@@ -6764,6 +6803,7 @@ def audit_retrieval_cases_command(
         max_triple_cases_per_target=max_triple_cases_per_target,
         min_case_group_counts=case_group_thresholds,
         min_case_group_distinct_targets=case_group_distinct_thresholds,
+        max_case_group_cases_per_target=case_group_max_target_thresholds,
         require_visual_only_object_probes=require_visual_only_object_probes,
         min_query_terms_per_case=min_query_terms_per_case,
         max_target_query_overlap_ratio=max_target_query_overlap_ratio,

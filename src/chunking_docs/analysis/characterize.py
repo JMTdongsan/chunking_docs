@@ -564,14 +564,20 @@ def recommendations(
                     "visual elements are measured separately from text and caption averages."
                 ),
                 commands=[
-                    "chunking-docs generate-retrieval-cases --package-dir outputs/package --query-mode salient_terms --selection-strategy salience --object-probe-limit 20 --output examples/retrieval_cases.jsonl",
+                    (
+                        "chunking-docs generate-retrieval-cases --package-dir outputs/package "
+                        "--query-mode salient_terms --selection-strategy salience "
+                        "--no-include-pages --no-include-assets --no-include-triples "
+                        "--object-probe-limit 20 --max-asset-cases-per-target 3 "
+                        "--output examples/retrieval_cases.jsonl --merge-existing"
+                    ),
                     (
                         "chunking-docs audit-retrieval-cases examples/retrieval_cases.jsonl "
                         "--package-dir outputs/package "
                         f"--min-case-group-count case_source:visual_object_probe={object_probe_case_threshold} "
                         f"--min-distinct-asset-targets {object_probe_asset_threshold} "
                         f"--min-case-group-distinct-targets case_source:visual_object_probe:asset={object_probe_asset_threshold} "
-                        "--max-asset-cases-per-target 3 "
+                        "--max-case-group-cases-per-target case_source:visual_object_probe:asset=3 "
                         "--max-expected-targets-per-case 5 "
                         "--min-query-terms-per-case 3 "
                         "--require-visual-only-object-probes"

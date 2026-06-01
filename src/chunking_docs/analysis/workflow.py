@@ -410,7 +410,8 @@ def visual_probe_readiness_gate_args(
             )
         args.extend(
             [
-                "--max-retrieval-asset-cases-per-target 3",
+                "--max-retrieval-case-group-cases-per-target "
+                "case_source:visual_object_probe:asset=3",
                 "--require-visual-only-object-probes",
             ]
         )

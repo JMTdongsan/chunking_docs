@@ -582,6 +582,7 @@ def test_ingestion_readiness_includes_retrieval_cases_and_chunking_gate(tmp_path
             "min_distinct_asset_targets": 1,
             "max_asset_cases_per_target": 1,
             "min_case_group_distinct_targets": {"case_source:visual_object_probe:asset": 1},
+            "max_case_group_cases_per_target": {"case_source:visual_object_probe:asset": 1},
             "require_visual_only_object_probes": True,
             "min_query_terms_per_case": 2,
         },
@@ -623,6 +624,9 @@ def test_ingestion_readiness_includes_retrieval_cases_and_chunking_gate(tmp_path
     assert retrieval_component.metadata["distinct_target_counts"]["asset"] == 1
     assert retrieval_component.metadata["max_cases_per_target"]["asset"] == 1
     assert retrieval_component.metadata["case_group_distinct_target_counts"]["case_source"][
+        "visual_object_probe"
+    ]["asset"] == 1
+    assert retrieval_component.metadata["case_group_max_cases_per_target"]["case_source"][
         "visual_object_probe"
     ]["asset"] == 1
     assert retrieval_component.metadata["min_query_term_count"] == 2
