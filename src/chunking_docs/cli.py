@@ -1793,6 +1793,7 @@ def plan_vlm_experiments_command(
     vlm_torch_dtype: str = "auto",
     vlm_max_new_tokens: int | None = None,
     vlm_attn_implementation: str = "",
+    vlm_memory_margin_ratio: float = 0.1,
 ):
     """Write a reproducible command plan for comparing multiple Hugging Face VLM profiles."""
     jobs_path = jobs or package_dir / "visual_jobs.priority.jsonl"
@@ -1813,6 +1814,7 @@ def plan_vlm_experiments_command(
             vlm_torch_dtype=vlm_torch_dtype,
             vlm_max_new_tokens=vlm_max_new_tokens,
             vlm_attn_implementation=vlm_attn_implementation,
+            vlm_memory_margin_ratio=vlm_memory_margin_ratio,
         )
     except ValueError as exc:
         raise typer.BadParameter(str(exc)) from exc
@@ -1825,6 +1827,9 @@ def plan_vlm_experiments_command(
             "profile_count": len(plan.profiles),
             "profiles": plan.profiles,
             "jobs_file": plan.jobs_file,
+            "total_job_count": plan.job_summary.total_job_count,
+            "selected_job_count": plan.job_summary.selected_job_count,
+            "operation_counts": plan.job_summary.operation_counts,
             "compare_command": plan.compare_command,
         }
     )

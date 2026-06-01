@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import shlex
+from collections import Counter
 from pathlib import Path
 
 from pydantic import BaseModel, Field
 
+from chunking_docs.io import read_jsonl
 from chunking_docs.vision.hf_vlm import get_vlm_model_profile
+from chunking_docs.vision.jobs import VisualAnnotationJob
 
 
 class VLMExperimentRecipe(BaseModel):
@@ -20,8 +23,27 @@ class VLMExperimentRecipe(BaseModel):
     jobs_file: str
     results_output: str
     annotations_output: str
+    doctor_command: str
     command: str
     metadata: dict[str, str | int | float | bool | None] = Field(default_factory=dict)
+
+
+class VLMExperimentJobSummary(BaseModel):
+    jobs_file: str
+    exists: bool
+    total_job_count: int = 0
+    selected_job_count: int = 0
+    selected_pending_job_count: int = 0
+    skipped_by_limit_count: int = 0
+    operation_counts: dict[str, int] = Field(default_factory=dict)
+    status_counts: dict[str, int] = Field(default_factory=dict)
+    asset_kind_counts: dict[str, int] = Field(default_factory=dict)
+    asset_scope_counts: dict[str, int] = Field(default_factory=dict)
+    page_count: int = 0
+    page_min: int | None = None
+    page_max: int | None = None
+    priority_min: int | None = None
+    priority_max: int | None = None
 
 
 class VLMExperimentPlan(BaseModel):
@@ -29,6 +51,7 @@ class VLMExperimentPlan(BaseModel):
     jobs_file: str
     profiles: list[str]
     limit: int | None = None
+    job_summary: VLMExperimentJobSummary
     recipes: list[VLMExperimentRecipe] = Field(default_factory=list)
     compare_command: str
 
@@ -49,9 +72,11 @@ def build_vlm_experiment_plan(
     vlm_torch_dtype: str = "auto",
     vlm_max_new_tokens: int | None = None,
     vlm_attn_implementation: str = "",
+    vlm_memory_margin_ratio: float = 0.1,
 ) -> VLMExperimentPlan:
     output_dir = output_dir or package_dir
     normalized_profiles = [normalize_profile_name(profile) for profile in profiles]
+    job_summary = summarize_vlm_experiment_jobs(jobs_file, limit=limit)
     recipes = [
         vlm_experiment_recipe(
             package_dir=package_dir,
@@ -59,6 +84,7 @@ def build_vlm_experiment_plan(
             output_dir=output_dir,
             profile_name=profile_name,
             limit=limit,
+            job_summary=job_summary,
             ocr=ocr,
             ocr_model_lang=ocr_model_lang,
             ocr_device=ocr_device,
@@ -69,6 +95,7 @@ def build_vlm_experiment_plan(
             vlm_torch_dtype=vlm_torch_dtype,
             vlm_max_new_tokens=vlm_max_new_tokens,
             vlm_attn_implementation=vlm_attn_implementation,
+            vlm_memory_margin_ratio=vlm_memory_margin_ratio,
         )
         for profile_name in normalized_profiles
     ]
@@ -78,6 +105,7 @@ def build_vlm_experiment_plan(
         jobs_file=str(jobs_file),
         profiles=normalized_profiles,
         limit=limit,
+        job_summary=job_summary,
         recipes=recipes,
         compare_command=compare_command,
     )
@@ -89,6 +117,7 @@ def vlm_experiment_recipe(
     output_dir: Path,
     profile_name: str,
     limit: int | None,
+    job_summary: VLMExperimentJobSummary,
     ocr: str,
     ocr_model_lang: str,
     ocr_device: str,
@@ -99,6 +128,7 @@ def vlm_experiment_recipe(
     vlm_torch_dtype: str,
     vlm_max_new_tokens: int | None,
     vlm_attn_implementation: str,
+    vlm_memory_margin_ratio: float,
 ) -> VLMExperimentRecipe:
     profile = get_vlm_model_profile(profile_name)
     device_map = vlm_device_map if vlm_device_map != "auto" else profile.device_map
@@ -106,6 +136,20 @@ def vlm_experiment_recipe(
     max_new_tokens = vlm_max_new_tokens or profile.max_new_tokens
     results_output = output_dir / f"visual_job_results.{profile.name}.jsonl"
     annotations_output = output_dir / f"visual_annotations.{profile.name}.jsonl"
+    selected_vlm_job_count = job_summary.operation_counts.get("vlm", 0)
+    selected_ocr_job_count = job_summary.operation_counts.get("ocr", 0)
+    doctor_command = quote_command(
+        [
+            "chunking-docs",
+            "doctor",
+            "--require-gpu",
+            "--require-vision",
+            "--vlm-profile",
+            profile.name,
+            "--vlm-memory-margin-ratio",
+            str(vlm_memory_margin_ratio),
+        ]
+    )
     command_args = [
         "chunking-docs",
         "run-visual-jobs",
@@ -156,10 +200,16 @@ def vlm_experiment_recipe(
         jobs_file=str(jobs_file),
         results_output=str(results_output),
         annotations_output=str(annotations_output),
+        doctor_command=doctor_command,
         command=quote_command(command_args),
         metadata={
             "profile_notes": profile.notes,
             "min_gpu_memory_mib": profile.min_gpu_memory_mib,
+            "selected_job_count": job_summary.selected_job_count,
+            "selected_vlm_job_count": selected_vlm_job_count,
+            "selected_ocr_job_count": selected_ocr_job_count,
+            "max_generation_tokens_upper_bound": selected_vlm_job_count * max_new_tokens,
+            "vlm_memory_margin_ratio": vlm_memory_margin_ratio,
         },
     )
 
@@ -173,6 +223,53 @@ def build_compare_visual_runs_command(
         args.extend(["--run", f"{recipe.name}={recipe.results_output}"])
     args.extend(["--output", str(output_dir / "visual_run_comparison.json"), "--require-same-jobs"])
     return quote_command(args)
+
+
+def summarize_vlm_experiment_jobs(
+    jobs_file: Path,
+    limit: int | None = None,
+) -> VLMExperimentJobSummary:
+    if not jobs_file.exists():
+        return VLMExperimentJobSummary(jobs_file=str(jobs_file), exists=False)
+
+    jobs = read_jsonl(jobs_file, VisualAnnotationJob)
+    selected_limit = max(0, limit) if limit is not None else None
+    selected_jobs = jobs[:selected_limit] if selected_limit is not None else jobs
+    operation_counts: Counter[str] = Counter()
+    status_counts: Counter[str] = Counter()
+    asset_kind_counts: Counter[str] = Counter()
+    asset_scope_counts: Counter[str] = Counter()
+    pages = []
+    priorities = []
+    pending_count = 0
+    for job in selected_jobs:
+        operation_counts.update(str(operation) for operation in job.operations)
+        status_counts[str(job.status)] += 1
+        asset_kind_counts[str(job.kind)] += 1
+        asset_scope = str(job.metadata.get("asset_scope") or "asset")
+        asset_scope_counts[asset_scope] += 1
+        pages.append(job.page_no)
+        priorities.append(job.priority)
+        if job.status == "pending":
+            pending_count += 1
+
+    return VLMExperimentJobSummary(
+        jobs_file=str(jobs_file),
+        exists=True,
+        total_job_count=len(jobs),
+        selected_job_count=len(selected_jobs),
+        selected_pending_job_count=pending_count,
+        skipped_by_limit_count=max(0, len(jobs) - len(selected_jobs)),
+        operation_counts=dict(sorted(operation_counts.items())),
+        status_counts=dict(sorted(status_counts.items())),
+        asset_kind_counts=dict(sorted(asset_kind_counts.items())),
+        asset_scope_counts=dict(sorted(asset_scope_counts.items())),
+        page_count=len(set(pages)),
+        page_min=min(pages) if pages else None,
+        page_max=max(pages) if pages else None,
+        priority_min=min(priorities) if priorities else None,
+        priority_max=max(priorities) if priorities else None,
+    )
 
 
 def parse_profile_list(value: str) -> list[str]:

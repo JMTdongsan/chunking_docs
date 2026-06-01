@@ -164,6 +164,8 @@ chunking-docs plan-vlm-experiments \
   --output outputs/package/vlm_experiment_plan.json
 ```
 
+The plan records the selected job count, OCR/VLM operation counts, asset-kind mix, page span, skipped jobs from the limit, per-profile `doctor` commands, and an upper bound for generated VLM tokens. Use those fields to size the first GPU run before executing the generated `run-visual-jobs` commands.
+
 Default VLM prompts request a single JSON object with `title`, `summary`, `key_points`, `visual_elements`, `objects`, `entities`, and `triples`. When those fields are present, the runner converts them into captions, searchable VLM summaries, normalized object detections, and graph triple candidates. Object detections can carry attributes, descriptions, locations, bbox coordinates, confidence, and source-field provenance. Normalized bbox coordinates are converted into coarse spatial labels such as `upper left` for caption text, triple text, and object-probe retrieval cases. Entity, visual element, and object fields are also lifted into derived triple candidates and included in visual asset lexical/caption text so useful VLM detections remain searchable even when the model does not emit explicit relationships.
 Triples generated from visual annotations include provenance qualifiers such as asset ID, page number, asset kind, annotation source, visual job ID, prompt name, prompt schema version, and prompt hash when available.
 
