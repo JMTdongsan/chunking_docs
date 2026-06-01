@@ -261,6 +261,50 @@ def test_build_qdrant_fusion_sweep_report_penalizes_named_excluded_target_hits()
     assert leaky_row.selection_score < clean_row.selection_score
 
 
+def test_build_qdrant_fusion_sweep_report_rejects_and_penalizes_p95_latency():
+    stable = QdrantFusionSweepCandidate(
+        name="stable",
+        fusion_weights={"bm25": 1.0},
+        evaluation=evaluation(
+            recall=0.95,
+            coverage=0.95,
+            ndcg=0.9,
+            mrr=0.85,
+            precision=0.2,
+            failed=0,
+            latency=35.0,
+            p95_latency=40.0,
+        ),
+    )
+    spiky = QdrantFusionSweepCandidate(
+        name="spiky",
+        fusion_weights={"qdrant:image_dense": 1.0},
+        evaluation=evaluation(
+            recall=1.0,
+            coverage=1.0,
+            ndcg=0.98,
+            mrr=0.95,
+            precision=0.2,
+            failed=0,
+            latency=20.0,
+            p95_latency=700.0,
+        ),
+    )
+
+    report = build_qdrant_fusion_sweep_report(
+        [stable, spiky],
+        vector_names=["text_dense", "image_dense"],
+        max_p95_latency_ms=100.0,
+        p95_latency_weight=2.0,
+    )
+
+    assert report.recommended == "stable"
+    stable_row = next(candidate for candidate in report.candidates if candidate.name == "stable")
+    spiky_row = next(candidate for candidate in report.candidates if candidate.name == "spiky")
+    assert spiky_row.eligibility_failures == ["max_p95_latency_ms"]
+    assert spiky_row.selection_score < stable_row.selection_score
+
+
 def test_build_qdrant_fusion_sweep_report_recommends_case_group_candidates():
     balanced = QdrantFusionSweepCandidate(
         name="balanced",
@@ -346,6 +390,7 @@ def evaluation(
     precision: float,
     failed: int,
     latency: float,
+    p95_latency: float | None = None,
     visual_object_group: RetrievalCaseGroupMetric | None = None,
     excluded_query_count: int = 0,
     excluded_hit_query_count: int = 0,
@@ -383,7 +428,7 @@ def evaluation(
         top_k=5,
         total_query_latency_ms=latency * 10,
         mean_latency_ms=latency,
-        p95_latency_ms=latency,
+        p95_latency_ms=p95_latency if p95_latency is not None else latency,
         source_metrics=source_metrics or {},
         source_family_metrics=source_family_metrics or {},
         chunk_strategy_metrics=chunk_strategy_metrics or {},

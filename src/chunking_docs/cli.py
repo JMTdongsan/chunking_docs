@@ -1184,6 +1184,11 @@ def sweep_qdrant_fusion_command(
     min_mrr: float = 0.0,
     max_failed_queries: int | None = None,
     max_mean_latency_ms: float | None = None,
+    max_p95_latency_ms: float | None = typer.Option(
+        None,
+        "--max-p95-latency-ms",
+        help="Reject fusion candidates whose p95 query latency is above this value.",
+    ),
     max_excluded_target_hit_rate: float | None = typer.Option(
         None,
         "--max-excluded-target-hit-rate",
@@ -1271,6 +1276,11 @@ def sweep_qdrant_fusion_command(
         help="Selection-score penalty applied to the worst retrieval-role excluded-target hit rate.",
     ),
     latency_weight: float = 0.05,
+    p95_latency_weight: float = typer.Option(
+        0.0,
+        "--p95-latency-weight",
+        help="Selection-score penalty applied to p95 query latency in seconds.",
+    ),
     lexical_tokenizer: TokenizerStrategy = "mixed",
     ngram_min: int = 2,
     ngram_max: int = 4,
@@ -1393,6 +1403,7 @@ def sweep_qdrant_fusion_command(
         min_mrr=min_mrr,
         max_failed_queries=max_failed_queries,
         max_mean_latency_ms=max_mean_latency_ms,
+        max_p95_latency_ms=max_p95_latency_ms,
         max_excluded_target_hit_rate=max_excluded_target_hit_rate,
         max_excluded_query_hit_rate=max_excluded_query_hit_rate,
         max_excluded_hit_query_count=max_excluded_hit_query_count,
@@ -1413,6 +1424,7 @@ def sweep_qdrant_fusion_command(
         chunk_strategy_excluded_target_hit_penalty=chunk_strategy_excluded_target_hit_penalty,
         retrieval_role_excluded_target_hit_penalty=retrieval_role_excluded_target_hit_penalty,
         latency_weight=latency_weight,
+        p95_latency_weight=p95_latency_weight,
         metadata={
             "weight_grid": grid,
             "fixed_fusion_weights": fixed_weights,
@@ -1425,6 +1437,8 @@ def sweep_qdrant_fusion_command(
             "repeat": repeat,
             "collapse_hierarchical": collapse_hierarchical,
             "query_encoders": prepared["query_encoders"],
+            "max_mean_latency_ms": max_mean_latency_ms,
+            "max_p95_latency_ms": max_p95_latency_ms,
             "max_excluded_target_hit_rate": max_excluded_target_hit_rate,
             "max_excluded_query_hit_rate": max_excluded_query_hit_rate,
             "max_excluded_hit_query_count": max_excluded_hit_query_count,
@@ -1438,6 +1452,8 @@ def sweep_qdrant_fusion_command(
             "source_family_excluded_target_hit_penalty": source_family_excluded_target_hit_penalty,
             "chunk_strategy_excluded_target_hit_penalty": chunk_strategy_excluded_target_hit_penalty,
             "retrieval_role_excluded_target_hit_penalty": retrieval_role_excluded_target_hit_penalty,
+            "latency_weight": latency_weight,
+            "p95_latency_weight": p95_latency_weight,
             "lexical_tokenizer": {
                 "strategy": lexical_tokenizer,
                 "min_n": ngram_min,
@@ -1517,6 +1533,7 @@ def sweep_qdrant_fusion_command(
                         candidate.max_retrieval_role_excluded_target_hit_rate_name
                     ),
                     "mean_latency_ms": candidate.evaluation.mean_latency_ms,
+                    "p95_latency_ms": candidate.evaluation.p95_latency_ms,
                     "failed_query_count": len(candidate.evaluation.failed_queries),
                 }
                 for candidate in report.candidates[: max(summary_limit, 0)]

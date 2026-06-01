@@ -152,6 +152,7 @@ def build_qdrant_fusion_sweep_report(
     min_mrr: float = 0.0,
     max_failed_queries: int | None = None,
     max_mean_latency_ms: float | None = None,
+    max_p95_latency_ms: float | None = None,
     max_excluded_target_hit_rate: float | None = None,
     max_excluded_query_hit_rate: float | None = None,
     max_excluded_hit_query_count: int | None = None,
@@ -172,6 +173,7 @@ def build_qdrant_fusion_sweep_report(
     chunk_strategy_excluded_target_hit_penalty: float = 0.0,
     retrieval_role_excluded_target_hit_penalty: float = 0.0,
     latency_weight: float = 0.05,
+    p95_latency_weight: float = 0.0,
     case_group_top_k: int = 3,
     metadata: dict[str, Any] | None = None,
 ) -> QdrantFusionSweepReport:
@@ -184,6 +186,7 @@ def build_qdrant_fusion_sweep_report(
             min_mrr=min_mrr,
             max_failed_queries=max_failed_queries,
             max_mean_latency_ms=max_mean_latency_ms,
+            max_p95_latency_ms=max_p95_latency_ms,
             max_excluded_target_hit_rate=max_excluded_target_hit_rate,
             max_excluded_query_hit_rate=max_excluded_query_hit_rate,
             max_excluded_hit_query_count=max_excluded_hit_query_count,
@@ -204,6 +207,7 @@ def build_qdrant_fusion_sweep_report(
             chunk_strategy_excluded_target_hit_penalty=chunk_strategy_excluded_target_hit_penalty,
             retrieval_role_excluded_target_hit_penalty=retrieval_role_excluded_target_hit_penalty,
             latency_weight=latency_weight,
+            p95_latency_weight=p95_latency_weight,
         )
         for candidate in candidates
     ]
@@ -243,6 +247,7 @@ def build_qdrant_fusion_sweep_report(
             chunk_strategy_excluded_target_hit_penalty=chunk_strategy_excluded_target_hit_penalty,
             retrieval_role_excluded_target_hit_penalty=retrieval_role_excluded_target_hit_penalty,
             latency_weight=latency_weight,
+            p95_latency_weight=p95_latency_weight,
             top_k=case_group_top_k,
         ),
         candidates=ranked,
@@ -258,6 +263,7 @@ def score_fusion_candidate(
     min_mrr: float,
     max_failed_queries: int | None,
     max_mean_latency_ms: float | None,
+    max_p95_latency_ms: float | None,
     max_excluded_target_hit_rate: float | None,
     max_excluded_query_hit_rate: float | None,
     max_excluded_hit_query_count: int | None,
@@ -278,6 +284,7 @@ def score_fusion_candidate(
     chunk_strategy_excluded_target_hit_penalty: float,
     retrieval_role_excluded_target_hit_penalty: float,
     latency_weight: float,
+    p95_latency_weight: float,
 ) -> QdrantFusionSweepCandidate:
     evaluation = candidate.evaluation
     source_max_name, source_max_rate = excluded_target_hit_rate_max(evaluation.source_metrics)
@@ -298,6 +305,7 @@ def score_fusion_candidate(
         min_mrr=min_mrr,
         max_failed_queries=max_failed_queries,
         max_mean_latency_ms=max_mean_latency_ms,
+        max_p95_latency_ms=max_p95_latency_ms,
         max_excluded_target_hit_rate=max_excluded_target_hit_rate,
         max_excluded_query_hit_rate=max_excluded_query_hit_rate,
         max_excluded_hit_query_count=max_excluded_hit_query_count,
@@ -320,6 +328,7 @@ def score_fusion_candidate(
         - chunk_strategy_excluded_target_hit_penalty * chunk_strategy_max_rate
         - retrieval_role_excluded_target_hit_penalty * retrieval_role_max_rate
         - latency_weight * (evaluation.mean_latency_ms / 1000.0)
+        - p95_latency_weight * (evaluation.p95_latency_ms / 1000.0)
     )
     return candidate.model_copy(
         update={
@@ -346,6 +355,7 @@ def fusion_candidate_failures(
     min_mrr: float = 0.0,
     max_failed_queries: int | None = None,
     max_mean_latency_ms: float | None = None,
+    max_p95_latency_ms: float | None = None,
     max_excluded_target_hit_rate: float | None = None,
     max_excluded_query_hit_rate: float | None = None,
     max_excluded_hit_query_count: int | None = None,
@@ -367,6 +377,8 @@ def fusion_candidate_failures(
         failures.append("max_failed_queries")
     if max_mean_latency_ms is not None and evaluation.mean_latency_ms > max_mean_latency_ms:
         failures.append("max_mean_latency_ms")
+    if max_p95_latency_ms is not None and evaluation.p95_latency_ms > max_p95_latency_ms:
+        failures.append("max_p95_latency_ms")
     if (
         max_excluded_target_hit_rate is not None
         and evaluation.excluded_target_hit_rate > max_excluded_target_hit_rate
@@ -467,6 +479,7 @@ def fusion_candidate_rank_key(candidate: QdrantFusionSweepCandidate) -> tuple:
         -candidate.max_retrieval_role_excluded_target_hit_rate,
         -evaluation.excluded_hit_query_count,
         -evaluation.mean_latency_ms,
+        -evaluation.p95_latency_ms,
         candidate.name,
     )
 
@@ -498,6 +511,7 @@ def case_group_recommendations(
     chunk_strategy_excluded_target_hit_penalty: float,
     retrieval_role_excluded_target_hit_penalty: float,
     latency_weight: float,
+    p95_latency_weight: float,
     top_k: int = 3,
 ) -> dict[str, dict[str, QdrantFusionCaseGroupRecommendation]]:
     grouped: dict[str, dict[str, list[QdrantFusionCaseGroupCandidate]]] = {}
@@ -533,7 +547,8 @@ def case_group_recommendations(
                         source_family_excluded_target_hit_penalty=source_family_excluded_target_hit_penalty,
                         chunk_strategy_excluded_target_hit_penalty=chunk_strategy_excluded_target_hit_penalty,
                         retrieval_role_excluded_target_hit_penalty=retrieval_role_excluded_target_hit_penalty,
-                    ),
+                    )
+                    - p95_latency_weight * (candidate.evaluation.p95_latency_ms / 1000.0),
                     case_count=metric.case_count,
                     recall_at_k=metric.recall_at_k,
                     target_coverage_at_k=metric.target_coverage_at_k,
