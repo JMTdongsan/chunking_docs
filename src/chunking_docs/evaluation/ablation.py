@@ -169,6 +169,31 @@ class QdrantVectorAblationReport(BaseModel):
     pairwise: list[AblationPairwiseComparison] = Field(default_factory=list)
 
 
+class QdrantRerankerAblationMode(BaseModel):
+    name: str
+    reranker: str = "none"
+    rerank_top_k: int = 0
+
+
+class QdrantRerankerAblationRow(BaseModel):
+    mode: QdrantRerankerAblationMode
+    evaluation: RetrievalEvaluation
+
+
+class QdrantRerankerAblationReport(BaseModel):
+    rows: list[QdrantRerankerAblationRow]
+    best_by_recall: str | None
+    best_by_target_coverage: str | None
+    best_by_target_ndcg: str | None
+    best_by_mrr: str | None
+    fastest_by_mean_latency: str | None
+    case_group_best_modes: dict[
+        str,
+        dict[str, dict[str, AblationBestModeMetric]],
+    ] = Field(default_factory=dict)
+    pairwise: list[AblationPairwiseComparison] = Field(default_factory=list)
+
+
 class QdrantVectorAblationGateReport(BaseModel):
     passed: bool
     mode: str
@@ -333,6 +358,17 @@ DEFAULT_QDRANT_VECTOR_ABLATION_MODES = {
             "triple_dense",
         ],
         graph_expand=True,
+    ),
+}
+
+
+DEFAULT_QDRANT_RERANKER_ABLATION_MODES = {
+    "none": QdrantRerankerAblationMode(name="none", reranker="none", rerank_top_k=0),
+    "lexical": QdrantRerankerAblationMode(name="lexical", reranker="lexical", rerank_top_k=0),
+    "cross_encoder": QdrantRerankerAblationMode(
+        name="cross_encoder",
+        reranker="cross-encoder",
+        rerank_top_k=0,
     ),
 }
 
@@ -1009,6 +1045,16 @@ def parse_qdrant_vector_ablation_modes(value: str) -> list[QdrantVectorAblationM
     return [DEFAULT_QDRANT_VECTOR_ABLATION_MODES[name].model_copy(deep=True) for name in names]
 
 
+def parse_qdrant_reranker_ablation_modes(value: str) -> list[QdrantRerankerAblationMode]:
+    names = [item.strip() for item in value.split(",") if item.strip()]
+    if not names:
+        names = ["none", "lexical"]
+    unknown = sorted(set(names) - set(DEFAULT_QDRANT_RERANKER_ABLATION_MODES))
+    if unknown:
+        raise ValueError(f"Unsupported Qdrant reranker ablation modes: {', '.join(unknown)}")
+    return [DEFAULT_QDRANT_RERANKER_ABLATION_MODES[name].model_copy(deep=True) for name in names]
+
+
 def qdrant_vector_names_for_modes(modes: list[QdrantVectorAblationMode]) -> list[str]:
     seen: set[str] = set()
     vector_names: list[str] = []
@@ -1058,8 +1104,50 @@ def build_qdrant_vector_ablation_report(
     )
 
 
+def build_qdrant_reranker_ablation_report(
+    rows: list[QdrantRerankerAblationRow],
+) -> QdrantRerankerAblationReport:
+    rows = sorted(
+        rows,
+        key=lambda row: (
+            row.evaluation.recall_at_k,
+            row.evaluation.target_coverage_at_k,
+            row.evaluation.mean_target_ndcg_at_k,
+            row.evaluation.mrr,
+            row.evaluation.hit_rate,
+        ),
+        reverse=True,
+    )
+    return QdrantRerankerAblationReport(
+        rows=rows,
+        best_by_recall=rows[0].mode.name if rows else None,
+        best_by_target_coverage=max(
+            rows,
+            key=lambda row: (row.evaluation.target_coverage_at_k, row.evaluation.recall_at_k),
+        ).mode.name
+        if rows
+        else None,
+        best_by_target_ndcg=max(
+            rows,
+            key=lambda row: (row.evaluation.mean_target_ndcg_at_k, row.evaluation.recall_at_k),
+        ).mode.name
+        if rows
+        else None,
+        best_by_mrr=max(rows, key=lambda row: row.evaluation.mrr).mode.name if rows else None,
+        fastest_by_mean_latency=min(rows, key=lambda row: row.evaluation.mean_latency_ms).mode.name
+        if rows
+        else None,
+        case_group_best_modes=case_group_best_modes(rows),
+        pairwise=ablation_pairwise_comparisons(rows),
+    )
+
+
 def ablation_pairwise_comparisons(
-    rows: list[RetrievalAblationRow] | list[QdrantVectorAblationRow],
+    rows: (
+        list[RetrievalAblationRow]
+        | list[QdrantVectorAblationRow]
+        | list[QdrantRerankerAblationRow]
+    ),
 ) -> list[AblationPairwiseComparison]:
     comparisons = []
     for candidate_row in rows:
@@ -1073,8 +1161,8 @@ def ablation_pairwise_comparisons(
 
 
 def compare_ablation_rows_pairwise(
-    candidate_row: RetrievalAblationRow | QdrantVectorAblationRow,
-    baseline_row: RetrievalAblationRow | QdrantVectorAblationRow,
+    candidate_row: RetrievalAblationRow | QdrantVectorAblationRow | QdrantRerankerAblationRow,
+    baseline_row: RetrievalAblationRow | QdrantVectorAblationRow | QdrantRerankerAblationRow,
 ) -> AblationPairwiseComparison | None:
     candidate_results = results_by_query(candidate_row.evaluation.results)
     baseline_results = results_by_query(baseline_row.evaluation.results)
@@ -1277,7 +1365,11 @@ def ablation_pairwise_metrics(
 
 
 def case_group_best_modes(
-    rows: list[RetrievalAblationRow] | list[QdrantVectorAblationRow],
+    rows: (
+        list[RetrievalAblationRow]
+        | list[QdrantVectorAblationRow]
+        | list[QdrantRerankerAblationRow]
+    ),
 ) -> dict[str, dict[str, dict[str, AblationBestModeMetric]]]:
     groups = sorted(
         {
@@ -1332,7 +1424,11 @@ def case_group_best_modes(
 
 
 def best_case_group_mode(
-    rows: list[RetrievalAblationRow] | list[QdrantVectorAblationRow],
+    rows: (
+        list[RetrievalAblationRow]
+        | list[QdrantVectorAblationRow]
+        | list[QdrantRerankerAblationRow]
+    ),
     group_name: str,
     group_value: str,
     metric_name: str,
@@ -1352,7 +1448,7 @@ def best_case_group_mode(
 
 
 def case_group_mode_score(
-    row: RetrievalAblationRow | QdrantVectorAblationRow,
+    row: RetrievalAblationRow | QdrantVectorAblationRow | QdrantRerankerAblationRow,
     metric,
     metric_name: str,
     prefer_lower: bool,

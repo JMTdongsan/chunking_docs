@@ -184,6 +184,7 @@ Additional processing commands may create:
 - `qdrant_collection_contract.json`
 - `qdrant_retrieval_eval.json`
 - `qdrant_vector_ablation.json`
+- `qdrant_reranker_ablation.json`
 - `qdrant_vector_ablation_gate.json`
 - `retrieval_case_audit.json`
 - `retrieval_diagnostics.json`
@@ -272,6 +273,7 @@ Recommended checks:
 - `eval-qdrant-rag-context-config`: builds final context bundles from an exported Qdrant retrieval config and evaluates page, chunk, visual asset, graph triple, hard-negative, context-size, latency, and case-group metrics using the same manifest-derived query encoders and reranker settings.
 - `gate-rag-context`: pass/fail checks for final context target coverage, target-type coverage, case-group coverage, hard-negative leakage, context length, context item counts, and latency.
 - `eval-qdrant-vector-ablation`: Qdrant text, visual caption, visual object, optional image, and graph-expanded vector comparison on the same cases, including hard-negative excluded-target metrics, case-group best-mode summaries, query-paired rank deltas, and candidate-vs-baseline comparisons for benchmark subsets such as visual object probes.
+- `eval-qdrant-reranker-ablation`: Qdrant hybrid retrieval comparison that keeps vectors, fusion weights, tokenizer settings, graph expansion, and cases fixed while measuring reranker lift, rank deltas, hard-negative behavior, case-group wins, and latency cost for modes such as `none`, `lexical`, and `cross_encoder`.
 - `sweep-qdrant-fusion`: grid search over Qdrant, BM25, exact vector-source, graph fusion weights, and optional reranking with eligibility gates, aggregate and source/family/strategy/role hard-negative excluded-target penalties, mean/p95 latency-aware selection scores, top-candidate query-paired win/lift comparisons, case-group recommendations for benchmark subsets such as visual object probes, and a recommended production retrieval configuration.
 - `export-qdrant-retrieval-config`: converts a fusion sweep recommendation into a reusable JSON retrieval configuration for a RAG service, including vector names, fusion weights, query encoders, tokenizer settings, reranker settings, top-k, aggregate and case-group selection metrics, and selected-vs-baseline pairwise evidence.
 - `gate-qdrant-vector-ablation`: pass/fail checks for a selected Qdrant vector mode using recall, target coverage, target nDCG, target rank limits, precision, failed-query count, latency, hard-negative excluded-target hit rates, source-family, exact-source, chunking-strategy, and retrieval-role excluded-target hit rates, target-type coverage, source-family and exact source target coverage, case metadata group coverage, optional best-mode requirements, pairwise rank-delta ceilings, and query-paired baseline thresholds when a baseline mode is supplied.
@@ -298,7 +300,7 @@ Tokenizer settings are part of the retrieval experiment. Strategy comparisons sh
 
 Fusion weights are also part of the retrieval experiment. Use `--fusion-weight` to tune source families such as `dense`, `bm25`, `graph`, and `qdrant`, or exact sources such as `qdrant:caption_dense`. Exact source target coverage gates can verify that a specific source, for example `qdrant:image_dense`, contributes evidence inside a broader combined mode.
 
-Reranking is a separate experiment knob. Keep `--reranker`, `--rerank-top-k`, and the reranker model fixed when comparing chunking strategies unless the experiment is explicitly measuring reranking.
+Reranking is a separate experiment knob. Keep `--reranker`, `--rerank-top-k`, and the reranker model fixed when comparing chunking strategies unless the experiment is explicitly measuring reranking. Use `eval-qdrant-reranker-ablation` when the experiment needs to prove whether reranking improves target rank, target coverage, case-group behavior, and latency under an otherwise fixed Qdrant hybrid configuration.
 
 Rank gates are separate from recall gates. `gate-retrieval`, `gate-chunking-comparison`, `gate-retrieval-ablation`, and `gate-qdrant-vector-ablation` can cap mean or p95 first relevant rank and target rank, with missing expected targets counted as `top_k + 1`, so a run that technically retrieves the right evidence but buries it below stronger candidates can still fail.
 

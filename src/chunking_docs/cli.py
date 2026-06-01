@@ -19,14 +19,17 @@ from chunking_docs.chunking.section_map import load_section_ranges
 from chunking_docs.embeddings.tokenizers import LexicalTokenizerConfig, TokenizerStrategy
 from chunking_docs.evaluation.audit import audit_package, audit_public_artifacts
 from chunking_docs.evaluation.ablation import (
+    QdrantRerankerAblationRow,
     QdrantVectorAblationReport,
     QdrantVectorAblationRow,
     RetrievalAblationReport,
+    build_qdrant_reranker_ablation_report,
     build_qdrant_vector_ablation_report,
     evaluate_retrieval_ablation,
     gate_retrieval_ablation,
     gate_qdrant_vector_ablation,
     parse_ablation_modes,
+    parse_qdrant_reranker_ablation_modes,
     parse_qdrant_vector_ablation_modes,
     qdrant_vector_names_for_modes,
 )
@@ -1712,6 +1715,218 @@ def eval_qdrant_vector_ablation_command(
                         "mode": row.mode.name,
                         "vector_names": row.mode.vector_names,
                         "graph_expand": row.mode.graph_expand,
+                        "recall_at_k": row.evaluation.recall_at_k,
+                        "mrr": row.evaluation.mrr,
+                        "hit_rate": row.evaluation.hit_rate,
+                        "target_coverage_at_k": row.evaluation.target_coverage_at_k,
+                        "mean_target_ndcg_at_k": row.evaluation.mean_target_ndcg_at_k,
+                        "mean_precision_at_k": row.evaluation.mean_precision_at_k,
+                        "excluded_query_count": row.evaluation.excluded_query_count,
+                        "excluded_hit_query_count": row.evaluation.excluded_hit_query_count,
+                        "excluded_query_hit_rate": row.evaluation.excluded_query_hit_rate,
+                        "excluded_target_count": row.evaluation.excluded_target_count,
+                        "excluded_matched_target_count": (
+                            row.evaluation.excluded_matched_target_count
+                        ),
+                        "excluded_target_hit_rate": row.evaluation.excluded_target_hit_rate,
+                        "repeat": row.evaluation.repeat,
+                        "mean_latency_ms": row.evaluation.mean_latency_ms,
+                        "p95_latency_ms": row.evaluation.p95_latency_ms,
+                        "unstable_result_count": row.evaluation.unstable_result_count,
+                        "result_stability_rate": row.evaluation.result_stability_rate,
+                        "target_metrics": retrieval_target_metrics_payload(row.evaluation),
+                        "source_metrics": retrieval_source_metrics_payload(row.evaluation),
+                        "source_family_metrics": retrieval_source_family_metrics_payload(
+                            row.evaluation
+                        ),
+                        "chunk_strategy_metrics": retrieval_chunk_strategy_metrics_payload(
+                            row.evaluation
+                        ),
+                        "retrieval_role_metrics": retrieval_role_metrics_payload(row.evaluation),
+                        "case_group_metrics": retrieval_case_group_metrics_payload(row.evaluation),
+                        "failed_queries": row.evaluation.failed_queries,
+                    }
+                    for row in report.rows
+                ],
+            }
+        )
+        return
+    print(report.model_dump())
+
+
+@app.command(name="eval-qdrant-reranker-ablation")
+def eval_qdrant_reranker_ablation_command(
+    cases: Path,
+    package_dir: Path = Path("outputs/package"),
+    output: Path | None = None,
+    modes: str = "none,lexical",
+    vector_names: str = "text_dense,caption_dense",
+    graph_expand: bool = typer.Option(False, "--graph-expand/--no-graph-expand"),
+    url: str = "http://localhost:6333",
+    collection: str = "",
+    location: str = "",
+    path: str = "",
+    top_k: int = 5,
+    repeat: int = 1,
+    collapse_hierarchical: bool = False,
+    text_backend: str = "auto",
+    text_model: str = "BAAI/bge-m3",
+    image_query_backend: str = "auto",
+    image_query_model: str = "openai/clip-vit-large-patch14",
+    device: str = "cuda",
+    hashing_dim: int = 384,
+    reranker_model: str = "BAAI/bge-reranker-v2-m3",
+    reranker_device: str = "cuda",
+    reranker_max_length: int = 0,
+    rerank_top_k: int = 20,
+    doc_id: str = "",
+    payload_filter: list[str] = typer.Option(
+        None,
+        "--filter",
+        help="Payload filter such as kind=map, page_no=12, page_start<=12. Repeat for multiple filters.",
+    ),
+    fusion_weight: list[str] = typer.Option(
+        None,
+        "--fusion-weight",
+        help="RRF source weight such as bm25=1.3, graph=0.8, qdrant:caption_dense=1.5.",
+    ),
+    lexical_tokenizer: TokenizerStrategy = "mixed",
+    ngram_min: int = 2,
+    ngram_max: int = 4,
+    ngram_cjk_only: bool = True,
+    deduplicate_tokens: bool = False,
+):
+    """Compare Qdrant hybrid retrieval before and after reranking."""
+    try:
+        parsed_modes = parse_qdrant_reranker_ablation_modes(modes)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+    parsed_vector_names = [item.strip() for item in vector_names.split(",") if item.strip()]
+    fusion_weights = parse_fusion_weights(fusion_weight)
+    tokenizer_config = build_tokenizer_config(
+        lexical_tokenizer,
+        ngram_min=ngram_min,
+        ngram_max=ngram_max,
+        ngram_cjk_only=ngram_cjk_only,
+        deduplicate_tokens=deduplicate_tokens,
+    )
+    prepare_start = perf_counter()
+    prepared = prepare_qdrant_hybrid_search(
+        package_dir=package_dir,
+        url=url,
+        collection=collection,
+        location=location,
+        path=path,
+        vector_names=vector_names,
+        text_backend=text_backend,
+        text_model=text_model,
+        image_query_backend=image_query_backend,
+        image_query_model=image_query_model,
+        device=device,
+        hashing_dim=hashing_dim,
+        lexical_tokenizer=lexical_tokenizer,
+        ngram_min=ngram_min,
+        ngram_max=ngram_max,
+        ngram_cjk_only=ngram_cjk_only,
+        deduplicate_tokens=deduplicate_tokens,
+    )
+    index_build_ms = (perf_counter() - prepare_start) * 1000
+    retrieval_cases = load_retrieval_cases(cases)
+    filters = build_payload_filter(filter_specs=payload_filter)
+    metadata_filters = build_payload_filter(doc_id=doc_id, filter_specs=payload_filter)
+
+    rows = []
+    for mode in parsed_modes:
+        parsed_reranker = build_reranker(
+            mode.reranker,
+            model_name=reranker_model,
+            device=reranker_device,
+            max_length=reranker_max_length,
+            tokenizer_config=tokenizer_config,
+        )
+        effective_rerank_top_k = (mode.rerank_top_k or rerank_top_k) if parsed_reranker else None
+        effective_mode = mode.model_copy(
+            update={"rerank_top_k": effective_rerank_top_k or 0}
+        )
+
+        def search_for_case(case, case_graph_expand):
+            return prepared["searcher"].search(
+                query=case.query,
+                vector_names=parsed_vector_names,
+                top_k=top_k,
+                graph_expand=case_graph_expand,
+                doc_id=doc_id or None,
+                payload_filter=filters,
+                collapse_hierarchical=collapse_hierarchical,
+                fusion_weights=fusion_weights,
+                reranker=parsed_reranker,
+                rerank_top_k=effective_rerank_top_k,
+            )
+
+        evaluation = evaluate_search_results(
+            cases=retrieval_cases,
+            search_fn=search_for_case,
+            top_k=top_k,
+            repeat=repeat,
+            index_build_ms=index_build_ms,
+            graph_expand_override=graph_expand,
+            triples=prepared["triples"],
+        )
+        evaluation.metadata.update(
+            {
+                "backend": "qdrant_hybrid",
+                "mode": mode.name,
+                "collection": prepared["collection_name"],
+                "vector_names": parsed_vector_names,
+                "graph_expand": graph_expand,
+                "query_encoders": {
+                    name: prepared["query_encoders"].get(name, "unknown")
+                    for name in parsed_vector_names
+                },
+                "query_encoder_details": {
+                    name: prepared.get("query_encoder_details", {}).get(name, {})
+                    for name in parsed_vector_names
+                },
+                "upserted": prepared["upserted"],
+                "stored_count": prepared["store"].count(),
+                "filters": metadata_filters,
+                "fusion_weights": fusion_weights,
+                "collapse_hierarchical": collapse_hierarchical,
+                "reranker": parsed_reranker.source if parsed_reranker else None,
+                "reranker_model": reranker_model if parsed_reranker else "",
+                "reranker_max_length": reranker_max_length if parsed_reranker else 0,
+                "rerank_top_k": effective_rerank_top_k or 0,
+                "lexical_tokenizer": {
+                    "strategy": lexical_tokenizer,
+                    "min_n": ngram_min,
+                    "max_n": ngram_max,
+                    "ngram_cjk_only": ngram_cjk_only,
+                    "deduplicate": deduplicate_tokens,
+                },
+            }
+        )
+        rows.append(QdrantRerankerAblationRow(mode=effective_mode, evaluation=evaluation))
+
+    report = build_qdrant_reranker_ablation_report(rows)
+    if output is not None:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(report.model_dump_json(indent=2), encoding="utf-8")
+        print(
+            {
+                "output": str(output),
+                "best_by_recall": report.best_by_recall,
+                "best_by_target_coverage": report.best_by_target_coverage,
+                "best_by_target_ndcg": report.best_by_target_ndcg,
+                "best_by_mrr": report.best_by_mrr,
+                "fastest_by_mean_latency": report.fastest_by_mean_latency,
+                "case_group_best_modes": report.case_group_best_modes,
+                "pairwise": [comparison.model_dump() for comparison in report.pairwise],
+                "rows": [
+                    {
+                        "mode": row.mode.name,
+                        "reranker": row.evaluation.metadata.get("reranker"),
+                        "rerank_top_k": row.evaluation.metadata.get("rerank_top_k"),
                         "recall_at_k": row.evaluation.recall_at_k,
                         "mrr": row.evaluation.mrr,
                         "hit_rate": row.evaluation.hit_rate,

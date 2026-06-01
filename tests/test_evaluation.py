@@ -14,17 +14,25 @@ from chunking_docs.evaluation.audit import (
     required_payload_indexes,
 )
 from chunking_docs.evaluation.ablation import (
+    QdrantRerankerAblationRow,
     QdrantVectorAblationMode,
     QdrantVectorAblationRow,
+    build_qdrant_reranker_ablation_report,
     build_qdrant_vector_ablation_report,
     evaluate_retrieval_ablation,
     gate_retrieval_ablation,
     gate_qdrant_vector_ablation,
     parse_ablation_modes,
+    parse_qdrant_reranker_ablation_modes,
     parse_qdrant_vector_ablation_modes,
     qdrant_vector_names_for_modes,
 )
-from chunking_docs.evaluation.retrieval import RetrievalCase, evaluate_retrieval, evaluate_search_results
+from chunking_docs.evaluation.retrieval import (
+    RetrievalCase,
+    RetrievalEvaluation,
+    evaluate_retrieval,
+    evaluate_search_results,
+)
 from chunking_docs.io import write_jsonl
 from chunking_docs.models import (
     AssetKind,
@@ -2186,6 +2194,65 @@ def test_parse_qdrant_vector_ablation_modes_returns_union():
     ]
 
 
+def test_parse_qdrant_reranker_ablation_modes_defaults_to_none_and_lexical():
+    modes = parse_qdrant_reranker_ablation_modes("")
+
+    assert [mode.name for mode in modes] == ["none", "lexical"]
+    assert modes[0].reranker == "none"
+    assert modes[1].reranker == "lexical"
+    assert modes[1].rerank_top_k == 0
+
+
+def test_build_qdrant_reranker_ablation_report_ranks_by_retrieval_quality():
+    none_mode, lexical_mode = parse_qdrant_reranker_ablation_modes("none,lexical")
+
+    report = build_qdrant_reranker_ablation_report(
+        [
+            QdrantRerankerAblationRow(
+                mode=none_mode,
+                evaluation=RetrievalEvaluation(
+                    case_count=1,
+                    expected_case_count=1,
+                    passed_count=0,
+                    failed_count=1,
+                    hit_rate=0.0,
+                    recall_at_k=0.0,
+                    mrr=0.0,
+                    target_coverage_at_k=0.0,
+                    mean_target_ndcg_at_k=0.0,
+                    top_k=5,
+                    failed_queries=["visual evidence"],
+                    results=[],
+                ),
+            ),
+            QdrantRerankerAblationRow(
+                mode=lexical_mode.model_copy(update={"rerank_top_k": 20}),
+                evaluation=RetrievalEvaluation(
+                    case_count=1,
+                    expected_case_count=1,
+                    passed_count=1,
+                    failed_count=0,
+                    hit_rate=1.0,
+                    recall_at_k=1.0,
+                    mrr=1.0,
+                    target_coverage_at_k=1.0,
+                    mean_target_ndcg_at_k=1.0,
+                    top_k=5,
+                    failed_queries=[],
+                    results=[],
+                ),
+            ),
+        ]
+    )
+
+    assert report.best_by_recall == "lexical"
+    assert report.best_by_target_coverage == "lexical"
+    assert report.best_by_target_ndcg == "lexical"
+    assert report.best_by_mrr == "lexical"
+    assert report.rows[0].mode.name == "lexical"
+    assert report.rows[0].mode.rerank_top_k == 20
+
+
 def test_eval_qdrant_vector_ablation_cli_writes_report(monkeypatch, tmp_path):
     output = tmp_path / "qdrant_vector_ablation.json"
     cases_path = tmp_path / "cases.jsonl"
@@ -2314,6 +2381,123 @@ def test_eval_qdrant_vector_ablation_cli_writes_report(monkeypatch, tmp_path):
     assert pairwise["candidate_win_rate"] == 1.0
     assert pairwise["mean_target_coverage_delta"] == 1.0
     assert calls.count((("caption_dense",), False)) == 2
+
+
+def test_eval_qdrant_reranker_ablation_cli_writes_report(monkeypatch, tmp_path):
+    output = tmp_path / "qdrant_reranker_ablation.json"
+    cases_path = tmp_path / "cases.jsonl"
+    chunk = DocumentChunk(
+        chunk_id="chunk-1",
+        doc_id="doc",
+        page_start=1,
+        page_end=1,
+        kind=ChunkKind.TEXT,
+        text="visual caption evidence",
+        asset_ids=["asset-1"],
+    )
+    write_jsonl(
+        cases_path,
+        [
+            RetrievalCase(
+                query="visual evidence",
+                expected_asset_ids=["asset-1"],
+                metadata={"case_source": "visual_object_probe"},
+            )
+        ],
+    )
+    calls = []
+
+    class FakeStore:
+        def count(self):
+            return 1
+
+    class FakeSearcher:
+        def search(self, **kwargs):
+            calls.append(kwargs)
+            if kwargs["reranker"] is None:
+                return []
+            return [
+                HybridSearchHit(
+                    chunk=chunk,
+                    score=0.9,
+                    sources=["qdrant:caption_dense", "rerank:lexical"],
+                )
+            ]
+
+    def fake_prepare(**kwargs):
+        assert kwargs["vector_names"] == "text_dense,caption_dense"
+        assert kwargs["ngram_max"] == 3
+        return {
+            "searcher": FakeSearcher(),
+            "store": FakeStore(),
+            "collection_name": "documents",
+            "selected_vectors": ["text_dense", "caption_dense"],
+            "query_encoders": {
+                "text_dense": "default_text",
+                "caption_dense": "default_text",
+            },
+            "query_encoder_details": {
+                "text_dense": {"backend": "hashing"},
+                "caption_dense": {"backend": "hashing"},
+            },
+            "upserted": 1,
+            "triples": [],
+        }
+
+    monkeypatch.setattr(cli_module, "prepare_qdrant_hybrid_search", fake_prepare)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "eval-qdrant-reranker-ablation",
+            str(cases_path),
+            "--package-dir",
+            str(tmp_path),
+            "--vector-names",
+            "text_dense,caption_dense",
+            "--modes",
+            "none,lexical",
+            "--rerank-top-k",
+            "7",
+            "--ngram-max",
+            "3",
+            "--fusion-weight",
+            "bm25=1.5",
+            "--repeat",
+            "2",
+            "--output",
+            str(output),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert len(calls) == 4
+    assert calls[0]["reranker"] is None
+    assert calls[0]["rerank_top_k"] is None
+    assert calls[0]["fusion_weights"] == {"bm25": 1.5}
+    assert calls[0]["vector_names"] == ["text_dense", "caption_dense"]
+    assert calls[2]["reranker"].source == "rerank:lexical"
+    assert calls[2]["rerank_top_k"] == 7
+
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    rows = {row["mode"]["name"]: row for row in payload["rows"]}
+    assert payload["best_by_recall"] == "lexical"
+    assert payload["best_by_target_coverage"] == "lexical"
+    assert payload["best_by_target_ndcg"] == "lexical"
+    assert rows["none"]["evaluation"]["recall_at_k"] == 0.0
+    assert rows["lexical"]["mode"]["rerank_top_k"] == 7
+    assert rows["lexical"]["evaluation"]["recall_at_k"] == 1.0
+    assert rows["lexical"]["evaluation"]["metadata"]["reranker"] == "rerank:lexical"
+    assert rows["lexical"]["evaluation"]["metadata"]["rerank_top_k"] == 7
+    assert rows["lexical"]["evaluation"]["metadata"]["fusion_weights"] == {"bm25": 1.5}
+    pairwise = next(
+        comparison
+        for comparison in payload["pairwise"]
+        if comparison["candidate"] == "lexical" and comparison["baseline"] == "none"
+    )
+    assert pairwise["shared_query_count"] == 1
+    assert pairwise["candidate_win_rate"] == 1.0
+    assert pairwise["mean_target_coverage_delta"] == 1.0
 
 
 def qdrant_vector_ablation_report_for_gate():
