@@ -34,6 +34,7 @@ class RetrievalCaseAuditReport(BaseModel):
     case_count: int
     expected_case_count: int
     target_counts: dict[str, int] = Field(default_factory=dict)
+    distinct_target_counts: dict[str, int] = Field(default_factory=dict)
     case_group_counts: dict[str, dict[str, int]] = Field(default_factory=dict)
     visual_object_probe_count: int = 0
     visual_only_object_probe_count: int = 0
@@ -59,6 +60,10 @@ def audit_retrieval_cases(
     min_chunk_cases: int = 0,
     min_asset_cases: int = 0,
     min_triple_cases: int = 0,
+    min_distinct_page_targets: int = 0,
+    min_distinct_chunk_targets: int = 0,
+    min_distinct_asset_targets: int = 0,
+    min_distinct_triple_targets: int = 0,
     min_case_group_counts: dict[str, int] | None = None,
     require_visual_only_object_probes: bool = False,
     max_duplicate_queries: int = 0,
@@ -70,6 +75,7 @@ def audit_retrieval_cases(
     triple_ids = {triple.triple_id for triple in triples}
     issues: list[RetrievalCaseAuditIssue] = []
     target_counts = count_retrieval_case_targets(cases)
+    distinct_target_counts = count_retrieval_case_distinct_targets(cases)
     group_counts = count_case_groups(cases)
     visual_object_probe_counts = count_visual_object_probes(cases)
     missing_target_counts = {"page": 0, "chunk": 0, "asset": 0, "triple": 0}
@@ -186,6 +192,10 @@ def audit_retrieval_cases(
         "chunk_cases": target_counts["chunk"],
         "asset_cases": target_counts["asset"],
         "triple_cases": target_counts["triple"],
+        "distinct_page_targets": distinct_target_counts["page"],
+        "distinct_chunk_targets": distinct_target_counts["chunk"],
+        "distinct_asset_targets": distinct_target_counts["asset"],
+        "distinct_triple_targets": distinct_target_counts["triple"],
         "non_visual_only_object_probe_count": visual_object_probe_counts["non_visual_only"],
         "duplicate_query_count": duplicate_query_count,
     }
@@ -195,6 +205,30 @@ def audit_retrieval_cases(
         min_check("min_chunk_cases", "chunk_cases", metrics, min_chunk_cases),
         min_check("min_asset_cases", "asset_cases", metrics, min_asset_cases),
         min_check("min_triple_cases", "triple_cases", metrics, min_triple_cases),
+        min_check(
+            "min_distinct_page_targets",
+            "distinct_page_targets",
+            metrics,
+            min_distinct_page_targets,
+        ),
+        min_check(
+            "min_distinct_chunk_targets",
+            "distinct_chunk_targets",
+            metrics,
+            min_distinct_chunk_targets,
+        ),
+        min_check(
+            "min_distinct_asset_targets",
+            "distinct_asset_targets",
+            metrics,
+            min_distinct_asset_targets,
+        ),
+        min_check(
+            "min_distinct_triple_targets",
+            "distinct_triple_targets",
+            metrics,
+            min_distinct_triple_targets,
+        ),
         max_check("max_duplicate_queries", "duplicate_query_count", metrics, max_duplicate_queries),
     ]
     if require_visual_only_object_probes:
@@ -213,6 +247,7 @@ def audit_retrieval_cases(
         case_count=len(cases),
         expected_case_count=sum(1 for case in cases if has_expected_target(case)),
         target_counts=target_counts,
+        distinct_target_counts=distinct_target_counts,
         case_group_counts=group_counts,
         visual_object_probe_count=visual_object_probe_counts["total"],
         visual_only_object_probe_count=visual_object_probe_counts["visual_only"],
@@ -234,6 +269,15 @@ def count_retrieval_case_targets(cases: list[RetrievalCase]) -> dict[str, int]:
         "chunk": sum(1 for case in cases if case.expected_chunk_ids),
         "asset": sum(1 for case in cases if case.expected_asset_ids),
         "triple": sum(1 for case in cases if case.expected_triple_ids),
+    }
+
+
+def count_retrieval_case_distinct_targets(cases: list[RetrievalCase]) -> dict[str, int]:
+    return {
+        "page": len({page for case in cases for page in case.expected_pages}),
+        "chunk": len({chunk_id for case in cases for chunk_id in case.expected_chunk_ids}),
+        "asset": len({asset_id for case in cases for asset_id in case.expected_asset_ids}),
+        "triple": len({triple_id for case in cases for triple_id in case.expected_triple_ids}),
     }
 
 
