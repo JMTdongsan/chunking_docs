@@ -38,6 +38,7 @@ def test_build_experiment_report_summarizes_artifacts_and_candidates(tmp_path):
     assert artifacts["retrieval_gate.final.json"].exists is True
     assert artifacts["qdrant_eval.final.json"].exists is True
     assert artifacts["chunking_comparison_gate.final.json"].exists is True
+    assert artifacts["chunking_sweep.final.json"].exists is True
     assert artifacts["graph_audit.final.json"].exists is True
     assert artifacts["visual_gate.final.json"].exists is True
     assert artifacts["visual_run_comparison.json"].exists is True
@@ -72,6 +73,18 @@ def test_build_experiment_report_summarizes_artifacts_and_candidates(tmp_path):
     assert validations["chunking_comparison_gate.final.json"].metrics[
         "pairwise_candidate_win_rate"
     ] == 0.7
+    assert validations["chunking_sweep.final.json"].passed is True
+    assert validations["chunking_sweep.final.json"].candidate == "semantic"
+    assert validations["chunking_sweep.final.json"].metrics["candidate_count"] == 2.0
+    assert validations["chunking_sweep.final.json"].metrics["eligible_count"] == 1.0
+    assert validations["chunking_sweep.final.json"].metrics["rejected_count"] == 1.0
+    assert validations["chunking_sweep.final.json"].metrics["selection_score"] == 0.82
+    assert validations["chunking_sweep.final.json"].metrics["target_coverage_at_k"] == 0.9
+    assert (
+        validations["chunking_sweep.final.json"]
+        .metrics["target_coverage_per_embedding_kchar"]
+        == 4.5
+    )
     assert validations["graph_audit.final.json"].metrics["orphan_count"] == 0.0
     assert validations["visual_gate.final.json"].metrics["vlm_summary_coverage"] == 1.0
     assert validations["retrieval_diagnostics.final.json"].metrics["no_hit_count"] == 1.0
@@ -382,6 +395,52 @@ def write_minimal_package(tmp_path):
                     "pairwise_mean_target_ndcg_delta": 0.05,
                     "pairwise_target_ndcg_delta_ci_low": 0.03,
                     "pairwise_target_ndcg_delta_ci_high": 0.08,
+                },
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    (package_dir / "chunking_sweep.final.json").write_text(
+        json.dumps(
+            {
+                "candidates": [{"name": "semantic"}, {"name": "hierarchical"}],
+                "selection": {
+                    "recommended": "semantic",
+                    "eligible_count": 1,
+                    "rejected_count": 1,
+                    "pareto_front": ["semantic", "hierarchical"],
+                    "eligible_pareto_front": ["semantic"],
+                    "constraints": {"min_target_coverage_per_embedding_kchar": 3.0},
+                    "ranking": [
+                        {
+                            "name": "semantic",
+                            "score": 0.82,
+                            "eligible": True,
+                            "failed_constraints": [],
+                            "metrics": {
+                                "target_coverage_at_k": 0.9,
+                                "target_ndcg_at_k": 0.8,
+                                "embedding_text_kchars": 0.2,
+                                "target_coverage_per_embedding_kchar": 4.5,
+                                "target_ndcg_per_embedding_kchar": 4.0,
+                                "retrieval_score_per_embedding_kchar": 4.125,
+                            },
+                        },
+                        {
+                            "name": "hierarchical",
+                            "score": 0.78,
+                            "eligible": False,
+                            "failed_constraints": [
+                                "min_target_coverage_per_embedding_kchar"
+                            ],
+                            "metrics": {
+                                "target_coverage_at_k": 0.9,
+                                "embedding_text_kchars": 0.5,
+                                "target_coverage_per_embedding_kchar": 1.8,
+                            },
+                        },
+                    ],
                 },
             },
             indent=2,

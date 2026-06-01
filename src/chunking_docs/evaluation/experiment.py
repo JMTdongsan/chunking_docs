@@ -91,6 +91,7 @@ DEFAULT_ARTIFACTS = [
 DEFAULT_ARTIFACT_GLOBS = [
     "ingestion_readiness*.json",
     "chunking_comparison*.json",
+    "chunking_sweep*.json",
     "chunking_gate*.json",
     "graph_audit*.json",
     "package_delta*.json",
@@ -314,6 +315,8 @@ def validation_artifact_summaries_for_path(
     summaries = []
     if is_visual_run_comparison_payload(payload):
         return [visual_run_comparison_summary(path, payload, root=root)]
+    if is_chunking_sweep_payload(payload):
+        return [chunking_sweep_summary(path, payload, root=root)]
     if not is_validation_payload(payload):
         return component_validation_summaries(path, payload, root=root)
     display_path = display_artifact_path(path, root)
@@ -372,6 +375,93 @@ def is_visual_run_comparison_payload(payload: dict[str, Any]) -> bool:
         or "best_by_triple_density" in payload
         or "job_set_mismatch" in payload
     )
+
+
+def is_chunking_sweep_payload(payload: dict[str, Any]) -> bool:
+    selection = payload.get("selection")
+    return isinstance(selection, dict) and isinstance(payload.get("candidates"), list)
+
+
+def chunking_sweep_summary(
+    path: Path,
+    payload: dict[str, Any],
+    root: Path | None = None,
+) -> ValidationSummary:
+    selection = payload.get("selection")
+    selection = selection if isinstance(selection, dict) else {}
+    ranking = [row for row in selection.get("ranking", []) if isinstance(row, dict)]
+    recommended = selection.get("recommended")
+    recommended = recommended if isinstance(recommended, str) else None
+    selected_row = sweep_selected_row(ranking, recommended)
+    constraints = selection.get("constraints")
+    constraints = constraints if isinstance(constraints, dict) else {}
+    failed_checks = [] if recommended else sweep_failed_constraints(ranking)
+    return ValidationSummary(
+        path=display_artifact_path(path, root),
+        kind="chunking_sweep",
+        passed=True if recommended else False if constraints else None,
+        failed_checks=failed_checks,
+        candidate=recommended,
+        metrics=chunking_sweep_metrics(payload, selection, selected_row),
+    )
+
+
+def sweep_selected_row(
+    ranking: list[dict[str, Any]],
+    recommended: str | None,
+) -> dict[str, Any]:
+    if recommended:
+        for row in ranking:
+            if row.get("name") == recommended:
+                return row
+    return ranking[0] if ranking else {}
+
+
+def sweep_failed_constraints(ranking: list[dict[str, Any]]) -> list[str]:
+    seen: set[str] = set()
+    failed: list[str] = []
+    for row in ranking:
+        constraints = row.get("failed_constraints")
+        if not isinstance(constraints, list):
+            continue
+        for constraint in constraints:
+            if not isinstance(constraint, str) or constraint in seen:
+                continue
+            seen.add(constraint)
+            failed.append(constraint)
+    return failed
+
+
+def chunking_sweep_metrics(
+    payload: dict[str, Any],
+    selection: dict[str, Any],
+    selected_row: dict[str, Any],
+) -> dict[str, float]:
+    metrics = {
+        "candidate_count": numeric_metric(list_count(payload.get("candidates"))),
+        "eligible_count": numeric_metric(selection.get("eligible_count")),
+        "rejected_count": numeric_metric(selection.get("rejected_count")),
+        "pareto_front_count": numeric_metric(list_count(selection.get("pareto_front"))),
+        "eligible_pareto_front_count": numeric_metric(
+            list_count(selection.get("eligible_pareto_front"))
+        ),
+        "selection_score": numeric_metric(selected_row.get("score")),
+    }
+    row_metrics = selected_row.get("metrics")
+    if isinstance(row_metrics, dict):
+        metrics.update(
+            {
+                key: numeric_value
+                for key, metric_value in row_metrics.items()
+                if isinstance(key, str)
+                and (numeric_value := optional_numeric_metric(metric_value)) is not None
+            }
+        )
+    return metrics
+
+
+def list_count(value: Any) -> int:
+    return len(value) if isinstance(value, list) else 0
 
 
 def visual_run_comparison_summary(
