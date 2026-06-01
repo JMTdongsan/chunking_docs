@@ -4437,6 +4437,36 @@ def sweep_chunking_command(
         "--selection-min-target-ndcg-per-embedding-kchar",
         help="Only recommend sweep candidates with enough target nDCG per 1k embedding chars.",
     ),
+    selection_min_retrieval_score_per_mean_latency_ms: float | None = typer.Option(
+        None,
+        "--selection-min-retrieval-score-per-mean-latency-ms",
+        help="Only recommend sweep candidates with enough aggregate retrieval score per mean latency ms.",
+    ),
+    selection_min_target_coverage_per_mean_latency_ms: float | None = typer.Option(
+        None,
+        "--selection-min-target-coverage-per-mean-latency-ms",
+        help="Only recommend sweep candidates with enough target coverage per mean latency ms.",
+    ),
+    selection_min_target_ndcg_per_mean_latency_ms: float | None = typer.Option(
+        None,
+        "--selection-min-target-ndcg-per-mean-latency-ms",
+        help="Only recommend sweep candidates with enough target nDCG per mean latency ms.",
+    ),
+    selection_min_retrieval_score_per_p95_latency_ms: float | None = typer.Option(
+        None,
+        "--selection-min-retrieval-score-per-p95-latency-ms",
+        help="Only recommend sweep candidates with enough aggregate retrieval score per p95 latency ms.",
+    ),
+    selection_min_target_coverage_per_p95_latency_ms: float | None = typer.Option(
+        None,
+        "--selection-min-target-coverage-per-p95-latency-ms",
+        help="Only recommend sweep candidates with enough target coverage per p95 latency ms.",
+    ),
+    selection_min_target_ndcg_per_p95_latency_ms: float | None = typer.Option(
+        None,
+        "--selection-min-target-ndcg-per-p95-latency-ms",
+        help="Only recommend sweep candidates with enough target nDCG per p95 latency ms.",
+    ),
     selection_min_quality_score: float | None = typer.Option(
         None,
         "--selection-min-quality-score",
@@ -4486,6 +4516,11 @@ def sweep_chunking_command(
         None,
         "--selection-max-mean-latency-ms",
         help="Only recommend sweep candidates at or below this mean retrieval latency.",
+    ),
+    selection_max_p95_latency_ms: float | None = typer.Option(
+        None,
+        "--selection-max-p95-latency-ms",
+        help="Only recommend sweep candidates at or below this p95 retrieval latency.",
     ),
     selection_max_unstable_result_count: float | None = typer.Option(
         None,
@@ -4562,6 +4597,24 @@ def sweep_chunking_command(
         "min_target_ndcg_per_embedding_kchar": (
             selection_min_target_ndcg_per_embedding_kchar
         ),
+        "min_retrieval_score_per_mean_latency_ms": (
+            selection_min_retrieval_score_per_mean_latency_ms
+        ),
+        "min_target_coverage_per_mean_latency_ms": (
+            selection_min_target_coverage_per_mean_latency_ms
+        ),
+        "min_target_ndcg_per_mean_latency_ms": (
+            selection_min_target_ndcg_per_mean_latency_ms
+        ),
+        "min_retrieval_score_per_p95_latency_ms": (
+            selection_min_retrieval_score_per_p95_latency_ms
+        ),
+        "min_target_coverage_per_p95_latency_ms": (
+            selection_min_target_coverage_per_p95_latency_ms
+        ),
+        "min_target_ndcg_per_p95_latency_ms": (
+            selection_min_target_ndcg_per_p95_latency_ms
+        ),
         "min_quality_score": selection_min_quality_score,
         "min_visual_text_coverage_ratio": selection_min_visual_text_coverage_ratio,
         "min_visual_text_part_coverage_ratio": (
@@ -4571,6 +4624,7 @@ def sweep_chunking_command(
         "max_mean_target_rank": selection_max_mean_target_rank,
         "max_p95_target_rank": selection_max_p95_target_rank,
         "max_mean_latency_ms": selection_max_mean_latency_ms,
+        "max_p95_latency_ms": selection_max_p95_latency_ms,
         "max_unstable_result_count": selection_max_unstable_result_count,
         "max_chunk_count": selection_max_chunk_count,
         "max_total_chunk_chars": selection_max_total_chunk_chars,

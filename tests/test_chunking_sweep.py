@@ -3,8 +3,15 @@ import json
 from typer.testing import CliRunner
 
 from chunking_docs.cli import app
+from chunking_docs.evaluation.chunking_quality import ChunkingQualityReport, NumericSummary
 from chunking_docs.evaluation.retrieval import RetrievalCase
-from chunking_docs.evaluation.sweep import dominates, run_chunking_sweep
+from chunking_docs.evaluation.retrieval import RetrievalEvaluation
+from chunking_docs.evaluation.sweep import (
+    ChunkingSweepCandidate,
+    build_sweep_selection,
+    dominates,
+    run_chunking_sweep,
+)
 from chunking_docs.io import write_jsonl
 from chunking_docs.models import (
     AssetKind,
@@ -51,6 +58,9 @@ def test_run_chunking_sweep_writes_candidates_and_comparison(tmp_path):
     assert report.selection.ranking[0].metrics["retrieval_score_per_embedding_kchar"] is not None
     assert report.selection.ranking[0].metrics["target_coverage_per_embedding_kchar"] is not None
     assert report.selection.ranking[0].metrics["target_ndcg_per_embedding_kchar"] is not None
+    assert report.selection.ranking[0].metrics["p95_latency_ms"] is not None
+    assert report.selection.ranking[0].metrics["retrieval_score_per_mean_latency_ms"] is not None
+    assert report.selection.ranking[0].metrics["target_coverage_per_p95_latency_ms"] is not None
     assert report.selection.ranking[0].metrics["visual_text_part_coverage_ratio"] is not None
     assert report.selection.eligible_count == 2
     assert report.selection.rejected_count == 0
@@ -206,6 +216,40 @@ def test_sweep_selection_constraints_filter_retrieval_value_per_embedding_cost(t
     assert rejected.metrics["target_coverage_per_embedding_kchar"] < 3.0
 
 
+def test_sweep_selection_constraints_filter_retrieval_value_per_latency():
+    fast = sweep_candidate(
+        "fast",
+        mean_latency_ms=10.0,
+        p95_latency_ms=12.0,
+        retrieval_score=0.84,
+    )
+    slow = sweep_candidate(
+        "slow",
+        mean_latency_ms=35.0,
+        p95_latency_ms=45.0,
+        retrieval_score=0.84,
+    )
+
+    selection = build_sweep_selection(
+        [fast, slow],
+        selection_constraints={
+            "max_p95_latency_ms": 20.0,
+            "min_retrieval_score_per_p95_latency_ms": 0.05,
+        },
+    )
+
+    assert selection.recommended == "fast"
+    assert selection.eligible_count == 1
+    assert selection.rejected_count == 1
+    top = selection.ranking[0]
+    rejected = next(row for row in selection.ranking if not row.eligible)
+    assert round(top.metrics["retrieval_score_per_p95_latency_ms"] or 0.0, 4) == 0.07
+    assert rejected.failed_constraints == [
+        "min_retrieval_score_per_p95_latency_ms",
+        "max_p95_latency_ms",
+    ]
+
+
 def test_sweep_selection_constraints_can_require_visual_text_part_coverage(tmp_path):
     manifest = make_manifest(tmp_path)
 
@@ -343,6 +387,7 @@ def test_sweep_pareto_dominance_accounts_for_quality_and_cost():
         "mean_target_rank": 1.0,
         "p95_target_rank": 1.0,
         "mean_latency_ms": 10.0,
+        "p95_latency_ms": 12.0,
         "chunk_count": 20.0,
         "total_chunk_chars": 1200.0,
         "mean_chunk_chars": 60.0,
@@ -362,6 +407,7 @@ def test_sweep_pareto_dominance_accounts_for_quality_and_cost():
         "mean_target_rank": 3.0,
         "p95_target_rank": 3.0,
         "mean_latency_ms": 12.0,
+        "p95_latency_ms": 16.0,
         "chunk_count": 25.0,
         "total_chunk_chars": 1800.0,
         "mean_chunk_chars": 72.0,
@@ -437,6 +483,10 @@ def test_sweep_chunking_cli_writes_report(tmp_path):
             "250",
             "--selection-min-target-coverage-per-embedding-kchar",
             "3.0",
+            "--selection-min-retrieval-score-per-p95-latency-ms",
+            "0.0",
+            "--selection-max-p95-latency-ms",
+            "1000",
             "--selection-min-target-type-coverage",
             "asset=1.0",
             "--selection-min-case-group-target-coverage",
@@ -451,6 +501,8 @@ def test_sweep_chunking_cli_writes_report(tmp_path):
     assert payload["selection"]["constraints"] == {
         "max_total_chunk_chars": 250.0,
         "min_target_coverage_per_embedding_kchar": 3.0,
+        "min_retrieval_score_per_p95_latency_ms": 0.0,
+        "max_p95_latency_ms": 1000.0,
         "min_target_type_coverage:asset": 1.0,
         "min_case_group_target_coverage:case_source:visual_object_probe": 1.0,
     }
@@ -464,6 +516,13 @@ def test_sweep_chunking_cli_writes_report(tmp_path):
             "target_coverage_per_embedding_kchar"
         ]
         > 3.0
+    )
+    assert payload["selection"]["ranking"][0]["metrics"]["p95_latency_ms"] is not None
+    assert (
+        payload["selection"]["ranking"][0]["metrics"][
+            "retrieval_score_per_p95_latency_ms"
+        ]
+        is not None
     )
     assert len(payload["candidates"]) == 2
     assert payload["candidates"][0]["name"] == payload["selection"]["recommended"]
@@ -519,6 +578,60 @@ def write_package(tmp_path):
     write_jsonl(package_dir / "assets.jsonl", manifest.assets)
     write_jsonl(package_dir / "triples.jsonl", manifest.triples)
     return package_dir
+
+
+def sweep_candidate(
+    name: str,
+    mean_latency_ms: float,
+    p95_latency_ms: float,
+    retrieval_score: float,
+) -> ChunkingSweepCandidate:
+    retrieval = RetrievalEvaluation(
+        case_count=1,
+        expected_case_count=1,
+        passed_count=1,
+        failed_count=0,
+        hit_rate=retrieval_score,
+        recall_at_k=retrieval_score,
+        mrr=retrieval_score,
+        target_coverage_at_k=retrieval_score,
+        mean_target_ndcg_at_k=retrieval_score,
+        mean_precision_at_k=retrieval_score,
+        top_k=5,
+        total_query_latency_ms=mean_latency_ms,
+        mean_latency_ms=mean_latency_ms,
+        p95_latency_ms=p95_latency_ms,
+        failed_queries=[],
+        results=[],
+    )
+    report = ChunkingQualityReport(
+        page_count=1,
+        chunk_count=1,
+        covered_page_count=1,
+        page_coverage_ratio=1.0,
+        char_count=NumericSummary(
+            count=1,
+            minimum=100,
+            maximum=100,
+            mean=100.0,
+            p50=100.0,
+            p95=100.0,
+        ),
+        empty_chunk_count=0,
+        chunks_under_min_chars=0,
+        chunks_over_max_chars=0,
+        section_coverage_ratio=1.0,
+        visual_asset_linkage_ratio=1.0,
+        visual_annotation_ratio=1.0,
+        retrieval=retrieval,
+        quality_score=retrieval_score,
+    )
+    return ChunkingSweepCandidate(
+        name=name,
+        strategy="semantic",
+        chunk_count=1,
+        report=report,
+    )
 
 
 def make_manifest(tmp_path):

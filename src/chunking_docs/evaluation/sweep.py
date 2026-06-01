@@ -93,6 +93,7 @@ PARETO_LOWER_IS_BETTER = [
     "mean_target_rank",
     "p95_target_rank",
     "mean_latency_ms",
+    "p95_latency_ms",
     "unstable_result_count",
     "chunk_count",
     "total_chunk_chars",
@@ -111,6 +112,12 @@ MIN_SELECTION_CONSTRAINTS = {
     "min_retrieval_score_per_embedding_kchar": "retrieval_score_per_embedding_kchar",
     "min_target_coverage_per_embedding_kchar": "target_coverage_per_embedding_kchar",
     "min_target_ndcg_per_embedding_kchar": "target_ndcg_per_embedding_kchar",
+    "min_retrieval_score_per_mean_latency_ms": "retrieval_score_per_mean_latency_ms",
+    "min_target_coverage_per_mean_latency_ms": "target_coverage_per_mean_latency_ms",
+    "min_target_ndcg_per_mean_latency_ms": "target_ndcg_per_mean_latency_ms",
+    "min_retrieval_score_per_p95_latency_ms": "retrieval_score_per_p95_latency_ms",
+    "min_target_coverage_per_p95_latency_ms": "target_coverage_per_p95_latency_ms",
+    "min_target_ndcg_per_p95_latency_ms": "target_ndcg_per_p95_latency_ms",
     "min_quality_score": "quality_score",
     "min_visual_text_coverage_ratio": "visual_text_coverage_ratio",
     "min_visual_text_part_coverage_ratio": "visual_text_part_coverage_ratio",
@@ -121,6 +128,7 @@ MAX_SELECTION_CONSTRAINTS = {
     "max_mean_target_rank": "mean_target_rank",
     "max_p95_target_rank": "p95_target_rank",
     "max_mean_latency_ms": "mean_latency_ms",
+    "max_p95_latency_ms": "p95_latency_ms",
     "max_unstable_result_count": "unstable_result_count",
     "max_chunk_count": "chunk_count",
     "max_total_chunk_chars": "total_chunk_chars",
@@ -361,6 +369,7 @@ def selection_constraint_failures(
 def selection_metrics(candidate: ChunkingSweepCandidate) -> dict[str, float | None]:
     retrieval = candidate.report.retrieval
     mean_latency_ms = retrieval.mean_latency_ms if retrieval else None
+    p95_latency_ms = retrieval.p95_latency_ms if retrieval else None
     rank_metrics = retrieval_rank_metrics(retrieval) if retrieval else {}
     mean_target_rank = rank_metrics.get("mean_target_rank")
     p95_target_rank = rank_metrics.get("p95_target_rank")
@@ -392,12 +401,37 @@ def selection_metrics(candidate: ChunkingSweepCandidate) -> dict[str, float | No
             retrieval.mean_target_ndcg_at_k if retrieval else None,
             embedding_text_kchars,
         ),
+        "retrieval_score_per_mean_latency_ms": per_latency_ms(
+            retrieval_score,
+            mean_latency_ms,
+        ),
+        "target_coverage_per_mean_latency_ms": per_latency_ms(
+            retrieval.target_coverage_at_k if retrieval else None,
+            mean_latency_ms,
+        ),
+        "target_ndcg_per_mean_latency_ms": per_latency_ms(
+            retrieval.mean_target_ndcg_at_k if retrieval else None,
+            mean_latency_ms,
+        ),
+        "retrieval_score_per_p95_latency_ms": per_latency_ms(
+            retrieval_score,
+            p95_latency_ms,
+        ),
+        "target_coverage_per_p95_latency_ms": per_latency_ms(
+            retrieval.target_coverage_at_k if retrieval else None,
+            p95_latency_ms,
+        ),
+        "target_ndcg_per_p95_latency_ms": per_latency_ms(
+            retrieval.mean_target_ndcg_at_k if retrieval else None,
+            p95_latency_ms,
+        ),
         "mean_first_relevant_rank": rank_metrics.get("mean_first_relevant_rank"),
         "p95_first_relevant_rank": rank_metrics.get("p95_first_relevant_rank"),
         "mean_target_rank": mean_target_rank,
         "p95_target_rank": p95_target_rank,
         "target_rank_efficiency": rank_efficiency(mean_target_rank),
         "mean_latency_ms": mean_latency_ms,
+        "p95_latency_ms": p95_latency_ms,
         "unstable_result_count": float(retrieval.unstable_result_count) if retrieval else None,
         "result_stability_rate": retrieval.result_stability_rate if retrieval else None,
         "latency_efficiency": latency_efficiency(mean_latency_ms),
@@ -430,6 +464,14 @@ def per_embedding_kchar(value: float | None, embedding_text_kchars: float) -> fl
     if embedding_text_kchars <= 0:
         return float(value)
     return float(value) / embedding_text_kchars
+
+
+def per_latency_ms(value: float | None, latency_ms: float | None) -> float | None:
+    if value is None or latency_ms is None:
+        return None
+    if latency_ms <= 0:
+        return float(value)
+    return float(value) / latency_ms
 
 
 def add_retrieval_breakdown_metrics(

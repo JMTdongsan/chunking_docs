@@ -85,6 +85,11 @@ def test_build_experiment_report_summarizes_artifacts_and_candidates(tmp_path):
         .metrics["target_coverage_per_embedding_kchar"]
         == 4.5
     )
+    assert (
+        validations["chunking_sweep.final.json"]
+        .metrics["retrieval_score_per_p95_latency_ms"]
+        == 0.07
+    )
     assert validations["graph_audit.final.json"].metrics["orphan_count"] == 0.0
     assert validations["visual_gate.final.json"].metrics["vlm_summary_coverage"] == 1.0
     assert validations["retrieval_diagnostics.final.json"].metrics["no_hit_count"] == 1.0
@@ -425,6 +430,8 @@ def write_minimal_package(tmp_path):
                                 "target_coverage_per_embedding_kchar": 4.5,
                                 "target_ndcg_per_embedding_kchar": 4.0,
                                 "retrieval_score_per_embedding_kchar": 4.125,
+                                "p95_latency_ms": 12.0,
+                                "retrieval_score_per_p95_latency_ms": 0.07,
                             },
                         },
                         {
