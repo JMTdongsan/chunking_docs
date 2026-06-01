@@ -35,6 +35,12 @@ def test_characterize_package_reports_strategy_observations(tmp_path):
     assert report.text_layer.degraded_or_empty_ratio == 0.5
     assert report.text_layer.quality_reason_counts == {"empty_text": 1}
     assert report.visual.asset_kind_counts["map"] == 1
+    assert report.visual.tile_candidate_pages == [1]
+    assert report.visual.tile_candidate_count == 1
+    assert report.visual.top_visual_pages[0]["tile_reasons"] == [
+        "many_drawings",
+        "empty_visual_page",
+    ]
     assert report.visual.pages_requiring_ocr_count == 1
     assert report.visual.vlm_object_asset_count == 1
     assert report.visual.vlm_object_count == 2
@@ -43,9 +49,11 @@ def test_characterize_package_reports_strategy_observations(tmp_path):
     assert "text_layer_degraded" in observation_codes
     assert "visual_retrieval_required" in observation_codes
     assert "visual_annotation_pending" in observation_codes
+    assert "dense_visual_pages_need_tiling" in observation_codes
     assert "vlm_objects_available" in observation_codes
     assert "graph_triples_missing" not in observation_codes
     assert "prioritize_visual_annotations" in recommendation_codes
+    assert "build_page_tiles" in recommendation_codes
     assert "evaluate_visual_vectors" in recommendation_codes
     assert "generate_visual_object_probe_cases" in recommendation_codes
     assert "compare_multimodal_hierarchical_chunking" in recommendation_codes
@@ -68,6 +76,12 @@ def test_characterize_package_reports_strategy_observations(tmp_path):
     )
     assert "--min-query-terms-per-case 3" in benchmark_recommendation.commands[0]
     assert "--max-duplicate-queries 0" in benchmark_recommendation.commands[0]
+    tile_recommendation = next(
+        item for item in report.recommendations if item.code == "build_page_tiles"
+    )
+    assert "--pages 1" in tile_recommendation.commands[0]
+    assert "visual_jobs.tiled.jsonl" in tile_recommendation.commands[1]
+    assert tile_recommendation.metadata["tile_candidate_page_ranges"] == "1"
 
 
 def test_characterize_package_cli_writes_json(tmp_path):
@@ -90,6 +104,7 @@ def test_characterize_package_cli_writes_json(tmp_path):
     assert result.exit_code == 0, result.output
     payload = json.loads(output.read_text(encoding="utf-8"))
     assert payload["visual"]["asset_kind_counts"]["map"] == 1
+    assert payload["visual"]["tile_candidate_pages"] == [1]
     assert payload["visual"]["vlm_object_count"] == 2
     assert any(item["code"] == "visual_retrieval_required" for item in payload["observations"])
     assert any(item["code"] == "evaluate_visual_vectors" for item in payload["recommendations"])
@@ -97,6 +112,7 @@ def test_characterize_package_cli_writes_json(tmp_path):
         item["code"] == "generate_visual_object_probe_cases"
         for item in payload["recommendations"]
     )
+    assert any(item["code"] == "build_page_tiles" for item in payload["recommendations"])
     object_probe_recommendation = next(
         item for item in payload["recommendations"] if item["code"] == "generate_visual_object_probe_cases"
     )

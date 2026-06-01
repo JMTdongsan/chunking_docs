@@ -44,6 +44,8 @@ class TextLayerCharacteristics(BaseModel):
 class VisualCharacteristics(BaseModel):
     asset_kind_counts: dict[str, int]
     visual_heavy_pages: list[int] = Field(default_factory=list)
+    tile_candidate_pages: list[int] = Field(default_factory=list)
+    tile_candidate_count: int = 0
     top_visual_pages: list[dict[str, Any]] = Field(default_factory=list)
     pages_requiring_ocr_count: int = 0
     pages_requiring_vlm_count: int = 0
@@ -167,10 +169,17 @@ def visual_characteristics(
             "embedded_image_count": profile.embedded_image_count,
             "drawing_count": profile.drawing_count,
             "text_quality": str(profile.text_quality),
+            "tile_candidate": page_needs_tiling(profile),
+            "tile_reasons": tile_candidate_reasons(profile),
         }
         for profile in profiles
     ]
     visual_scores.sort(key=lambda item: (-int(item["score"]), int(item["page_no"])))
+    tile_candidates = [
+        int(item["page_no"])
+        for item in visual_scores
+        if item["tile_candidate"]
+    ]
     visual_heavy_pages = [
         int(item["page_no"])
         for item in visual_scores
@@ -179,6 +188,8 @@ def visual_characteristics(
     return VisualCharacteristics(
         asset_kind_counts=dict(sorted(kind_counts.items())),
         visual_heavy_pages=visual_heavy_pages,
+        tile_candidate_pages=tile_candidates[:max_pages],
+        tile_candidate_count=len(tile_candidates),
         top_visual_pages=visual_scores[:max_pages],
         pages_requiring_ocr_count=len(pages_requiring_ocr),
         pages_requiring_vlm_count=len(pages_requiring_vlm),
@@ -265,6 +276,19 @@ def observations(
                 },
             )
         )
+    if visual.tile_candidate_pages:
+        result.append(
+            CharacteristicObservation(
+                code="dense_visual_pages_need_tiling",
+                severity="info",
+                message="Some visual-heavy pages should be processed as overlapping tiles before OCR/VLM evaluation.",
+                metadata={
+                    "tile_candidate_pages": visual.tile_candidate_pages,
+                    "tile_candidate_page_ranges": page_range_spec(visual.tile_candidate_pages),
+                    "tile_candidate_count": visual.tile_candidate_count,
+                },
+            )
+        )
     if visual.vlm_object_count:
         result.append(
             CharacteristicObservation(
@@ -345,6 +369,34 @@ def recommendations(
                     "visual_heavy_pages": visual.visual_heavy_pages,
                     "pages_requiring_ocr_count": visual.pages_requiring_ocr_count,
                     "pages_requiring_vlm_count": visual.pages_requiring_vlm_count,
+                },
+            )
+        )
+    if visual.tile_candidate_pages:
+        tile_pages = page_range_spec(visual.tile_candidate_pages)
+        result.append(
+            ProcessingRecommendation(
+                code="build_page_tiles",
+                area="vision",
+                priority="required",
+                message=(
+                    "Create overlapping tiles for dense visual pages before final OCR/VLM runs so small map, "
+                    "table, and diagram details are not hidden inside a full-page image."
+                ),
+                commands=[
+                    (
+                        "chunking-docs build-tile-assets --package-dir outputs/package "
+                        f"--pages {tile_pages} --rows 2 --cols 2 --overlap-ratio 0.08"
+                    ),
+                    (
+                        "chunking-docs plan-visual-jobs --package-dir outputs/package "
+                        f"--pages {tile_pages} --output outputs/package/visual_jobs.tiled.jsonl"
+                    ),
+                ],
+                metadata={
+                    "tile_candidate_pages": visual.tile_candidate_pages,
+                    "tile_candidate_page_ranges": tile_pages,
+                    "tile_candidate_count": visual.tile_candidate_count,
                 },
             )
         )
@@ -509,6 +561,37 @@ def page_visual_score(profile: PageProfile) -> int:
         + profile.embedded_image_count * 3
         + profile.drawing_count
     )
+
+
+def page_needs_tiling(profile: PageProfile) -> bool:
+    return bool(tile_candidate_reasons(profile))
+
+
+def tile_candidate_reasons(profile: PageProfile) -> list[str]:
+    image_count = profile.image_block_count + profile.embedded_image_count
+    reasons = []
+    if image_count >= 8:
+        reasons.append("many_images")
+    if profile.drawing_count >= 30:
+        reasons.append("many_drawings")
+    if profile.text_quality == TextQuality.EMPTY and page_visual_score(profile) >= 20:
+        reasons.append("empty_visual_page")
+    return reasons
+
+
+def page_range_spec(pages: list[int]) -> str:
+    ranges = []
+    ordered_pages = sorted(set(pages))
+    index = 0
+    while index < len(ordered_pages):
+        start = ordered_pages[index]
+        end = start
+        while index + 1 < len(ordered_pages) and ordered_pages[index + 1] == end + 1:
+            index += 1
+            end = ordered_pages[index]
+        ranges.append(str(start) if start == end else f"{start}-{end}")
+        index += 1
+    return ",".join(ranges)
 
 
 def asset_visual_objects(asset: VisualAsset) -> list[Any]:

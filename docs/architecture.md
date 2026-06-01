@@ -19,6 +19,7 @@
    - Measure page size, text length, text blocks, image blocks, embedded images, and drawing count.
    - Classify the text layer as `good`, `degraded`, or `empty` using language-neutral control-character and readable-character signals.
    - Use the profile to decide which pages need OCR, VLM summaries, or visual embeddings.
+   - Identify dense visual pages that should be rendered as overlapping tiles before OCR/VLM processing.
    - Summarize package characteristics and recommended next processing steps for chunking, OCR/VLM, VLM object probes, graph, embeddings, and retrieval benchmarks.
 
 3. **Section Mapping**
