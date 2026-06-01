@@ -121,6 +121,8 @@ def generate_retrieval_case_skeleton(
     max_chunk_cases_per_target: int | None = None,
     max_asset_cases_per_target: int | None = None,
     max_triple_cases_per_target: int | None = None,
+    hard_negative_limit: int = 0,
+    hard_negative_min_overlap_terms: int = 2,
 ) -> list[RetrievalCase]:
     validate_casegen_options(
         query_mode,
@@ -131,6 +133,8 @@ def generate_retrieval_case_skeleton(
         max_chunk_cases_per_target=max_chunk_cases_per_target,
         max_asset_cases_per_target=max_asset_cases_per_target,
         max_triple_cases_per_target=max_triple_cases_per_target,
+        hard_negative_limit=hard_negative_limit,
+        hard_negative_min_overlap_terms=hard_negative_min_overlap_terms,
     )
     corpus_texts = case_source_texts(chunks, assets, triples)
     term_df = term_document_frequencies(corpus_texts)
@@ -243,6 +247,14 @@ def generate_retrieval_case_skeleton(
         max_chunk_cases_per_target=max_chunk_cases_per_target,
         max_asset_cases_per_target=max_asset_cases_per_target,
         max_triple_cases_per_target=max_triple_cases_per_target,
+    )
+    cases = attach_hard_negative_targets(
+        cases,
+        chunks=chunks,
+        assets=assets,
+        triples=triples,
+        limit=hard_negative_limit,
+        min_overlap_terms=hard_negative_min_overlap_terms,
     )
     return cases
 
@@ -1160,6 +1172,10 @@ def merge_retrieval_cases(
             "expected_chunk_ids": merge_stable_values(left.expected_chunk_ids, right.expected_chunk_ids),
             "expected_asset_ids": merge_stable_values(left.expected_asset_ids, right.expected_asset_ids),
             "expected_triple_ids": merge_stable_values(left.expected_triple_ids, right.expected_triple_ids),
+            "excluded_pages": merge_stable_values(left.excluded_pages, right.excluded_pages),
+            "excluded_chunk_ids": merge_stable_values(left.excluded_chunk_ids, right.excluded_chunk_ids),
+            "excluded_asset_ids": merge_stable_values(left.excluded_asset_ids, right.excluded_asset_ids),
+            "excluded_triple_ids": merge_stable_values(left.excluded_triple_ids, right.excluded_triple_ids),
             "graph_expand": left.graph_expand or right.graph_expand,
             "metadata": metadata,
         }
@@ -1362,6 +1378,151 @@ def increment_target_counts(
             counts[target_kind][value] = counts[target_kind].get(value, 0) + 1
 
 
+def attach_hard_negative_targets(
+    cases: list[RetrievalCase],
+    chunks: list[DocumentChunk],
+    assets: list[VisualAsset],
+    triples: list[GraphTriple],
+    limit: int = 0,
+    min_overlap_terms: int = 2,
+) -> list[RetrievalCase]:
+    if limit <= 0:
+        return cases
+    target_text_index = build_target_text_index(chunks, assets, triples)
+    target_terms = {
+        target_kind: {
+            target_id: set(distinct_query_terms(text))
+            for target_id, text in texts.items()
+        }
+        for target_kind, texts in target_text_index.items()
+    }
+    return [
+        case_with_hard_negative_targets(
+            case,
+            target_terms=target_terms,
+            limit=limit,
+            min_overlap_terms=min_overlap_terms,
+        )
+        for case in cases
+    ]
+
+
+def case_with_hard_negative_targets(
+    case: RetrievalCase,
+    target_terms: dict[str, dict[int | str, set[str]]],
+    limit: int,
+    min_overlap_terms: int,
+) -> RetrievalCase:
+    excluded_pages = merge_stable_values(
+        list(case.excluded_pages),
+        hard_negative_values_for_kind(
+            "page",
+            list(case.expected_pages),
+            target_terms,
+            limit=limit,
+            min_overlap_terms=min_overlap_terms,
+        ),
+    )
+    excluded_chunk_ids = merge_stable_values(
+        list(case.excluded_chunk_ids),
+        hard_negative_values_for_kind(
+            "chunk",
+            list(case.expected_chunk_ids),
+            target_terms,
+            limit=limit,
+            min_overlap_terms=min_overlap_terms,
+        ),
+    )
+    excluded_asset_ids = merge_stable_values(
+        list(case.excluded_asset_ids),
+        hard_negative_values_for_kind(
+            "asset",
+            list(case.expected_asset_ids),
+            target_terms,
+            limit=limit,
+            min_overlap_terms=min_overlap_terms,
+        ),
+    )
+    excluded_triple_ids = merge_stable_values(
+        list(case.excluded_triple_ids),
+        hard_negative_values_for_kind(
+            "triple",
+            list(case.expected_triple_ids),
+            target_terms,
+            limit=limit,
+            min_overlap_terms=min_overlap_terms,
+        ),
+    )
+    excluded_target_counts = {
+        "page": len(excluded_pages),
+        "chunk": len(excluded_chunk_ids),
+        "asset": len(excluded_asset_ids),
+        "triple": len(excluded_triple_ids),
+    }
+    if not any(excluded_target_counts.values()):
+        return case
+    metadata = {
+        **case.metadata,
+        "hard_negative_limit": limit,
+        "hard_negative_min_overlap_terms": min_overlap_terms,
+        "hard_negative_target_counts": excluded_target_counts,
+        "hard_negative_target_types": [
+            target_kind for target_kind, count in excluded_target_counts.items() if count
+        ],
+    }
+    return case.model_copy(
+        update={
+            "excluded_pages": excluded_pages,
+            "excluded_chunk_ids": excluded_chunk_ids,
+            "excluded_asset_ids": excluded_asset_ids,
+            "excluded_triple_ids": excluded_triple_ids,
+            "metadata": metadata,
+        }
+    )
+
+
+def hard_negative_values_for_kind(
+    target_kind: str,
+    expected_values: list[int | str],
+    target_terms: dict[str, dict[int | str, set[str]]],
+    limit: int,
+    min_overlap_terms: int,
+) -> list[int | str]:
+    if not expected_values:
+        return []
+    terms_by_target = target_terms.get(target_kind, {})
+    expected_set = set(expected_values)
+    expected_terms: set[str] = set()
+    for expected_value in expected_values:
+        expected_terms.update(terms_by_target.get(expected_value, set()))
+    if not expected_terms:
+        return []
+    candidates: list[tuple[int, float, int, str, int | str]] = []
+    for target_value, candidate_terms in terms_by_target.items():
+        if target_value in expected_set or not candidate_terms:
+            continue
+        overlap = len(expected_terms.intersection(candidate_terms))
+        if overlap < min_overlap_terms:
+            continue
+        union_size = len(expected_terms.union(candidate_terms)) or 1
+        jaccard = overlap / union_size
+        candidates.append(
+            (
+                overlap,
+                jaccard,
+                len(candidate_terms),
+                stable_target_sort_key(target_value),
+                target_value,
+            )
+        )
+    candidates.sort(key=lambda item: (-item[0], -item[1], -item[2], item[3]))
+    return [target_value for *_, target_value in candidates[:limit]]
+
+
+def stable_target_sort_key(value: int | str) -> str:
+    return f"{type(value).__name__}:{value}"
+
+
 def validate_casegen_options(
     query_mode: str,
     selection_strategy: str,
@@ -1371,6 +1532,8 @@ def validate_casegen_options(
     max_chunk_cases_per_target: int | None = None,
     max_asset_cases_per_target: int | None = None,
     max_triple_cases_per_target: int | None = None,
+    hard_negative_limit: int = 0,
+    hard_negative_min_overlap_terms: int = 2,
 ) -> None:
     if query_mode not in {"snippet", "salient_terms", "question"}:
         raise ValueError("query_mode must be one of: snippet, salient_terms, question")
@@ -1388,6 +1551,10 @@ def validate_casegen_options(
     }.items():
         if value is not None and value < 1:
             raise ValueError(f"{name} must be at least 1 when set")
+    if hard_negative_limit < 0:
+        raise ValueError("hard_negative_limit must be at least 0")
+    if hard_negative_min_overlap_terms < 1:
+        raise ValueError("hard_negative_min_overlap_terms must be at least 1")
 
 
 def asset_priority(asset: VisualAsset) -> int:

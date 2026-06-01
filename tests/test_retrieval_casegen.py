@@ -336,6 +336,145 @@ def test_generate_retrieval_case_skeleton_can_filter_target_concentration():
     assert cases[0].expected_pages == [1]
 
 
+def test_generate_retrieval_case_skeleton_attaches_hard_negative_targets():
+    chunks = [
+        DocumentChunk(
+            chunk_id="chunk-1",
+            doc_id="doc",
+            page_start=1,
+            page_end=1,
+            kind=ChunkKind.TEXT,
+            text="Transit corridor station access evidence.",
+        ),
+        DocumentChunk(
+            chunk_id="chunk-2",
+            doc_id="doc",
+            page_start=2,
+            page_end=2,
+            kind=ChunkKind.TEXT,
+            text="Transit corridor freight depot evidence.",
+        ),
+        DocumentChunk(
+            chunk_id="chunk-3",
+            doc_id="doc",
+            page_start=3,
+            page_end=3,
+            kind=ChunkKind.TEXT,
+            text="Wetland basin retention monitoring.",
+        ),
+    ]
+
+    cases = generate_retrieval_case_skeleton(
+        chunks,
+        [],
+        [],
+        page_limit=1,
+        include_assets=False,
+        include_triples=False,
+        hard_negative_limit=1,
+        hard_negative_min_overlap_terms=2,
+    )
+
+    assert len(cases) == 1
+    assert cases[0].expected_pages == [1]
+    assert cases[0].excluded_pages == [2]
+    assert cases[0].excluded_chunk_ids == ["chunk-2"]
+    assert cases[0].metadata["hard_negative_target_counts"] == {
+        "page": 1,
+        "chunk": 1,
+        "asset": 0,
+        "triple": 0,
+    }
+    assert cases[0].metadata["hard_negative_target_types"] == ["page", "chunk"]
+
+
+def test_generate_retrieval_case_skeleton_attaches_asset_hard_negative():
+    asset = VisualAsset(
+        asset_id="asset-1",
+        doc_id="doc",
+        page_no=1,
+        kind=AssetKind.MAP,
+        caption="Station access map corridor legend",
+    )
+    similar_asset = VisualAsset(
+        asset_id="asset-2",
+        doc_id="doc",
+        page_no=2,
+        kind=AssetKind.MAP,
+        caption="Station access map bicycle legend",
+    )
+    unrelated_asset = VisualAsset(
+        asset_id="asset-3",
+        doc_id="doc",
+        page_no=3,
+        kind=AssetKind.CHART,
+        caption="Housing supply forecast chart",
+    )
+
+    cases = generate_retrieval_case_skeleton(
+        [],
+        [asset, similar_asset, unrelated_asset],
+        [],
+        include_pages=False,
+        asset_limit=1,
+        include_triples=False,
+        hard_negative_limit=1,
+        hard_negative_min_overlap_terms=2,
+    )
+
+    assert len(cases) == 1
+    assert cases[0].expected_asset_ids == ["asset-1"]
+    assert cases[0].excluded_asset_ids == ["asset-2"]
+    assert cases[0].excluded_pages == [2]
+    assert cases[0].metadata["hard_negative_target_types"] == ["page", "asset"]
+
+
+def test_generate_retrieval_case_skeleton_merges_excluded_targets():
+    chunks = [
+        DocumentChunk(
+            chunk_id="chunk-1",
+            doc_id="doc",
+            page_start=1,
+            page_end=1,
+            kind=ChunkKind.TEXT,
+            text="Shared retrieval phrase.",
+        ),
+        DocumentChunk(
+            chunk_id="chunk-2",
+            doc_id="doc",
+            page_start=2,
+            page_end=2,
+            kind=ChunkKind.TEXT,
+            text="Shared retrieval phrase.",
+        ),
+        DocumentChunk(
+            chunk_id="chunk-3",
+            doc_id="doc",
+            page_start=3,
+            page_end=3,
+            kind=ChunkKind.TEXT,
+            text="Shared retrieval alternate phrase.",
+        ),
+    ]
+
+    cases = generate_retrieval_case_skeleton(
+        chunks,
+        [],
+        [],
+        page_limit=2,
+        include_assets=False,
+        include_triples=False,
+        hard_negative_limit=1,
+        hard_negative_min_overlap_terms=1,
+    )
+
+    assert len(cases) == 1
+    assert cases[0].expected_pages == [1, 2]
+    assert cases[0].expected_chunk_ids == ["chunk-1", "chunk-2"]
+    assert cases[0].excluded_pages == [3]
+    assert cases[0].excluded_chunk_ids == ["chunk-3"]
+
+
 def test_generate_retrieval_case_skeleton_can_rank_by_salience():
     chunks = [
         DocumentChunk(
@@ -1014,6 +1153,58 @@ def test_generate_retrieval_cases_cli_writes_image_probe_cases(tmp_path):
     assert rows[0]["metadata"]["target_vector"] == "image_dense"
     assert "'visual_image_probe_count': 1" in result.output
     assert "'image_probe_limit': 1" in result.output
+
+
+def test_generate_retrieval_cases_cli_writes_hard_negative_targets(tmp_path):
+    package_dir = write_case_package(tmp_path)
+    chunks = [
+        DocumentChunk(
+            chunk_id="chunk-1",
+            doc_id="doc",
+            page_start=1,
+            page_end=1,
+            kind=ChunkKind.TEXT,
+            text="Transit corridor station access evidence.",
+            asset_ids=["asset-1"],
+        ),
+        DocumentChunk(
+            chunk_id="chunk-2",
+            doc_id="doc",
+            page_start=2,
+            page_end=2,
+            kind=ChunkKind.TEXT,
+            text="Transit corridor freight depot evidence.",
+        ),
+    ]
+    write_jsonl(package_dir / "chunks.jsonl", chunks)
+    output = tmp_path / "cases.jsonl"
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "generate-retrieval-cases",
+            "--package-dir",
+            str(package_dir),
+            "--output",
+            str(output),
+            "--page-limit",
+            "1",
+            "--no-include-assets",
+            "--no-include-triples",
+            "--hard-negative-limit",
+            "1",
+            "--hard-negative-min-overlap-terms",
+            "2",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    rows = [json.loads(line) for line in output.read_text(encoding="utf-8").splitlines()]
+    assert rows[0]["excluded_pages"] == [2]
+    assert rows[0]["excluded_chunk_ids"] == ["chunk-2"]
+    assert "'excluded_target_counts':" in result.output
+    assert "'page': 1" in result.output
+    assert "'hard_negative_limit': 1" in result.output
 
 
 def test_generate_retrieval_cases_cli_accepts_candidate_chunks(tmp_path):

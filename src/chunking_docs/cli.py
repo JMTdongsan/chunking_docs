@@ -35,7 +35,9 @@ from chunking_docs.evaluation.case_audit import (
     audit_retrieval_cases,
     count_case_groups,
     count_case_group_distinct_targets,
+    count_retrieval_case_distinct_excluded_targets,
     count_retrieval_case_distinct_targets,
+    count_retrieval_case_excluded_targets,
     count_retrieval_case_max_target_mentions,
     count_retrieval_case_targets,
     count_visual_image_probes,
@@ -4044,6 +4046,19 @@ def generate_retrieval_cases_command(
         "--max-triple-cases-per-target",
         help="Skip generated cases that would exceed this graph-triple target concentration limit.",
     ),
+    hard_negative_limit: int = typer.Option(
+        0,
+        "--hard-negative-limit",
+        help=(
+            "Attach up to this many same-kind similar-but-wrong page/chunk/asset/triple targets "
+            "to each generated case as excluded targets."
+        ),
+    ),
+    hard_negative_min_overlap_terms: int = typer.Option(
+        2,
+        "--hard-negative-min-overlap-terms",
+        help="Require this many shared target-text terms before a candidate is used as a hard negative.",
+    ),
 ):
     """Generate retrieval benchmark JSONL drafts from package chunks, assets, and triples."""
     manifest = load_processing_package(package_dir)
@@ -4077,6 +4092,8 @@ def generate_retrieval_cases_command(
             max_chunk_cases_per_target=max_chunk_cases_per_target,
             max_asset_cases_per_target=max_asset_cases_per_target,
             max_triple_cases_per_target=max_triple_cases_per_target,
+            hard_negative_limit=hard_negative_limit,
+            hard_negative_min_overlap_terms=hard_negative_min_overlap_terms,
         )
     except ValueError as exc:
         raise typer.BadParameter(str(exc)) from exc
@@ -4089,6 +4106,8 @@ def generate_retrieval_cases_command(
             "case_count": len(cases),
             "target_counts": count_retrieval_case_targets(cases),
             "distinct_target_counts": count_retrieval_case_distinct_targets(cases),
+            "excluded_target_counts": count_retrieval_case_excluded_targets(cases),
+            "excluded_distinct_target_counts": count_retrieval_case_distinct_excluded_targets(cases),
             "max_cases_per_target": count_retrieval_case_max_target_mentions(cases),
             "case_group_counts": count_case_groups(cases),
             "case_group_distinct_target_counts": count_case_group_distinct_targets(cases),
@@ -4110,6 +4129,8 @@ def generate_retrieval_cases_command(
             "max_chunk_cases_per_target": max_chunk_cases_per_target,
             "max_asset_cases_per_target": max_asset_cases_per_target,
             "max_triple_cases_per_target": max_triple_cases_per_target,
+            "hard_negative_limit": hard_negative_limit,
+            "hard_negative_min_overlap_terms": hard_negative_min_overlap_terms,
             "include_todo": include_todo,
             "query_mode": query_mode,
             "selection_strategy": selection_strategy,
