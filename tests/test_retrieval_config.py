@@ -32,6 +32,8 @@ def test_qdrant_retrieval_config_exports_global_recommended_candidate():
     assert config.vector_names == ["text_dense", "caption_dense", "object_dense"]
     assert config.top_k == 7
     assert config.collapse_hierarchical is True
+    assert config.reranker == "none"
+    assert config.rerank_top_k == 0
     assert config.fusion_weights == {"bm25": 1.0, "qdrant:caption_dense": 1.0}
     assert config.query_encoders["object_dense"] == "BAAI/bge-m3"
     assert config.lexical_tokenizer["strategy"] == "mixed"
@@ -61,6 +63,28 @@ def test_qdrant_retrieval_config_exports_case_group_recommendation():
     assert config.selection.case_group_recommended_from_globally_eligible is True
     assert config.fusion_weights == {"bm25": 1.0, "qdrant:object_dense": 1.4}
     assert config.selection.case_group_metrics["target_coverage_at_k"] == pytest.approx(0.9)
+
+
+def test_qdrant_retrieval_config_exports_reranker_settings():
+    report = fusion_sweep_report()
+    report = report.model_copy(
+        update={
+            "metadata": {
+                **report.metadata,
+                "reranker": "lexical",
+                "reranker_model": "",
+                "reranker_max_length": 0,
+                "rerank_top_k": 20,
+            }
+        }
+    )
+
+    config = build_qdrant_retrieval_config_from_fusion_sweep(report)
+
+    assert config.reranker == "lexical"
+    assert config.reranker_model == "BAAI/bge-reranker-v2-m3"
+    assert config.reranker_max_length == 0
+    assert config.rerank_top_k == 20
 
 
 def test_export_qdrant_retrieval_config_cli_writes_json(tmp_path):
@@ -102,6 +126,8 @@ def test_eval_qdrant_retrieval_config_cli_uses_exported_settings(tmp_path, monke
             "fusion_weights": {"bm25": 1.2},
             "top_k": 3,
             "collapse_hierarchical": True,
+            "reranker": "lexical",
+            "rerank_top_k": 11,
             "lexical_tokenizer": {
                 "strategy": "mixed",
                 "min_n": 2,
@@ -190,9 +216,13 @@ def test_eval_qdrant_retrieval_config_cli_uses_exported_settings(tmp_path, monke
     assert calls["search"]["graph_expand"] is True
     assert calls["search"]["collapse_hierarchical"] is True
     assert calls["search"]["fusion_weights"] == {"bm25": 1.2}
+    assert calls["search"]["reranker"].source == "rerank:lexical"
+    assert calls["search"]["rerank_top_k"] == 11
     payload = json.loads(output_path.read_text(encoding="utf-8"))
     assert payload["recall_at_k"] == 1.0
     assert payload["metadata"]["backend"] == "qdrant_hybrid_config"
+    assert payload["metadata"]["reranker"] == "rerank:lexical"
+    assert payload["metadata"]["rerank_top_k"] == 11
     assert payload["metadata"]["config_selection"]["candidate"] == "balanced"
 
 

@@ -856,6 +856,7 @@ def qdrant_rag_context_config_command(
     image_query_model: str = "openai/clip-vit-large-patch14",
     device: str = "cuda",
     hashing_dim: int = 384,
+    reranker_device: str = "cuda",
     doc_id: str = "",
     payload_filter: list[str] = typer.Option(
         None,
@@ -871,6 +872,15 @@ def qdrant_rag_context_config_command(
     )
     effective_collection = collection or retrieval_config.collection_name or ""
     vector_names = ",".join(retrieval_config.vector_names)
+    parsed_reranker = build_retrieval_config_reranker(
+        retrieval_config,
+        tokenizer_options=tokenizer_options,
+        device=reranker_device,
+    )
+    effective_rerank_top_k = retrieval_config_rerank_top_k(
+        retrieval_config,
+        parsed_reranker,
+    )
     query_backend_options = resolve_qdrant_query_backend_options(
         package_dir=effective_package_dir,
         selected_vectors=retrieval_config.vector_names,
@@ -910,6 +920,8 @@ def qdrant_rag_context_config_command(
         payload_filter=filters,
         collapse_hierarchical=retrieval_config.collapse_hierarchical,
         fusion_weights=retrieval_config.fusion_weights,
+        reranker=parsed_reranker,
+        rerank_top_k=effective_rerank_top_k,
     )
     bundle = build_context_bundle(
         query=query,
@@ -939,6 +951,8 @@ def qdrant_rag_context_config_command(
             "filters": metadata_filters,
             "fusion_weights": retrieval_config.fusion_weights,
             "collapse_hierarchical": retrieval_config.collapse_hierarchical,
+            "reranker": parsed_reranker.source if parsed_reranker else None,
+            "rerank_top_k": effective_rerank_top_k if parsed_reranker else None,
             "lexical_tokenizer": tokenizer_options,
         }
     )
@@ -981,6 +995,7 @@ def eval_qdrant_rag_context_config_command(
     image_query_model: str = "openai/clip-vit-large-patch14",
     device: str = "cuda",
     hashing_dim: int = 384,
+    reranker_device: str = "cuda",
     doc_id: str = "",
     payload_filter: list[str] = typer.Option(
         None,
@@ -996,6 +1011,15 @@ def eval_qdrant_rag_context_config_command(
     )
     effective_collection = collection or retrieval_config.collection_name or ""
     vector_names = ",".join(retrieval_config.vector_names)
+    parsed_reranker = build_retrieval_config_reranker(
+        retrieval_config,
+        tokenizer_options=tokenizer_options,
+        device=reranker_device,
+    )
+    effective_rerank_top_k = retrieval_config_rerank_top_k(
+        retrieval_config,
+        parsed_reranker,
+    )
     query_backend_options = resolve_qdrant_query_backend_options(
         package_dir=effective_package_dir,
         selected_vectors=retrieval_config.vector_names,
@@ -1042,6 +1066,8 @@ def eval_qdrant_rag_context_config_command(
             payload_filter=filters,
             collapse_hierarchical=retrieval_config.collapse_hierarchical,
             fusion_weights=retrieval_config.fusion_weights,
+            reranker=parsed_reranker,
+            rerank_top_k=effective_rerank_top_k,
         )
         bundle = build_context_bundle(
             query=case.query,
@@ -1070,6 +1096,8 @@ def eval_qdrant_rag_context_config_command(
                 "filters": metadata_filters,
                 "fusion_weights": retrieval_config.fusion_weights,
                 "collapse_hierarchical": retrieval_config.collapse_hierarchical,
+                "reranker": parsed_reranker.source if parsed_reranker else None,
+                "rerank_top_k": effective_rerank_top_k if parsed_reranker else None,
                 "lexical_tokenizer": tokenizer_options,
                 "case_metadata": case.metadata,
             }
@@ -1097,6 +1125,8 @@ def eval_qdrant_rag_context_config_command(
             "filters": metadata_filters,
             "fusion_weights": retrieval_config.fusion_weights,
             "collapse_hierarchical": retrieval_config.collapse_hierarchical,
+            "reranker": parsed_reranker.source if parsed_reranker else None,
+            "rerank_top_k": effective_rerank_top_k if parsed_reranker else None,
             "lexical_tokenizer": tokenizer_options,
             "index_build_ms": index_build_ms,
             "context_options": {
@@ -1424,6 +1454,7 @@ def eval_qdrant_retrieval_config_command(
     image_query_model: str = "openai/clip-vit-large-patch14",
     device: str = "cuda",
     hashing_dim: int = 384,
+    reranker_device: str = "cuda",
     doc_id: str = "",
     payload_filter: list[str] = typer.Option(
         None,
@@ -1440,6 +1471,15 @@ def eval_qdrant_retrieval_config_command(
     effective_repeat = repeat or int(retrieval_config.metadata.get("repeat") or 1)
     effective_collection = collection or retrieval_config.collection_name or ""
     vector_names = ",".join(retrieval_config.vector_names)
+    parsed_reranker = build_retrieval_config_reranker(
+        retrieval_config,
+        tokenizer_options=tokenizer_options,
+        device=reranker_device,
+    )
+    effective_rerank_top_k = retrieval_config_rerank_top_k(
+        retrieval_config,
+        parsed_reranker,
+    )
     query_backend_options = resolve_qdrant_query_backend_options(
         package_dir=effective_package_dir,
         selected_vectors=retrieval_config.vector_names,
@@ -1483,6 +1523,8 @@ def eval_qdrant_retrieval_config_command(
             payload_filter=filters,
             collapse_hierarchical=retrieval_config.collapse_hierarchical,
             fusion_weights=retrieval_config.fusion_weights,
+            reranker=parsed_reranker,
+            rerank_top_k=effective_rerank_top_k,
         ),
         top_k=retrieval_config.top_k,
         repeat=effective_repeat,
@@ -1505,6 +1547,8 @@ def eval_qdrant_retrieval_config_command(
             "filters": metadata_filters,
             "fusion_weights": retrieval_config.fusion_weights,
             "collapse_hierarchical": retrieval_config.collapse_hierarchical,
+            "reranker": parsed_reranker.source if parsed_reranker else None,
+            "rerank_top_k": effective_rerank_top_k if parsed_reranker else None,
             "lexical_tokenizer": tokenizer_options,
         }
     )
@@ -1550,9 +1594,9 @@ def eval_qdrant_vector_ablation_command(
     top_k: int = 5,
     repeat: int = 1,
     collapse_hierarchical: bool = False,
-    text_backend: str = "hashing",
+    text_backend: str = "auto",
     text_model: str = "BAAI/bge-m3",
-    image_query_backend: str = "none",
+    image_query_backend: str = "auto",
     image_query_model: str = "openai/clip-vit-large-patch14",
     device: str = "cuda",
     hashing_dim: int = 384,
@@ -1721,12 +1765,17 @@ def sweep_qdrant_fusion_command(
     top_k: int = 5,
     repeat: int = 1,
     collapse_hierarchical: bool = False,
-    text_backend: str = "hashing",
+    text_backend: str = "auto",
     text_model: str = "BAAI/bge-m3",
-    image_query_backend: str = "none",
+    image_query_backend: str = "auto",
     image_query_model: str = "openai/clip-vit-large-patch14",
     device: str = "cuda",
     hashing_dim: int = 384,
+    reranker: str = "none",
+    reranker_model: str = "BAAI/bge-reranker-v2-m3",
+    reranker_device: str = "cuda",
+    reranker_max_length: int = 0,
+    rerank_top_k: int = 20,
     doc_id: str = "",
     payload_filter: list[str] = typer.Option(
         None,
@@ -1893,6 +1942,21 @@ def sweep_qdrant_fusion_command(
         raise typer.BadParameter(str(exc)) from exc
 
     parsed_vector_names = [item.strip() for item in vector_names.split(",") if item.strip()]
+    tokenizer_config = build_tokenizer_config(
+        lexical_tokenizer,
+        ngram_min=ngram_min,
+        ngram_max=ngram_max,
+        ngram_cjk_only=ngram_cjk_only,
+        deduplicate_tokens=deduplicate_tokens,
+    )
+    parsed_reranker = build_reranker(
+        reranker,
+        model_name=reranker_model,
+        device=reranker_device,
+        max_length=reranker_max_length,
+        tokenizer_config=tokenizer_config,
+    )
+    effective_rerank_top_k = rerank_top_k if parsed_reranker else None
     prepare_start = perf_counter()
     prepared = prepare_qdrant_hybrid_search(
         package_dir=package_dir,
@@ -1933,6 +1997,8 @@ def sweep_qdrant_fusion_command(
                 payload_filter=filters,
                 collapse_hierarchical=collapse_hierarchical,
                 fusion_weights=weights,
+                reranker=parsed_reranker,
+                rerank_top_k=effective_rerank_top_k,
             ),
             top_k=top_k,
             repeat=repeat,
@@ -1958,6 +2024,8 @@ def sweep_qdrant_fusion_command(
                 "stored_count": prepared["store"].count(),
                 "filters": metadata_filters,
                 "fusion_weights": weights,
+                "reranker": parsed_reranker.source if parsed_reranker else None,
+                "rerank_top_k": effective_rerank_top_k if parsed_reranker else None,
             }
         )
         candidates.append(
@@ -2013,6 +2081,10 @@ def sweep_qdrant_fusion_command(
             "repeat": repeat,
             "collapse_hierarchical": collapse_hierarchical,
             "query_encoders": prepared["query_encoders"],
+            "reranker": normalize_backend(reranker),
+            "reranker_model": reranker_model if parsed_reranker else "",
+            "reranker_max_length": reranker_max_length if parsed_reranker else 0,
+            "rerank_top_k": effective_rerank_top_k or 0,
             "max_mean_latency_ms": max_mean_latency_ms,
             "max_p95_latency_ms": max_p95_latency_ms,
             "max_excluded_target_hit_rate": max_excluded_target_hit_rate,
@@ -2174,6 +2246,8 @@ def export_qdrant_retrieval_config_command(
             "graph_expand": config.graph_expand,
             "top_k": config.top_k,
             "fusion_weights": config.fusion_weights,
+            "reranker": config.reranker,
+            "rerank_top_k": config.rerank_top_k,
             "selection": config.selection.model_dump(),
         }
     )
@@ -7034,6 +7108,33 @@ def retrieval_config_tokenizer_options(
     }
 
 
+def build_retrieval_config_reranker(
+    config: QdrantRetrievalConfig,
+    tokenizer_options: dict[str, object],
+    device: str,
+):
+    tokenizer_config = build_tokenizer_config(
+        tokenizer_options["strategy"],
+        ngram_min=int(tokenizer_options["min_n"]),
+        ngram_max=int(tokenizer_options["max_n"]),
+        ngram_cjk_only=bool(tokenizer_options["ngram_cjk_only"]),
+        deduplicate_tokens=bool(tokenizer_options["deduplicate"]),
+    )
+    return build_reranker(
+        config.reranker,
+        model_name=config.reranker_model,
+        device=device,
+        max_length=config.reranker_max_length,
+        tokenizer_config=tokenizer_config,
+    )
+
+
+def retrieval_config_rerank_top_k(config: QdrantRetrievalConfig, reranker) -> int | None:
+    if reranker is None:
+        return None
+    return config.rerank_top_k or config.top_k
+
+
 def config_bool(value, default: bool = False) -> bool:
     if value is None:
         return default
@@ -7683,9 +7784,14 @@ def build_reranker(
     normalized = normalize_backend(backend)
     if normalized == "none":
         return None
-    if normalized == "lexical":
+    if normalized in {"lexical", "rerank:lexical"}:
         return LexicalOverlapReranker(tokenizer_config=tokenizer_config)
-    if normalized in {"cross-encoder", "cross_encoder", "sentence-transformers"}:
+    if normalized in {
+        "cross-encoder",
+        "cross_encoder",
+        "sentence-transformers",
+        "rerank:cross_encoder",
+    }:
         return SentenceTransformerCrossEncoderReranker(
             model_name=model_name,
             device=device,

@@ -39,6 +39,10 @@ class QdrantRetrievalConfig(BaseModel):
     fusion_weights: dict[str, float] = Field(default_factory=dict)
     top_k: int = 5
     collapse_hierarchical: bool = False
+    reranker: str = "none"
+    reranker_model: str = "BAAI/bge-reranker-v2-m3"
+    reranker_max_length: int = 0
+    rerank_top_k: int = 0
     query_encoders: dict[str, Any] = Field(default_factory=dict)
     lexical_tokenizer: dict[str, Any] = Field(default_factory=dict)
     selection: QdrantRetrievalConfigSelection
@@ -80,6 +84,12 @@ def build_qdrant_retrieval_config_from_fusion_sweep(
         fusion_weights=dict(candidate.fusion_weights),
         top_k=int(metadata.get("top_k") or 5),
         collapse_hierarchical=bool(metadata.get("collapse_hierarchical") or False),
+        reranker=metadata_string(metadata, "reranker") or "none",
+        reranker_model=(
+            metadata_string(metadata, "reranker_model") or "BAAI/bge-reranker-v2-m3"
+        ),
+        reranker_max_length=int(metadata.get("reranker_max_length") or 0),
+        rerank_top_k=int(metadata.get("rerank_top_k") or 0),
         query_encoders=query_encoders if isinstance(query_encoders, dict) else {},
         lexical_tokenizer=lexical_tokenizer if isinstance(lexical_tokenizer, dict) else {},
         selection=QdrantRetrievalConfigSelection(

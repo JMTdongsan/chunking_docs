@@ -1044,6 +1044,10 @@ def qdrant_retrieval_config_component(
         "graph_expand": config.graph_expand,
         "collapse_hierarchical": config.collapse_hierarchical,
         "fusion_weights": config.fusion_weights,
+        "reranker": config.reranker,
+        "reranker_model": config.reranker_model,
+        "reranker_max_length": config.reranker_max_length,
+        "rerank_top_k": config.rerank_top_k,
         "query_encoders": config.query_encoders,
         "lexical_tokenizer": normalized_retrieval_config_tokenizer(config.lexical_tokenizer),
         "selection": config.selection.model_dump(),
@@ -1273,6 +1277,8 @@ def qdrant_config_evaluation_alignment(
         "graph_expand": metadata.get("graph_expand"),
         "collapse_hierarchical": metadata.get("collapse_hierarchical"),
         "fusion_weights": metadata.get("fusion_weights"),
+        "reranker": metadata.get("reranker"),
+        "rerank_top_k": metadata.get("rerank_top_k"),
         "query_encoders": metadata.get("query_encoders"),
         "lexical_tokenizer": metadata.get("lexical_tokenizer"),
         "selection_candidate": selection_candidate(metadata.get("config_selection")),
@@ -1300,6 +1306,16 @@ def qdrant_config_evaluation_alignment(
     observed_weights = metadata_mapping(observed["fusion_weights"])
     if observed["fusion_weights"] is not None and observed_weights != config.fusion_weights:
         failed_checks.append(f"{label}_fusion_weights_mismatch")
+    expected_reranker = retrieval_config_reranker_source(config.reranker)
+    if observed["reranker"] is not None and observed["reranker"] != expected_reranker:
+        failed_checks.append(f"{label}_reranker_mismatch")
+    expected_rerank_top_k = config.rerank_top_k or config.top_k
+    if (
+        expected_reranker is not None
+        and observed["rerank_top_k"] is not None
+        and observed["rerank_top_k"] != expected_rerank_top_k
+    ):
+        failed_checks.append(f"{label}_rerank_top_k_mismatch")
     observed_encoders = metadata_mapping(observed["query_encoders"])
     if observed["query_encoders"] is not None and observed_encoders != config.query_encoders:
         failed_checks.append(f"{label}_query_encoders_mismatch")
@@ -1332,6 +1348,22 @@ def selection_candidate(payload: Any) -> str | None:
         return None
     text = str(value).strip()
     return text or None
+
+
+def retrieval_config_reranker_source(reranker: str | None) -> str | None:
+    normalized = str(reranker or "none").strip().lower()
+    if normalized == "none":
+        return None
+    if normalized in {"lexical", "rerank:lexical"}:
+        return "rerank:lexical"
+    if normalized in {
+        "cross-encoder",
+        "cross_encoder",
+        "sentence-transformers",
+        "rerank:cross_encoder",
+    }:
+        return "rerank:cross_encoder"
+    return normalized
 
 
 def metadata_string_list(value: Any) -> list[str]:

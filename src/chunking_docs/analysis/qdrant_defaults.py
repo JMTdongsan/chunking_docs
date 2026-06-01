@@ -29,6 +29,8 @@ def qdrant_rag_validation_commands(vector_names: list[str]) -> list[str]:
         "--min-target-ndcg-at-k 0.7",
         "--max-failed-queries 3",
         "--max-p95-latency-ms 250",
+        "--reranker lexical",
+        "--rerank-top-k 20",
         "--pairwise-top-k 10",
     ]
     if has_visual:
