@@ -87,6 +87,14 @@ def test_analyze_retrieval_evaluation_reports_failure_reasons():
     assert report.matched_source_family_counts_by_case_group["case_source"][
         "visual_object_probe"
     ] == {"test": 1}
+    assert report.source_match_rates == {"test": 0.5}
+    assert report.source_family_match_rates == {"test": 0.5}
+    assert report.source_match_rates_by_case_group["case_source"][
+        "visual_object_probe"
+    ] == {"test": 0.5}
+    assert report.source_family_match_rates_by_case_group["case_source"][
+        "visual_object_probe"
+    ] == {"test": 0.5}
     assert (
         report.missing_target_type_counts_by_case_group["case_source"][
             "visual_object_probe"
@@ -102,6 +110,8 @@ def test_analyze_retrieval_evaluation_reports_failure_reasons():
     assert rows["partial"].source_family_counts == {"test": 2}
     assert rows["partial"].matched_source_counts == {"test": 1}
     assert rows["partial"].matched_source_family_counts == {"test": 1}
+    assert rows["partial"].source_match_rates == {"test": 0.5}
+    assert rows["partial"].source_family_match_rates == {"test": 0.5}
     assert rows["partial"].top_source_families == [["test"], ["test"]]
     assert rows["partial"].target_ndcg_at_k == 0.5
     assert rows["partial"].precision_at_k == 0.25
@@ -159,6 +169,15 @@ def test_analyze_retrieval_evaluation_reports_excluded_target_hits():
     assert report.matched_source_family_counts_by_case_group["case_source"][
         "hard_negative"
     ] == {"lexical": 1, "visual": 1}
+    assert report.source_match_rates == {"bm25": 1.0, "qdrant:image_dense": 1.0}
+    assert report.source_family_match_rates == {"lexical": 1.0, "visual": 1.0}
+    assert report.source_match_rates_by_case_group["case_source"]["hard_negative"] == {
+        "bm25": 1.0,
+        "qdrant:image_dense": 1.0,
+    }
+    assert report.source_family_match_rates_by_case_group["case_source"][
+        "hard_negative"
+    ] == {"lexical": 1.0, "visual": 1.0}
     assert report.excluded_source_counts_by_case_group["case_source"]["hard_negative"] == {
         "bm25": 1,
         "qdrant:image_dense": 1,
@@ -175,6 +194,8 @@ def test_analyze_retrieval_evaluation_reports_excluded_target_hits():
     assert row.excluded_source_family_counts == {"lexical": 1, "visual": 1}
     assert row.matched_source_counts == {"bm25": 1, "qdrant:image_dense": 1}
     assert row.matched_source_family_counts == {"lexical": 1, "visual": 1}
+    assert row.source_match_rates == {"bm25": 1.0, "qdrant:image_dense": 1.0}
+    assert row.source_family_match_rates == {"lexical": 1.0, "visual": 1.0}
     assert row.top_excluded_sources == [["bm25", "qdrant:image_dense"]]
     assert row.top_source_families == [["lexical", "visual"]]
     assert row.reasons == ["excluded_target_retrieved", "excluded_asset_hit"]
@@ -210,9 +231,13 @@ def test_diagnose_retrieval_cli_writes_report(tmp_path):
     assert payload["source_family_counts"] == {}
     assert payload["matched_source_counts"] == {}
     assert payload["matched_source_family_counts"] == {}
+    assert payload["source_match_rates"] == {}
+    assert payload["source_family_match_rates"] == {}
     assert payload["source_counts_by_case_group"] == {}
     assert payload["source_family_counts_by_case_group"] == {}
     assert payload["matched_source_counts_by_case_group"] == {}
     assert payload["matched_source_family_counts_by_case_group"] == {}
+    assert payload["source_match_rates_by_case_group"] == {}
+    assert payload["source_family_match_rates_by_case_group"] == {}
     assert payload["rows"][0]["query"] == "empty"
     assert payload["reason_counts_by_case_group"] == {}

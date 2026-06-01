@@ -28,6 +28,8 @@ class RetrievalDiagnosticRow(BaseModel):
     source_family_counts: dict[str, int] = Field(default_factory=dict)
     matched_source_counts: dict[str, int] = Field(default_factory=dict)
     matched_source_family_counts: dict[str, int] = Field(default_factory=dict)
+    source_match_rates: dict[str, float] = Field(default_factory=dict)
+    source_family_match_rates: dict[str, float] = Field(default_factory=dict)
     excluded_source_counts: dict[str, int] = Field(default_factory=dict)
     excluded_source_family_counts: dict[str, int] = Field(default_factory=dict)
     top_excluded_sources: list[list[str]] = Field(default_factory=list)
@@ -68,6 +70,14 @@ class RetrievalDiagnosticsReport(BaseModel):
         default_factory=dict
     )
     matched_source_family_counts_by_case_group: dict[str, dict[str, dict[str, int]]] = Field(
+        default_factory=dict
+    )
+    source_match_rates: dict[str, float] = Field(default_factory=dict)
+    source_family_match_rates: dict[str, float] = Field(default_factory=dict)
+    source_match_rates_by_case_group: dict[str, dict[str, dict[str, float]]] = Field(
+        default_factory=dict
+    )
+    source_family_match_rates_by_case_group: dict[str, dict[str, dict[str, float]]] = Field(
         default_factory=dict
     )
     excluded_source_counts: dict[str, int] = Field(default_factory=dict)
@@ -194,6 +204,19 @@ def analyze_retrieval_evaluation(
         matched_source_family_counts_by_case_group=serializable_group_counters(
             group_matched_source_family_counters
         ),
+        source_match_rates=source_match_rates(matched_source_counter, source_counter),
+        source_family_match_rates=source_match_rates(
+            matched_source_family_counter,
+            source_family_counter,
+        ),
+        source_match_rates_by_case_group=source_match_rates_by_case_group(
+            group_matched_source_counters,
+            group_source_counters,
+        ),
+        source_family_match_rates_by_case_group=source_match_rates_by_case_group(
+            group_matched_source_family_counters,
+            group_source_family_counters,
+        ),
         excluded_source_counts=dict(sorted(excluded_source_counter.items())),
         excluded_source_family_counts=dict(sorted(excluded_source_family_counter.items())),
         excluded_source_counts_by_case_group=serializable_group_counters(
@@ -245,6 +268,11 @@ def diagnostic_row(
         source_family_counts=source_family_counts,
         matched_source_counts=matched_source_counts,
         matched_source_family_counts=matched_source_family_counts,
+        source_match_rates=source_match_rates(matched_source_counts, source_counts),
+        source_family_match_rates=source_match_rates(
+            matched_source_family_counts,
+            source_family_counts,
+        ),
         excluded_source_counts=excluded_source_counts,
         excluded_source_family_counts=excluded_source_family_counts,
         top_excluded_sources=top_excluded_sources(result),
@@ -303,6 +331,32 @@ def serializable_group_counters(
         }
         for group_name, group_values in sorted(counters.items())
     }
+
+
+def source_match_rates(
+    matched_counts: dict[str, int] | Counter[str],
+    source_counts: dict[str, int] | Counter[str],
+) -> dict[str, float]:
+    rates = {}
+    for source, source_count in sorted(source_counts.items()):
+        if source_count <= 0:
+            continue
+        rates[source] = float(matched_counts.get(source, 0)) / float(source_count)
+    return rates
+
+
+def source_match_rates_by_case_group(
+    matched_counters: dict[str, dict[str, Counter[str]]],
+    source_counters: dict[str, dict[str, Counter[str]]],
+) -> dict[str, dict[str, dict[str, float]]]:
+    rates: dict[str, dict[str, dict[str, float]]] = {}
+    for group_name, group_values in sorted(source_counters.items()):
+        for group_value, source_counts in sorted(group_values.items()):
+            matched_counts = matched_counters.get(group_name, {}).get(group_value, Counter())
+            group_rates = source_match_rates(matched_counts, source_counts)
+            if group_rates:
+                rates.setdefault(group_name, {})[group_value] = group_rates
+    return rates
 
 
 def diagnostic_reasons(
