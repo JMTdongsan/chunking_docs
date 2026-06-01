@@ -12,6 +12,7 @@ from chunking_docs.evaluation.retrieval import (
     RetrievalCaseGroupMetric,
     RetrievalCaseResult,
     RetrievalEvaluation,
+    RetrievalSourceMetric,
 )
 from chunking_docs.evaluation.retrieval_config import (
     QdrantRetrievalRoute,
@@ -44,6 +45,12 @@ def test_qdrant_retrieval_config_exports_global_recommended_candidate():
     assert config.selection.source == "global_recommended"
     assert config.selection.candidate == "balanced"
     assert config.selection.metrics["target_coverage_at_k"] == pytest.approx(0.96)
+    assert config.selection.min_source_precision_at_hits == pytest.approx(0.82)
+    assert config.selection.min_source_precision_at_hits_name == "qdrant:caption_dense"
+    assert config.selection.min_source_family_precision_at_hits == pytest.approx(0.88)
+    assert config.selection.min_source_family_precision_at_hits_name == "visual"
+    assert config.selection.metrics["min_source_precision_at_hits"] == pytest.approx(0.82)
+    assert config.selection.metrics["min_source_family_precision_at_hits"] == pytest.approx(0.88)
     assert config.selection.pairwise_comparisons[0]["baseline"] == "object_weighted"
     assert config.selection.pairwise_comparisons[0]["candidate_win_rate"] == 1.0
     assert config.selection.pairwise_comparisons[0]["mean_target_coverage_delta"] == 1.0
@@ -67,6 +74,8 @@ def test_qdrant_retrieval_config_exports_case_group_recommendation():
     assert config.selection.case_group_recommended_from_globally_eligible is True
     assert config.fusion_weights == {"bm25": 1.0, "qdrant:object_dense": 1.4}
     assert config.selection.case_group_metrics["target_coverage_at_k"] == pytest.approx(0.9)
+    assert config.selection.min_source_precision_at_hits == pytest.approx(0.74)
+    assert config.selection.min_source_precision_at_hits_name == "qdrant:object_dense"
 
 
 def test_qdrant_retrieval_config_route_preset_selects_visual_and_graph_routes():
@@ -145,6 +154,8 @@ def test_export_qdrant_retrieval_config_cli_writes_json(tmp_path):
     payload = json.loads(output_path.read_text(encoding="utf-8"))
     assert payload["backend"] == "qdrant_hybrid"
     assert payload["selection"]["candidate"] == "object_weighted"
+    assert payload["selection"]["min_source_precision_at_hits"] == pytest.approx(0.74)
+    assert payload["selection"]["min_source_precision_at_hits_name"] == "qdrant:object_dense"
     assert payload["selection"]["pairwise_comparisons"][0]["baseline"] == "balanced"
     assert payload["fusion_weights"] == {"bm25": 1.0, "qdrant:object_dense": 1.4}
 
@@ -925,6 +936,12 @@ def fusion_sweep_report():
                     rank=1,
                 )
             ],
+            source_metrics={
+                "qdrant:caption_dense": source_metric(precision=0.82),
+            },
+            source_family_metrics={
+                "visual": source_metric(precision=0.88),
+            },
         ),
     )
     object_weighted = QdrantFusionSweepCandidate(
@@ -952,6 +969,12 @@ def fusion_sweep_report():
                     rank=None,
                 )
             ],
+            source_metrics={
+                "qdrant:object_dense": source_metric(precision=0.74),
+            },
+            source_family_metrics={
+                "visual": source_metric(precision=0.79),
+            },
         ),
     )
 
@@ -993,6 +1016,8 @@ def evaluation(
     latency: float,
     visual_object_group: RetrievalCaseGroupMetric,
     results: list[RetrievalCaseResult] | None = None,
+    source_metrics: dict[str, RetrievalSourceMetric] | None = None,
+    source_family_metrics: dict[str, RetrievalSourceMetric] | None = None,
 ) -> RetrievalEvaluation:
     return RetrievalEvaluation(
         case_count=10,
@@ -1010,8 +1035,21 @@ def evaluation(
         mean_latency_ms=latency,
         p95_latency_ms=latency,
         failed_queries=[f"failed-{index}" for index in range(failed)],
+        source_metrics=source_metrics or {},
+        source_family_metrics=source_family_metrics or {},
         case_group_metrics={"case_source": {"visual_object_probe": visual_object_group}},
         results=results or [],
+    )
+
+
+def source_metric(precision: float) -> RetrievalSourceMetric:
+    return RetrievalSourceMetric(
+        query_count=1,
+        relevant_query_count=1 if precision else 0,
+        hit_count=1,
+        relevant_hit_count=1 if precision else 0,
+        precision_at_hits=precision,
+        target_coverage_at_k=precision,
     )
 
 

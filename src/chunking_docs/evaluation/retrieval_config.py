@@ -23,6 +23,10 @@ class QdrantRetrievalConfigSelection(BaseModel):
     candidate_rank: int = 0
     candidate_eligible: bool = True
     eligibility_failures: list[str] = Field(default_factory=list)
+    min_source_precision_at_hits: float = 0.0
+    min_source_precision_at_hits_name: str | None = None
+    min_source_family_precision_at_hits: float = 0.0
+    min_source_family_precision_at_hits_name: str | None = None
     metrics: dict[str, float] = Field(default_factory=dict)
     case_group_metrics: dict[str, float] = Field(default_factory=dict)
     pairwise_comparisons: list[dict[str, Any]] = Field(default_factory=list)
@@ -126,6 +130,14 @@ def build_qdrant_retrieval_config_from_fusion_sweep(
             candidate_rank=candidate.rank,
             candidate_eligible=candidate.eligible,
             eligibility_failures=candidate.eligibility_failures,
+            min_source_precision_at_hits=candidate.min_source_precision_at_hits,
+            min_source_precision_at_hits_name=candidate.min_source_precision_at_hits_name,
+            min_source_family_precision_at_hits=(
+                candidate.min_source_family_precision_at_hits
+            ),
+            min_source_family_precision_at_hits_name=(
+                candidate.min_source_family_precision_at_hits_name
+            ),
             metrics=candidate_metrics(candidate),
             case_group_metrics=candidate_case_group_metrics(candidate, case_group_key),
             pairwise_comparisons=selected_pairwise_comparisons(report, candidate.name),
@@ -171,6 +183,10 @@ def candidate_metrics(candidate: QdrantFusionSweepCandidate) -> dict[str, float]
         "max_source_excluded_target_hit_rate": candidate.max_source_excluded_target_hit_rate,
         "max_source_family_excluded_target_hit_rate": (
             candidate.max_source_family_excluded_target_hit_rate
+        ),
+        "min_source_precision_at_hits": candidate.min_source_precision_at_hits,
+        "min_source_family_precision_at_hits": (
+            candidate.min_source_family_precision_at_hits
         ),
         "max_chunk_strategy_excluded_target_hit_rate": (
             candidate.max_chunk_strategy_excluded_target_hit_rate
