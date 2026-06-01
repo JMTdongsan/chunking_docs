@@ -5,11 +5,17 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
-from chunking_docs.evaluation.retrieval import RetrievalCaseResult, RetrievalEvaluation
+from chunking_docs.evaluation.retrieval import (
+    CASE_GROUP_METADATA_KEYS,
+    RetrievalCaseResult,
+    RetrievalEvaluation,
+)
 
 
 class RetrievalDiagnosticRow(BaseModel):
     query: str
+    case_metadata: dict[str, object] = Field(default_factory=dict)
+    case_groups: dict[str, str] = Field(default_factory=dict)
     passed: bool
     reasons: list[str] = Field(default_factory=list)
     expected_targets: list[str] = Field(default_factory=list)
@@ -33,6 +39,10 @@ class RetrievalDiagnosticsReport(BaseModel):
     low_target_ndcg_count: int
     reason_counts: dict[str, int]
     missing_target_type_counts: dict[str, int]
+    reason_counts_by_case_group: dict[str, dict[str, dict[str, int]]] = Field(default_factory=dict)
+    missing_target_type_counts_by_case_group: dict[str, dict[str, dict[str, int]]] = Field(
+        default_factory=dict
+    )
     source_counts: dict[str, int]
     rows: list[RetrievalDiagnosticRow]
 
@@ -47,6 +57,8 @@ def analyze_retrieval_evaluation(
     rows = []
     reason_counter: Counter[str] = Counter()
     missing_type_counter: Counter[str] = Counter()
+    group_reason_counters: dict[str, dict[str, Counter[str]]] = {}
+    group_missing_type_counters: dict[str, dict[str, Counter[str]]] = {}
     source_counter: Counter[str] = Counter()
 
     for result in evaluation.results:
@@ -62,7 +74,10 @@ def analyze_retrieval_evaluation(
         if row.reasons or include_passed:
             rows.append(row)
         reason_counter.update(row.reasons)
-        missing_type_counter.update(target_type(target) for target in row.missing_targets)
+        missing_types = [target_type(target) for target in row.missing_targets]
+        missing_type_counter.update(missing_types)
+        update_case_group_counters(group_reason_counters, row.case_groups, row.reasons)
+        update_case_group_counters(group_missing_type_counters, row.case_groups, missing_types)
 
     return RetrievalDiagnosticsReport(
         case_count=evaluation.case_count,
@@ -83,6 +98,10 @@ def analyze_retrieval_evaluation(
         ),
         reason_counts=dict(sorted(reason_counter.items())),
         missing_target_type_counts=dict(sorted(missing_type_counter.items())),
+        reason_counts_by_case_group=serializable_group_counters(group_reason_counters),
+        missing_target_type_counts_by_case_group=serializable_group_counters(
+            group_missing_type_counters
+        ),
         source_counts=dict(sorted(source_counter.items())),
         rows=rows,
     )
@@ -105,6 +124,8 @@ def diagnostic_row(
     )
     return RetrievalDiagnosticRow(
         query=result.query,
+        case_metadata=result.case_metadata,
+        case_groups=case_groups(result.case_metadata),
         passed=result.passed,
         reasons=reasons,
         expected_targets=expected_targets,
@@ -118,6 +139,41 @@ def diagnostic_row(
         top_chunk_ids=result.top_chunk_ids,
         top_sources=result.top_sources,
     )
+
+
+def case_groups(metadata: dict[str, object]) -> dict[str, str]:
+    groups: dict[str, str] = {}
+    for key in CASE_GROUP_METADATA_KEYS:
+        value = metadata.get(key)
+        if value is None:
+            continue
+        text = str(value).strip()
+        if text:
+            groups[key] = text
+    return groups
+
+
+def update_case_group_counters(
+    counters: dict[str, dict[str, Counter[str]]],
+    groups: dict[str, str],
+    values: list[str],
+) -> None:
+    if not values:
+        return
+    for group_name, group_value in groups.items():
+        counters.setdefault(group_name, {}).setdefault(group_value, Counter()).update(values)
+
+
+def serializable_group_counters(
+    counters: dict[str, dict[str, Counter[str]]],
+) -> dict[str, dict[str, dict[str, int]]]:
+    return {
+        group_name: {
+            group_value: dict(sorted(counter.items()))
+            for group_value, counter in sorted(group_values.items())
+        }
+        for group_name, group_values in sorted(counters.items())
+    }
 
 
 def diagnostic_reasons(

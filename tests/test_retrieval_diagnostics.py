@@ -34,8 +34,16 @@ def test_analyze_retrieval_evaluation_reports_failure_reasons():
         text="beta",
     )
     cases = [
-        RetrievalCase(query="partial", expected_pages=[1, 2]),
-        RetrievalCase(query="empty", expected_pages=[3]),
+        RetrievalCase(
+            query="partial",
+            expected_pages=[1, 2],
+            metadata={"case_source": "visual_object_probe", "query_mode": "salient_terms"},
+        ),
+        RetrievalCase(
+            query="empty",
+            expected_pages=[3],
+            metadata={"case_source": "page_probe"},
+        ),
     ]
 
     evaluation = evaluate_search_results(
@@ -57,6 +65,22 @@ def test_analyze_retrieval_evaluation_reports_failure_reasons():
     assert report.reason_counts["low_target_ndcg_at_k"] == 1
     assert report.reason_counts["no_hits"] == 1
     assert report.reason_counts["missing_page"] == 2
+    assert report.reason_counts_by_case_group["case_source"]["visual_object_probe"] == {
+        "low_precision_at_k": 1,
+        "low_target_ndcg_at_k": 1,
+        "missing_page": 1,
+        "partial_target_coverage": 1,
+    }
+    assert (
+        report.missing_target_type_counts_by_case_group["case_source"][
+            "visual_object_probe"
+        ]["page"]
+        == 1
+    )
+    assert rows["partial"].case_groups == {
+        "case_source": "visual_object_probe",
+        "query_mode": "salient_terms",
+    }
     assert rows["partial"].missing_targets == ["page:2"]
     assert rows["partial"].target_ndcg_at_k == 0.5
     assert rows["partial"].precision_at_k == 0.25
@@ -88,3 +112,4 @@ def test_diagnose_retrieval_cli_writes_report(tmp_path):
     assert payload["no_hit_count"] == 1
     assert payload["low_target_ndcg_count"] == 0
     assert payload["rows"][0]["query"] == "empty"
+    assert payload["reason_counts_by_case_group"] == {}

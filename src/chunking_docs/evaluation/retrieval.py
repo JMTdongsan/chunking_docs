@@ -29,6 +29,7 @@ class RetrievalCase(BaseModel):
 
 class RetrievalCaseResult(BaseModel):
     query: str
+    case_metadata: dict[str, Any] = Field(default_factory=dict)
     passed: bool
     latency_ms: float = 0.0
     latency_samples_ms: list[float] = Field(default_factory=list)
@@ -297,6 +298,7 @@ def evaluate_search_results(
         results.append(
             RetrievalCaseResult(
                 query=case.query,
+                case_metadata=case.metadata,
                 passed=passed,
                 latency_ms=sum(case_latencies) / len(case_latencies) if case_latencies else 0.0,
                 latency_samples_ms=case_latencies,
