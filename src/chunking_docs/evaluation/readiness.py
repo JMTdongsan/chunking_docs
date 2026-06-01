@@ -7,7 +7,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field, ValidationError
 
-from chunking_docs.evaluation.audit import PackageAudit, audit_package
+from chunking_docs.embeddings.records import visual_object_embedding_items
+from chunking_docs.evaluation.audit import PackageAudit, audit_package, qdrant_record_filename
 from chunking_docs.evaluation.ablation import (
     QdrantVectorAblationGateReport,
     QdrantVectorAblationReport,
@@ -75,6 +76,7 @@ def build_ingestion_readiness_report(
     require_bm25: bool = True,
     require_embedding_manifest: bool = True,
     required_vectors: list[str] | None = None,
+    require_derived_vector_coverage: bool = False,
     require_postgres_rows: bool = True,
     require_visual_annotations: bool = False,
     require_visual_derived_triples: bool = False,
@@ -144,6 +146,13 @@ def build_ingestion_readiness_report(
         )
     if required_vectors:
         components.append(embedding_vectors_component(package_dir, required_vectors))
+    derived_vector_component = derived_embedding_vectors_component(
+        package_dir,
+        manifest,
+        require_coverage=require_derived_vector_coverage,
+    )
+    if derived_vector_component.metadata["expected_vectors"] or require_derived_vector_coverage:
+        components.append(derived_vector_component)
 
     postgres_row_counts: dict[str, int] = {}
     if require_postgres_rows:
@@ -860,6 +869,109 @@ def embedding_vectors_component(
         ),
         metadata=metadata,
     )
+
+
+def derived_embedding_vectors_component(
+    package_dir: Path,
+    manifest: ProcessingManifest,
+    require_coverage: bool = False,
+) -> ReadinessComponent:
+    expectations = derived_vector_expectations(manifest)
+    expected_vectors = sorted(expectations)
+    metadata: dict[str, Any] = {
+        "require_coverage": require_coverage,
+        "expected_vectors": expected_vectors,
+        "expectations": expectations,
+    }
+    if not expected_vectors:
+        return ReadinessComponent(
+            name="derived_embedding_vectors",
+            passed=True,
+            severity="error" if require_coverage else "warning",
+            message="No source-derived embedding vector families are expected for this package.",
+            metadata=metadata,
+        )
+
+    vector_component = embedding_vectors_component(package_dir, expected_vectors)
+    metadata.update(
+        {
+            "required_vector_details": vector_component.metadata.get(
+                "required_vector_details",
+                {},
+            ),
+            "missing_collection_vectors": vector_component.metadata.get(
+                "missing_collection_vectors",
+                [],
+            ),
+            "missing_manifest_vectors": vector_component.metadata.get(
+                "missing_manifest_vectors",
+                [],
+            ),
+            "missing_record_files": vector_component.metadata.get("missing_record_files", []),
+            "empty_record_vectors": vector_component.metadata.get("empty_record_vectors", []),
+            "dimension_mismatches": vector_component.metadata.get("dimension_mismatches", {}),
+            "contract_error": vector_component.metadata.get("error"),
+        }
+    )
+    return ReadinessComponent(
+        name="derived_embedding_vectors",
+        passed=vector_component.passed,
+        severity="error" if require_coverage else "warning",
+        message=(
+            "Source-derived text, visual, object, and graph vectors are covered by Qdrant artifacts."
+            if vector_component.passed
+            else "Some source-derived text, visual, object, or graph vector artifacts are missing or inconsistent."
+        ),
+        metadata=metadata,
+    )
+
+
+def derived_vector_expectations(manifest: ProcessingManifest) -> dict[str, dict[str, Any]]:
+    expectations: dict[str, dict[str, Any]] = {}
+    if manifest.chunks:
+        expectations["text_dense"] = {
+            "source": "chunks",
+            "source_count": len(manifest.chunks),
+            "record_file": qdrant_record_filename("text_dense"),
+            "reason": "Document chunks should have dense text vectors for semantic retrieval.",
+        }
+
+    visual_text_asset_ids = [
+        asset.asset_id for asset in manifest.assets if asset_text_parts(asset)
+    ]
+    if visual_text_asset_ids:
+        expectations["caption_dense"] = {
+            "source": "visual_asset_text",
+            "source_count": len(visual_text_asset_ids),
+            "sample_source_ids": visual_text_asset_ids[:10],
+            "record_file": qdrant_record_filename("caption_dense"),
+            "reason": (
+                "Caption, OCR, VLM summary, entity, visual-element, and object text should "
+                "have visual text vectors."
+            ),
+        }
+
+    visual_object_items = visual_object_embedding_items(manifest.assets)
+    if visual_object_items:
+        expectations["object_dense"] = {
+            "source": "structured_visual_objects",
+            "source_count": len(visual_object_items),
+            "sample_source_ids": [
+                str(item["object_id"]) for item in visual_object_items[:10]
+            ],
+            "record_file": qdrant_record_filename("object_dense"),
+            "reason": "Structured OCR/VLM object detections should have object-level vectors.",
+        }
+
+    if manifest.triples:
+        expectations["triple_dense"] = {
+            "source": "graph_triples",
+            "source_count": len(manifest.triples),
+            "sample_source_ids": [triple.triple_id for triple in manifest.triples[:10]],
+            "record_file": qdrant_record_filename("triple_dense"),
+            "reason": "Graph triples should have relationship vectors for vector ablation and hybrid retrieval.",
+        }
+    return expectations
 
 
 def load_embedding_contract_payloads(collection_path: Path, manifest_path: Path) -> dict[str, Any]:

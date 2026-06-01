@@ -2578,6 +2578,14 @@ def ingestion_readiness_command(
         "--required-vector",
         help="Require an embedding vector family such as text_dense, caption_dense, object_dense, or image_dense.",
     ),
+    require_derived_vector_coverage: bool = typer.Option(
+        False,
+        "--require-derived-vector-coverage",
+        help=(
+            "Fail readiness when chunks, visual text, structured visual objects, or graph "
+            "triples exist without matching text/caption/object/triple Qdrant vector artifacts."
+        ),
+    ),
     require_postgres_rows: bool = True,
     require_visual_annotations: bool = False,
     require_visual_derived_triples: bool = typer.Option(
@@ -2980,6 +2988,7 @@ def ingestion_readiness_command(
         require_bm25=require_bm25,
         require_embedding_manifest=require_embedding_manifest,
         required_vectors=required_vectors,
+        require_derived_vector_coverage=require_derived_vector_coverage,
         require_postgres_rows=require_postgres_rows,
         require_visual_annotations=require_visual_annotations,
         require_visual_derived_triples=require_visual_derived_triples,

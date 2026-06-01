@@ -32,6 +32,7 @@ from chunking_docs.models import (
     AssetKind,
     ChunkKind,
     DocumentChunk,
+    GraphTriple,
     PageProfile,
     ProcessingManifest,
     SourceDocument,
@@ -232,6 +233,74 @@ def test_ingestion_readiness_flags_missing_required_embedding_vector(tmp_path):
     assert report.passed is False
     assert "embedding_vectors" in report.failed_components
     assert component.metadata["missing_collection_vectors"] == ["caption_dense"]
+
+
+def test_ingestion_readiness_warns_when_derived_triple_vector_is_missing(tmp_path):
+    package_dir, manifest = write_ready_package(tmp_path)
+    triple = GraphTriple(
+        triple_id="triple-1",
+        doc_id="doc",
+        chunk_id="chunk-1",
+        subject="station",
+        predicate="connects_to",
+        object="corridor",
+    )
+    manifest.triples = [triple]
+    write_jsonl(package_dir / "triples.jsonl", [triple])
+
+    report = build_ingestion_readiness_report(
+        package_dir,
+        manifest,
+        require_bm25=False,
+    )
+
+    component = next(
+        component for component in report.components if component.name == "derived_embedding_vectors"
+    )
+    assert report.passed is True
+    assert component.passed is False
+    assert component.severity == "warning"
+    assert "triple_dense" in component.metadata["expected_vectors"]
+    assert "triple_dense" in component.metadata["missing_collection_vectors"]
+    assert component.metadata["expectations"]["triple_dense"]["source_count"] == 1
+
+
+def test_ingestion_readiness_can_require_derived_object_vector_coverage(tmp_path):
+    package_dir, manifest = write_ready_package(tmp_path)
+    manifest.assets[0] = manifest.assets[0].model_copy(
+        update={
+            "caption": None,
+            "metadata": {
+                "requires_ocr": False,
+                "requires_vlm": False,
+                "objects": [
+                    {
+                        "label": "legend marker",
+                        "attributes": ["red circle"],
+                        "bbox_region": "lower right",
+                    }
+                ],
+            },
+        }
+    )
+    write_jsonl(package_dir / "assets.jsonl", manifest.assets)
+
+    report = build_ingestion_readiness_report(
+        package_dir,
+        manifest,
+        require_bm25=False,
+        require_derived_vector_coverage=True,
+    )
+
+    component = next(
+        component for component in report.components if component.name == "derived_embedding_vectors"
+    )
+    assert report.passed is False
+    assert "derived_embedding_vectors" in report.failed_components
+    assert component.severity == "error"
+    assert "object_dense" in component.metadata["expected_vectors"]
+    assert "object_dense" in component.metadata["missing_collection_vectors"]
+    assert component.metadata["expectations"]["object_dense"]["source_count"] == 1
 
 
 def test_ingestion_readiness_detects_stale_bm25_visual_asset_text(tmp_path):
@@ -1219,6 +1288,45 @@ def test_ingestion_readiness_cli_can_require_embedding_vectors(tmp_path):
     assert payload["passed"] is True
     assert component["metadata"]["required_vectors"] == ["text_dense"]
     assert component["metadata"]["required_vector_details"]["text_dense"]["record_count"] == 1
+
+
+def test_ingestion_readiness_cli_can_require_derived_vector_coverage(tmp_path):
+    package_dir, _ = write_ready_package(tmp_path)
+    triple = GraphTriple(
+        triple_id="triple-1",
+        doc_id="doc",
+        chunk_id="chunk-1",
+        subject="station",
+        predicate="connects_to",
+        object="corridor",
+    )
+    write_jsonl(package_dir / "triples.jsonl", [triple])
+    output = tmp_path / "readiness.json"
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "ingestion-readiness",
+            "--package-dir",
+            str(package_dir),
+            "--require-derived-vector-coverage",
+            "--output",
+            str(output),
+            "--no-fail",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    component = next(
+        component
+        for component in payload["components"]
+        if component["name"] == "derived_embedding_vectors"
+    )
+    assert payload["passed"] is False
+    assert "derived_embedding_vectors" in payload["failed_components"]
+    assert "triple_dense" in component["metadata"]["expected_vectors"]
+    assert "triple_dense" in component["metadata"]["missing_collection_vectors"]
 
 
 def test_ingestion_readiness_cli_can_gate_qdrant_vector_ablation(tmp_path):
