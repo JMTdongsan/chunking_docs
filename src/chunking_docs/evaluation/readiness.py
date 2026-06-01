@@ -251,11 +251,20 @@ def build_ingestion_readiness_report(
                     "target_query_overlap_count": (
                         retrieval_case_audit.target_query_overlap_count
                     ),
+                    "target_query_overlap_term_count": (
+                        retrieval_case_audit.target_query_overlap_term_count
+                    ),
                     "max_target_query_overlap_ratio": (
                         retrieval_case_audit.max_target_query_overlap_ratio
                     ),
                     "mean_target_query_overlap_ratio": (
                         retrieval_case_audit.mean_target_query_overlap_ratio
+                    ),
+                    "max_target_query_overlap_terms": (
+                        retrieval_case_audit.max_target_query_overlap_terms
+                    ),
+                    "mean_target_query_overlap_terms": (
+                        retrieval_case_audit.mean_target_query_overlap_terms
                     ),
                     "missing_target_counts": retrieval_case_audit.missing_target_counts,
                 },

@@ -294,6 +294,8 @@ def test_audit_retrieval_cases_checks_target_query_overlap():
 
     assert report.passed is False
     assert report.target_query_overlap_count == 1
+    assert report.max_target_query_overlap_terms == 4
+    assert report.mean_target_query_overlap_terms == 4.0
     assert report.max_target_query_overlap_ratio == 1.0
     assert report.mean_target_query_overlap_ratio == 1.0
     assert "max_target_query_overlap_ratio" in report.failed_checks
@@ -303,6 +305,38 @@ def test_audit_retrieval_cases_checks_target_query_overlap():
     )
     assert check.actual == 1.0
     assert check.threshold == 0.75
+
+
+def test_audit_retrieval_cases_checks_target_query_overlap_terms():
+    profiles, chunks, assets, triples = package_records()
+    cases = [
+        RetrievalCase(
+            query="Which evidence explains overview target visual graph?",
+            expected_chunk_ids=["chunk-1"],
+        )
+    ]
+
+    report = audit_retrieval_cases(
+        cases,
+        profiles=profiles,
+        chunks=chunks,
+        assets=assets,
+        triples=triples,
+        max_target_query_overlap_terms=3,
+        min_terms_for_target_overlap=2,
+    )
+
+    assert report.passed is False
+    assert report.target_query_overlap_term_count == 1
+    assert report.max_target_query_overlap_terms == 4
+    assert report.mean_target_query_overlap_terms == 4.0
+    assert "max_target_query_overlap_terms" in report.failed_checks
+    assert "target_query_overlap_terms" in {issue.code for issue in report.issues}
+    check = next(
+        check for check in report.checks if check.name == "max_target_query_overlap_terms"
+    )
+    assert check.actual == 4
+    assert check.threshold == 3
 
 
 def test_audit_retrieval_cases_can_require_visual_only_object_probes():
@@ -386,6 +420,8 @@ def test_audit_retrieval_cases_cli_writes_report(tmp_path):
             "--require-visual-only-object-probes",
             "--min-query-terms-per-case",
             "2",
+            "--min-terms-for-target-overlap",
+            "2",
             "--output",
             str(output_path),
         ],
@@ -404,6 +440,7 @@ def test_audit_retrieval_cases_cli_writes_report(tmp_path):
     assert payload["non_visual_only_object_probe_count"] == 0
     assert payload["short_query_count"] == 0
     assert payload["min_query_term_count"] == 2
+    assert payload["max_target_query_overlap_terms"] == 2
 
 
 def write_package(tmp_path):

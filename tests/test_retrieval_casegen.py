@@ -272,7 +272,7 @@ def test_generate_retrieval_case_skeleton_can_use_question_queries():
         max_target_query_overlap_ratio=0.75,
     )
 
-    assert cases[0].query == "Which evidence explains Transit corridor evidence?"
+    assert cases[0].query == "Where is Transit corridor evidence discussed?"
     assert cases[0].metadata["query_mode"] == "question"
     assert cases[0].metadata["query_terms"] == ["Transit", "corridor", "evidence"]
     assert report.passed is True

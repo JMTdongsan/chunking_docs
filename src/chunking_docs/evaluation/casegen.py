@@ -961,8 +961,8 @@ def terms_to_query(
 
 def question_from_terms(term_text: str) -> str:
     if contains_hangul(term_text):
-        return f"어떤 근거가 {term_text} 내용을 설명하는가"
-    return f"Which evidence explains {term_text}?"
+        return f"어디에서 {term_text} 관련 항목을 찾을 수 있는가"
+    return f"Where is {term_text} discussed?"
 
 
 def contains_hangul(text: str) -> bool:

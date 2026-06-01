@@ -15,6 +15,27 @@ _QUERY_TERM_RE = re.compile(
     r"[\uac00-\ud7a3]{2,}|"
     r"[\u4e00-\u9fff]{2,}"
 )
+_QUERY_WRAPPER_TERMS = {
+    "about",
+    "discussed",
+    "evidence",
+    "explains",
+    "find",
+    "is",
+    "source",
+    "where",
+    "which",
+    "관련",
+    "근거가",
+    "내용을",
+    "다루는가",
+    "설명하는가",
+    "어디에서",
+    "어떤",
+    "있는가",
+    "찾을",
+    "항목을",
+}
 
 
 class RetrievalCaseAuditIssue(BaseModel):
@@ -55,8 +76,11 @@ class RetrievalCaseAuditReport(BaseModel):
     min_query_term_count: int = 0
     max_query_term_count: int = 0
     target_query_overlap_count: int = 0
+    target_query_overlap_term_count: int = 0
     max_target_query_overlap_ratio: float = 0.0
     mean_target_query_overlap_ratio: float = 0.0
+    max_target_query_overlap_terms: int = 0
+    mean_target_query_overlap_terms: float = 0.0
     missing_target_counts: dict[str, int] = Field(default_factory=dict)
     failed_checks: list[str] = Field(default_factory=list)
     checks: list[RetrievalCaseAuditCheck] = Field(default_factory=list)
@@ -87,6 +111,7 @@ def audit_retrieval_cases(
     require_visual_only_object_probes: bool = False,
     min_query_terms_per_case: int = 0,
     max_target_query_overlap_ratio: float | None = None,
+    max_target_query_overlap_terms: int | None = None,
     min_terms_for_target_overlap: int = 4,
     max_duplicate_queries: int = 0,
     max_issues: int = 200,
@@ -107,20 +132,33 @@ def audit_retrieval_cases(
     normalized_queries: dict[str, list[int]] = {}
     query_term_counts: list[int] = []
     target_query_overlap_ratios: list[float] = []
+    target_query_overlap_terms: list[int] = []
     target_query_overlap_check_ratios: list[float] = []
+    target_query_overlap_check_terms: list[int] = []
     target_query_overlap_count = 0
+    target_query_overlap_term_count = 0
 
     for index, case in enumerate(cases):
         query = case.query.strip()
         query_terms = distinct_query_terms(query)
         query_term_counts.append(len(query_terms))
-        target_overlap = target_query_overlap_ratio(case, query_terms, target_text_index)
-        target_query_overlap_ratios.append(target_overlap)
+        target_overlap_terms = target_query_overlap_term_count_for_case(
+            case,
+            query_terms,
+            target_text_index,
+        )
+        target_overlap_ratio = target_query_overlap_ratio_from_terms(
+            target_overlap_terms,
+            query_terms,
+        )
+        target_query_overlap_ratios.append(target_overlap_ratio)
+        target_query_overlap_terms.append(target_overlap_terms)
         if len(query_terms) >= min_terms_for_target_overlap:
-            target_query_overlap_check_ratios.append(target_overlap)
+            target_query_overlap_check_ratios.append(target_overlap_ratio)
+            target_query_overlap_check_terms.append(target_overlap_terms)
             if (
                 max_target_query_overlap_ratio is not None
-                and target_overlap > max_target_query_overlap_ratio
+                and target_overlap_ratio > max_target_query_overlap_ratio
             ):
                 target_query_overlap_count += 1
                 append_issue(
@@ -133,8 +171,29 @@ def audit_retrieval_cases(
                         index,
                         case,
                         {
-                            "target_query_overlap_ratio": target_overlap,
+                            "target_query_overlap_ratio": target_overlap_ratio,
                             "max_target_query_overlap_ratio": max_target_query_overlap_ratio,
+                            "min_terms_for_target_overlap": min_terms_for_target_overlap,
+                        },
+                    ),
+                )
+            if (
+                max_target_query_overlap_terms is not None
+                and target_overlap_terms > max_target_query_overlap_terms
+            ):
+                target_query_overlap_term_count += 1
+                append_issue(
+                    issues,
+                    max_issues,
+                    issue(
+                        "warning",
+                        "target_query_overlap_terms",
+                        "Retrieval case query uses too many terms from the expected target text.",
+                        index,
+                        case,
+                        {
+                            "target_query_overlap_terms": target_overlap_terms,
+                            "max_target_query_overlap_terms": max_target_query_overlap_terms,
                             "min_terms_for_target_overlap": min_terms_for_target_overlap,
                         },
                     ),
@@ -261,9 +320,15 @@ def audit_retrieval_cases(
     min_query_term_count = min(query_term_counts, default=0)
     max_query_term_count = max(query_term_counts, default=0)
     max_target_query_overlap = max(target_query_overlap_check_ratios, default=0.0)
+    max_target_query_overlap_term_count = max(target_query_overlap_check_terms, default=0)
     mean_target_query_overlap = (
         sum(target_query_overlap_ratios) / len(target_query_overlap_ratios)
         if target_query_overlap_ratios
+        else 0.0
+    )
+    mean_target_query_overlap_term_count = (
+        sum(target_query_overlap_terms) / len(target_query_overlap_terms)
+        if target_query_overlap_terms
         else 0.0
     )
     short_query_count = (
@@ -289,6 +354,7 @@ def audit_retrieval_cases(
         "duplicate_query_count": duplicate_query_count,
         "min_query_term_count": min_query_term_count,
         "max_target_query_overlap_ratio": max_target_query_overlap,
+        "max_target_query_overlap_terms": max_target_query_overlap_term_count,
     }
     checks = [
         min_check("min_case_count", "case_count", metrics, min_case_count),
@@ -340,6 +406,15 @@ def audit_retrieval_cases(
                 max_target_query_overlap_ratio,
             )
         )
+    if max_target_query_overlap_terms is not None:
+        checks.append(
+            max_check(
+                "max_target_query_overlap_terms",
+                "max_target_query_overlap_terms",
+                metrics,
+                max_target_query_overlap_terms,
+            )
+        )
     checks.extend(
         max_cases_per_target_checks(
             metrics,
@@ -388,8 +463,11 @@ def audit_retrieval_cases(
         min_query_term_count=min_query_term_count,
         max_query_term_count=max_query_term_count,
         target_query_overlap_count=target_query_overlap_count,
+        target_query_overlap_term_count=target_query_overlap_term_count,
         max_target_query_overlap_ratio=max_target_query_overlap,
         mean_target_query_overlap_ratio=mean_target_query_overlap,
+        max_target_query_overlap_terms=max_target_query_overlap_term_count,
+        mean_target_query_overlap_terms=mean_target_query_overlap_term_count,
         missing_target_counts=missing_target_counts,
         failed_checks=failed_checks,
         checks=checks,
@@ -510,15 +588,38 @@ def target_query_overlap_ratio(
     query_terms: list[str],
     target_text_index: dict[str, dict[Any, str]],
 ) -> float:
+    return target_query_overlap_ratio_from_terms(
+        target_query_overlap_term_count_for_case(case, query_terms, target_text_index),
+        query_terms,
+    )
+
+
+def target_query_overlap_ratio_from_terms(
+    overlap_terms: int,
+    query_terms: list[str],
+) -> float:
     if not query_terms:
         return 0.0
+    return overlap_terms / len(set(query_terms))
+
+
+def target_query_overlap_term_count_for_case(
+    case: RetrievalCase,
+    query_terms: list[str],
+    target_text_index: dict[str, dict[Any, str]],
+) -> int:
+    if not query_terms:
+        return 0
+    query_term_set = set(query_terms) - _QUERY_WRAPPER_TERMS
+    if not query_term_set:
+        return 0
     target_terms: set[str] = set()
     for target_name, target_values in retrieval_case_target_values(case).items():
         for target_value in target_values:
             target_terms.update(distinct_query_terms(target_text_index.get(target_name, {}).get(target_value, "")))
     if not target_terms:
-        return 0.0
-    return len(set(query_terms).intersection(target_terms)) / len(set(query_terms))
+        return 0
+    return len(query_term_set.intersection(target_terms))
 
 
 def target_text_for_chunk(chunk: DocumentChunk) -> str:
@@ -637,7 +738,7 @@ def case_group_distinct_target_checks(
 
 
 def max_cases_per_target_checks(
-    metrics: dict[str, int],
+    metrics: dict[str, int | float],
     thresholds: dict[str, int | None],
 ) -> list[RetrievalCaseAuditCheck]:
     checks = []

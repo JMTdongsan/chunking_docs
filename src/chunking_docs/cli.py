@@ -3168,6 +3168,14 @@ def ingestion_readiness_command(
             "above this ratio."
         ),
     ),
+    max_retrieval_target_query_overlap_terms: int | None = typer.Option(
+        None,
+        "--max-retrieval-target-query-overlap-terms",
+        help=(
+            "Fail retrieval case readiness when a query uses too many distinct terms from "
+            "expected target text."
+        ),
+    ),
     min_retrieval_terms_for_target_overlap: int = typer.Option(
         4,
         "--min-retrieval-terms-for-target-overlap",
@@ -3567,6 +3575,7 @@ def ingestion_readiness_command(
             "require_visual_only_object_probes": require_visual_only_object_probes,
             "min_query_terms_per_case": min_retrieval_query_terms_per_case,
             "max_target_query_overlap_ratio": max_retrieval_target_query_overlap_ratio,
+            "max_target_query_overlap_terms": max_retrieval_target_query_overlap_terms,
             "min_terms_for_target_overlap": min_retrieval_terms_for_target_overlap,
             "max_duplicate_queries": max_duplicate_queries,
         },
@@ -4080,6 +4089,13 @@ def audit_retrieval_cases_command(
             "which catches benchmark queries copied too directly from the answer span."
         ),
     ),
+    max_target_query_overlap_terms: int | None = typer.Option(
+        None,
+        "--max-target-query-overlap-terms",
+        help=(
+            "Fail when a query uses more than this many distinct terms from expected target text."
+        ),
+    ),
     min_terms_for_target_overlap: int = typer.Option(
         4,
         "--min-terms-for-target-overlap",
@@ -4145,6 +4161,7 @@ def audit_retrieval_cases_command(
         require_visual_only_object_probes=require_visual_only_object_probes,
         min_query_terms_per_case=min_query_terms_per_case,
         max_target_query_overlap_ratio=max_target_query_overlap_ratio,
+        max_target_query_overlap_terms=max_target_query_overlap_terms,
         min_terms_for_target_overlap=min_terms_for_target_overlap,
         max_duplicate_queries=max_duplicate_queries,
     )
@@ -4168,8 +4185,11 @@ def audit_retrieval_cases_command(
             "min_query_term_count": report.min_query_term_count,
             "max_query_term_count": report.max_query_term_count,
             "target_query_overlap_count": report.target_query_overlap_count,
+            "target_query_overlap_term_count": report.target_query_overlap_term_count,
             "max_target_query_overlap_ratio": report.max_target_query_overlap_ratio,
             "mean_target_query_overlap_ratio": report.mean_target_query_overlap_ratio,
+            "max_target_query_overlap_terms": report.max_target_query_overlap_terms,
+            "mean_target_query_overlap_terms": report.mean_target_query_overlap_terms,
             "missing_target_counts": report.missing_target_counts,
             "failed_checks": report.failed_checks,
         }
