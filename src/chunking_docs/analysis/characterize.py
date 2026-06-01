@@ -11,7 +11,10 @@ from chunking_docs.analysis.chunking_defaults import (
     CHUNKING_COMPARISON_GATE_ARGS,
     CHUNKING_SWEEP_SELECTION_ARGS,
 )
-from chunking_docs.analysis.qdrant_defaults import qdrant_rag_validation_commands
+from chunking_docs.analysis.qdrant_defaults import (
+    qdrant_rag_validation_commands,
+    qdrant_route_preset_for_vectors,
+)
 from chunking_docs.embeddings.records import (
     VISUAL_FEATURE_METADATA_KEYS,
     VISUAL_OBJECT_METADATA_KEYS,
@@ -718,6 +721,7 @@ def recommendations(
         )
     )
     qdrant_vector_names = recommended_qdrant_vector_names(chunks, visual, graph)
+    qdrant_route_preset = qdrant_route_preset_for_vectors(qdrant_vector_names)
     result.append(
         ProcessingRecommendation(
             code="validate_qdrant_rag_context",
@@ -730,6 +734,7 @@ def recommendations(
             commands=qdrant_rag_validation_commands(qdrant_vector_names),
             metadata={
                 "recommended_vector_names": qdrant_vector_names,
+                "retrieval_route_preset": qdrant_route_preset or None,
                 "requires_image_query_encoder": "image_dense" in qdrant_vector_names,
             },
         )

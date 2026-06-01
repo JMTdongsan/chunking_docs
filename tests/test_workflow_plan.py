@@ -11,6 +11,7 @@ from chunking_docs.models import (
     AssetKind,
     ChunkKind,
     DocumentChunk,
+    GraphTriple,
     PageProfile,
     ProcessingManifest,
     SourceDocument,
@@ -217,6 +218,46 @@ def test_workflow_plan_rebuilds_embeddings_after_index_refresh_for_indexed_text_
     assert "--require-visual-run-comparison" not in readiness_command
 
 
+def test_workflow_plan_exports_adaptive_qdrant_route_for_visual_object_graph_package(tmp_path):
+    package_dir, manifest = make_routed_qdrant_package(tmp_path)
+    cases = tmp_path / "cases.jsonl"
+    characteristics = characterize_package(
+        profiles=manifest.profiles,
+        chunks=manifest.chunks,
+        assets=manifest.assets,
+        triples=manifest.triples,
+        package_dir=package_dir,
+    )
+
+    plan = build_ingestion_workflow_plan(
+        characteristics,
+        package_dir=package_dir,
+        retrieval_cases=cases,
+        vlm_profiles=["qwen2_5_vl_7b"],
+    )
+
+    qdrant_commands = next(
+        step.commands
+        for step in plan.steps
+        if step.step_id == "validate_qdrant_rag_context"
+    )
+    assert "--vector-names text_dense,caption_dense,object_dense,image_dense,triple_dense" in (
+        qdrant_commands[1]
+    )
+    assert "export-qdrant-retrieval-config" in qdrant_commands[2]
+    assert "--route-preset adaptive" in qdrant_commands[2]
+    assert "eval-qdrant-retrieval-config" in qdrant_commands[3]
+    assert "qdrant_retrieval_config.json" in qdrant_commands[3]
+    assert "eval-qdrant-rag-context-config" in qdrant_commands[4]
+    readiness_command = plan.steps[-1].commands[0]
+    assert "--qdrant-retrieval-config" in readiness_command
+    assert "qdrant_retrieval_config.json" in readiness_command
+    assert "--retrieval-evaluation" in readiness_command
+    assert "qdrant_retrieval_config_eval.json" in readiness_command
+    assert "--rag-context-evaluation" in readiness_command
+    assert "qdrant_rag_context_config_eval.json" in readiness_command
+
+
 def test_workflow_plan_uses_ocr_only_visual_step_when_no_vlm_jobs_pending(tmp_path):
     package_dir, manifest = make_ocr_only_visual_package(tmp_path)
     cases = tmp_path / "cases.jsonl"
@@ -345,6 +386,23 @@ def make_completed_visual_package(tmp_path: Path):
     manifest.assets[0].metadata["vlm_parse_status"] = "json_object"
     manifest.assets[0].metadata["objects"] = [{"label": "station area"}]
     write_jsonl(package_dir / "assets.jsonl", manifest.assets)
+    return package_dir, manifest
+
+
+def make_routed_qdrant_package(tmp_path: Path):
+    package_dir, manifest = make_completed_visual_package(tmp_path)
+    manifest.triples = [
+        GraphTriple(
+            triple_id="triple-1",
+            doc_id="doc",
+            chunk_id="chunk-1",
+            subject="station area",
+            predicate="supports",
+            object="redevelopment plan",
+            qualifiers={"source": "visual_annotation", "asset_id": "asset-1"},
+        )
+    ]
+    write_jsonl(package_dir / "triples.jsonl", manifest.triples)
     return package_dir, manifest
 
 

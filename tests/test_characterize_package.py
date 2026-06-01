@@ -134,6 +134,7 @@ def test_characterize_package_reports_strategy_observations(tmp_path):
         "image_dense",
         "triple_dense",
     ]
+    assert qdrant_recommendation.metadata["retrieval_route_preset"] == "adaptive"
     assert "sweep-qdrant-fusion" in qdrant_recommendation.commands[1]
     assert "--vector-names text_dense,caption_dense,object_dense,image_dense,triple_dense" in (
         qdrant_recommendation.commands[1]
@@ -141,6 +142,7 @@ def test_characterize_package_reports_strategy_observations(tmp_path):
     assert "--weight-grid qdrant:object_dense=0.5,1.0,1.5" in qdrant_recommendation.commands[1]
     assert "--weight-grid qdrant:image_dense=0.0,0.25,0.5" in qdrant_recommendation.commands[1]
     assert "export-qdrant-retrieval-config" in qdrant_recommendation.commands[2]
+    assert "--route-preset adaptive" in qdrant_recommendation.commands[2]
     assert "--image-query-backend clip" in qdrant_recommendation.commands[3]
     assert "eval-qdrant-rag-context-config" in qdrant_recommendation.commands[4]
     assert "--image-query-backend clip" in qdrant_recommendation.commands[4]

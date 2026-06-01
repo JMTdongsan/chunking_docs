@@ -1,16 +1,27 @@
 from __future__ import annotations
 
 
-def qdrant_rag_validation_commands(vector_names: list[str]) -> list[str]:
+def qdrant_rag_validation_commands(
+    vector_names: list[str],
+    route_preset: str | None = None,
+) -> list[str]:
     vector_csv = ",".join(vector_names)
     has_visual = any(name in vector_names for name in ["caption_dense", "object_dense", "image_dense"])
     has_image = "image_dense" in vector_names
     has_object = "object_dense" in vector_names
     has_triple = "triple_dense" in vector_names
+    selected_route_preset = (
+        qdrant_route_preset_for_vectors(vector_names)
+        if route_preset is None
+        else route_preset.strip()
+    )
     image_query_args = [
         "--image-query-backend clip",
         "--image-query-model openai/clip-vit-large-patch14",
     ] if has_image else []
+    route_preset_args = [
+        f"--route-preset {selected_route_preset}"
+    ] if selected_route_preset else []
     fusion_weight_args = [
         "--weight-grid bm25=0.8,1.0,1.2",
         "--fixed-fusion-weight qdrant:text_dense=1.0",
@@ -83,9 +94,14 @@ def qdrant_rag_validation_commands(vector_names: list[str]) -> list[str]:
             ]
         ),
         (
-            "chunking-docs export-qdrant-retrieval-config "
-            "outputs/package/qdrant_fusion_sweep.json "
-            "--output outputs/package/qdrant_retrieval_config.json"
+            " ".join(
+                [
+                    "chunking-docs export-qdrant-retrieval-config",
+                    "outputs/package/qdrant_fusion_sweep.json",
+                    *route_preset_args,
+                    "--output outputs/package/qdrant_retrieval_config.json",
+                ]
+            )
         ),
         (
             " ".join(
@@ -119,6 +135,13 @@ def qdrant_rag_validation_commands(vector_names: list[str]) -> list[str]:
             ]
         ),
     ]
+
+
+def qdrant_route_preset_for_vectors(vector_names: list[str]) -> str:
+    names = set(vector_names)
+    if {"object_dense", "triple_dense"}.issubset(names):
+        return "adaptive"
+    return ""
 
 
 QDRANT_RAG_READINESS_GATE_ARGS = [
