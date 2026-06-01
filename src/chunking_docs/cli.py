@@ -1287,6 +1287,11 @@ def sweep_qdrant_fusion_command(
     ngram_cjk_only: bool = True,
     deduplicate_tokens: bool = False,
     summary_limit: int = 10,
+    pairwise_top_k: int = typer.Option(
+        10,
+        "--pairwise-top-k",
+        help="Compute query-paired candidate comparisons among the top N ranked fusion candidates.",
+    ),
 ):
     """Sweep Qdrant/BM25/graph fusion weights and recommend a retrieval configuration."""
     grid = parse_fusion_weight_grid(weight_grid)
@@ -1425,6 +1430,7 @@ def sweep_qdrant_fusion_command(
         retrieval_role_excluded_target_hit_penalty=retrieval_role_excluded_target_hit_penalty,
         latency_weight=latency_weight,
         p95_latency_weight=p95_latency_weight,
+        pairwise_top_k=pairwise_top_k,
         metadata={
             "weight_grid": grid,
             "fixed_fusion_weights": fixed_weights,
@@ -1454,6 +1460,7 @@ def sweep_qdrant_fusion_command(
             "retrieval_role_excluded_target_hit_penalty": retrieval_role_excluded_target_hit_penalty,
             "latency_weight": latency_weight,
             "p95_latency_weight": p95_latency_weight,
+            "pairwise_top_k": pairwise_top_k,
             "lexical_tokenizer": {
                 "strategy": lexical_tokenizer,
                 "min_n": ngram_min,
@@ -1538,6 +1545,19 @@ def sweep_qdrant_fusion_command(
                 }
                 for candidate in report.candidates[: max(summary_limit, 0)]
             ],
+            "pairwise_against_recommended": [
+                {
+                    "baseline": comparison.baseline,
+                    "shared_query_count": comparison.shared_query_count,
+                    "candidate_win_rate": comparison.candidate_win_rate,
+                    "mean_target_coverage_delta": comparison.mean_target_coverage_delta,
+                    "mean_target_ndcg_delta": comparison.mean_target_ndcg_delta,
+                    "mean_target_rank_delta": comparison.mean_target_rank_delta,
+                    "mean_latency_delta_ms": comparison.mean_latency_delta_ms,
+                }
+                for comparison in report.pairwise
+                if comparison.candidate == report.recommended
+            ][: max(summary_limit, 0)],
         }
     )
 

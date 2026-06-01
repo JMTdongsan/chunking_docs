@@ -6,6 +6,7 @@ from chunking_docs.evaluation.fusion_sweep import (
 )
 from chunking_docs.evaluation.retrieval import (
     RetrievalCaseGroupMetric,
+    RetrievalCaseResult,
     RetrievalEvaluation,
     RetrievalSourceMetric,
 )
@@ -305,6 +306,83 @@ def test_build_qdrant_fusion_sweep_report_rejects_and_penalizes_p95_latency():
     assert spiky_row.selection_score < stable_row.selection_score
 
 
+def test_build_qdrant_fusion_sweep_report_records_top_candidate_pairwise_deltas():
+    baseline = QdrantFusionSweepCandidate(
+        name="baseline",
+        fusion_weights={"bm25": 1.0},
+        evaluation=evaluation(
+            recall=0.5,
+            coverage=0.5,
+            ndcg=0.45,
+            mrr=0.5,
+            precision=0.1,
+            failed=1,
+            latency=20.0,
+            results=[
+                retrieval_result("map terms", coverage=0.0, ndcg=0.0, reciprocal_rank=0.0, rank=None),
+                retrieval_result("policy terms", coverage=1.0, ndcg=0.9, reciprocal_rank=1.0, rank=1),
+            ],
+        ),
+    )
+    candidate = QdrantFusionSweepCandidate(
+        name="candidate",
+        fusion_weights={"bm25": 1.0, "qdrant:caption_dense": 1.4},
+        evaluation=evaluation(
+            recall=1.0,
+            coverage=1.0,
+            ndcg=0.95,
+            mrr=0.9,
+            precision=0.2,
+            failed=0,
+            latency=25.0,
+            results=[
+                retrieval_result("map terms", coverage=1.0, ndcg=0.9, reciprocal_rank=1.0, rank=1),
+                retrieval_result("policy terms", coverage=1.0, ndcg=0.9, reciprocal_rank=1.0, rank=1),
+            ],
+        ),
+    )
+    excluded = QdrantFusionSweepCandidate(
+        name="not_pairwise",
+        fusion_weights={"qdrant:image_dense": 1.0},
+        evaluation=evaluation(
+            recall=0.1,
+            coverage=0.1,
+            ndcg=0.1,
+            mrr=0.1,
+            precision=0.1,
+            failed=2,
+            latency=10.0,
+            results=[
+                retrieval_result("map terms", coverage=0.0, ndcg=0.0, reciprocal_rank=0.0, rank=None),
+                retrieval_result("policy terms", coverage=0.0, ndcg=0.0, reciprocal_rank=0.0, rank=None),
+            ],
+        ),
+    )
+
+    report = build_qdrant_fusion_sweep_report(
+        [baseline, candidate, excluded],
+        vector_names=["text_dense", "caption_dense"],
+        pairwise_top_k=2,
+    )
+
+    assert report.recommended == "candidate"
+    assert {(row.candidate, row.baseline) for row in report.pairwise} == {
+        ("candidate", "baseline"),
+        ("baseline", "candidate"),
+    }
+    pairwise = next(
+        row
+        for row in report.pairwise
+        if row.candidate == "candidate" and row.baseline == "baseline"
+    )
+    assert pairwise.shared_query_count == 2
+    assert pairwise.candidate_win_count == 1
+    assert pairwise.tie_count == 1
+    assert pairwise.candidate_win_rate == 0.5
+    assert pairwise.mean_target_coverage_delta == 0.5
+    assert pairwise.mean_target_rank_delta == -2.5
+
+
 def test_build_qdrant_fusion_sweep_report_recommends_case_group_candidates():
     balanced = QdrantFusionSweepCandidate(
         name="balanced",
@@ -400,6 +478,7 @@ def evaluation(
     source_family_metrics: dict[str, RetrievalSourceMetric] | None = None,
     chunk_strategy_metrics: dict[str, RetrievalSourceMetric] | None = None,
     retrieval_role_metrics: dict[str, RetrievalSourceMetric] | None = None,
+    results: list[RetrievalCaseResult] | None = None,
 ) -> RetrievalEvaluation:
     case_group_metrics = {}
     if visual_object_group is not None:
@@ -435,7 +514,7 @@ def evaluation(
         retrieval_role_metrics=retrieval_role_metrics or {},
         failed_queries=[f"failed-{index}" for index in range(failed)],
         case_group_metrics=case_group_metrics,
-        results=[],
+        results=results or [],
     )
 
 
@@ -450,6 +529,36 @@ def source_metric(excluded_rate: float = 0.0) -> RetrievalSourceMetric:
         excluded_matched_target_count=int(round(excluded_rate * excluded_target_count)),
         excluded_precision_at_hits=excluded_rate,
         excluded_target_hit_rate=excluded_rate,
+    )
+
+
+def retrieval_result(
+    query: str,
+    coverage: float,
+    ndcg: float,
+    reciprocal_rank: float,
+    rank: int | None,
+) -> RetrievalCaseResult:
+    target_ranks = {"page:1": rank} if rank is not None else {}
+    return RetrievalCaseResult(
+        query=query,
+        passed=rank is not None,
+        latency_ms=10.0,
+        top_pages=[1] if rank is not None else [],
+        top_chunk_ids=["chunk-1"] if rank is not None else [],
+        expected_pages=[1],
+        expected_chunk_ids=[],
+        expected_target_count=1,
+        matched_target_count=1 if rank is not None else 0,
+        target_coverage_at_k=coverage,
+        target_ndcg_at_k=ndcg,
+        relevant_hit_count=1 if rank is not None else 0,
+        precision_at_k=0.2 if rank is not None else 0.0,
+        matched_rank=rank,
+        reciprocal_rank=reciprocal_rank,
+        target_matches={"page:1": rank is not None},
+        target_matched_ranks=target_ranks,
+        target_key_matched_ranks=target_ranks,
     )
 
 

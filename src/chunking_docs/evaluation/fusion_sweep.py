@@ -5,6 +5,17 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from chunking_docs.evaluation.compare import (
+    PAIRWISE_BOOTSTRAP_SAMPLES,
+    PAIRWISE_CONFIDENCE_LEVEL,
+    bootstrap_mean_interval,
+    case_mean_target_rank,
+    compare_case_results,
+    first_relevant_rank,
+    mean,
+    results_by_query,
+    stable_seed,
+)
 from chunking_docs.evaluation.retrieval import RetrievalEvaluation, RetrievalSourceMetric
 
 
@@ -57,6 +68,40 @@ class QdrantFusionCaseGroupRecommendation(BaseModel):
     top_candidates: list[QdrantFusionCaseGroupCandidate] = Field(default_factory=list)
 
 
+class QdrantFusionPairwiseComparison(BaseModel):
+    candidate: str
+    baseline: str
+    shared_query_count: int
+    candidate_win_count: int = 0
+    baseline_win_count: int = 0
+    tie_count: int = 0
+    candidate_win_rate: float = 0.0
+    baseline_win_rate: float = 0.0
+    mean_reciprocal_rank_delta: float = 0.0
+    mean_target_coverage_delta: float = 0.0
+    mean_target_ndcg_delta: float = 0.0
+    mean_precision_delta: float = 0.0
+    mean_first_relevant_rank_delta: float | None = None
+    mean_target_rank_delta: float | None = None
+    mean_latency_delta_ms: float | None = None
+    bootstrap_samples: int = 0
+    confidence_level: float = 0.95
+    reciprocal_rank_delta_ci_low: float | None = None
+    reciprocal_rank_delta_ci_high: float | None = None
+    target_coverage_delta_ci_low: float | None = None
+    target_coverage_delta_ci_high: float | None = None
+    target_ndcg_delta_ci_low: float | None = None
+    target_ndcg_delta_ci_high: float | None = None
+    precision_delta_ci_low: float | None = None
+    precision_delta_ci_high: float | None = None
+    first_relevant_rank_delta_ci_low: float | None = None
+    first_relevant_rank_delta_ci_high: float | None = None
+    target_rank_delta_ci_low: float | None = None
+    target_rank_delta_ci_high: float | None = None
+    latency_delta_ci_low_ms: float | None = None
+    latency_delta_ci_high_ms: float | None = None
+
+
 class QdrantFusionSweepReport(BaseModel):
     vector_names: list[str] = Field(default_factory=list)
     graph_expand: bool = False
@@ -72,6 +117,7 @@ class QdrantFusionSweepReport(BaseModel):
         str,
         dict[str, QdrantFusionCaseGroupRecommendation],
     ] = Field(default_factory=dict)
+    pairwise: list[QdrantFusionPairwiseComparison] = Field(default_factory=list)
     candidates: list[QdrantFusionSweepCandidate] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
@@ -175,6 +221,7 @@ def build_qdrant_fusion_sweep_report(
     latency_weight: float = 0.05,
     p95_latency_weight: float = 0.0,
     case_group_top_k: int = 3,
+    pairwise_top_k: int = 10,
     metadata: dict[str, Any] | None = None,
 ) -> QdrantFusionSweepReport:
     ranked = [
@@ -250,6 +297,7 @@ def build_qdrant_fusion_sweep_report(
             p95_latency_weight=p95_latency_weight,
             top_k=case_group_top_k,
         ),
+        pairwise=fusion_pairwise_comparisons(ranked[: max(pairwise_top_k, 0)]),
         candidates=ranked,
         metadata=metadata or {},
     )
@@ -649,6 +697,135 @@ def case_group_candidate_rank_key(candidate: QdrantFusionCaseGroupCandidate) -> 
         candidate.recall_at_k,
         -candidate.mean_latency_ms,
         candidate.name,
+    )
+
+
+def fusion_pairwise_comparisons(
+    candidates: list[QdrantFusionSweepCandidate],
+) -> list[QdrantFusionPairwiseComparison]:
+    comparisons = []
+    for candidate in candidates:
+        for baseline in candidates:
+            if candidate.name == baseline.name:
+                continue
+            comparison = compare_fusion_candidates_pairwise(candidate, baseline)
+            if comparison is not None:
+                comparisons.append(comparison)
+    return comparisons
+
+
+def compare_fusion_candidates_pairwise(
+    candidate: QdrantFusionSweepCandidate,
+    baseline: QdrantFusionSweepCandidate,
+) -> QdrantFusionPairwiseComparison | None:
+    candidate_results = results_by_query(candidate.evaluation.results)
+    baseline_results = results_by_query(baseline.evaluation.results)
+    shared_queries = sorted(candidate_results.keys() & baseline_results.keys())
+    if not shared_queries:
+        return None
+
+    candidate_wins = 0
+    baseline_wins = 0
+    ties = 0
+    reciprocal_rank_deltas = []
+    target_coverage_deltas = []
+    target_ndcg_deltas = []
+    precision_deltas = []
+    first_relevant_rank_deltas = []
+    target_rank_deltas = []
+    latency_deltas = []
+    missing_rank = float(max(candidate.evaluation.top_k, baseline.evaluation.top_k) + 1)
+    for query in shared_queries:
+        candidate_result = candidate_results[query]
+        baseline_result = baseline_results[query]
+        winner = compare_case_results(candidate_result, baseline_result)
+        if winner > 0:
+            candidate_wins += 1
+        elif winner < 0:
+            baseline_wins += 1
+        else:
+            ties += 1
+        reciprocal_rank_deltas.append(
+            candidate_result.reciprocal_rank - baseline_result.reciprocal_rank
+        )
+        target_coverage_deltas.append(
+            candidate_result.target_coverage_at_k - baseline_result.target_coverage_at_k
+        )
+        target_ndcg_deltas.append(
+            candidate_result.target_ndcg_at_k - baseline_result.target_ndcg_at_k
+        )
+        precision_deltas.append(candidate_result.precision_at_k - baseline_result.precision_at_k)
+        first_relevant_rank_deltas.append(
+            first_relevant_rank(candidate_result, missing_rank)
+            - first_relevant_rank(baseline_result, missing_rank)
+        )
+        target_rank_deltas.append(
+            case_mean_target_rank(candidate_result, missing_rank)
+            - case_mean_target_rank(baseline_result, missing_rank)
+        )
+        latency_deltas.append(candidate_result.latency_ms - baseline_result.latency_ms)
+
+    shared_count = len(shared_queries)
+    reciprocal_rank_ci = bootstrap_mean_interval(
+        reciprocal_rank_deltas,
+        seed=stable_seed(candidate.name, baseline.name, "mrr"),
+    )
+    target_coverage_ci = bootstrap_mean_interval(
+        target_coverage_deltas,
+        seed=stable_seed(candidate.name, baseline.name, "coverage"),
+    )
+    target_ndcg_ci = bootstrap_mean_interval(
+        target_ndcg_deltas,
+        seed=stable_seed(candidate.name, baseline.name, "ndcg"),
+    )
+    precision_ci = bootstrap_mean_interval(
+        precision_deltas,
+        seed=stable_seed(candidate.name, baseline.name, "precision"),
+    )
+    first_rank_ci = bootstrap_mean_interval(
+        first_relevant_rank_deltas,
+        seed=stable_seed(candidate.name, baseline.name, "first-rank"),
+    )
+    target_rank_ci = bootstrap_mean_interval(
+        target_rank_deltas,
+        seed=stable_seed(candidate.name, baseline.name, "target-rank"),
+    )
+    latency_ci = bootstrap_mean_interval(
+        latency_deltas,
+        seed=stable_seed(candidate.name, baseline.name, "latency"),
+    )
+    return QdrantFusionPairwiseComparison(
+        candidate=candidate.name,
+        baseline=baseline.name,
+        shared_query_count=shared_count,
+        candidate_win_count=candidate_wins,
+        baseline_win_count=baseline_wins,
+        tie_count=ties,
+        candidate_win_rate=candidate_wins / shared_count,
+        baseline_win_rate=baseline_wins / shared_count,
+        mean_reciprocal_rank_delta=mean(reciprocal_rank_deltas),
+        mean_target_coverage_delta=mean(target_coverage_deltas),
+        mean_target_ndcg_delta=mean(target_ndcg_deltas),
+        mean_precision_delta=mean(precision_deltas),
+        mean_first_relevant_rank_delta=mean(first_relevant_rank_deltas),
+        mean_target_rank_delta=mean(target_rank_deltas),
+        mean_latency_delta_ms=mean(latency_deltas),
+        bootstrap_samples=PAIRWISE_BOOTSTRAP_SAMPLES,
+        confidence_level=PAIRWISE_CONFIDENCE_LEVEL,
+        reciprocal_rank_delta_ci_low=reciprocal_rank_ci[0],
+        reciprocal_rank_delta_ci_high=reciprocal_rank_ci[1],
+        target_coverage_delta_ci_low=target_coverage_ci[0],
+        target_coverage_delta_ci_high=target_coverage_ci[1],
+        target_ndcg_delta_ci_low=target_ndcg_ci[0],
+        target_ndcg_delta_ci_high=target_ndcg_ci[1],
+        precision_delta_ci_low=precision_ci[0],
+        precision_delta_ci_high=precision_ci[1],
+        first_relevant_rank_delta_ci_low=first_rank_ci[0],
+        first_relevant_rank_delta_ci_high=first_rank_ci[1],
+        target_rank_delta_ci_low=target_rank_ci[0],
+        target_rank_delta_ci_high=target_rank_ci[1],
+        latency_delta_ci_low_ms=latency_ci[0],
+        latency_delta_ci_high_ms=latency_ci[1],
     )
 
 

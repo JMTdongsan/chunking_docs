@@ -33,6 +33,7 @@ from .experiment import ArtifactSummary, ExperimentReport, build_experiment_repo
 from .fusion_sweep import (
     QdrantFusionCaseGroupCandidate,
     QdrantFusionCaseGroupRecommendation,
+    QdrantFusionPairwiseComparison,
     QdrantFusionSweepCandidate,
     QdrantFusionSweepReport,
     build_fusion_weight_grid,
@@ -70,6 +71,7 @@ __all__ = [
     "PackageDeltaReport",
     "QdrantFusionCaseGroupCandidate",
     "QdrantFusionCaseGroupRecommendation",
+    "QdrantFusionPairwiseComparison",
     "QdrantFusionSweepCandidate",
     "QdrantFusionSweepReport",
     "QdrantRetrievalConfig",
