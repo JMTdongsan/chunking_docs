@@ -535,6 +535,7 @@ chunking-docs ingestion-readiness \
   --max-chunking-pairwise-mean-target-rank-delta 0 \
   --min-chunking-target-type-coverage asset=0.9 \
   --min-chunking-target-type-coverage triple=0.9 \
+  --min-chunking-source-target-coverage bm25=0.75 \
   --min-chunking-source-family-target-coverage lexical=0.75 \
   --retrieval-ablation outputs/package/retrieval_ablation.json \
   --retrieval-ablation-mode bm25_visual \
@@ -639,6 +640,7 @@ chunking-docs gate-retrieval outputs/package/retrieval_eval.json \
   --max-p95-target-rank 5 \
   --min-target-type-coverage asset=0.9 \
   --min-target-type-coverage triple=0.9 \
+  --min-source-target-coverage bm25=0.75 \
   --min-source-family-target-coverage lexical=0.75 \
   --min-source-target-coverage bm25=0.75 \
   --max-source-family-excluded-target-hit-rate visual=0.0 \

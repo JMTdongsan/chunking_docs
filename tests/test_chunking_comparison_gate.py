@@ -33,6 +33,7 @@ def test_gate_chunking_comparison_passes_selected_candidate_against_baseline():
         min_visual_text_coverage_ratio=0.8,
         min_visual_text_part_coverage_ratio=0.8,
         min_target_type_coverage={"asset": 0.8},
+        min_source_target_coverage={"bm25": 0.8},
         min_source_family_target_coverage={"lexical": 0.8},
         min_chunk_strategy_target_coverage={"visual_asset_text": 0.8},
         min_retrieval_role_target_coverage={"child": 0.8},
@@ -73,11 +74,13 @@ def test_gate_chunking_comparison_passes_selected_candidate_against_baseline():
     assert report.metrics["visual_text_coverage_ratio"] == 0.9
     assert report.metrics["visual_text_part_coverage_ratio"] == 0.9
     assert report.metrics["target_type.asset.coverage_at_k"] == 0.85
+    assert report.metrics["source.bm25.target_coverage_at_k"] == 0.9
     assert report.metrics["source_family.lexical.target_coverage_at_k"] == 0.9
     assert report.metrics["chunk_strategy.visual_asset_text.target_coverage_at_k"] == 0.9
     assert report.metrics["retrieval_role.child.target_coverage_at_k"] == 0.9
     assert report.metrics["case_group.case_source.visual_lexical_probe.target_coverage_at_k"] == 0.9
     assert report.target_metrics["asset"]["coverage_at_k"] == 0.85
+    assert report.source_metrics["bm25"]["target_coverage_at_k"] == 0.9
     assert report.source_family_metrics["lexical"]["target_coverage_at_k"] == 0.9
     assert report.chunk_strategy_metrics["visual_asset_text"]["target_coverage_at_k"] == 0.9
     assert report.retrieval_role_metrics["child"]["target_coverage_at_k"] == 0.9
@@ -102,6 +105,7 @@ def test_gate_chunking_comparison_flags_retrieval_regressions():
         min_visual_text_coverage_ratio=0.8,
         min_visual_text_part_coverage_ratio=0.8,
         min_target_type_coverage={"asset": 0.8},
+        min_source_target_coverage={"bm25": 0.8},
         min_source_family_target_coverage={"lexical": 0.8},
         min_chunk_strategy_target_coverage={"visual_asset_text": 0.8},
         min_retrieval_role_target_coverage={"child": 0.8},
@@ -131,6 +135,7 @@ def test_gate_chunking_comparison_flags_retrieval_regressions():
     assert "min_visual_text_coverage_ratio" in report.failed_checks
     assert "min_visual_text_part_coverage_ratio" in report.failed_checks
     assert "min_target_type_coverage:asset" in report.failed_checks
+    assert "min_source_target_coverage:bm25" in report.failed_checks
     assert "min_source_family_target_coverage:lexical" in report.failed_checks
     assert "min_chunk_strategy_target_coverage:visual_asset_text" in report.failed_checks
     assert "min_retrieval_role_target_coverage:child" in report.failed_checks
@@ -262,6 +267,8 @@ def test_gate_chunking_comparison_cli_writes_json_and_fails(tmp_path):
             "0.03",
             "--min-target-type-coverage",
             "asset=0.8",
+            "--min-source-target-coverage",
+            "bm25=0.8",
             "--min-visual-text-coverage-ratio",
             "0.8",
             "--min-visual-text-part-coverage-ratio",
@@ -302,6 +309,7 @@ def test_gate_chunking_comparison_cli_writes_json_and_fails(tmp_path):
     assert "min_visual_text_coverage_ratio" in payload["failed_checks"]
     assert "min_visual_text_part_coverage_ratio" in payload["failed_checks"]
     assert "min_target_type_coverage:asset" in payload["failed_checks"]
+    assert "min_source_target_coverage:bm25" in payload["failed_checks"]
     assert "min_source_family_target_coverage:lexical" in payload["failed_checks"]
     assert "min_chunk_strategy_target_coverage:visual_asset_text" in payload["failed_checks"]
     assert "min_retrieval_role_target_coverage:child" in payload["failed_checks"]
@@ -310,6 +318,7 @@ def test_gate_chunking_comparison_cli_writes_json_and_fails(tmp_path):
         in payload["failed_checks"]
     )
     assert payload["target_metrics"]["asset"]["coverage_at_k"] == 0.2
+    assert payload["source_metrics"]["bm25"]["target_coverage_at_k"] == 0.1
     assert payload["source_family_metrics"]["lexical"]["target_coverage_at_k"] == 0.1
     assert payload["chunk_strategy_metrics"]["visual_asset_text"]["target_coverage_at_k"] == 0.2
     assert payload["retrieval_role_metrics"]["child"]["target_coverage_at_k"] == 0.1
@@ -339,6 +348,7 @@ def comparison_report() -> ChunkingComparison:
                 mean_target_rank=1.0,
                 failed_queries=[],
                 target_metrics={"asset": {"coverage_at_k": 0.85}},
+                source_metrics={"bm25": {"target_coverage_at_k": 0.9}},
                 source_family_metrics={"lexical": {"target_coverage_at_k": 0.9}},
                 chunk_strategy_metrics={"visual_asset_text": {"target_coverage_at_k": 0.9}},
                 retrieval_role_metrics={"child": {"target_coverage_at_k": 0.9}},
@@ -360,6 +370,7 @@ def comparison_report() -> ChunkingComparison:
                 mean_target_rank=6.0,
                 failed_queries=["missing target"],
                 target_metrics={"asset": {"coverage_at_k": 0.2}},
+                source_metrics={"bm25": {"target_coverage_at_k": 0.1}},
                 source_family_metrics={"lexical": {"target_coverage_at_k": 0.1}},
                 chunk_strategy_metrics={"visual_asset_text": {"target_coverage_at_k": 0.2}},
                 retrieval_role_metrics={"child": {"target_coverage_at_k": 0.1}},
@@ -458,6 +469,7 @@ def row(
     mean_target_rank: float,
     failed_queries: list[str],
     target_metrics: dict[str, dict[str, float]] | None = None,
+    source_metrics: dict[str, dict[str, float]] | None = None,
     source_family_metrics: dict[str, dict[str, float]] | None = None,
     chunk_strategy_metrics: dict[str, dict[str, float]] | None = None,
     retrieval_role_metrics: dict[str, dict[str, float]] | None = None,
@@ -508,6 +520,7 @@ def row(
         retrieval_result_stability_rate=result_stability,
         retrieval_unstable_result_count=unstable_results,
         target_metrics=target_metrics or {},
+        source_metrics=source_metrics or {},
         source_family_metrics=source_family_metrics or {},
         chunk_strategy_metrics=chunk_strategy_metrics or {},
         retrieval_role_metrics=retrieval_role_metrics or {},

@@ -103,6 +103,7 @@ def test_compare_chunking_reports_ranks_by_retrieval_then_quality():
         / comparison.rows[0].retrieval_p95_latency_ms
     )
     assert comparison.rows[0].target_metrics["asset"]["coverage_at_k"] == 1.0
+    assert comparison.rows[0].source_metrics["bm25"]["target_coverage_at_k"] == 1.0
     assert comparison.rows[0].source_family_metrics["lexical"]["target_coverage_at_k"] == 1.0
     assert comparison.rows[0].chunk_strategy_metrics["visual_asset_text"][
         "target_coverage_at_k"

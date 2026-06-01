@@ -4966,6 +4966,11 @@ def ingestion_readiness_command(
         "--min-chunking-target-type-coverage",
         help="Require selected chunking candidate target-type coverage such as asset=1.0.",
     ),
+    min_chunking_source_target_coverage: list[str] = typer.Option(
+        None,
+        "--min-chunking-source-target-coverage",
+        help="Require selected chunking candidate exact-source coverage such as bm25=0.8.",
+    ),
     min_chunking_source_family_target_coverage: list[str] = typer.Option(
         None,
         "--min-chunking-source-family-target-coverage",
@@ -5292,6 +5297,10 @@ def ingestion_readiness_command(
         min_chunking_source_family_target_coverage,
         "chunking source family target coverage",
     )
+    chunking_source_thresholds = parse_named_float_thresholds(
+        min_chunking_source_target_coverage,
+        "chunking source target coverage",
+    )
     chunking_target_type_thresholds = parse_named_float_thresholds(
         min_chunking_target_type_coverage,
         "chunking target type coverage",
@@ -5492,6 +5501,7 @@ def ingestion_readiness_command(
                 max_chunking_pairwise_target_rank_delta_ci_high
             ),
             "min_target_type_coverage": chunking_target_type_thresholds,
+            "min_source_target_coverage": chunking_source_thresholds,
             "min_source_family_target_coverage": chunking_source_family_thresholds,
             "min_case_group_target_coverage": chunking_case_group_thresholds,
         },
@@ -7087,6 +7097,11 @@ def gate_chunking_comparison_command(
         "--min-source-family-target-coverage",
         help="Require source-family target coverage such as lexical=0.8. Repeat for multiple families.",
     ),
+    min_source_target_coverage: list[str] = typer.Option(
+        None,
+        "--min-source-target-coverage",
+        help="Require exact retrieval-source target coverage such as bm25=0.8 or qdrant:caption_dense=0.8.",
+    ),
     min_chunk_strategy_target_coverage: list[str] = typer.Option(
         None,
         "--min-chunk-strategy-target-coverage",
@@ -7139,6 +7154,10 @@ def gate_chunking_comparison_command(
     source_family_thresholds = parse_named_float_thresholds(
         min_source_family_target_coverage,
         "source family target coverage",
+    )
+    source_thresholds = parse_named_float_thresholds(
+        min_source_target_coverage,
+        "source target coverage",
     )
     chunk_strategy_thresholds = parse_named_float_thresholds(
         min_chunk_strategy_target_coverage,
@@ -7196,6 +7215,7 @@ def gate_chunking_comparison_command(
         max_chunks_under_min_chars=max_chunks_under_min_chars,
         max_chunks_over_max_chars=max_chunks_over_max_chars,
         min_target_type_coverage=target_type_thresholds,
+        min_source_target_coverage=source_thresholds,
         min_source_family_target_coverage=source_family_thresholds,
         min_chunk_strategy_target_coverage=chunk_strategy_thresholds,
         min_retrieval_role_target_coverage=retrieval_role_thresholds,

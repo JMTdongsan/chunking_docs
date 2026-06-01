@@ -15,6 +15,7 @@ from chunking_docs.evaluation.gate import (
     chunk_strategy_metric_key,
     parse_case_group_spec,
     retrieval_role_metric_key,
+    source_metric_key,
     source_family_metric_key,
     target_type_metric_key,
 )
@@ -40,6 +41,7 @@ class ChunkingComparisonGateReport(BaseModel):
     baseline_candidate: str | None = None
     metrics: dict[str, float | None]
     target_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
+    source_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
     source_family_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
     chunk_strategy_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
     retrieval_role_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
@@ -97,6 +99,7 @@ def gate_chunking_comparison(
     max_chunks_under_min_chars: int | None = None,
     max_chunks_over_max_chars: int | None = None,
     min_target_type_coverage: dict[str, float] | None = None,
+    min_source_target_coverage: dict[str, float] | None = None,
     min_source_family_target_coverage: dict[str, float] | None = None,
     min_chunk_strategy_target_coverage: dict[str, float] | None = None,
     min_retrieval_role_target_coverage: dict[str, float] | None = None,
@@ -359,6 +362,13 @@ def gate_chunking_comparison(
     )
     checks.extend(target_type_coverage_checks(selected_name, metrics, min_target_type_coverage or {}))
     checks.extend(
+        source_target_coverage_checks(
+            selected_name,
+            metrics,
+            min_source_target_coverage or {},
+        )
+    )
+    checks.extend(
         source_family_target_coverage_checks(
             selected_name,
             metrics,
@@ -571,6 +581,7 @@ def gate_chunking_comparison(
         baseline_candidate=baseline_candidate,
         metrics=metrics,
         target_metrics=selected_row.target_metrics,
+        source_metrics=selected_row.source_metrics,
         source_family_metrics=selected_row.source_family_metrics,
         chunk_strategy_metrics=selected_row.chunk_strategy_metrics,
         retrieval_role_metrics=selected_row.retrieval_role_metrics,
@@ -653,6 +664,9 @@ def row_metrics(row: ChunkingComparisonRow) -> dict[str, float | None]:
     for target_type, target_type_metrics in row.target_metrics.items():
         for key, value in target_type_metrics.items():
             metrics[target_type_metric_key(target_type, key)] = value
+    for source, source_metrics in row.source_metrics.items():
+        for key, value in source_metrics.items():
+            metrics[source_metric_key(source, key)] = value
     for family, family_metrics in row.source_family_metrics.items():
         for key, value in family_metrics.items():
             metrics[source_family_metric_key(family, key)] = value
@@ -787,6 +801,28 @@ def source_family_target_coverage_checks(
         checks.append(
             minimum_check(
                 f"min_source_family_target_coverage:{normalized_family}",
+                candidate,
+                metric,
+                metrics,
+                threshold,
+            )
+        )
+    return checks
+
+
+def source_target_coverage_checks(
+    candidate: str,
+    metrics: dict[str, float | None],
+    thresholds: dict[str, float],
+) -> list[ChunkingComparisonGateCheck]:
+    checks = []
+    for source, threshold in sorted(thresholds.items()):
+        normalized_source = source.strip().lower()
+        metric = source_metric_key(normalized_source, "target_coverage_at_k")
+        metrics.setdefault(metric, 0.0)
+        checks.append(
+            minimum_check(
+                f"min_source_target_coverage:{normalized_source}",
                 candidate,
                 metric,
                 metrics,
@@ -995,6 +1031,7 @@ def chunking_gate_summary_payload(report: ChunkingComparisonGateReport) -> dict:
         "failed_checks": report.failed_checks,
         "metrics": report.metrics,
         "target_metrics": report.target_metrics,
+        "source_metrics": report.source_metrics,
         "source_family_metrics": report.source_family_metrics,
         "chunk_strategy_metrics": report.chunk_strategy_metrics,
         "retrieval_role_metrics": report.retrieval_role_metrics,
