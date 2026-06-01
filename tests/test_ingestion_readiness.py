@@ -235,6 +235,38 @@ def test_ingestion_readiness_flags_missing_required_embedding_vector(tmp_path):
     assert component.metadata["missing_collection_vectors"] == ["caption_dense"]
 
 
+def test_ingestion_readiness_warns_when_image_vector_for_visual_asset_is_missing(tmp_path):
+    package_dir, manifest = write_ready_package(tmp_path)
+
+    report = build_ingestion_readiness_report(
+        package_dir,
+        manifest,
+        require_bm25=False,
+    )
+
+    component = next(
+        component for component in report.components if component.name == "derived_embedding_vectors"
+    )
+    assert report.passed is True
+    assert component.passed is False
+    assert component.severity == "warning"
+    assert "image_dense" in component.metadata["expected_vectors"]
+    assert "image_dense" in component.metadata["missing_collection_vectors"]
+    assert component.metadata["expectations"]["image_dense"] == {
+        "source": "visual_asset_images",
+        "source_count": 1,
+        "sample_source_ids": ["asset-1"],
+        "record_file": "qdrant_image_records.jsonl",
+        "reason": (
+            "Rendered visual asset images should have image vectors for visual similarity retrieval."
+        ),
+    }
+    assert "--image-backend clip" in component.metadata["rebuild_commands"][0]
+    assert "image" in component.metadata["recommended_qdrant_vector_modes"]
+    assert "text_image" in component.metadata["recommended_qdrant_vector_modes"]
+    assert "caption_image" in component.metadata["recommended_qdrant_vector_modes"]
+
+
 def test_ingestion_readiness_warns_when_derived_triple_vector_is_missing(tmp_path):
     package_dir, manifest = write_ready_package(tmp_path)
     triple = GraphTriple(
@@ -262,27 +294,40 @@ def test_ingestion_readiness_warns_when_derived_triple_vector_is_missing(tmp_pat
     assert component.severity == "warning"
     assert "triple_dense" in component.metadata["expected_vectors"]
     assert "triple_dense" in component.metadata["missing_collection_vectors"]
-    assert component.metadata["missing_expected_vectors"] == ["caption_dense", "triple_dense"]
+    assert component.metadata["missing_expected_vectors"] == [
+        "caption_dense",
+        "image_dense",
+        "triple_dense",
+    ]
     assert component.metadata["recommended_qdrant_vector_modes"] == [
         "text",
         "caption",
         "text_caption",
+        "image",
+        "text_image",
+        "caption_image",
+        "all",
         "triple",
         "text_triple",
+        "all_with_triple",
         "text_caption_graph",
         "text_triple_graph",
+        "all_graph",
+        "all_with_triple_graph",
     ]
     assert component.metadata["rebuild_commands"] == [
         "chunking-docs normalize-graph-triples --package-dir outputs/package --export-graph",
         (
             "chunking-docs embed-package --package-dir outputs/package "
-            "--caption-backend same-as-text --triple-backend same-as-text"
+            "--caption-backend same-as-text --image-backend clip --triple-backend same-as-text"
         ),
         "chunking-docs audit-package --package-dir outputs/package --require-qdrant-records",
         (
             "chunking-docs eval-qdrant-vector-ablation examples/retrieval_cases.jsonl "
             "--package-dir outputs/package "
-            "--modes text,caption,text_caption,triple,text_triple,text_caption_graph,text_triple_graph"
+            "--modes text,caption,text_caption,image,text_image,caption_image,all,triple,"
+            "text_triple,all_with_triple,text_caption_graph,text_triple_graph,all_graph,"
+            "all_with_triple_graph"
         ),
     ]
     assert component.metadata["expectations"]["triple_dense"]["source_count"] == 1
@@ -323,7 +368,11 @@ def test_ingestion_readiness_can_require_derived_object_vector_coverage(tmp_path
     assert component.severity == "error"
     assert "object_dense" in component.metadata["expected_vectors"]
     assert "object_dense" in component.metadata["missing_collection_vectors"]
-    assert component.metadata["missing_expected_vectors"] == ["caption_dense", "object_dense"]
+    assert component.metadata["missing_expected_vectors"] == [
+        "caption_dense",
+        "image_dense",
+        "object_dense",
+    ]
     assert component.metadata["recommended_qdrant_vector_modes"] == [
         "text",
         "caption",
@@ -331,16 +380,22 @@ def test_ingestion_readiness_can_require_derived_object_vector_coverage(tmp_path
         "object",
         "text_object",
         "caption_object",
+        "image",
+        "text_image",
+        "caption_image",
+        "all",
+        "all_with_object",
     ]
     assert component.metadata["rebuild_commands"] == [
         (
             "chunking-docs embed-package --package-dir outputs/package "
-            "--caption-backend same-as-text --object-backend same-as-caption"
+            "--caption-backend same-as-text --object-backend same-as-caption --image-backend clip"
         ),
         "chunking-docs audit-package --package-dir outputs/package --require-qdrant-records",
         (
             "chunking-docs eval-qdrant-vector-ablation examples/retrieval_cases.jsonl "
-            "--package-dir outputs/package --modes text,caption,text_caption,object,text_object,caption_object"
+            "--package-dir outputs/package --modes text,caption,text_caption,object,text_object,"
+            "caption_object,image,text_image,caption_image,all,all_with_object"
         ),
     ]
     assert component.metadata["expectations"]["object_dense"]["source_count"] == 1
@@ -1370,8 +1425,15 @@ def test_ingestion_readiness_cli_can_require_derived_vector_coverage(tmp_path):
     assert "derived_embedding_vectors" in payload["failed_components"]
     assert "triple_dense" in component["metadata"]["expected_vectors"]
     assert "triple_dense" in component["metadata"]["missing_collection_vectors"]
-    assert component["metadata"]["missing_expected_vectors"] == ["caption_dense", "triple_dense"]
+    assert component["metadata"]["missing_expected_vectors"] == [
+        "caption_dense",
+        "image_dense",
+        "triple_dense",
+    ]
+    assert "--image-backend clip" in component["metadata"]["rebuild_commands"][1]
     assert "--triple-backend same-as-text" in component["metadata"]["rebuild_commands"][1]
+    assert "image_dense" in component["metadata"]["expected_vectors"]
+    assert "text_image" in component["metadata"]["recommended_qdrant_vector_modes"]
     assert "text_triple_graph" in component["metadata"]["recommended_qdrant_vector_modes"]
 
 

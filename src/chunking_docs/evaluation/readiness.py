@@ -931,9 +931,9 @@ def derived_embedding_vectors_component(
         passed=vector_component.passed,
         severity="error" if require_coverage else "warning",
         message=(
-            "Source-derived text, visual, object, and graph vectors are covered by Qdrant artifacts."
+            "Source-derived text, visual, image, object, and graph vectors are covered by Qdrant artifacts."
             if vector_component.passed
-            else "Some source-derived text, visual, object, or graph vector artifacts are missing or inconsistent."
+            else "Some source-derived text, visual, image, object, or graph vector artifacts are missing or inconsistent."
         ),
         metadata=metadata,
     )
@@ -982,6 +982,8 @@ def derived_vector_rebuild_commands(
         embed_parts.append("--caption-backend same-as-text")
     if "object_dense" in missing:
         embed_parts.append("--object-backend same-as-caption")
+    if "image_dense" in missing:
+        embed_parts.append("--image-backend clip")
     if "triple_dense" in missing:
         embed_parts.append("--triple-backend same-as-text")
     commands.append(" ".join(embed_parts))
@@ -1012,16 +1014,56 @@ def derived_vector_ablation_modes(expected_vectors: list[str]) -> list[str]:
         modes.append("text_object")
     if {"caption_dense", "object_dense"} <= expected:
         modes.append("caption_object")
+    if "image_dense" in expected:
+        modes.append("image")
+    if {"text_dense", "image_dense"} <= expected:
+        modes.append("text_image")
+    if {"caption_dense", "image_dense"} <= expected:
+        modes.append("caption_image")
+    if {"text_dense", "caption_dense", "image_dense"} <= expected:
+        modes.append("all")
+    if {"text_dense", "caption_dense", "object_dense", "image_dense"} <= expected:
+        modes.append("all_with_object")
     if "triple_dense" in expected:
         modes.append("triple")
     if {"text_dense", "triple_dense"} <= expected:
         modes.append("text_triple")
+    if {"text_dense", "caption_dense", "image_dense", "triple_dense"} <= expected:
+        modes.append("all_with_triple")
+    if {
+        "text_dense",
+        "caption_dense",
+        "object_dense",
+        "image_dense",
+        "triple_dense",
+    } <= expected:
+        modes.append("all_with_object_triple")
     if {"text_dense", "caption_dense", "triple_dense"} <= expected:
         modes.append("text_caption_graph")
     if {"text_dense", "object_dense", "triple_dense"} <= expected:
         modes.append("text_object_graph")
     if {"text_dense", "triple_dense"} <= expected:
         modes.append("text_triple_graph")
+    if {"text_dense", "caption_dense", "image_dense", "triple_dense"} <= expected:
+        modes.append("all_graph")
+    if {
+        "text_dense",
+        "caption_dense",
+        "object_dense",
+        "image_dense",
+        "triple_dense",
+    } <= expected:
+        modes.append("all_with_object_graph")
+    if {"text_dense", "caption_dense", "image_dense", "triple_dense"} <= expected:
+        modes.append("all_with_triple_graph")
+    if {
+        "text_dense",
+        "caption_dense",
+        "object_dense",
+        "image_dense",
+        "triple_dense",
+    } <= expected:
+        modes.append("all_with_object_triple_graph")
     return stable_string_list(modes)
 
 
@@ -1059,6 +1101,18 @@ def derived_vector_expectations(manifest: ProcessingManifest) -> dict[str, dict[
                 "Caption, OCR, VLM summary, entity, visual-element, and object text should "
                 "have visual text vectors."
             ),
+        }
+
+    image_asset_ids = [
+        asset.asset_id for asset in manifest.assets if asset.path is not None
+    ]
+    if image_asset_ids:
+        expectations["image_dense"] = {
+            "source": "visual_asset_images",
+            "source_count": len(image_asset_ids),
+            "sample_source_ids": image_asset_ids[:10],
+            "record_file": qdrant_record_filename("image_dense"),
+            "reason": "Rendered visual asset images should have image vectors for visual similarity retrieval.",
         }
 
     visual_object_items = visual_object_embedding_items(manifest.assets)
