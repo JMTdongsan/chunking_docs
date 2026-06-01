@@ -146,6 +146,7 @@ def run_visual_jobs(
     ocr_backend: OCRBackend | None = None,
     vlm_backend: VLMBackend | None = None,
     limit: int | None = None,
+    offset: int = 0,
     ocr_language: str = "kor+eng",
     ocr_backend_name: str = "",
     vlm_backend_name: str = "",
@@ -155,7 +156,11 @@ def run_visual_jobs(
     vlm_backend_config = backend_config(vlm_backend)
     results = []
     processed = 0
-    for job in jobs:
+    selected_offset = max(0, offset)
+    for index, job in enumerate(jobs):
+        if index < selected_offset:
+            results.append(skipped_result(job, "offset not selected"))
+            continue
         if limit is not None and processed >= limit:
             results.append(skipped_result(job, "limit reached"))
             continue

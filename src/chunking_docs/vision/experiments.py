@@ -25,6 +25,7 @@ class VLMExperimentRecipe(BaseModel):
     annotations_output: str
     doctor_command: str
     command: str
+    batch_commands: list[str] = Field(default_factory=list)
     metadata: dict[str, str | int | float | bool | None] = Field(default_factory=dict)
 
 
@@ -46,14 +47,33 @@ class VLMExperimentJobSummary(BaseModel):
     priority_max: int | None = None
 
 
+class VLMExperimentBatch(BaseModel):
+    batch_id: str
+    offset: int
+    limit: int
+    job_count: int
+    pending_job_count: int = 0
+    operation_counts: dict[str, int] = Field(default_factory=dict)
+    asset_kind_counts: dict[str, int] = Field(default_factory=dict)
+    asset_scope_counts: dict[str, int] = Field(default_factory=dict)
+    page_count: int = 0
+    page_min: int | None = None
+    page_max: int | None = None
+    priority_min: int | None = None
+    priority_max: int | None = None
+
+
 class VLMExperimentPlan(BaseModel):
     package_dir: str
     jobs_file: str
     profiles: list[str]
     limit: int | None = None
+    batch_size: int | None = None
     job_summary: VLMExperimentJobSummary
+    batches: list[VLMExperimentBatch] = Field(default_factory=list)
     recipes: list[VLMExperimentRecipe] = Field(default_factory=list)
     compare_command: str
+    batch_compare_commands: list[str] = Field(default_factory=list)
 
 
 def build_vlm_experiment_plan(
@@ -62,6 +82,7 @@ def build_vlm_experiment_plan(
     profiles: list[str],
     output_dir: Path | None = None,
     limit: int | None = None,
+    batch_size: int | None = None,
     ocr: str = "paddleocr",
     ocr_model_lang: str = "korean",
     ocr_device: str = "cpu",
@@ -77,6 +98,7 @@ def build_vlm_experiment_plan(
     output_dir = output_dir or package_dir
     normalized_profiles = [normalize_profile_name(profile) for profile in profiles]
     job_summary = summarize_vlm_experiment_jobs(jobs_file, limit=limit)
+    batches = build_vlm_experiment_batches(jobs_file, limit=limit, batch_size=batch_size)
     recipes = [
         vlm_experiment_recipe(
             package_dir=package_dir,
@@ -84,6 +106,7 @@ def build_vlm_experiment_plan(
             output_dir=output_dir,
             profile_name=profile_name,
             limit=limit,
+            batches=batches,
             job_summary=job_summary,
             ocr=ocr,
             ocr_model_lang=ocr_model_lang,
@@ -100,14 +123,18 @@ def build_vlm_experiment_plan(
         for profile_name in normalized_profiles
     ]
     compare_command = build_compare_visual_runs_command(output_dir, recipes)
+    batch_compare_commands = build_batch_compare_visual_runs_commands(output_dir, recipes, batches)
     return VLMExperimentPlan(
         package_dir=str(package_dir),
         jobs_file=str(jobs_file),
         profiles=normalized_profiles,
         limit=limit,
+        batch_size=normalized_batch_size(batch_size),
         job_summary=job_summary,
+        batches=batches,
         recipes=recipes,
         compare_command=compare_command,
+        batch_compare_commands=batch_compare_commands,
     )
 
 
@@ -117,6 +144,7 @@ def vlm_experiment_recipe(
     output_dir: Path,
     profile_name: str,
     limit: int | None,
+    batches: list[VLMExperimentBatch],
     job_summary: VLMExperimentJobSummary,
     ocr: str,
     ocr_model_lang: str,
@@ -157,44 +185,63 @@ def vlm_experiment_recipe(
         ]
     )
     doctor_command = quote_command(doctor_args)
-    command_args = [
-        "chunking-docs",
-        "run-visual-jobs",
-        "--package-dir",
-        str(package_dir),
-        "--jobs",
-        str(jobs_file),
-        "--results-output",
-        str(results_output),
-        "--annotations-output",
-        str(annotations_output),
-        "--ocr",
-        effective_ocr,
-        "--ocr-model-lang",
-        ocr_model_lang,
-        "--ocr-device",
-        ocr_device,
-        "--ocr-min-confidence",
-        str(ocr_min_confidence),
-        "--vlm",
-        "hf",
-        "--vlm-profile",
-        profile.name,
-        "--vlm-device-map",
-        device_map,
-        "--vlm-torch-dtype",
-        torch_dtype,
-        "--vlm-max-new-tokens",
-        str(max_new_tokens),
+    def visual_job_command(
+        result_path: Path,
+        annotation_path: Path,
+        command_limit: int | None = None,
+        offset: int = 0,
+    ) -> str:
+        command_args = [
+            "chunking-docs",
+            "run-visual-jobs",
+            "--package-dir",
+            str(package_dir),
+            "--jobs",
+            str(jobs_file),
+            "--results-output",
+            str(result_path),
+            "--annotations-output",
+            str(annotation_path),
+            "--ocr",
+            effective_ocr,
+            "--ocr-model-lang",
+            ocr_model_lang,
+            "--ocr-device",
+            ocr_device,
+            "--ocr-min-confidence",
+            str(ocr_min_confidence),
+            "--vlm",
+            "hf",
+            "--vlm-profile",
+            profile.name,
+            "--vlm-device-map",
+            device_map,
+            "--vlm-torch-dtype",
+            torch_dtype,
+            "--vlm-max-new-tokens",
+            str(max_new_tokens),
+        ]
+        if offset:
+            command_args.extend(["--offset", str(offset)])
+        if ocr_use_gpu:
+            command_args.append("--ocr-use-gpu")
+        if ocr_enable_mkldnn:
+            command_args.append("--ocr-enable-mkldnn")
+        if vlm_attn_implementation:
+            command_args.extend(["--vlm-attn-implementation", vlm_attn_implementation])
+        if command_limit is not None:
+            command_args.extend(["--limit", str(command_limit)])
+        return quote_command(command_args)
+
+    batch_commands = [
+        visual_job_command(
+            result_path=batch_results_path(output_dir, profile.name, batch.batch_id),
+            annotation_path=batch_annotations_path(output_dir, profile.name, batch.batch_id),
+            command_limit=batch.limit,
+            offset=batch.offset,
+        )
+        for batch in batches
     ]
-    if ocr_use_gpu:
-        command_args.append("--ocr-use-gpu")
-    if ocr_enable_mkldnn:
-        command_args.append("--ocr-enable-mkldnn")
-    if vlm_attn_implementation:
-        command_args.extend(["--vlm-attn-implementation", vlm_attn_implementation])
-    if limit is not None:
-        command_args.extend(["--limit", str(limit)])
     return VLMExperimentRecipe(
         name=profile.name,
         profile=profile.name,
@@ -208,7 +255,8 @@ def vlm_experiment_recipe(
         results_output=str(results_output),
         annotations_output=str(annotations_output),
         doctor_command=doctor_command,
-        command=quote_command(command_args),
+        command=visual_job_command(results_output, annotations_output, command_limit=limit),
+        batch_commands=batch_commands,
         metadata={
             "profile_notes": profile.notes,
             "min_gpu_memory_mib": profile.min_gpu_memory_mib,
@@ -218,6 +266,8 @@ def vlm_experiment_recipe(
             "requested_ocr_backend": ocr,
             "effective_ocr_backend": effective_ocr,
             "max_generation_tokens_upper_bound": selected_vlm_job_count * max_new_tokens,
+            "batch_count": len(batches),
+            "batch_size": batches[0].limit if batches else None,
             "vlm_memory_margin_ratio": vlm_memory_margin_ratio,
         },
     )
@@ -232,6 +282,32 @@ def build_compare_visual_runs_command(
         args.extend(["--run", f"{recipe.name}={recipe.results_output}"])
     args.extend(["--output", str(output_dir / "visual_run_comparison.json"), "--require-same-jobs"])
     return quote_command(args)
+
+
+def build_batch_compare_visual_runs_commands(
+    output_dir: Path,
+    recipes: list[VLMExperimentRecipe],
+    batches: list[VLMExperimentBatch],
+) -> list[str]:
+    commands = []
+    for batch in batches:
+        args = ["chunking-docs", "compare-visual-runs"]
+        for recipe in recipes:
+            args.extend(
+                [
+                    "--run",
+                    f"{recipe.name}={batch_results_path(output_dir, recipe.name, batch.batch_id)}",
+                ]
+            )
+        args.extend(
+            [
+                "--output",
+                str(output_dir / f"visual_run_comparison.{batch.batch_id}.json"),
+                "--require-same-jobs",
+            ]
+        )
+        commands.append(quote_command(args))
+    return commands
 
 
 def summarize_vlm_experiment_jobs(
@@ -279,6 +355,81 @@ def summarize_vlm_experiment_jobs(
         priority_min=min(priorities) if priorities else None,
         priority_max=max(priorities) if priorities else None,
     )
+
+
+def build_vlm_experiment_batches(
+    jobs_file: Path,
+    limit: int | None = None,
+    batch_size: int | None = None,
+) -> list[VLMExperimentBatch]:
+    size = normalized_batch_size(batch_size)
+    if size is None or not jobs_file.exists():
+        return []
+    jobs = read_jsonl(jobs_file, VisualAnnotationJob)
+    selected_limit = max(0, limit) if limit is not None else None
+    selected_jobs = jobs[:selected_limit] if selected_limit is not None else jobs
+    batches = []
+    for batch_index, offset in enumerate(range(0, len(selected_jobs), size), start=1):
+        batch_jobs = selected_jobs[offset : offset + size]
+        batches.append(
+            summarize_vlm_experiment_batch(
+                batch_id=f"batch_{batch_index:03d}",
+                offset=offset,
+                jobs=batch_jobs,
+            )
+        )
+    return batches
+
+
+def summarize_vlm_experiment_batch(
+    batch_id: str,
+    offset: int,
+    jobs: list[VisualAnnotationJob],
+) -> VLMExperimentBatch:
+    operation_counts: Counter[str] = Counter()
+    asset_kind_counts: Counter[str] = Counter()
+    asset_scope_counts: Counter[str] = Counter()
+    pages = []
+    priorities = []
+    pending_count = 0
+    for job in jobs:
+        operation_counts.update(str(operation) for operation in job.operations)
+        asset_kind_counts[str(job.kind)] += 1
+        asset_scope = str(job.metadata.get("asset_scope") or "asset")
+        asset_scope_counts[asset_scope] += 1
+        pages.append(job.page_no)
+        priorities.append(job.priority)
+        if job.status == "pending":
+            pending_count += 1
+    return VLMExperimentBatch(
+        batch_id=batch_id,
+        offset=offset,
+        limit=len(jobs),
+        job_count=len(jobs),
+        pending_job_count=pending_count,
+        operation_counts=dict(sorted(operation_counts.items())),
+        asset_kind_counts=dict(sorted(asset_kind_counts.items())),
+        asset_scope_counts=dict(sorted(asset_scope_counts.items())),
+        page_count=len(set(pages)),
+        page_min=min(pages) if pages else None,
+        page_max=max(pages) if pages else None,
+        priority_min=min(priorities) if priorities else None,
+        priority_max=max(priorities) if priorities else None,
+    )
+
+
+def normalized_batch_size(batch_size: int | None) -> int | None:
+    if batch_size is None:
+        return None
+    return batch_size if batch_size > 0 else None
+
+
+def batch_results_path(output_dir: Path, profile: str, batch_id: str) -> Path:
+    return output_dir / f"visual_job_results.{profile}.{batch_id}.jsonl"
+
+
+def batch_annotations_path(output_dir: Path, profile: str, batch_id: str) -> Path:
+    return output_dir / f"visual_annotations.{profile}.{batch_id}.jsonl"
 
 
 def parse_profile_list(value: str) -> list[str]:

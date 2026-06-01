@@ -364,6 +364,37 @@ def test_run_visual_jobs_returns_asset_annotations(tmp_path):
     assert annotations[0].metadata["vlm_backend_config"]["max_new_tokens"] == 64
 
 
+def test_run_visual_jobs_uses_offset_and_limit_window(tmp_path):
+    assets = []
+    for index in range(3):
+        image_path = tmp_path / f"map-{index}.png"
+        image_path.write_bytes(b"map")
+        assets.append(
+            VisualAsset(
+                asset_id=f"map-{index}",
+                doc_id="doc",
+                page_no=index + 1,
+                kind=AssetKind.MAP,
+                path=image_path,
+                metadata={"requires_ocr": True, "requires_vlm": False},
+            )
+        )
+    jobs = plan_visual_jobs(assets)
+
+    results = run_visual_jobs(
+        jobs,
+        assets,
+        ocr_backend=FakeOCR(),
+        offset=1,
+        limit=1,
+    )
+
+    assert [result.status for result in results] == ["skipped", "completed", "skipped"]
+    assert results[0].error == "offset not selected"
+    assert results[1].asset_id == "map-1"
+    assert results[2].error == "limit reached"
+
+
 def test_run_visual_jobs_parses_json_vlm_triples(tmp_path):
     image_path = tmp_path / "map.png"
     image_path.write_bytes(b"map")

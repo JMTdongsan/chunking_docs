@@ -196,7 +196,7 @@ def visual_annotation_step(
         (
             f"chunking-docs plan-vlm-experiments --package-dir {path_arg(package_dir)} "
             f"--jobs {path_arg(jobs_path)} --profiles {','.join(vlm_profiles)} --ocr {ocr_backend} "
-            f"--output {path_arg(package_dir / 'vlm_experiment_plan.json')}"
+            f"--batch-size 25 --output {path_arg(package_dir / 'vlm_experiment_plan.json')}"
         ),
         (
             f"chunking-docs run-visual-jobs --package-dir {path_arg(package_dir)} "

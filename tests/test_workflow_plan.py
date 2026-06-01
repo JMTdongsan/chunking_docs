@@ -57,6 +57,7 @@ def test_build_ingestion_workflow_plan_orders_runtime_visual_embedding_and_readi
     visual_commands = next(step.commands for step in plan.steps if step.step_id == "visual_annotations")
     assert any("plan-vlm-experiments" in command for command in visual_commands)
     assert any("--profiles qwen2_5_vl_7b,llava_next_7b" in command for command in visual_commands)
+    assert any("--batch-size 25" in command for command in visual_commands)
     assert any("--ocr paddleocr --vlm hf" in command for command in visual_commands)
     assert any(
         "apply-chunking-sweep" in command

@@ -94,10 +94,20 @@ def test_build_vlm_experiment_plan_summarizes_selected_jobs(tmp_path):
         jobs_file=jobs,
         profiles=["phi3_5_vision"],
         limit=2,
+        batch_size=1,
         vlm_max_new_tokens=512,
         vlm_memory_margin_ratio=0.2,
     )
 
+    assert plan.batch_size == 1
+    assert len(plan.batches) == 2
+    assert plan.batches[0].batch_id == "batch_001"
+    assert plan.batches[0].offset == 0
+    assert plan.batches[0].limit == 1
+    assert plan.batches[0].asset_kind_counts == {"map": 1}
+    assert plan.batches[1].batch_id == "batch_002"
+    assert plan.batches[1].offset == 1
+    assert plan.batches[1].operation_counts == {"vlm": 1}
     assert plan.job_summary.total_job_count == 3
     assert plan.job_summary.selected_job_count == 2
     assert plan.job_summary.skipped_by_limit_count == 1
@@ -111,6 +121,14 @@ def test_build_vlm_experiment_plan_summarizes_selected_jobs(tmp_path):
     assert plan.recipes[0].metadata["requested_ocr_backend"] == "paddleocr"
     assert plan.recipes[0].metadata["effective_ocr_backend"] == "paddleocr"
     assert plan.recipes[0].metadata["max_generation_tokens_upper_bound"] == 1024
+    assert plan.recipes[0].metadata["batch_count"] == 2
+    assert len(plan.recipes[0].batch_commands) == 2
+    assert "visual_job_results.phi3_5_vision.batch_001.jsonl" in plan.recipes[0].batch_commands[0]
+    assert "--limit 1" in plan.recipes[0].batch_commands[0]
+    assert "--offset 1" in plan.recipes[0].batch_commands[1]
+    assert "--limit 1" in plan.recipes[0].batch_commands[1]
+    assert len(plan.batch_compare_commands) == 2
+    assert "visual_run_comparison.batch_001.json" in plan.batch_compare_commands[0]
     assert "--require-ocr" in plan.recipes[0].doctor_command
     assert plan.recipes[0].doctor_command.endswith(
         "--vlm-profile phi3_5_vision --vlm-memory-margin-ratio 0.2"
