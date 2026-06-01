@@ -2974,6 +2974,11 @@ def generate_retrieval_cases_command(
     dedupe_queries: bool = True,
     visual_probe_limit: int = 0,
     object_probe_limit: int = 0,
+    object_probe_visual_only: bool = typer.Option(
+        True,
+        "--object-probe-visual-only/--no-object-probe-visual-only",
+        help="Use object probe terms that are not already present in linked chunk text.",
+    ),
 ):
     """Generate retrieval benchmark JSONL drafts from package chunks, assets, and triples."""
     manifest = load_processing_package(package_dir)
@@ -2998,6 +3003,7 @@ def generate_retrieval_cases_command(
             dedupe_queries=dedupe_queries,
             visual_probe_limit=visual_probe_limit,
             object_probe_limit=object_probe_limit,
+            object_probe_visual_only=object_probe_visual_only,
         )
     except ValueError as exc:
         raise typer.BadParameter(str(exc)) from exc
@@ -3012,6 +3018,7 @@ def generate_retrieval_cases_command(
             "triple_limit": triple_limit,
             "visual_probe_limit": visual_probe_limit,
             "object_probe_limit": object_probe_limit,
+            "object_probe_visual_only": object_probe_visual_only,
             "include_todo": include_todo,
             "query_mode": query_mode,
             "selection_strategy": selection_strategy,

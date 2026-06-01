@@ -102,6 +102,7 @@ def generate_retrieval_case_skeleton(
     dedupe_queries: bool = True,
     visual_probe_limit: int = 0,
     object_probe_limit: int = 0,
+    object_probe_visual_only: bool = True,
 ) -> list[RetrievalCase]:
     validate_casegen_options(query_mode, selection_strategy, min_query_terms, max_query_terms)
     corpus_texts = case_source_texts(chunks, assets, triples)
@@ -165,6 +166,7 @@ def generate_retrieval_case_skeleton(
                 document_count=len(corpus_texts),
                 min_query_terms=min_query_terms,
                 max_query_terms=max_query_terms,
+                visual_only=object_probe_visual_only,
             )
         )
     if include_triples:
@@ -398,6 +400,7 @@ def visual_object_probe_cases(
     document_count: int = 0,
     min_query_terms: int = 3,
     max_query_terms: int = 8,
+    visual_only: bool = True,
 ) -> list[RetrievalCase]:
     candidates: list[CaseCandidate] = []
     chunks_by_asset = chunks_by_asset_id(chunks)
@@ -406,14 +409,16 @@ def visual_object_probe_cases(
         if not linked_chunks:
             continue
         for object_index, visual_object in enumerate(asset_visual_objects(asset), start=1):
-            draft = query_from_text(
-                visual_object_query_text(visual_object),
+            draft = visual_object_probe_query_from_object(
+                visual_object,
+                linked_chunks,
                 max_chars=query_max_chars,
                 mode=query_mode,
-                term_df=term_df,
+                term_df=term_df or {},
                 document_count=document_count,
                 min_query_terms=min_query_terms,
                 max_query_terms=max_query_terms,
+                visual_only=visual_only,
             )
             if not draft.query:
                 continue
@@ -439,6 +444,7 @@ def visual_object_probe_cases(
                         "object_label": label,
                         "object_source_key": visual_object.get("source_key"),
                         "object_has_bbox": bool(visual_object.get("bbox")),
+                        "object_probe_visual_only": visual_only,
                     }
                 }
             )
@@ -450,6 +456,64 @@ def visual_object_probe_cases(
                 )
             )
     return select_candidates(merge_case_candidates_by_query(candidates), limit, selection_strategy)
+
+
+def visual_object_probe_query_from_object(
+    visual_object: dict[str, object],
+    linked_chunks: list[DocumentChunk],
+    max_chars: int,
+    mode: QueryMode,
+    term_df: dict[str, int],
+    document_count: int,
+    min_query_terms: int,
+    max_query_terms: int,
+    visual_only: bool = True,
+) -> QueryDraft:
+    object_text = meaningful_query_text(visual_object_query_text(visual_object))
+    if not object_text:
+        return QueryDraft(query="")
+    if not visual_only:
+        return query_from_text(
+            object_text,
+            max_chars=max_chars,
+            mode=mode,
+            term_df=term_df,
+            document_count=document_count,
+            min_query_terms=min_query_terms,
+            max_query_terms=max_query_terms,
+        )
+    linked_term_keys = {
+        key
+        for chunk in linked_chunks
+        for _, _, key in extracted_terms(meaningful_query_text(chunk.text))
+    }
+    scored_terms = [
+        (term_score(key, term_df=term_df, document_count=document_count), position, term, key)
+        for position, term, key in extracted_terms(object_text)
+        if key not in linked_term_keys
+    ]
+    selected = (
+        select_salient_terms(
+            scored_terms,
+            min_query_terms=min_query_terms,
+            max_query_terms=max_query_terms,
+        )
+        if mode == "salient_terms"
+        else first_distinct_terms(
+            scored_terms,
+            min_query_terms=min_query_terms,
+            max_query_terms=max_query_terms,
+        )
+    )
+    if len(selected) < min_query_terms:
+        return QueryDraft(query="")
+    selected_by_position = sorted(selected, key=lambda item: item[1])
+    query_terms = [term for _, _, term, _ in selected_by_position]
+    return QueryDraft(
+        query=trim_query(" ".join(query_terms), max_chars=max_chars),
+        score=sum(score for score, _, _, _ in selected),
+        terms=tuple(query_terms),
+    )
 
 
 def asset_visual_objects(asset: VisualAsset) -> list[dict[str, object]]:

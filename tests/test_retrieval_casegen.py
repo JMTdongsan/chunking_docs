@@ -444,7 +444,7 @@ def test_generate_retrieval_case_skeleton_can_create_visual_object_probes():
     )
 
     assert len(cases) == 1
-    assert cases[0].query == "transfer hub marker blue circle north gate upper right quadrant"
+    assert cases[0].query == "transfer hub marker blue circle north gate upper"
     assert cases[0].expected_pages == [1]
     assert cases[0].expected_asset_ids == ["asset-1"]
     assert cases[0].metadata["case_source"] == "visual_object_probe"
@@ -453,7 +453,90 @@ def test_generate_retrieval_case_skeleton_can_create_visual_object_probes():
     assert cases[0].metadata["modality"] == "vision_object"
     assert cases[0].metadata["object_label"] == "transfer hub marker"
     assert cases[0].metadata["object_has_bbox"] is True
+    assert cases[0].metadata["object_probe_visual_only"] is True
     assert cases[0].metadata["linked_chunk_ids"] == ["chunk-1"]
+
+
+def test_generate_retrieval_case_skeleton_object_probes_prefer_visual_only_terms():
+    chunk = DocumentChunk(
+        chunk_id="chunk-1",
+        doc_id="doc",
+        page_start=1,
+        page_end=1,
+        kind=ChunkKind.TEXT,
+        text="Transit corridor transfer hub marker evidence.",
+        asset_ids=["asset-1"],
+    )
+    asset = VisualAsset(
+        asset_id="asset-1",
+        doc_id="doc",
+        page_no=1,
+        kind=AssetKind.MAP,
+        metadata={
+            "objects": [
+                {
+                    "label": "transfer hub marker",
+                    "attributes": ["blue circle", "north gate", "elevated deck"],
+                }
+            ]
+        },
+    )
+
+    cases = generate_retrieval_case_skeleton(
+        [chunk],
+        [asset],
+        [],
+        include_pages=False,
+        include_assets=False,
+        include_triples=False,
+        object_probe_limit=1,
+    )
+
+    assert len(cases) == 1
+    assert cases[0].query == "blue circle north gate elevated deck"
+    assert "transfer" not in cases[0].query
+    assert cases[0].metadata["query_terms"] == [
+        "blue",
+        "circle",
+        "north",
+        "gate",
+        "elevated",
+        "deck",
+    ]
+
+
+def test_generate_retrieval_case_skeleton_can_disable_visual_only_object_probe_terms():
+    chunk = DocumentChunk(
+        chunk_id="chunk-1",
+        doc_id="doc",
+        page_start=1,
+        page_end=1,
+        kind=ChunkKind.TEXT,
+        text="Transit corridor transfer hub marker evidence.",
+        asset_ids=["asset-1"],
+    )
+    asset = VisualAsset(
+        asset_id="asset-1",
+        doc_id="doc",
+        page_no=1,
+        kind=AssetKind.MAP,
+        metadata={"objects": [{"label": "transfer hub marker"}]},
+    )
+
+    cases = generate_retrieval_case_skeleton(
+        [chunk],
+        [asset],
+        [],
+        include_pages=False,
+        include_assets=False,
+        include_triples=False,
+        object_probe_limit=1,
+        object_probe_visual_only=False,
+    )
+
+    assert len(cases) == 1
+    assert cases[0].query == "transfer hub marker"
+    assert cases[0].metadata["object_probe_visual_only"] is False
 
 
 def test_generate_retrieval_cases_cli_writes_jsonl(tmp_path):
@@ -534,6 +617,7 @@ def test_generate_retrieval_cases_cli_writes_object_probe_cases(tmp_path):
             "--no-include-triples",
             "--object-probe-limit",
             "1",
+            "--no-object-probe-visual-only",
         ],
     )
 
@@ -542,6 +626,7 @@ def test_generate_retrieval_cases_cli_writes_object_probe_cases(tmp_path):
     assert len(rows) == 1
     assert rows[0]["metadata"]["case_source"] == "visual_object_probe"
     assert rows[0]["metadata"]["modality"] == "vision_object"
+    assert rows[0]["metadata"]["object_probe_visual_only"] is False
 
 
 def test_generate_retrieval_cases_cli_accepts_candidate_chunks(tmp_path):
