@@ -17,6 +17,7 @@ from chunking_docs.evaluation.compare import (
 from chunking_docs.evaluation.gate import (
     RetrievalGateCheck,
     case_group_metric_key,
+    case_group_source_precision_at_hits_checks,
     case_group_source_family_metric_key,
     case_group_source_metric_key,
     case_group_source_target_coverage_checks,
@@ -37,7 +38,9 @@ from chunking_docs.evaluation.gate import (
     grouped_excluded_target_hit_rate_checks,
     source_excluded_target_hit_rate_checks,
     source_family_excluded_target_hit_rate_checks,
+    source_family_precision_at_hits_checks,
     source_metric_key,
+    source_precision_at_hits_checks,
     source_target_coverage_checks,
     source_family_metric_key,
     source_family_target_coverage_checks,
@@ -555,8 +558,12 @@ def gate_retrieval_ablation(
     min_target_type_coverage: dict[str, float] | None = None,
     min_source_target_coverage: dict[str, float] | None = None,
     min_source_family_target_coverage: dict[str, float] | None = None,
+    min_source_precision_at_hits: dict[str, float] | None = None,
+    min_source_family_precision_at_hits: dict[str, float] | None = None,
     min_case_group_source_target_coverage: dict[str, float] | None = None,
     min_case_group_source_family_target_coverage: dict[str, float] | None = None,
+    min_case_group_source_precision_at_hits: dict[str, float] | None = None,
+    min_case_group_source_family_precision_at_hits: dict[str, float] | None = None,
     max_source_excluded_target_hit_rate: dict[str, float] | None = None,
     max_source_family_excluded_target_hit_rate: dict[str, float] | None = None,
     max_chunk_strategy_excluded_target_hit_rate: dict[str, float] | None = None,
@@ -743,6 +750,13 @@ def gate_retrieval_ablation(
     checks.extend(
         source_family_target_coverage_checks(metrics, min_source_family_target_coverage or {})
     )
+    checks.extend(source_precision_at_hits_checks(metrics, min_source_precision_at_hits or {}))
+    checks.extend(
+        source_family_precision_at_hits_checks(
+            metrics,
+            min_source_family_precision_at_hits or {},
+        )
+    )
     checks.extend(
         source_excluded_target_hit_rate_checks(
             metrics,
@@ -783,6 +797,20 @@ def gate_retrieval_ablation(
         case_group_source_target_coverage_checks(
             metrics,
             min_case_group_source_family_target_coverage or {},
+            family=True,
+        )
+    )
+    checks.extend(
+        case_group_source_precision_at_hits_checks(
+            metrics,
+            min_case_group_source_precision_at_hits or {},
+            family=False,
+        )
+    )
+    checks.extend(
+        case_group_source_precision_at_hits_checks(
+            metrics,
+            min_case_group_source_family_precision_at_hits or {},
             family=True,
         )
     )
@@ -1579,8 +1607,12 @@ def gate_qdrant_vector_ablation(
     min_target_type_coverage: dict[str, float] | None = None,
     min_source_target_coverage: dict[str, float] | None = None,
     min_source_family_target_coverage: dict[str, float] | None = None,
+    min_source_precision_at_hits: dict[str, float] | None = None,
+    min_source_family_precision_at_hits: dict[str, float] | None = None,
     min_case_group_source_target_coverage: dict[str, float] | None = None,
     min_case_group_source_family_target_coverage: dict[str, float] | None = None,
+    min_case_group_source_precision_at_hits: dict[str, float] | None = None,
+    min_case_group_source_family_precision_at_hits: dict[str, float] | None = None,
     max_source_excluded_target_hit_rate: dict[str, float] | None = None,
     max_source_family_excluded_target_hit_rate: dict[str, float] | None = None,
     max_chunk_strategy_excluded_target_hit_rate: dict[str, float] | None = None,
@@ -1745,6 +1777,13 @@ def gate_qdrant_vector_ablation(
             min_source_family_target_coverage or {},
         )
     )
+    checks.extend(source_precision_at_hits_checks(metrics, min_source_precision_at_hits or {}))
+    checks.extend(
+        source_family_precision_at_hits_checks(
+            metrics,
+            min_source_family_precision_at_hits or {},
+        )
+    )
     checks.extend(
         source_excluded_target_hit_rate_checks(
             metrics,
@@ -1785,6 +1824,20 @@ def gate_qdrant_vector_ablation(
         case_group_source_target_coverage_checks(
             metrics,
             min_case_group_source_family_target_coverage or {},
+            family=True,
+        )
+    )
+    checks.extend(
+        case_group_source_precision_at_hits_checks(
+            metrics,
+            min_case_group_source_precision_at_hits or {},
+            family=False,
+        )
+    )
+    checks.extend(
+        case_group_source_precision_at_hits_checks(
+            metrics,
+            min_case_group_source_family_precision_at_hits or {},
             family=True,
         )
     )
@@ -1893,8 +1946,12 @@ def gate_qdrant_reranker_ablation(
     min_target_type_coverage: dict[str, float] | None = None,
     min_source_target_coverage: dict[str, float] | None = None,
     min_source_family_target_coverage: dict[str, float] | None = None,
+    min_source_precision_at_hits: dict[str, float] | None = None,
+    min_source_family_precision_at_hits: dict[str, float] | None = None,
     min_case_group_source_target_coverage: dict[str, float] | None = None,
     min_case_group_source_family_target_coverage: dict[str, float] | None = None,
+    min_case_group_source_precision_at_hits: dict[str, float] | None = None,
+    min_case_group_source_family_precision_at_hits: dict[str, float] | None = None,
     max_source_excluded_target_hit_rate: dict[str, float] | None = None,
     max_source_family_excluded_target_hit_rate: dict[str, float] | None = None,
     max_chunk_strategy_excluded_target_hit_rate: dict[str, float] | None = None,
@@ -2054,6 +2111,13 @@ def gate_qdrant_reranker_ablation(
             min_source_family_target_coverage or {},
         )
     )
+    checks.extend(source_precision_at_hits_checks(metrics, min_source_precision_at_hits or {}))
+    checks.extend(
+        source_family_precision_at_hits_checks(
+            metrics,
+            min_source_family_precision_at_hits or {},
+        )
+    )
     checks.extend(
         source_excluded_target_hit_rate_checks(
             metrics,
@@ -2094,6 +2158,20 @@ def gate_qdrant_reranker_ablation(
         case_group_source_target_coverage_checks(
             metrics,
             min_case_group_source_family_target_coverage or {},
+            family=True,
+        )
+    )
+    checks.extend(
+        case_group_source_precision_at_hits_checks(
+            metrics,
+            min_case_group_source_precision_at_hits or {},
+            family=False,
+        )
+    )
+    checks.extend(
+        case_group_source_precision_at_hits_checks(
+            metrics,
+            min_case_group_source_family_precision_at_hits or {},
             family=True,
         )
     )

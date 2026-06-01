@@ -2630,6 +2630,16 @@ def gate_qdrant_vector_ablation_command(
         "--min-source-family-target-coverage",
         help="Require source-family target coverage such as visual=0.8. Repeat for multiple families.",
     ),
+    min_source_precision_at_hits: list[str] = typer.Option(
+        None,
+        "--min-source-precision-at-hits",
+        help="Require exact-source hit precision such as qdrant:image_dense=0.8.",
+    ),
+    min_source_family_precision_at_hits: list[str] = typer.Option(
+        None,
+        "--min-source-family-precision-at-hits",
+        help="Require source-family hit precision such as visual=0.8.",
+    ),
     max_source_excluded_target_hit_rate: list[str] = typer.Option(
         None,
         "--max-source-excluded-target-hit-rate",
@@ -2680,6 +2690,22 @@ def gate_qdrant_vector_ablation_command(
             "case_source:visual_object_probe:visual=0.3."
         ),
     ),
+    min_case_group_source_precision_at_hits: list[str] = typer.Option(
+        None,
+        "--min-case-group-source-precision-at-hits",
+        help=(
+            "Require case-group exact-source hit precision such as "
+            "case_source:visual_object_probe:qdrant:object_dense=0.8."
+        ),
+    ),
+    min_case_group_source_family_precision_at_hits: list[str] = typer.Option(
+        None,
+        "--min-case-group-source-family-precision-at-hits",
+        help=(
+            "Require case-group source-family hit precision such as "
+            "case_source:visual_object_probe:visual=0.8."
+        ),
+    ),
     min_pairwise_shared_queries: int | None = None,
     min_pairwise_win_rate: float | None = None,
     min_pairwise_target_coverage_lift: float | None = None,
@@ -2717,6 +2743,14 @@ def gate_qdrant_vector_ablation_command(
         min_source_target_coverage,
         "source target coverage",
     )
+    source_precision_thresholds = parse_named_float_thresholds(
+        min_source_precision_at_hits,
+        "source precision at hits",
+    )
+    source_family_precision_thresholds = parse_named_float_thresholds(
+        min_source_family_precision_at_hits,
+        "source family precision at hits",
+    )
     source_excluded_thresholds = parse_named_float_thresholds(
         max_source_excluded_target_hit_rate,
         "source excluded-target hit rate",
@@ -2749,6 +2783,14 @@ def gate_qdrant_vector_ablation_command(
         min_case_group_source_family_target_coverage,
         "case group source family target coverage",
     )
+    case_group_source_precision_thresholds = parse_named_float_thresholds(
+        min_case_group_source_precision_at_hits,
+        "case group source precision at hits",
+    )
+    case_group_source_family_precision_thresholds = parse_named_float_thresholds(
+        min_case_group_source_family_precision_at_hits,
+        "case group source family precision at hits",
+    )
     try:
         gate_report = gate_qdrant_vector_ablation(
             parsed_report,
@@ -2772,6 +2814,8 @@ def gate_qdrant_vector_ablation_command(
             min_target_type_coverage=target_type_thresholds,
             min_source_target_coverage=source_thresholds,
             min_source_family_target_coverage=source_family_thresholds,
+            min_source_precision_at_hits=source_precision_thresholds,
+            min_source_family_precision_at_hits=source_family_precision_thresholds,
             max_source_excluded_target_hit_rate=source_excluded_thresholds,
             max_source_family_excluded_target_hit_rate=source_family_excluded_thresholds,
             max_chunk_strategy_excluded_target_hit_rate=chunk_strategy_excluded_thresholds,
@@ -2780,6 +2824,10 @@ def gate_qdrant_vector_ablation_command(
             min_case_group_source_target_coverage=case_group_source_thresholds,
             min_case_group_source_family_target_coverage=(
                 case_group_source_family_thresholds
+            ),
+            min_case_group_source_precision_at_hits=case_group_source_precision_thresholds,
+            min_case_group_source_family_precision_at_hits=(
+                case_group_source_family_precision_thresholds
             ),
             min_pairwise_shared_queries=min_pairwise_shared_queries,
             min_pairwise_win_rate=min_pairwise_win_rate,
@@ -2896,6 +2944,16 @@ def gate_qdrant_reranker_ablation_command(
         "--min-source-family-target-coverage",
         help="Require source-family target coverage such as lexical=0.8. Repeat for multiple families.",
     ),
+    min_source_precision_at_hits: list[str] = typer.Option(
+        None,
+        "--min-source-precision-at-hits",
+        help="Require exact-source hit precision such as rerank:lexical=0.8.",
+    ),
+    min_source_family_precision_at_hits: list[str] = typer.Option(
+        None,
+        "--min-source-family-precision-at-hits",
+        help="Require source-family hit precision such as reranker=0.8.",
+    ),
     max_source_excluded_target_hit_rate: list[str] = typer.Option(
         None,
         "--max-source-excluded-target-hit-rate",
@@ -2946,6 +3004,22 @@ def gate_qdrant_reranker_ablation_command(
             "case_source:visual_object_probe:lexical=0.7."
         ),
     ),
+    min_case_group_source_precision_at_hits: list[str] = typer.Option(
+        None,
+        "--min-case-group-source-precision-at-hits",
+        help=(
+            "Require case-group exact-source hit precision such as "
+            "case_source:visual_object_probe:rerank:lexical=0.8."
+        ),
+    ),
+    min_case_group_source_family_precision_at_hits: list[str] = typer.Option(
+        None,
+        "--min-case-group-source-family-precision-at-hits",
+        help=(
+            "Require case-group source-family hit precision such as "
+            "case_source:visual_object_probe:reranker=0.8."
+        ),
+    ),
     min_pairwise_shared_queries: int | None = None,
     min_pairwise_win_rate: float | None = None,
     min_pairwise_target_coverage_lift: float | None = None,
@@ -2983,6 +3057,14 @@ def gate_qdrant_reranker_ablation_command(
         min_source_target_coverage,
         "source target coverage",
     )
+    source_precision_thresholds = parse_named_float_thresholds(
+        min_source_precision_at_hits,
+        "source precision at hits",
+    )
+    source_family_precision_thresholds = parse_named_float_thresholds(
+        min_source_family_precision_at_hits,
+        "source family precision at hits",
+    )
     source_excluded_thresholds = parse_named_float_thresholds(
         max_source_excluded_target_hit_rate,
         "source excluded-target hit rate",
@@ -3015,6 +3097,14 @@ def gate_qdrant_reranker_ablation_command(
         min_case_group_source_family_target_coverage,
         "case group source family target coverage",
     )
+    case_group_source_precision_thresholds = parse_named_float_thresholds(
+        min_case_group_source_precision_at_hits,
+        "case group source precision at hits",
+    )
+    case_group_source_family_precision_thresholds = parse_named_float_thresholds(
+        min_case_group_source_family_precision_at_hits,
+        "case group source family precision at hits",
+    )
     try:
         gate_report = gate_qdrant_reranker_ablation(
             parsed_report,
@@ -3038,6 +3128,8 @@ def gate_qdrant_reranker_ablation_command(
             min_target_type_coverage=target_type_thresholds,
             min_source_target_coverage=source_thresholds,
             min_source_family_target_coverage=source_family_thresholds,
+            min_source_precision_at_hits=source_precision_thresholds,
+            min_source_family_precision_at_hits=source_family_precision_thresholds,
             max_source_excluded_target_hit_rate=source_excluded_thresholds,
             max_source_family_excluded_target_hit_rate=source_family_excluded_thresholds,
             max_chunk_strategy_excluded_target_hit_rate=chunk_strategy_excluded_thresholds,
@@ -3046,6 +3138,10 @@ def gate_qdrant_reranker_ablation_command(
             min_case_group_source_target_coverage=case_group_source_thresholds,
             min_case_group_source_family_target_coverage=(
                 case_group_source_family_thresholds
+            ),
+            min_case_group_source_precision_at_hits=case_group_source_precision_thresholds,
+            min_case_group_source_family_precision_at_hits=(
+                case_group_source_family_precision_thresholds
             ),
             min_pairwise_shared_queries=min_pairwise_shared_queries,
             min_pairwise_win_rate=min_pairwise_win_rate,
@@ -5116,6 +5212,19 @@ def ingestion_readiness_command(
         "--min-retrieval-ablation-source-target-coverage",
         help="Require selected retrieval ablation exact-source coverage such as bm25=0.8.",
     ),
+    min_retrieval_ablation_source_precision_at_hits: list[str] = typer.Option(
+        None,
+        "--min-retrieval-ablation-source-precision-at-hits",
+        help="Require selected retrieval ablation exact-source hit precision such as bm25=0.8.",
+    ),
+    min_retrieval_ablation_source_family_precision_at_hits: list[str] = typer.Option(
+        None,
+        "--min-retrieval-ablation-source-family-precision-at-hits",
+        help=(
+            "Require selected retrieval ablation source-family hit precision "
+            "such as lexical=0.8."
+        ),
+    ),
     min_retrieval_ablation_case_group_target_coverage: list[str] = typer.Option(
         None,
         "--min-retrieval-ablation-case-group-target-coverage",
@@ -5140,6 +5249,26 @@ def ingestion_readiness_command(
         help=(
             "Require selected retrieval ablation case-group source-family coverage "
             "such as case_source:visual_lexical_probe:lexical=0.7."
+        ),
+    ),
+    min_retrieval_ablation_case_group_source_precision_at_hits: list[
+        str
+    ] = typer.Option(
+        None,
+        "--min-retrieval-ablation-case-group-source-precision-at-hits",
+        help=(
+            "Require selected retrieval ablation case-group exact-source hit precision "
+            "such as case_source:visual_lexical_probe:bm25=0.8."
+        ),
+    ),
+    min_retrieval_ablation_case_group_source_family_precision_at_hits: list[
+        str
+    ] = typer.Option(
+        None,
+        "--min-retrieval-ablation-case-group-source-family-precision-at-hits",
+        help=(
+            "Require selected retrieval ablation case-group source-family hit precision "
+            "such as case_source:visual_lexical_probe:lexical=0.8."
         ),
     ),
     min_retrieval_ablation_recall_lift: float | None = None,
@@ -5214,6 +5343,16 @@ def ingestion_readiness_command(
         "--min-qdrant-vector-source-target-coverage",
         help="Require selected Qdrant vector exact-source coverage such as qdrant:image_dense=0.5.",
     ),
+    min_qdrant_vector_source_precision_at_hits: list[str] = typer.Option(
+        None,
+        "--min-qdrant-vector-source-precision-at-hits",
+        help="Require selected Qdrant vector exact-source hit precision such as qdrant:image_dense=0.8.",
+    ),
+    min_qdrant_vector_source_family_precision_at_hits: list[str] = typer.Option(
+        None,
+        "--min-qdrant-vector-source-family-precision-at-hits",
+        help="Require selected Qdrant vector source-family hit precision such as visual=0.8.",
+    ),
     min_qdrant_vector_case_group_target_coverage: list[str] = typer.Option(
         None,
         "--min-qdrant-vector-case-group-target-coverage",
@@ -5238,6 +5377,24 @@ def ingestion_readiness_command(
         help=(
             "Require selected Qdrant vector case-group source-family coverage such as "
             "case_source:visual_object_probe:visual=0.3."
+        ),
+    ),
+    min_qdrant_vector_case_group_source_precision_at_hits: list[str] = typer.Option(
+        None,
+        "--min-qdrant-vector-case-group-source-precision-at-hits",
+        help=(
+            "Require selected Qdrant vector case-group exact-source hit precision "
+            "such as case_source:visual_object_probe:qdrant:object_dense=0.8."
+        ),
+    ),
+    min_qdrant_vector_case_group_source_family_precision_at_hits: list[
+        str
+    ] = typer.Option(
+        None,
+        "--min-qdrant-vector-case-group-source-family-precision-at-hits",
+        help=(
+            "Require selected Qdrant vector case-group source-family hit precision "
+            "such as case_source:visual_object_probe:visual=0.8."
         ),
     ),
     require_qdrant_vector_best_by_recall: bool = False,
@@ -5290,6 +5447,16 @@ def ingestion_readiness_command(
         "--min-qdrant-reranker-source-target-coverage",
         help="Require selected Qdrant reranker exact-source coverage such as rerank:lexical=0.8.",
     ),
+    min_qdrant_reranker_source_precision_at_hits: list[str] = typer.Option(
+        None,
+        "--min-qdrant-reranker-source-precision-at-hits",
+        help="Require selected Qdrant reranker exact-source hit precision such as rerank:lexical=0.8.",
+    ),
+    min_qdrant_reranker_source_family_precision_at_hits: list[str] = typer.Option(
+        None,
+        "--min-qdrant-reranker-source-family-precision-at-hits",
+        help="Require selected Qdrant reranker source-family hit precision such as reranker=0.8.",
+    ),
     min_qdrant_reranker_case_group_target_coverage: list[str] = typer.Option(
         None,
         "--min-qdrant-reranker-case-group-target-coverage",
@@ -5314,6 +5481,26 @@ def ingestion_readiness_command(
         help=(
             "Require selected Qdrant reranker case-group source-family coverage such as "
             "case_source:visual_object_probe:lexical=0.7."
+        ),
+    ),
+    min_qdrant_reranker_case_group_source_precision_at_hits: list[
+        str
+    ] = typer.Option(
+        None,
+        "--min-qdrant-reranker-case-group-source-precision-at-hits",
+        help=(
+            "Require selected Qdrant reranker case-group exact-source hit precision "
+            "such as case_source:visual_object_probe:rerank:lexical=0.8."
+        ),
+    ),
+    min_qdrant_reranker_case_group_source_family_precision_at_hits: list[
+        str
+    ] = typer.Option(
+        None,
+        "--min-qdrant-reranker-case-group-source-family-precision-at-hits",
+        help=(
+            "Require selected Qdrant reranker case-group source-family hit precision "
+            "such as case_source:visual_object_probe:reranker=0.8."
         ),
     ),
     require_qdrant_reranker_best_by_recall: bool = False,
@@ -5383,6 +5570,14 @@ def ingestion_readiness_command(
         min_qdrant_vector_source_target_coverage,
         "Qdrant vector source target coverage",
     )
+    qdrant_vector_source_precision_thresholds = parse_named_float_thresholds(
+        min_qdrant_vector_source_precision_at_hits,
+        "Qdrant vector source precision at hits",
+    )
+    qdrant_vector_source_family_precision_thresholds = parse_named_float_thresholds(
+        min_qdrant_vector_source_family_precision_at_hits,
+        "Qdrant vector source family precision at hits",
+    )
     qdrant_vector_target_type_thresholds = parse_named_float_thresholds(
         min_qdrant_vector_target_type_coverage,
         "Qdrant vector target type coverage",
@@ -5399,6 +5594,16 @@ def ingestion_readiness_command(
         min_qdrant_vector_case_group_source_family_target_coverage,
         "Qdrant vector case group source family target coverage",
     )
+    qdrant_vector_case_group_source_precision_thresholds = parse_named_float_thresholds(
+        min_qdrant_vector_case_group_source_precision_at_hits,
+        "Qdrant vector case group source precision at hits",
+    )
+    qdrant_vector_case_group_source_family_precision_thresholds = (
+        parse_named_float_thresholds(
+            min_qdrant_vector_case_group_source_family_precision_at_hits,
+            "Qdrant vector case group source family precision at hits",
+        )
+    )
     qdrant_reranker_source_family_thresholds = parse_named_float_thresholds(
         min_qdrant_reranker_source_family_target_coverage,
         "Qdrant reranker source family target coverage",
@@ -5406,6 +5611,14 @@ def ingestion_readiness_command(
     qdrant_reranker_source_thresholds = parse_named_float_thresholds(
         min_qdrant_reranker_source_target_coverage,
         "Qdrant reranker source target coverage",
+    )
+    qdrant_reranker_source_precision_thresholds = parse_named_float_thresholds(
+        min_qdrant_reranker_source_precision_at_hits,
+        "Qdrant reranker source precision at hits",
+    )
+    qdrant_reranker_source_family_precision_thresholds = parse_named_float_thresholds(
+        min_qdrant_reranker_source_family_precision_at_hits,
+        "Qdrant reranker source family precision at hits",
     )
     qdrant_reranker_target_type_thresholds = parse_named_float_thresholds(
         min_qdrant_reranker_target_type_coverage,
@@ -5422,6 +5635,18 @@ def ingestion_readiness_command(
     qdrant_reranker_case_group_source_family_thresholds = parse_named_float_thresholds(
         min_qdrant_reranker_case_group_source_family_target_coverage,
         "Qdrant reranker case group source family target coverage",
+    )
+    qdrant_reranker_case_group_source_precision_thresholds = (
+        parse_named_float_thresholds(
+            min_qdrant_reranker_case_group_source_precision_at_hits,
+            "Qdrant reranker case group source precision at hits",
+        )
+    )
+    qdrant_reranker_case_group_source_family_precision_thresholds = (
+        parse_named_float_thresholds(
+            min_qdrant_reranker_case_group_source_family_precision_at_hits,
+            "Qdrant reranker case group source family precision at hits",
+        )
     )
     retrieval_source_family_thresholds = parse_named_float_thresholds(
         min_retrieval_source_family_target_coverage,
@@ -5499,6 +5724,14 @@ def ingestion_readiness_command(
         min_retrieval_ablation_source_target_coverage,
         "retrieval ablation source target coverage",
     )
+    retrieval_ablation_source_precision_thresholds = parse_named_float_thresholds(
+        min_retrieval_ablation_source_precision_at_hits,
+        "retrieval ablation source precision at hits",
+    )
+    retrieval_ablation_source_family_precision_thresholds = parse_named_float_thresholds(
+        min_retrieval_ablation_source_family_precision_at_hits,
+        "retrieval ablation source family precision at hits",
+    )
     retrieval_ablation_target_type_thresholds = parse_named_float_thresholds(
         min_retrieval_ablation_target_type_coverage,
         "retrieval ablation target type coverage",
@@ -5514,6 +5747,16 @@ def ingestion_readiness_command(
     retrieval_ablation_case_group_source_family_thresholds = parse_named_float_thresholds(
         min_retrieval_ablation_case_group_source_family_target_coverage,
         "retrieval ablation case group source family target coverage",
+    )
+    retrieval_ablation_case_group_source_precision_thresholds = parse_named_float_thresholds(
+        min_retrieval_ablation_case_group_source_precision_at_hits,
+        "retrieval ablation case group source precision at hits",
+    )
+    retrieval_ablation_case_group_source_family_precision_thresholds = (
+        parse_named_float_thresholds(
+            min_retrieval_ablation_case_group_source_family_precision_at_hits,
+            "retrieval ablation case group source family precision at hits",
+        )
     )
     report = build_ingestion_readiness_report(
         package_dir=package_dir,
@@ -5723,12 +5966,22 @@ def ingestion_readiness_command(
             "min_target_type_coverage": retrieval_ablation_target_type_thresholds,
             "min_source_target_coverage": retrieval_ablation_source_thresholds,
             "min_source_family_target_coverage": retrieval_ablation_source_family_thresholds,
+            "min_source_precision_at_hits": retrieval_ablation_source_precision_thresholds,
+            "min_source_family_precision_at_hits": (
+                retrieval_ablation_source_family_precision_thresholds
+            ),
             "min_case_group_target_coverage": retrieval_ablation_case_group_thresholds,
             "min_case_group_source_target_coverage": (
                 retrieval_ablation_case_group_source_thresholds
             ),
             "min_case_group_source_family_target_coverage": (
                 retrieval_ablation_case_group_source_family_thresholds
+            ),
+            "min_case_group_source_precision_at_hits": (
+                retrieval_ablation_case_group_source_precision_thresholds
+            ),
+            "min_case_group_source_family_precision_at_hits": (
+                retrieval_ablation_case_group_source_family_precision_thresholds
             ),
             "min_recall_lift": min_retrieval_ablation_recall_lift,
             "min_target_coverage_lift": min_retrieval_ablation_target_coverage_lift,
@@ -5838,12 +6091,22 @@ def ingestion_readiness_command(
             "min_target_type_coverage": qdrant_vector_target_type_thresholds,
             "min_source_target_coverage": qdrant_vector_source_thresholds,
             "min_source_family_target_coverage": qdrant_vector_source_family_thresholds,
+            "min_source_precision_at_hits": qdrant_vector_source_precision_thresholds,
+            "min_source_family_precision_at_hits": (
+                qdrant_vector_source_family_precision_thresholds
+            ),
             "min_case_group_target_coverage": qdrant_vector_case_group_thresholds,
             "min_case_group_source_target_coverage": (
                 qdrant_vector_case_group_source_thresholds
             ),
             "min_case_group_source_family_target_coverage": (
                 qdrant_vector_case_group_source_family_thresholds
+            ),
+            "min_case_group_source_precision_at_hits": (
+                qdrant_vector_case_group_source_precision_thresholds
+            ),
+            "min_case_group_source_family_precision_at_hits": (
+                qdrant_vector_case_group_source_family_precision_thresholds
             ),
             "require_best_by_recall": require_qdrant_vector_best_by_recall,
             "require_best_by_target_coverage": require_qdrant_vector_best_by_target_coverage,
@@ -5903,12 +6166,22 @@ def ingestion_readiness_command(
             "min_target_type_coverage": qdrant_reranker_target_type_thresholds,
             "min_source_target_coverage": qdrant_reranker_source_thresholds,
             "min_source_family_target_coverage": qdrant_reranker_source_family_thresholds,
+            "min_source_precision_at_hits": qdrant_reranker_source_precision_thresholds,
+            "min_source_family_precision_at_hits": (
+                qdrant_reranker_source_family_precision_thresholds
+            ),
             "min_case_group_target_coverage": qdrant_reranker_case_group_thresholds,
             "min_case_group_source_target_coverage": (
                 qdrant_reranker_case_group_source_thresholds
             ),
             "min_case_group_source_family_target_coverage": (
                 qdrant_reranker_case_group_source_family_thresholds
+            ),
+            "min_case_group_source_precision_at_hits": (
+                qdrant_reranker_case_group_source_precision_thresholds
+            ),
+            "min_case_group_source_family_precision_at_hits": (
+                qdrant_reranker_case_group_source_family_precision_thresholds
             ),
             "require_best_by_recall": require_qdrant_reranker_best_by_recall,
             "require_best_by_target_coverage": (
@@ -6600,6 +6873,16 @@ def gate_retrieval_ablation_command(
         "--min-source-family-target-coverage",
         help="Require selected mode source-family target coverage such as lexical=0.8.",
     ),
+    min_source_precision_at_hits: list[str] = typer.Option(
+        None,
+        "--min-source-precision-at-hits",
+        help="Require selected mode exact-source hit precision such as bm25=0.8.",
+    ),
+    min_source_family_precision_at_hits: list[str] = typer.Option(
+        None,
+        "--min-source-family-precision-at-hits",
+        help="Require selected mode source-family hit precision such as lexical=0.8.",
+    ),
     max_source_excluded_target_hit_rate: list[str] = typer.Option(
         None,
         "--max-source-excluded-target-hit-rate",
@@ -6647,6 +6930,22 @@ def gate_retrieval_ablation_command(
             "case_source:visual_lexical_probe:lexical=0.7."
         ),
     ),
+    min_case_group_source_precision_at_hits: list[str] = typer.Option(
+        None,
+        "--min-case-group-source-precision-at-hits",
+        help=(
+            "Require selected mode case-group exact-source hit precision such as "
+            "case_source:visual_lexical_probe:bm25=0.8."
+        ),
+    ),
+    min_case_group_source_family_precision_at_hits: list[str] = typer.Option(
+        None,
+        "--min-case-group-source-family-precision-at-hits",
+        help=(
+            "Require selected mode case-group source-family hit precision such as "
+            "case_source:visual_lexical_probe:lexical=0.8."
+        ),
+    ),
     min_recall_lift: float | None = None,
     min_target_coverage_lift: float | None = None,
     min_target_ndcg_lift: float | None = None,
@@ -6689,6 +6988,14 @@ def gate_retrieval_ablation_command(
         min_source_target_coverage,
         "source target coverage",
     )
+    source_precision_thresholds = parse_named_float_thresholds(
+        min_source_precision_at_hits,
+        "source precision at hits",
+    )
+    source_family_precision_thresholds = parse_named_float_thresholds(
+        min_source_family_precision_at_hits,
+        "source family precision at hits",
+    )
     source_excluded_thresholds = parse_named_float_thresholds(
         max_source_excluded_target_hit_rate,
         "source excluded-target hit rate",
@@ -6721,6 +7028,14 @@ def gate_retrieval_ablation_command(
         min_case_group_source_family_target_coverage,
         "case group source family target coverage",
     )
+    case_group_source_precision_thresholds = parse_named_float_thresholds(
+        min_case_group_source_precision_at_hits,
+        "case group source precision at hits",
+    )
+    case_group_source_family_precision_thresholds = parse_named_float_thresholds(
+        min_case_group_source_family_precision_at_hits,
+        "case group source family precision at hits",
+    )
     try:
         gate_report = gate_retrieval_ablation(
             parsed_report,
@@ -6744,6 +7059,8 @@ def gate_retrieval_ablation_command(
             min_target_type_coverage=target_type_thresholds,
             min_source_target_coverage=source_thresholds,
             min_source_family_target_coverage=source_family_thresholds,
+            min_source_precision_at_hits=source_precision_thresholds,
+            min_source_family_precision_at_hits=source_family_precision_thresholds,
             max_source_excluded_target_hit_rate=source_excluded_thresholds,
             max_source_family_excluded_target_hit_rate=source_family_excluded_thresholds,
             max_chunk_strategy_excluded_target_hit_rate=chunk_strategy_excluded_thresholds,
@@ -6752,6 +7069,10 @@ def gate_retrieval_ablation_command(
             min_case_group_source_target_coverage=case_group_source_thresholds,
             min_case_group_source_family_target_coverage=(
                 case_group_source_family_thresholds
+            ),
+            min_case_group_source_precision_at_hits=case_group_source_precision_thresholds,
+            min_case_group_source_family_precision_at_hits=(
+                case_group_source_family_precision_thresholds
             ),
             min_recall_lift=min_recall_lift,
             min_target_coverage_lift=min_target_coverage_lift,
