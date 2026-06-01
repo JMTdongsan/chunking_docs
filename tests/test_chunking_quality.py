@@ -83,6 +83,24 @@ def test_evaluate_chunking_quality_reports_retrieval_and_multimodal_metrics():
     assert report.retrieval_score_per_embedding_kchar == (
         report.retrieval_score / report.embedding_text_kchars
     )
+    assert report.retrieval_score_per_mean_latency_ms == pytest.approx(
+        report.retrieval_score / report.retrieval.mean_latency_ms
+    )
+    assert report.target_coverage_per_mean_latency_ms == pytest.approx(
+        report.retrieval.target_coverage_at_k / report.retrieval.mean_latency_ms
+    )
+    assert report.target_ndcg_per_mean_latency_ms == pytest.approx(
+        report.retrieval.mean_target_ndcg_at_k / report.retrieval.mean_latency_ms
+    )
+    assert report.retrieval_score_per_p95_latency_ms == pytest.approx(
+        report.retrieval_score / report.retrieval.p95_latency_ms
+    )
+    assert report.target_coverage_per_p95_latency_ms == pytest.approx(
+        report.retrieval.target_coverage_at_k / report.retrieval.p95_latency_ms
+    )
+    assert report.target_ndcg_per_p95_latency_ms == pytest.approx(
+        report.retrieval.mean_target_ndcg_at_k / report.retrieval.p95_latency_ms
+    )
     assert report.target_coverage_per_embedding_kchar == pytest.approx(1000.0 / expected_chars)
     assert report.target_ndcg_per_embedding_kchar == pytest.approx(1000.0 / expected_chars)
     assert report.quality_score > 0.5

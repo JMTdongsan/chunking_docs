@@ -63,6 +63,12 @@ class ChunkingQualityReport(BaseModel):
     retrieval_score_per_embedding_kchar: float | None = None
     target_coverage_per_embedding_kchar: float | None = None
     target_ndcg_per_embedding_kchar: float | None = None
+    retrieval_score_per_mean_latency_ms: float | None = None
+    target_coverage_per_mean_latency_ms: float | None = None
+    target_ndcg_per_mean_latency_ms: float | None = None
+    retrieval_score_per_p95_latency_ms: float | None = None
+    target_coverage_per_p95_latency_ms: float | None = None
+    target_ndcg_per_p95_latency_ms: float | None = None
     quality_score: float
     issues: list[QualityIssue] = Field(default_factory=list)
 
@@ -118,6 +124,8 @@ def evaluate_chunking_quality(
             fusion_weights=fusion_weights,
         )
     retrieval_score = retrieval_quality_score(retrieval) if retrieval else None
+    mean_latency_ms = retrieval.mean_latency_ms if retrieval else None
+    p95_latency_ms = retrieval.p95_latency_ms if retrieval else None
 
     issues = quality_issues(
         page_coverage_ratio=ratio(len(covered_pages & page_numbers), len(page_numbers)),
@@ -186,6 +194,30 @@ def evaluate_chunking_quality(
         target_ndcg_per_embedding_kchar=per_embedding_kchar(
             retrieval.mean_target_ndcg_at_k if retrieval else None,
             embedding_text_kchars,
+        ),
+        retrieval_score_per_mean_latency_ms=per_latency_ms(
+            retrieval_score,
+            mean_latency_ms,
+        ),
+        target_coverage_per_mean_latency_ms=per_latency_ms(
+            retrieval.target_coverage_at_k if retrieval else None,
+            mean_latency_ms,
+        ),
+        target_ndcg_per_mean_latency_ms=per_latency_ms(
+            retrieval.mean_target_ndcg_at_k if retrieval else None,
+            mean_latency_ms,
+        ),
+        retrieval_score_per_p95_latency_ms=per_latency_ms(
+            retrieval_score,
+            p95_latency_ms,
+        ),
+        target_coverage_per_p95_latency_ms=per_latency_ms(
+            retrieval.target_coverage_at_k if retrieval else None,
+            p95_latency_ms,
+        ),
+        target_ndcg_per_p95_latency_ms=per_latency_ms(
+            retrieval.mean_target_ndcg_at_k if retrieval else None,
+            p95_latency_ms,
         ),
         quality_score=quality_score,
         issues=issues,
@@ -374,6 +406,14 @@ def per_embedding_kchar(value: float | None, embedding_text_kchars: float) -> fl
     if embedding_text_kchars <= 0:
         return float(value)
     return float(value) / embedding_text_kchars
+
+
+def per_latency_ms(value: float | None, latency_ms: float | None) -> float | None:
+    if value is None or latency_ms is None:
+        return None
+    if latency_ms <= 0:
+        return float(value)
+    return float(value) / latency_ms
 
 
 def visual_text_coverage_stats(

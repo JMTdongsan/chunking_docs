@@ -29,6 +29,12 @@ class ChunkingComparisonRow(BaseModel):
     retrieval_score_per_embedding_kchar: float | None = None
     target_coverage_per_embedding_kchar: float | None = None
     target_ndcg_per_embedding_kchar: float | None = None
+    retrieval_score_per_mean_latency_ms: float | None = None
+    target_coverage_per_mean_latency_ms: float | None = None
+    target_ndcg_per_mean_latency_ms: float | None = None
+    retrieval_score_per_p95_latency_ms: float | None = None
+    target_coverage_per_p95_latency_ms: float | None = None
+    target_ndcg_per_p95_latency_ms: float | None = None
     retrieval_hit_rate: float | None
     retrieval_recall_at_k: float | None
     retrieval_mrr: float | None
@@ -137,6 +143,20 @@ def compare_chunking_reports(
                 retrieval_score_per_embedding_kchar=report.retrieval_score_per_embedding_kchar,
                 target_coverage_per_embedding_kchar=report.target_coverage_per_embedding_kchar,
                 target_ndcg_per_embedding_kchar=report.target_ndcg_per_embedding_kchar,
+                retrieval_score_per_mean_latency_ms=(
+                    report.retrieval_score_per_mean_latency_ms
+                ),
+                target_coverage_per_mean_latency_ms=(
+                    report.target_coverage_per_mean_latency_ms
+                ),
+                target_ndcg_per_mean_latency_ms=report.target_ndcg_per_mean_latency_ms,
+                retrieval_score_per_p95_latency_ms=(
+                    report.retrieval_score_per_p95_latency_ms
+                ),
+                target_coverage_per_p95_latency_ms=(
+                    report.target_coverage_per_p95_latency_ms
+                ),
+                target_ndcg_per_p95_latency_ms=report.target_ndcg_per_p95_latency_ms,
                 retrieval_hit_rate=report.retrieval.hit_rate if report.retrieval else None,
                 retrieval_recall_at_k=report.retrieval.recall_at_k if report.retrieval else None,
                 retrieval_mrr=report.retrieval.mrr if report.retrieval else None,

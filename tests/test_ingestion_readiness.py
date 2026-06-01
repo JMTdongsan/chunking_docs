@@ -1832,6 +1832,10 @@ def test_ingestion_readiness_cli_can_gate_chunking_target_coverage(tmp_path):
             "2.0",
             "--min-chunking-visual-text-coverage-ratio",
             "0.8",
+            "--min-chunking-retrieval-score-per-mean-latency-ms",
+            "0.1",
+            "--min-chunking-target-coverage-per-p95-latency-ms",
+            "0.1",
             "--min-chunking-target-type-coverage",
             "asset=0.8",
             "--min-chunking-target-type-coverage",
@@ -1855,6 +1859,10 @@ def test_ingestion_readiness_cli_can_gate_chunking_target_coverage(tmp_path):
     )
     assert component["metadata"]["candidate"] == "candidate"
     assert component["metadata"]["metrics"]["retrieval_mean_target_rank"] == 1.0
+    assert component["metadata"]["metrics"]["retrieval_score_per_mean_latency_ms"] == 0.18
+    assert component["metadata"]["metrics"]["target_coverage_per_p95_latency_ms"] == (
+        0.9 / 7.0
+    )
     assert component["metadata"]["pairwise_metrics"]["pairwise_mean_target_rank_delta"] == -1.0
     assert component["metadata"]["metrics"]["visual_text_coverage_ratio"] == 0.9
     assert component["metadata"]["metrics"]["target_type.asset.coverage_at_k"] == 0.9
@@ -2039,18 +2047,39 @@ def chunking_comparison():
 
 
 def chunking_row(name: str, quality_score: float, recall: float, mean_target_rank: float):
+    retrieval_score = recall
+    total_chunk_chars = 1000.0
+    embedding_text_kchars = total_chunk_chars / 1000.0
+    mean_latency_ms = 5.0
+    p95_latency_ms = 7.0
     return ChunkingComparisonRow(
         name=name,
         chunk_count=1,
+        total_chunk_chars=total_chunk_chars,
+        mean_chunk_chars=total_chunk_chars,
+        p95_chunk_chars=total_chunk_chars,
+        embedding_text_kchars=embedding_text_kchars,
         quality_score=quality_score,
+        retrieval_score=retrieval_score,
+        retrieval_score_per_embedding_kchar=(
+            retrieval_score / embedding_text_kchars
+        ),
+        target_coverage_per_embedding_kchar=recall / embedding_text_kchars,
+        target_ndcg_per_embedding_kchar=recall / embedding_text_kchars,
+        retrieval_score_per_mean_latency_ms=retrieval_score / mean_latency_ms,
+        target_coverage_per_mean_latency_ms=recall / mean_latency_ms,
+        target_ndcg_per_mean_latency_ms=recall / mean_latency_ms,
+        retrieval_score_per_p95_latency_ms=retrieval_score / p95_latency_ms,
+        target_coverage_per_p95_latency_ms=recall / p95_latency_ms,
+        target_ndcg_per_p95_latency_ms=recall / p95_latency_ms,
         retrieval_hit_rate=recall,
         retrieval_recall_at_k=recall,
         retrieval_mrr=recall,
         retrieval_target_coverage_at_k=recall,
         retrieval_mean_target_ndcg_at_k=recall,
         retrieval_mean_precision_at_k=recall,
-        retrieval_mean_latency_ms=5.0,
-        retrieval_p95_latency_ms=7.0,
+        retrieval_mean_latency_ms=mean_latency_ms,
+        retrieval_p95_latency_ms=p95_latency_ms,
         retrieval_mean_first_relevant_rank=mean_target_rank,
         retrieval_p95_first_relevant_rank=mean_target_rank,
         retrieval_mean_target_rank=mean_target_rank,

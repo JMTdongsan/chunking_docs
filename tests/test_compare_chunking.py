@@ -79,6 +79,29 @@ def test_compare_chunking_reports_ranks_by_retrieval_then_quality():
     assert comparison.rows[0].retrieval_score_per_embedding_kchar == pytest.approx(
         comparison.rows[0].retrieval_score / comparison.rows[0].embedding_text_kchars
     )
+    assert comparison.rows[0].retrieval_score_per_mean_latency_ms == pytest.approx(
+        comparison.rows[0].retrieval_score
+        / comparison.rows[0].retrieval_mean_latency_ms
+    )
+    assert comparison.rows[0].target_coverage_per_mean_latency_ms == pytest.approx(
+        comparison.rows[0].retrieval_target_coverage_at_k
+        / comparison.rows[0].retrieval_mean_latency_ms
+    )
+    assert comparison.rows[0].target_ndcg_per_mean_latency_ms == pytest.approx(
+        comparison.rows[0].retrieval_mean_target_ndcg_at_k
+        / comparison.rows[0].retrieval_mean_latency_ms
+    )
+    assert comparison.rows[0].retrieval_score_per_p95_latency_ms == pytest.approx(
+        comparison.rows[0].retrieval_score / comparison.rows[0].retrieval_p95_latency_ms
+    )
+    assert comparison.rows[0].target_coverage_per_p95_latency_ms == pytest.approx(
+        comparison.rows[0].retrieval_target_coverage_at_k
+        / comparison.rows[0].retrieval_p95_latency_ms
+    )
+    assert comparison.rows[0].target_ndcg_per_p95_latency_ms == pytest.approx(
+        comparison.rows[0].retrieval_mean_target_ndcg_at_k
+        / comparison.rows[0].retrieval_p95_latency_ms
+    )
     assert comparison.rows[0].target_metrics["asset"]["coverage_at_k"] == 1.0
     assert comparison.rows[0].source_family_metrics["lexical"]["target_coverage_at_k"] == 1.0
     assert comparison.rows[0].chunk_strategy_metrics["visual_asset_text"][

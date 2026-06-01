@@ -4135,6 +4135,51 @@ def ingestion_readiness_command(
         "--min-chunking-visual-text-part-coverage-ratio",
         help="Require selected chunking comparison candidate linked visual text part coverage.",
     ),
+    min_chunking_retrieval_score_per_embedding_kchar: float | None = typer.Option(
+        None,
+        "--min-chunking-retrieval-score-per-embedding-kchar",
+        help="Require selected chunking aggregate retrieval score per 1k embedding chars.",
+    ),
+    min_chunking_target_coverage_per_embedding_kchar: float | None = typer.Option(
+        None,
+        "--min-chunking-target-coverage-per-embedding-kchar",
+        help="Require selected chunking target coverage per 1k embedding chars.",
+    ),
+    min_chunking_target_ndcg_per_embedding_kchar: float | None = typer.Option(
+        None,
+        "--min-chunking-target-ndcg-per-embedding-kchar",
+        help="Require selected chunking target nDCG per 1k embedding chars.",
+    ),
+    min_chunking_retrieval_score_per_mean_latency_ms: float | None = typer.Option(
+        None,
+        "--min-chunking-retrieval-score-per-mean-latency-ms",
+        help="Require selected chunking aggregate retrieval score per mean latency ms.",
+    ),
+    min_chunking_target_coverage_per_mean_latency_ms: float | None = typer.Option(
+        None,
+        "--min-chunking-target-coverage-per-mean-latency-ms",
+        help="Require selected chunking target coverage per mean latency ms.",
+    ),
+    min_chunking_target_ndcg_per_mean_latency_ms: float | None = typer.Option(
+        None,
+        "--min-chunking-target-ndcg-per-mean-latency-ms",
+        help="Require selected chunking target nDCG per mean latency ms.",
+    ),
+    min_chunking_retrieval_score_per_p95_latency_ms: float | None = typer.Option(
+        None,
+        "--min-chunking-retrieval-score-per-p95-latency-ms",
+        help="Require selected chunking aggregate retrieval score per p95 latency ms.",
+    ),
+    min_chunking_target_coverage_per_p95_latency_ms: float | None = typer.Option(
+        None,
+        "--min-chunking-target-coverage-per-p95-latency-ms",
+        help="Require selected chunking target coverage per p95 latency ms.",
+    ),
+    min_chunking_target_ndcg_per_p95_latency_ms: float | None = typer.Option(
+        None,
+        "--min-chunking-target-ndcg-per-p95-latency-ms",
+        help="Require selected chunking target nDCG per p95 latency ms.",
+    ),
     max_chunking_failed_queries: int | None = 0,
     max_chunking_recall_drop: float | None = None,
     max_chunking_mean_latency_ratio: float | None = None,
@@ -4526,6 +4571,33 @@ def ingestion_readiness_command(
             "max_unstable_result_count": max_chunking_unstable_result_count,
             "min_visual_text_coverage_ratio": min_chunking_visual_text_coverage_ratio,
             "min_visual_text_part_coverage_ratio": min_chunking_visual_text_part_coverage_ratio,
+            "min_retrieval_score_per_embedding_kchar": (
+                min_chunking_retrieval_score_per_embedding_kchar
+            ),
+            "min_target_coverage_per_embedding_kchar": (
+                min_chunking_target_coverage_per_embedding_kchar
+            ),
+            "min_target_ndcg_per_embedding_kchar": (
+                min_chunking_target_ndcg_per_embedding_kchar
+            ),
+            "min_retrieval_score_per_mean_latency_ms": (
+                min_chunking_retrieval_score_per_mean_latency_ms
+            ),
+            "min_target_coverage_per_mean_latency_ms": (
+                min_chunking_target_coverage_per_mean_latency_ms
+            ),
+            "min_target_ndcg_per_mean_latency_ms": (
+                min_chunking_target_ndcg_per_mean_latency_ms
+            ),
+            "min_retrieval_score_per_p95_latency_ms": (
+                min_chunking_retrieval_score_per_p95_latency_ms
+            ),
+            "min_target_coverage_per_p95_latency_ms": (
+                min_chunking_target_coverage_per_p95_latency_ms
+            ),
+            "min_target_ndcg_per_p95_latency_ms": (
+                min_chunking_target_ndcg_per_p95_latency_ms
+            ),
             "max_failed_queries": max_chunking_failed_queries,
             "max_recall_drop": max_chunking_recall_drop,
             "max_mean_latency_ratio": max_chunking_mean_latency_ratio,
@@ -5991,6 +6063,36 @@ def gate_chunking_comparison_command(
         "--min-target-ndcg-per-embedding-kchar",
         help="Require target nDCG per thousand embedding characters.",
     ),
+    min_retrieval_score_per_mean_latency_ms: float | None = typer.Option(
+        None,
+        "--min-retrieval-score-per-mean-latency-ms",
+        help="Require aggregate retrieval score per mean retrieval latency ms.",
+    ),
+    min_target_coverage_per_mean_latency_ms: float | None = typer.Option(
+        None,
+        "--min-target-coverage-per-mean-latency-ms",
+        help="Require target coverage per mean retrieval latency ms.",
+    ),
+    min_target_ndcg_per_mean_latency_ms: float | None = typer.Option(
+        None,
+        "--min-target-ndcg-per-mean-latency-ms",
+        help="Require target nDCG per mean retrieval latency ms.",
+    ),
+    min_retrieval_score_per_p95_latency_ms: float | None = typer.Option(
+        None,
+        "--min-retrieval-score-per-p95-latency-ms",
+        help="Require aggregate retrieval score per p95 retrieval latency ms.",
+    ),
+    min_target_coverage_per_p95_latency_ms: float | None = typer.Option(
+        None,
+        "--min-target-coverage-per-p95-latency-ms",
+        help="Require target coverage per p95 retrieval latency ms.",
+    ),
+    min_target_ndcg_per_p95_latency_ms: float | None = typer.Option(
+        None,
+        "--min-target-ndcg-per-p95-latency-ms",
+        help="Require target nDCG per p95 retrieval latency ms.",
+    ),
     max_chunks_under_min_chars: int | None = None,
     max_chunks_over_max_chars: int | None = None,
     min_target_type_coverage: list[str] = typer.Option(
@@ -6097,6 +6199,18 @@ def gate_chunking_comparison_command(
         min_retrieval_score_per_embedding_kchar=min_retrieval_score_per_embedding_kchar,
         min_target_coverage_per_embedding_kchar=min_target_coverage_per_embedding_kchar,
         min_target_ndcg_per_embedding_kchar=min_target_ndcg_per_embedding_kchar,
+        min_retrieval_score_per_mean_latency_ms=(
+            min_retrieval_score_per_mean_latency_ms
+        ),
+        min_target_coverage_per_mean_latency_ms=(
+            min_target_coverage_per_mean_latency_ms
+        ),
+        min_target_ndcg_per_mean_latency_ms=min_target_ndcg_per_mean_latency_ms,
+        min_retrieval_score_per_p95_latency_ms=(
+            min_retrieval_score_per_p95_latency_ms
+        ),
+        min_target_coverage_per_p95_latency_ms=min_target_coverage_per_p95_latency_ms,
+        min_target_ndcg_per_p95_latency_ms=min_target_ndcg_per_p95_latency_ms,
         max_chunks_under_min_chars=max_chunks_under_min_chars,
         max_chunks_over_max_chars=max_chunks_over_max_chars,
         min_target_type_coverage=target_type_thresholds,

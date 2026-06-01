@@ -43,6 +43,12 @@ def test_gate_chunking_comparison_passes_selected_candidate_against_baseline():
         min_retrieval_score_per_embedding_kchar=0.5,
         min_target_coverage_per_embedding_kchar=0.5,
         min_target_ndcg_per_embedding_kchar=0.5,
+        min_retrieval_score_per_mean_latency_ms=0.05,
+        min_target_coverage_per_mean_latency_ms=0.05,
+        min_target_ndcg_per_mean_latency_ms=0.05,
+        min_retrieval_score_per_p95_latency_ms=0.03,
+        min_target_coverage_per_p95_latency_ms=0.03,
+        min_target_ndcg_per_p95_latency_ms=0.03,
         max_recall_drop=0.05,
         max_mean_latency_ratio=2.0,
     )
@@ -58,6 +64,12 @@ def test_gate_chunking_comparison_passes_selected_candidate_against_baseline():
     assert report.metrics["total_chunk_chars"] == 1200.0
     assert report.metrics["embedding_text_kchars"] == 1.2
     assert report.metrics["retrieval_score_per_embedding_kchar"] > 0.5
+    assert report.metrics["retrieval_score_per_mean_latency_ms"] > 0.05
+    assert report.metrics["target_coverage_per_mean_latency_ms"] > 0.05
+    assert report.metrics["target_ndcg_per_mean_latency_ms"] > 0.05
+    assert report.metrics["retrieval_score_per_p95_latency_ms"] > 0.03
+    assert report.metrics["target_coverage_per_p95_latency_ms"] > 0.03
+    assert report.metrics["target_ndcg_per_p95_latency_ms"] > 0.03
     assert report.metrics["visual_text_coverage_ratio"] == 0.9
     assert report.metrics["visual_text_part_coverage_ratio"] == 0.9
     assert report.metrics["target_type.asset.coverage_at_k"] == 0.85
@@ -100,6 +112,12 @@ def test_gate_chunking_comparison_flags_retrieval_regressions():
         min_retrieval_score_per_embedding_kchar=0.5,
         min_target_coverage_per_embedding_kchar=0.5,
         min_target_ndcg_per_embedding_kchar=0.5,
+        min_retrieval_score_per_mean_latency_ms=0.05,
+        min_target_coverage_per_mean_latency_ms=0.05,
+        min_target_ndcg_per_mean_latency_ms=0.05,
+        min_retrieval_score_per_p95_latency_ms=0.03,
+        min_target_coverage_per_p95_latency_ms=0.03,
+        min_target_ndcg_per_p95_latency_ms=0.03,
         max_recall_drop=0.1,
         max_mean_latency_ratio=1.5,
     )
@@ -126,6 +144,12 @@ def test_gate_chunking_comparison_flags_retrieval_regressions():
     assert "min_retrieval_score_per_embedding_kchar" in report.failed_checks
     assert "min_target_coverage_per_embedding_kchar" in report.failed_checks
     assert "min_target_ndcg_per_embedding_kchar" in report.failed_checks
+    assert "min_retrieval_score_per_mean_latency_ms" in report.failed_checks
+    assert "min_target_coverage_per_mean_latency_ms" in report.failed_checks
+    assert "min_target_ndcg_per_mean_latency_ms" in report.failed_checks
+    assert "min_retrieval_score_per_p95_latency_ms" in report.failed_checks
+    assert "min_target_coverage_per_p95_latency_ms" in report.failed_checks
+    assert "min_target_ndcg_per_p95_latency_ms" in report.failed_checks
     assert "max_recall_at_k_drop" in report.failed_checks
     assert "max_mean_latency_ms_ratio" in report.failed_checks
 
@@ -230,6 +254,12 @@ def test_gate_chunking_comparison_cli_writes_json_and_fails(tmp_path):
             "2000",
             "--min-retrieval-score-per-embedding-kchar",
             "0.5",
+            "--min-retrieval-score-per-mean-latency-ms",
+            "0.05",
+            "--min-target-coverage-per-mean-latency-ms",
+            "0.05",
+            "--min-target-ndcg-per-p95-latency-ms",
+            "0.03",
             "--min-target-type-coverage",
             "asset=0.8",
             "--min-visual-text-coverage-ratio",
@@ -266,6 +296,9 @@ def test_gate_chunking_comparison_cli_writes_json_and_fails(tmp_path):
     assert "max_unstable_result_count" in payload["failed_checks"]
     assert "max_total_chunk_chars" in payload["failed_checks"]
     assert "min_retrieval_score_per_embedding_kchar" in payload["failed_checks"]
+    assert "min_retrieval_score_per_mean_latency_ms" in payload["failed_checks"]
+    assert "min_target_coverage_per_mean_latency_ms" in payload["failed_checks"]
+    assert "min_target_ndcg_per_p95_latency_ms" in payload["failed_checks"]
     assert "min_visual_text_coverage_ratio" in payload["failed_checks"]
     assert "min_visual_text_part_coverage_ratio" in payload["failed_checks"]
     assert "min_target_type_coverage:asset" in payload["failed_checks"]
@@ -452,6 +485,12 @@ def row(
         retrieval_score_per_embedding_kchar=retrieval_score / embedding_text_kchars,
         target_coverage_per_embedding_kchar=target_coverage / embedding_text_kchars,
         target_ndcg_per_embedding_kchar=target_ndcg / embedding_text_kchars,
+        retrieval_score_per_mean_latency_ms=retrieval_score / mean_latency,
+        target_coverage_per_mean_latency_ms=target_coverage / mean_latency,
+        target_ndcg_per_mean_latency_ms=target_ndcg / mean_latency,
+        retrieval_score_per_p95_latency_ms=retrieval_score / p95_latency,
+        target_coverage_per_p95_latency_ms=target_coverage / p95_latency,
+        target_ndcg_per_p95_latency_ms=target_ndcg / p95_latency,
         retrieval_hit_rate=recall,
         retrieval_recall_at_k=recall,
         retrieval_mrr=0.75,
