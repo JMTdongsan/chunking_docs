@@ -169,6 +169,7 @@ Additional processing commands may create:
 - `chunking_sweep/chunks.*.jsonl`
 - `graph_nodes.jsonl`
 - `graph_edges.jsonl`
+- `graph_summary.json`
 - `experiment_report.json`
 - `document_characteristics.json`
 - `ingestion_readiness.json`

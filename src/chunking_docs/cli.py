@@ -2270,19 +2270,27 @@ def build_rag_context_command(
 @app.command(name="export-graph")
 def export_graph_command(package_dir: Path = Path("outputs/package")):
     """Export triples as graph nodes and edges JSONL."""
-    from chunking_docs.graph.export import export_graph
+    from chunking_docs.graph.export import export_graph, summarize_graph
 
     chunks = read_jsonl(package_dir / "chunks.jsonl", DocumentChunk)
     triples = read_jsonl(package_dir / "triples.jsonl", GraphTriple)
     nodes, edges = export_graph(triples, chunks=chunks)
+    summary = summarize_graph(nodes, edges)
     write_jsonl(package_dir / "graph_nodes.jsonl", nodes)
     write_jsonl(package_dir / "graph_edges.jsonl", edges)
+    (package_dir / "graph_summary.json").write_text(
+        summary.model_dump_json(indent=2),
+        encoding="utf-8",
+    )
     print(
         {
             "nodes": len(nodes),
             "edges": len(edges),
+            "connected_components": summary.connected_component_count,
+            "largest_component_nodes": summary.largest_component_node_count,
             "nodes_output": str(package_dir / "graph_nodes.jsonl"),
             "edges_output": str(package_dir / "graph_edges.jsonl"),
+            "summary_output": str(package_dir / "graph_summary.json"),
         }
     )
 
@@ -2317,7 +2325,7 @@ def normalize_graph_triples_command(
     export_graph_artifacts: bool = typer.Option(False, "--export-graph"),
 ):
     """Normalize graph triple labels and optionally rebuild graph JSONL artifacts."""
-    from chunking_docs.graph.export import export_graph
+    from chunking_docs.graph.export import export_graph, summarize_graph
     from chunking_docs.graph.quality import (
         audit_graph_triples,
         graph_triple_has_required_fields,
@@ -2345,12 +2353,16 @@ def normalize_graph_triples_command(
 
     graph_nodes_output = None
     graph_edges_output = None
+    graph_summary_output = None
     if export_graph_artifacts:
         nodes, edges = export_graph(normalized, chunks=chunks)
+        summary = summarize_graph(nodes, edges)
         graph_nodes_output = package_dir / "graph_nodes.jsonl"
         graph_edges_output = package_dir / "graph_edges.jsonl"
+        graph_summary_output = package_dir / "graph_summary.json"
         write_jsonl(graph_nodes_output, nodes)
         write_jsonl(graph_edges_output, edges)
+        graph_summary_output.write_text(summary.model_dump_json(indent=2), encoding="utf-8")
 
     print_json(
         {
@@ -2364,6 +2376,7 @@ def normalize_graph_triples_command(
             "dedupe": dedupe,
             "graph_nodes_output": str(graph_nodes_output) if graph_nodes_output else None,
             "graph_edges_output": str(graph_edges_output) if graph_edges_output else None,
+            "graph_summary_output": str(graph_summary_output) if graph_summary_output else None,
         }
     )
 

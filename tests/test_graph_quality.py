@@ -262,6 +262,10 @@ def test_graph_quality_cli_writes_normalized_triples_and_report(tmp_path):
     assert normalized[0].predicate == "related_to"
     assert (package_dir / "graph_nodes.jsonl").exists()
     assert (package_dir / "graph_edges.jsonl").exists()
+    summary = json.loads((package_dir / "graph_summary.json").read_text(encoding="utf-8"))
+    assert summary["node_count"] == 2
+    assert summary["edge_count"] == 1
+    assert summary["predicate_counts"] == {"related_to": 1}
 
     report_output = package_dir / "graph_quality.json"
     result = CliRunner().invoke(

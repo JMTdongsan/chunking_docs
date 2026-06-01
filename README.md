@@ -269,6 +269,7 @@ chunking-docs normalize-graph-triples \
 ```
 
 Normalization collapses whitespace, canonicalizes predicate names, recomputes stable triple IDs, and can remove semantic duplicates within the same chunk. The audit report counts duplicates, triples that would change under normalization, orphan chunk references, empty fields, invalid confidence values, and normalized predicate frequencies.
+When `--export-graph` is used, graph nodes include degree, direction, predicate, document, and chunk provenance metadata, while `graph_summary.json` records connectivity, predicate counts, document counts, and top-degree nodes for browsing and retrieval-signal review.
 
 ## Embeddings
 
