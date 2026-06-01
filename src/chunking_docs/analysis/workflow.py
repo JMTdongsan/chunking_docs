@@ -54,6 +54,12 @@ POST_INDEX_RECOMMENDATIONS = {
     "validate_qdrant_rag_context",
 }
 
+EMBEDDING_REBUILD_RECOMMENDATIONS = {
+    "build_embedding_artifacts",
+    "evaluate_visual_vectors",
+    "build_triple_vector_artifacts",
+}
+
 
 def build_ingestion_workflow_plan(
     characteristics: PackageCharacteristics,
@@ -104,6 +110,11 @@ def build_ingestion_workflow_plan(
         handled_codes.add(recommendation.code)
 
     steps.append(index_refresh_step(package_dir))
+    needs_qdrant_rag_context = "validate_qdrant_rag_context" in recommendations_by_code
+    if needs_qdrant_rag_context and not (
+        EMBEDDING_REBUILD_RECOMMENDATIONS & recommendations_by_code.keys()
+    ):
+        steps.append(embedding_rebuild_step(package_dir))
     for code in RECOMMENDATION_ORDER:
         recommendation = recommendations_by_code.get(code)
         if recommendation is None or code in handled_codes or code not in POST_INDEX_RECOMMENDATIONS:
@@ -123,7 +134,7 @@ def build_ingestion_workflow_plan(
             retrieval_cases,
             include_chunking_comparison="compare_multimodal_hierarchical_chunking"
             in recommendations_by_code,
-            include_qdrant_rag_context="validate_qdrant_rag_context" in recommendations_by_code,
+            include_qdrant_rag_context=needs_qdrant_rag_context,
         )
     )
     return IngestionWorkflowPlan(
@@ -284,6 +295,26 @@ def metadata_refresh_step(package_dir: Path) -> WorkflowStep:
         reason="Record current source checksum, tokenizer config, and chunking selection before final ingestion gates.",
         commands=[
             f"chunking-docs refresh-package-metadata --package-dir {path_arg(package_dir)}"
+        ],
+    )
+
+
+def embedding_rebuild_step(package_dir: Path) -> WorkflowStep:
+    return WorkflowStep(
+        step_id="rebuild_embedding_artifacts",
+        title="Rebuild embedding artifacts",
+        area="embeddings",
+        priority="required",
+        reason=(
+            "Rebuild Qdrant records after index refresh invalidates stale vector artifacts and before "
+            "Qdrant/RAG validation commands run."
+        ),
+        commands=[
+            (
+                f"chunking-docs embed-package --package-dir {path_arg(package_dir)} "
+                "--caption-backend same-as-text --object-backend same-as-caption "
+                "--triple-backend same-as-text"
+            )
         ],
     )
 

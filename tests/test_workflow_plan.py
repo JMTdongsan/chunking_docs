@@ -131,6 +131,43 @@ def test_plan_ingestion_workflow_cli_writes_json(tmp_path):
     assert any(step["step_id"] == "visual_annotations" for step in payload["steps"])
 
 
+def test_workflow_plan_rebuilds_embeddings_after_index_refresh_for_indexed_text_package(tmp_path):
+    package_dir, manifest = make_indexed_text_package(tmp_path)
+    cases = tmp_path / "cases.jsonl"
+    characteristics = characterize_package(
+        profiles=manifest.profiles,
+        chunks=manifest.chunks,
+        assets=manifest.assets,
+        triples=manifest.triples,
+        package_dir=package_dir,
+    )
+
+    recommendation_codes = [item.code for item in characteristics.recommendations]
+    assert "build_embedding_artifacts" not in recommendation_codes
+    assert "evaluate_visual_vectors" not in recommendation_codes
+    assert "validate_qdrant_rag_context" in recommendation_codes
+
+    plan = build_ingestion_workflow_plan(
+        characteristics,
+        package_dir=package_dir,
+        retrieval_cases=cases,
+        vlm_profiles=["qwen2_5_vl_7b"],
+    )
+
+    step_ids = [step.step_id for step in plan.steps]
+    assert "rebuild_embedding_artifacts" in step_ids
+    assert step_ids.index("refresh_package_indexes") < step_ids.index("rebuild_embedding_artifacts")
+    assert step_ids.index("rebuild_embedding_artifacts") < step_ids.index("validate_qdrant_rag_context")
+    rebuild_command = next(
+        step.commands[0] for step in plan.steps if step.step_id == "rebuild_embedding_artifacts"
+    )
+    assert "embed-package" in rebuild_command
+    assert "--caption-backend same-as-text" in rebuild_command
+    readiness_command = plan.steps[-1].commands[0]
+    assert "--require-qdrant-retrieval-config" in readiness_command
+    assert "--require-rag-context-evaluation" in readiness_command
+
+
 def make_workflow_package(tmp_path: Path):
     package_dir = tmp_path / "package"
     package_dir.mkdir()
@@ -187,4 +224,66 @@ def make_workflow_package(tmp_path: Path):
     write_jsonl(package_dir / "chunks.jsonl", chunks)
     write_jsonl(package_dir / "assets.jsonl", assets)
     write_jsonl(package_dir / "triples.jsonl", [])
+    return package_dir, manifest
+
+
+def make_indexed_text_package(tmp_path: Path):
+    package_dir = tmp_path / "indexed_text_package"
+    package_dir.mkdir()
+    doc = SourceDocument(
+        doc_id="doc",
+        title="Reference Document",
+        local_path=tmp_path / "reference.pdf",
+    )
+    profiles = [
+        PageProfile(
+            doc_id="doc",
+            page_no=1,
+            width=100,
+            height=100,
+            char_count=240,
+            line_count=8,
+            text_block_count=2,
+            image_block_count=0,
+            embedded_image_count=0,
+            drawing_count=0,
+            text_quality=TextQuality.GOOD,
+        )
+    ]
+    chunks = [
+        DocumentChunk(
+            chunk_id="chunk-1",
+            doc_id="doc",
+            page_start=1,
+            page_end=1,
+            kind=ChunkKind.TEXT,
+            text="redevelopment policy corridor and public housing plan",
+        )
+    ]
+    manifest = ProcessingManifest(doc=doc, profiles=profiles, chunks=chunks, assets=[], triples=[])
+    (package_dir / "manifest.json").write_text(
+        json.dumps({"doc": doc.model_dump(mode="json")}),
+        encoding="utf-8",
+    )
+    write_jsonl(package_dir / "pages.jsonl", profiles)
+    write_jsonl(package_dir / "chunks.jsonl", chunks)
+    write_jsonl(package_dir / "assets.jsonl", [])
+    write_jsonl(package_dir / "triples.jsonl", [])
+    (package_dir / "bm25_tokens.json").write_text("{}", encoding="utf-8")
+    (package_dir / "embedding_manifest.json").write_text(
+        json.dumps({"records": []}),
+        encoding="utf-8",
+    )
+    (package_dir / "qdrant_text_records.jsonl").write_text(
+        json.dumps(
+            {
+                "id": "chunk-1",
+                "vector_name": "text_dense",
+                "vector": [0.1, 0.2],
+                "payload": {"chunk_id": "chunk-1", "doc_id": "doc"},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     return package_dir, manifest
