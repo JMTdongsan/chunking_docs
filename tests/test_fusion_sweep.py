@@ -219,6 +219,66 @@ def test_build_qdrant_fusion_sweep_report_rejects_named_excluded_target_hits():
     assert leaky_row.max_retrieval_role_excluded_target_hit_rate_name == "child"
 
 
+def test_build_qdrant_fusion_sweep_report_rejects_low_named_source_precision():
+    precise = QdrantFusionSweepCandidate(
+        name="precise",
+        fusion_weights={"qdrant:image_dense": 1.0},
+        evaluation=evaluation(
+            recall=0.95,
+            coverage=0.95,
+            ndcg=0.9,
+            mrr=0.85,
+            precision=0.2,
+            failed=0,
+            latency=30.0,
+            source_metrics={
+                "qdrant:image_dense": source_metric(precision=1.0),
+            },
+            source_family_metrics={
+                "visual": source_metric(precision=1.0),
+            },
+        ),
+    )
+    noisy = QdrantFusionSweepCandidate(
+        name="noisy",
+        fusion_weights={"qdrant:image_dense": 2.0},
+        evaluation=evaluation(
+            recall=1.0,
+            coverage=1.0,
+            ndcg=0.98,
+            mrr=0.95,
+            precision=0.2,
+            failed=0,
+            latency=20.0,
+            source_metrics={
+                "qdrant:image_dense": source_metric(precision=0.25),
+            },
+            source_family_metrics={
+                "visual": source_metric(precision=0.25),
+            },
+        ),
+    )
+
+    report = build_qdrant_fusion_sweep_report(
+        [precise, noisy],
+        vector_names=["text_dense", "image_dense"],
+        min_source_precision_at_hits={"qdrant:image_dense": 0.5},
+        min_source_family_precision_at_hits={"visual": 0.5},
+    )
+
+    assert report.recommended == "precise"
+    assert report.eligible_count == 1
+    noisy_row = next(candidate for candidate in report.candidates if candidate.name == "noisy")
+    assert noisy_row.eligibility_failures == [
+        "min_source_precision_at_hits:qdrant:image_dense",
+        "min_source_family_precision_at_hits:visual",
+    ]
+    assert noisy_row.min_source_precision_at_hits == 0.25
+    assert noisy_row.min_source_precision_at_hits_name == "qdrant:image_dense"
+    assert noisy_row.min_source_family_precision_at_hits == 0.25
+    assert noisy_row.min_source_family_precision_at_hits_name == "visual"
+
+
 def test_build_qdrant_fusion_sweep_report_penalizes_named_excluded_target_hits():
     clean = QdrantFusionSweepCandidate(
         name="clean",
@@ -518,15 +578,18 @@ def evaluation(
     )
 
 
-def source_metric(excluded_rate: float = 0.0) -> RetrievalSourceMetric:
+def source_metric(excluded_rate: float = 0.0, precision: float = 1.0) -> RetrievalSourceMetric:
     excluded_target_count = 10 if excluded_rate else 0
     return RetrievalSourceMetric(
         query_count=1,
+        relevant_query_count=1 if precision else 0,
         excluded_query_count=1 if excluded_rate else 0,
         hit_count=1,
+        relevant_hit_count=1 if precision else 0,
         excluded_hit_count=1 if excluded_rate else 0,
         excluded_target_count=excluded_target_count,
         excluded_matched_target_count=int(round(excluded_rate * excluded_target_count)),
+        precision_at_hits=precision,
         excluded_precision_at_hits=excluded_rate,
         excluded_target_hit_rate=excluded_rate,
     )

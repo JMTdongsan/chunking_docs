@@ -31,6 +31,10 @@ class QdrantFusionSweepCandidate(BaseModel):
     max_source_excluded_target_hit_rate_name: str | None = None
     max_source_family_excluded_target_hit_rate: float = 0.0
     max_source_family_excluded_target_hit_rate_name: str | None = None
+    min_source_precision_at_hits: float = 0.0
+    min_source_precision_at_hits_name: str | None = None
+    min_source_family_precision_at_hits: float = 0.0
+    min_source_family_precision_at_hits_name: str | None = None
     max_chunk_strategy_excluded_target_hit_rate: float = 0.0
     max_chunk_strategy_excluded_target_hit_rate_name: str | None = None
     max_retrieval_role_excluded_target_hit_rate: float = 0.0
@@ -204,6 +208,8 @@ def build_qdrant_fusion_sweep_report(
     max_excluded_hit_query_count: int | None = None,
     max_source_excluded_target_hit_rate: dict[str, float] | None = None,
     max_source_family_excluded_target_hit_rate: dict[str, float] | None = None,
+    min_source_precision_at_hits: dict[str, float] | None = None,
+    min_source_family_precision_at_hits: dict[str, float] | None = None,
     max_chunk_strategy_excluded_target_hit_rate: dict[str, float] | None = None,
     max_retrieval_role_excluded_target_hit_rate: dict[str, float] | None = None,
     recall_weight: float = 1.0,
@@ -239,6 +245,8 @@ def build_qdrant_fusion_sweep_report(
             max_excluded_hit_query_count=max_excluded_hit_query_count,
             max_source_excluded_target_hit_rate=max_source_excluded_target_hit_rate,
             max_source_family_excluded_target_hit_rate=max_source_family_excluded_target_hit_rate,
+            min_source_precision_at_hits=min_source_precision_at_hits,
+            min_source_family_precision_at_hits=min_source_family_precision_at_hits,
             max_chunk_strategy_excluded_target_hit_rate=max_chunk_strategy_excluded_target_hit_rate,
             max_retrieval_role_excluded_target_hit_rate=max_retrieval_role_excluded_target_hit_rate,
             recall_weight=recall_weight,
@@ -317,6 +325,8 @@ def score_fusion_candidate(
     max_excluded_hit_query_count: int | None,
     max_source_excluded_target_hit_rate: dict[str, float] | None,
     max_source_family_excluded_target_hit_rate: dict[str, float] | None,
+    min_source_precision_at_hits: dict[str, float] | None,
+    min_source_family_precision_at_hits: dict[str, float] | None,
     max_chunk_strategy_excluded_target_hit_rate: dict[str, float] | None,
     max_retrieval_role_excluded_target_hit_rate: dict[str, float] | None,
     recall_weight: float,
@@ -339,6 +349,12 @@ def score_fusion_candidate(
     source_family_max_name, source_family_max_rate = excluded_target_hit_rate_max(
         evaluation.source_family_metrics
     )
+    source_min_precision_name, source_min_precision = precision_at_hits_min(
+        evaluation.source_metrics
+    )
+    source_family_min_precision_name, source_family_min_precision = precision_at_hits_min(
+        evaluation.source_family_metrics
+    )
     chunk_strategy_max_name, chunk_strategy_max_rate = excluded_target_hit_rate_max(
         evaluation.chunk_strategy_metrics
     )
@@ -359,6 +375,8 @@ def score_fusion_candidate(
         max_excluded_hit_query_count=max_excluded_hit_query_count,
         max_source_excluded_target_hit_rate=max_source_excluded_target_hit_rate,
         max_source_family_excluded_target_hit_rate=max_source_family_excluded_target_hit_rate,
+        min_source_precision_at_hits=min_source_precision_at_hits,
+        min_source_family_precision_at_hits=min_source_family_precision_at_hits,
         max_chunk_strategy_excluded_target_hit_rate=max_chunk_strategy_excluded_target_hit_rate,
         max_retrieval_role_excluded_target_hit_rate=max_retrieval_role_excluded_target_hit_rate,
     )
@@ -387,6 +405,10 @@ def score_fusion_candidate(
             "max_source_excluded_target_hit_rate_name": source_max_name,
             "max_source_family_excluded_target_hit_rate": source_family_max_rate,
             "max_source_family_excluded_target_hit_rate_name": source_family_max_name,
+            "min_source_precision_at_hits": source_min_precision,
+            "min_source_precision_at_hits_name": source_min_precision_name,
+            "min_source_family_precision_at_hits": source_family_min_precision,
+            "min_source_family_precision_at_hits_name": source_family_min_precision_name,
             "max_chunk_strategy_excluded_target_hit_rate": chunk_strategy_max_rate,
             "max_chunk_strategy_excluded_target_hit_rate_name": chunk_strategy_max_name,
             "max_retrieval_role_excluded_target_hit_rate": retrieval_role_max_rate,
@@ -409,6 +431,8 @@ def fusion_candidate_failures(
     max_excluded_hit_query_count: int | None = None,
     max_source_excluded_target_hit_rate: dict[str, float] | None = None,
     max_source_family_excluded_target_hit_rate: dict[str, float] | None = None,
+    min_source_precision_at_hits: dict[str, float] | None = None,
+    min_source_family_precision_at_hits: dict[str, float] | None = None,
     max_chunk_strategy_excluded_target_hit_rate: dict[str, float] | None = None,
     max_retrieval_role_excluded_target_hit_rate: dict[str, float] | None = None,
 ) -> list[str]:
@@ -457,6 +481,20 @@ def fusion_candidate_failures(
         )
     )
     failures.extend(
+        named_precision_at_hits_failures(
+            evaluation.source_metrics,
+            min_source_precision_at_hits,
+            "min_source_precision_at_hits",
+        )
+    )
+    failures.extend(
+        named_precision_at_hits_failures(
+            evaluation.source_family_metrics,
+            min_source_family_precision_at_hits,
+            "min_source_family_precision_at_hits",
+        )
+    )
+    failures.extend(
         named_excluded_target_hit_rate_failures(
             evaluation.chunk_strategy_metrics,
             max_chunk_strategy_excluded_target_hit_rate,
@@ -494,6 +532,27 @@ def named_excluded_target_hit_rate_failures(
     return failures
 
 
+def named_precision_at_hits_failures(
+    metrics: dict[str, RetrievalSourceMetric],
+    thresholds: dict[str, float] | None,
+    failure_prefix: str,
+) -> list[str]:
+    if not thresholds:
+        return []
+    normalized_metrics = {
+        normalize_metric_name(name): metric
+        for name, metric in metrics.items()
+    }
+    failures = []
+    for raw_name, threshold in sorted(thresholds.items()):
+        name = normalize_metric_name(raw_name)
+        metric = normalized_metrics.get(name)
+        precision = metric.precision_at_hits if metric is not None else 0.0
+        if precision < threshold:
+            failures.append(f"{failure_prefix}:{name}")
+    return failures
+
+
 def excluded_target_hit_rate_max(
     metrics: dict[str, RetrievalSourceMetric],
 ) -> tuple[str | None, float]:
@@ -504,6 +563,18 @@ def excluded_target_hit_rate_max(
         key=lambda item: (item[1].excluded_target_hit_rate, normalize_metric_name(item[0])),
     )
     return name, metric.excluded_target_hit_rate
+
+
+def precision_at_hits_min(
+    metrics: dict[str, RetrievalSourceMetric],
+) -> tuple[str | None, float]:
+    if not metrics:
+        return None, 0.0
+    name, metric = min(
+        metrics.items(),
+        key=lambda item: (item[1].precision_at_hits, normalize_metric_name(item[0])),
+    )
+    return name, metric.precision_at_hits
 
 
 def normalize_metric_name(value: str) -> str:
@@ -523,6 +594,8 @@ def fusion_candidate_rank_key(candidate: QdrantFusionSweepCandidate) -> tuple:
         -evaluation.excluded_target_hit_rate,
         -candidate.max_source_excluded_target_hit_rate,
         -candidate.max_source_family_excluded_target_hit_rate,
+        candidate.min_source_precision_at_hits,
+        candidate.min_source_family_precision_at_hits,
         -candidate.max_chunk_strategy_excluded_target_hit_rate,
         -candidate.max_retrieval_role_excluded_target_hit_rate,
         -evaluation.excluded_hit_query_count,

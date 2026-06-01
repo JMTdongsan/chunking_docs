@@ -2150,6 +2150,22 @@ def sweep_qdrant_fusion_command(
             "name=value, such as visual=0.0."
         ),
     ),
+    min_source_precision_at_hits: list[str] = typer.Option(
+        None,
+        "--min-source-precision-at-hits",
+        help=(
+            "Reject fusion candidates whose exact-source relevant-hit precision is below "
+            "name=value, such as qdrant:image_dense=0.5."
+        ),
+    ),
+    min_source_family_precision_at_hits: list[str] = typer.Option(
+        None,
+        "--min-source-family-precision-at-hits",
+        help=(
+            "Reject fusion candidates whose source-family relevant-hit precision is below "
+            "name=value, such as visual=0.5."
+        ),
+    ),
     max_chunk_strategy_excluded_target_hit_rate: list[str] = typer.Option(
         None,
         "--max-chunk-strategy-excluded-target-hit-rate",
@@ -2233,6 +2249,14 @@ def sweep_qdrant_fusion_command(
     source_family_excluded_thresholds = parse_named_float_thresholds(
         max_source_family_excluded_target_hit_rate,
         "--max-source-family-excluded-target-hit-rate",
+    )
+    source_precision_thresholds = parse_named_float_thresholds(
+        min_source_precision_at_hits,
+        "--min-source-precision-at-hits",
+    )
+    source_family_precision_thresholds = parse_named_float_thresholds(
+        min_source_family_precision_at_hits,
+        "--min-source-family-precision-at-hits",
     )
     chunk_strategy_excluded_thresholds = parse_named_float_thresholds(
         max_chunk_strategy_excluded_target_hit_rate,
@@ -2363,6 +2387,8 @@ def sweep_qdrant_fusion_command(
         max_excluded_hit_query_count=max_excluded_hit_query_count,
         max_source_excluded_target_hit_rate=source_excluded_thresholds,
         max_source_family_excluded_target_hit_rate=source_family_excluded_thresholds,
+        min_source_precision_at_hits=source_precision_thresholds,
+        min_source_family_precision_at_hits=source_family_precision_thresholds,
         max_chunk_strategy_excluded_target_hit_rate=chunk_strategy_excluded_thresholds,
         max_retrieval_role_excluded_target_hit_rate=retrieval_role_excluded_thresholds,
         recall_weight=recall_weight,
@@ -2403,6 +2429,8 @@ def sweep_qdrant_fusion_command(
             "max_excluded_hit_query_count": max_excluded_hit_query_count,
             "max_source_excluded_target_hit_rate": source_excluded_thresholds,
             "max_source_family_excluded_target_hit_rate": source_family_excluded_thresholds,
+            "min_source_precision_at_hits": source_precision_thresholds,
+            "min_source_family_precision_at_hits": source_family_precision_thresholds,
             "max_chunk_strategy_excluded_target_hit_rate": chunk_strategy_excluded_thresholds,
             "max_retrieval_role_excluded_target_hit_rate": retrieval_role_excluded_thresholds,
             "excluded_query_hit_penalty": excluded_query_hit_penalty,
@@ -2479,6 +2507,18 @@ def sweep_qdrant_fusion_command(
                     ),
                     "max_source_family_excluded_target_hit_rate_name": (
                         candidate.max_source_family_excluded_target_hit_rate_name
+                    ),
+                    "min_source_precision_at_hits": (
+                        candidate.min_source_precision_at_hits
+                    ),
+                    "min_source_precision_at_hits_name": (
+                        candidate.min_source_precision_at_hits_name
+                    ),
+                    "min_source_family_precision_at_hits": (
+                        candidate.min_source_family_precision_at_hits
+                    ),
+                    "min_source_family_precision_at_hits_name": (
+                        candidate.min_source_family_precision_at_hits_name
                     ),
                     "max_chunk_strategy_excluded_target_hit_rate": (
                         candidate.max_chunk_strategy_excluded_target_hit_rate
