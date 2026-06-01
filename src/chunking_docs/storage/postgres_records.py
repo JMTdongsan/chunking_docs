@@ -7,6 +7,8 @@ from typing import Any
 from chunking_docs.embeddings.records import visual_object_embedding_items
 from chunking_docs.graph.provenance import asset_ids_from_ref, chunk_asset_ids
 from chunking_docs.models import DocumentChunk, GraphTriple, PageProfile, SourceDocument, VisualAsset
+from chunking_docs.storage.qdrant_config import qdrant_payload_index_fields
+from chunking_docs.storage.qdrant_config import qdrant_payload_index_schemas
 
 BM25_TOKEN_MANIFEST = "bm25_tokens.json"
 VISUAL_OBJECT_ROW_KEYS = {
@@ -247,6 +249,8 @@ def embedding_artifact_rows(doc_id: str, package_dir: Path | None = None) -> lis
         metadata["exists"] = bool(vector.get("exists", False))
         metadata["manifest_file"] = manifest_path.name
         metadata["payload_indexes"] = payload_indexes
+        metadata["payload_index_fields"] = sorted(qdrant_payload_index_fields(payload_indexes))
+        metadata["payload_index_schemas"] = qdrant_payload_index_schemas(payload_indexes)
         rows.append(
             {
                 "doc_id": doc_id,

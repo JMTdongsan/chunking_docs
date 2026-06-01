@@ -104,6 +104,35 @@ def test_qdrant_ensure_collection_creates_payload_indexes():
     ]
 
 
+def test_qdrant_ensure_collection_infers_schema_for_string_payload_indexes():
+    store = object.__new__(QdrantChunkStore)
+    store.collection_name = "collection"
+    store.client = FakeQdrantClient()
+    store._vector_params = lambda size, distance: {"size": size, "distance": distance}
+    store._distance = SimpleNamespace(COSINE="cosine")
+    store._payload_schema_type = SimpleNamespace(
+        KEYWORD="keyword",
+        INTEGER="integer",
+        BOOL="bool",
+        FLOAT="float",
+    )
+
+    store.ensure_collection(
+        {"text_dense": 3},
+        payload_indexes=["doc_id", "page_no", "requires_vlm", "control_char_ratio"],
+    )
+
+    assert [
+        (call["field_name"], call["field_schema"])
+        for call in store.client.created_payload_indexes
+    ] == [
+        ("doc_id", "keyword"),
+        ("page_no", "integer"),
+        ("requires_vlm", "bool"),
+        ("control_char_ratio", "float"),
+    ]
+
+
 def test_qdrant_ensure_collection_skips_existing_payload_index():
     store = object.__new__(QdrantChunkStore)
     store.collection_name = "collection"

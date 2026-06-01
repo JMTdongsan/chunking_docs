@@ -346,7 +346,11 @@ def test_manifest_rows_includes_embedding_artifact_provenance(tmp_path):
                         "sha256": "a" * 64,
                     }
                 },
-                "payload_indexes": [{"field": "doc_id", "schema": "keyword"}],
+                "payload_indexes": [
+                    {"field": "doc_id", "schema": "keyword"},
+                    {"field": "page_no", "schema": "integer"},
+                    {"field": "requires_vlm", "schema": "bool"},
+                ],
             }
         ),
         encoding="utf-8",
@@ -376,7 +380,17 @@ def test_manifest_rows_includes_embedding_artifact_provenance(tmp_path):
             "metadata": {
                 "exists": True,
                 "manifest_file": "embedding_manifest.json",
-                "payload_indexes": [{"field": "doc_id", "schema": "keyword"}],
+                "payload_indexes": [
+                    {"field": "doc_id", "schema": "keyword"},
+                    {"field": "page_no", "schema": "integer"},
+                    {"field": "requires_vlm", "schema": "bool"},
+                ],
+                "payload_index_fields": ["doc_id", "page_no", "requires_vlm"],
+                "payload_index_schemas": {
+                    "doc_id": "keyword",
+                    "page_no": "integer",
+                    "requires_vlm": "bool",
+                },
             },
         }
     ]

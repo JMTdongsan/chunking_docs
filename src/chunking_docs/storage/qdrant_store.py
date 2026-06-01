@@ -6,6 +6,9 @@ from typing import Iterable
 
 from pydantic import BaseModel, Field
 
+from chunking_docs.storage.qdrant_config import default_payload_schema
+from chunking_docs.storage.qdrant_config import normalize_payload_schema
+from chunking_docs.storage.qdrant_config import qdrant_payload_index_schemas
 from chunking_docs.storage.records import EmbeddingRecord, UpsertResult, VectorSearchHit
 
 
@@ -109,13 +112,7 @@ class QdrantChunkStore:
             for field_name, _ in [self._normalize_payload_index(index) for index in payload_indexes or []]
             if field_name
         )
-        expected_payload_index_schemas = {
-            field_name: payload_schema_name(schema)
-            for field_name, schema in [
-                self._normalize_payload_index(index) for index in payload_indexes or []
-            ]
-            if field_name
-        }
+        expected_payload_index_schemas = qdrant_payload_index_schemas(payload_indexes or [])
         if not exists:
             checks = [
                 QdrantCollectionContractCheck(
@@ -324,37 +321,6 @@ class QdrantChunkStore:
         return self._field_condition(key=key, match=self._match_value(value=value))
 
 
-def default_payload_schema(field_name: str) -> str:
-    integer_fields = {
-        "page_no",
-        "page_start",
-        "page_end",
-        "tile_index",
-        "tile_row",
-        "tile_col",
-        "tile_rows",
-        "tile_cols",
-        "control_char_count",
-        "image_block_count",
-        "embedded_image_count",
-        "drawing_count",
-    }
-    float_fields = {
-        "control_char_ratio",
-        "letter_or_number_ratio",
-        "cjk_char_ratio",
-        "tile_overlap_ratio",
-    }
-    bool_fields = {"visual_asset_unlinked", "requires_ocr", "requires_vlm"}
-    if field_name in integer_fields:
-        return "integer"
-    if field_name in float_fields:
-        return "float"
-    if field_name in bool_fields:
-        return "bool"
-    return "keyword"
-
-
 def collection_vector_sizes(info) -> dict[str, int]:
     vectors = nested_get(info, "config", "params", "vectors")
     if isinstance(vectors, dict):
@@ -385,7 +351,7 @@ def payload_schema_name(value: Any) -> str | None:
     if value is None:
         return None
     if isinstance(value, str):
-        return normalize_schema_name(value)
+        return normalize_payload_schema(value)
     for key_path in [
         ("data_type",),
         ("schema",),
@@ -395,27 +361,11 @@ def payload_schema_name(value: Any) -> str | None:
     ]:
         schema_value = nested_get(value, *key_path)
         if schema_value is not None:
-            return normalize_schema_name(str(schema_value))
+            return normalize_payload_schema(str(schema_value))
     name = getattr(value, "name", None)
     if isinstance(name, str):
-        return normalize_schema_name(name)
-    return normalize_schema_name(str(value))
-
-
-def normalize_schema_name(value: str) -> str:
-    normalized = value.strip().lower()
-    if "." in normalized:
-        normalized = normalized.rsplit(".", 1)[-1]
-    aliases = {
-        "int": "integer",
-        "int64": "integer",
-        "uint64": "integer",
-        "bool": "bool",
-        "boolean": "bool",
-        "float64": "float",
-        "double": "float",
-    }
-    return aliases.get(normalized, normalized)
+        return normalize_payload_schema(name)
+    return normalize_payload_schema(str(value))
 
 
 def nested_get(value, *keys):

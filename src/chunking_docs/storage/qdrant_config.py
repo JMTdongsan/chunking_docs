@@ -69,3 +69,70 @@ def qdrant_payload_index_fields(
             if field:
                 fields.add(str(field))
     return fields
+
+
+def qdrant_payload_index_schemas(
+    payload_indexes: list[str | dict[str, Any]] | None = None,
+) -> dict[str, str]:
+    schemas: dict[str, str] = {}
+    indexes = QDRANT_PAYLOAD_INDEXES if payload_indexes is None else payload_indexes
+    for index in indexes:
+        if isinstance(index, str):
+            field = index.strip()
+            if field:
+                schemas[field] = default_payload_schema(field)
+            continue
+        field = str(index.get("field") or index.get("field_name") or "").strip()
+        if not field:
+            continue
+        schemas[field] = normalize_payload_schema(
+            str(index.get("schema") or default_payload_schema(field))
+        )
+    return dict(sorted(schemas.items()))
+
+
+def default_payload_schema(field_name: str) -> str:
+    integer_fields = {
+        "page_no",
+        "page_start",
+        "page_end",
+        "tile_index",
+        "tile_row",
+        "tile_col",
+        "tile_rows",
+        "tile_cols",
+        "control_char_count",
+        "image_block_count",
+        "embedded_image_count",
+        "drawing_count",
+    }
+    float_fields = {
+        "control_char_ratio",
+        "letter_or_number_ratio",
+        "cjk_char_ratio",
+        "tile_overlap_ratio",
+    }
+    bool_fields = {"visual_asset_unlinked", "requires_ocr", "requires_vlm"}
+    if field_name in integer_fields:
+        return "integer"
+    if field_name in float_fields:
+        return "float"
+    if field_name in bool_fields:
+        return "bool"
+    return "keyword"
+
+
+def normalize_payload_schema(value: str) -> str:
+    normalized = value.strip().lower()
+    if "." in normalized:
+        normalized = normalized.rsplit(".", 1)[-1]
+    aliases = {
+        "int": "integer",
+        "int64": "integer",
+        "uint64": "integer",
+        "bool": "bool",
+        "boolean": "bool",
+        "float64": "float",
+        "double": "float",
+    }
+    return aliases.get(normalized, normalized)
