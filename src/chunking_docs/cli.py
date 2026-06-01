@@ -4421,6 +4421,21 @@ def sweep_chunking_command(
         "--selection-min-precision-at-k",
         help="Only recommend sweep candidates at or above this precision@k.",
     ),
+    selection_min_retrieval_score_per_embedding_kchar: float | None = typer.Option(
+        None,
+        "--selection-min-retrieval-score-per-embedding-kchar",
+        help="Only recommend sweep candidates with enough aggregate retrieval score per 1k embedding chars.",
+    ),
+    selection_min_target_coverage_per_embedding_kchar: float | None = typer.Option(
+        None,
+        "--selection-min-target-coverage-per-embedding-kchar",
+        help="Only recommend sweep candidates with enough target coverage per 1k embedding chars.",
+    ),
+    selection_min_target_ndcg_per_embedding_kchar: float | None = typer.Option(
+        None,
+        "--selection-min-target-ndcg-per-embedding-kchar",
+        help="Only recommend sweep candidates with enough target nDCG per 1k embedding chars.",
+    ),
     selection_min_quality_score: float | None = typer.Option(
         None,
         "--selection-min-quality-score",
@@ -4537,6 +4552,15 @@ def sweep_chunking_command(
         "min_target_coverage_at_k": selection_min_target_coverage_at_k,
         "min_target_ndcg_at_k": selection_min_target_ndcg_at_k,
         "min_precision_at_k": selection_min_precision_at_k,
+        "min_retrieval_score_per_embedding_kchar": (
+            selection_min_retrieval_score_per_embedding_kchar
+        ),
+        "min_target_coverage_per_embedding_kchar": (
+            selection_min_target_coverage_per_embedding_kchar
+        ),
+        "min_target_ndcg_per_embedding_kchar": (
+            selection_min_target_ndcg_per_embedding_kchar
+        ),
         "min_quality_score": selection_min_quality_score,
         "min_visual_text_coverage_ratio": selection_min_visual_text_coverage_ratio,
         "min_visual_text_part_coverage_ratio": (

@@ -754,12 +754,13 @@ chunking-docs sweep-chunking \
   --selection-max-mean-target-rank 3 \
   --selection-max-mean-latency-ms 150 \
   --selection-max-total-chunk-chars 1000000 \
+  --selection-min-target-coverage-per-embedding-kchar 0.0008 \
   --selection-max-visual-object-chunk-count 200 \
   --cases examples/retrieval_cases.jsonl \
   --output outputs/package/chunking_sweep.json
 ```
 
-The sweep writes candidate chunk files under `outputs/package/chunking_sweep/` and ranks them with the same quality, recall@k, MRR, target coverage@k, target nDCG@k, precision@k, target rank, target-type coverage, source-family target coverage, chunking-strategy coverage, retrieval-role coverage, linked visual text asset and part coverage, latency, and failed-query metrics used by `compare-chunking`. It also emits a `selection` block with weighted scores, eligibility failures, eligible counts, a recommendation, and a Pareto front so a strategy that improves retrieval can be checked against hard recall, target-rank, latency, visual-text asset coverage, visual-text part coverage, target-type, source-family, case-group, chunk-count, chunk-length, standalone visual chunk, and embedding text-volume constraints before becoming the default. Pareto dominance treats total chunk text, mean and p95 chunk length, embedding text volume, and standalone visual chunk count as cost axes, so a candidate with slightly better retrieval does not hide a much larger embedding payload.
+The sweep writes candidate chunk files under `outputs/package/chunking_sweep/` and ranks them with the same quality, recall@k, MRR, target coverage@k, target nDCG@k, precision@k, target rank, target-type coverage, source-family target coverage, chunking-strategy coverage, retrieval-role coverage, linked visual text asset and part coverage, latency, and failed-query metrics used by `compare-chunking`. It also emits a `selection` block with weighted scores, eligibility failures, eligible counts, a recommendation, and a Pareto front so a strategy that improves retrieval can be checked against hard recall, target-rank, latency, visual-text asset coverage, visual-text part coverage, target-type, source-family, case-group, chunk-count, chunk-length, standalone visual chunk, embedding text-volume, and retrieval-per-embedding-cost constraints before becoming the default. Pareto dominance treats total chunk text, mean and p95 chunk length, embedding text volume, and standalone visual chunk count as cost axes, so a candidate with slightly better retrieval does not hide a much larger embedding payload.
 
 Write a reproducible experiment report for a package:
 

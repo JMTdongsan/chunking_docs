@@ -108,6 +108,9 @@ MIN_SELECTION_CONSTRAINTS = {
     "min_target_coverage_at_k": "target_coverage_at_k",
     "min_target_ndcg_at_k": "target_ndcg_at_k",
     "min_precision_at_k": "precision_at_k",
+    "min_retrieval_score_per_embedding_kchar": "retrieval_score_per_embedding_kchar",
+    "min_target_coverage_per_embedding_kchar": "target_coverage_per_embedding_kchar",
+    "min_target_ndcg_per_embedding_kchar": "target_ndcg_per_embedding_kchar",
     "min_quality_score": "quality_score",
     "min_visual_text_coverage_ratio": "visual_text_coverage_ratio",
     "min_visual_text_part_coverage_ratio": "visual_text_part_coverage_ratio",
@@ -362,11 +365,33 @@ def selection_metrics(candidate: ChunkingSweepCandidate) -> dict[str, float | No
     mean_target_rank = rank_metrics.get("mean_target_rank")
     p95_target_rank = rank_metrics.get("p95_target_rank")
     total_chunk_chars = candidate.report.char_count.count * candidate.report.char_count.mean
+    embedding_text_kchars = total_chunk_chars / 1000.0
+    retrieval_score = aggregate_retrieval_score(
+        [
+            retrieval.recall_at_k if retrieval else None,
+            retrieval.target_coverage_at_k if retrieval else None,
+            retrieval.mean_target_ndcg_at_k if retrieval else None,
+            retrieval.mean_precision_at_k if retrieval else None,
+        ]
+    )
     metrics = {
         "retrieval_recall_at_k": retrieval.recall_at_k if retrieval else None,
         "target_coverage_at_k": retrieval.target_coverage_at_k if retrieval else None,
         "target_ndcg_at_k": retrieval.mean_target_ndcg_at_k if retrieval else None,
         "precision_at_k": retrieval.mean_precision_at_k if retrieval else None,
+        "retrieval_score": retrieval_score,
+        "retrieval_score_per_embedding_kchar": per_embedding_kchar(
+            retrieval_score,
+            embedding_text_kchars,
+        ),
+        "target_coverage_per_embedding_kchar": per_embedding_kchar(
+            retrieval.target_coverage_at_k if retrieval else None,
+            embedding_text_kchars,
+        ),
+        "target_ndcg_per_embedding_kchar": per_embedding_kchar(
+            retrieval.mean_target_ndcg_at_k if retrieval else None,
+            embedding_text_kchars,
+        ),
         "mean_first_relevant_rank": rank_metrics.get("mean_first_relevant_rank"),
         "p95_first_relevant_rank": rank_metrics.get("p95_first_relevant_rank"),
         "mean_target_rank": mean_target_rank,
@@ -384,12 +409,27 @@ def selection_metrics(candidate: ChunkingSweepCandidate) -> dict[str, float | No
         "total_chunk_chars": total_chunk_chars,
         "mean_chunk_chars": candidate.report.char_count.mean,
         "p95_chunk_chars": candidate.report.char_count.p95,
-        "embedding_text_kchars": total_chunk_chars / 1000.0,
+        "embedding_text_kchars": embedding_text_kchars,
         "standalone_visual_chunk_count": float(candidate.report.standalone_visual_chunk_count),
         "visual_object_chunk_count": float(candidate.report.visual_object_chunk_count),
     }
     add_retrieval_breakdown_metrics(metrics, retrieval)
     return metrics
+
+
+def aggregate_retrieval_score(values: list[float | None]) -> float | None:
+    present_values = [float(value) for value in values if value is not None]
+    if not present_values:
+        return None
+    return sum(present_values) / len(present_values)
+
+
+def per_embedding_kchar(value: float | None, embedding_text_kchars: float) -> float | None:
+    if value is None:
+        return None
+    if embedding_text_kchars <= 0:
+        return float(value)
+    return float(value) / embedding_text_kchars
 
 
 def add_retrieval_breakdown_metrics(
