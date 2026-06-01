@@ -15,6 +15,7 @@ class VLMModelProfile(BaseModel):
     torch_dtype: str = "bfloat16"
     max_new_tokens: int = 768
     min_gpu_memory_mib: int | None = None
+    quantization: str = ""
     attn_implementation: str = ""
     notes: str = ""
     metadata: dict[str, Any] = Field(default_factory=dict)
@@ -34,6 +35,17 @@ VLM_MODEL_PROFILES = {
         model_class="vision2seq",
         min_gpu_memory_mib=24576,
         notes="General-purpose instruction VLM profile for 24GB+ local GPUs.",
+    ),
+    "qwen2_5_vl_32b_bnb4": VLMModelProfile(
+        name="qwen2_5_vl_32b_bnb4",
+        model_name="Qwen/Qwen2.5-VL-32B-Instruct",
+        model_class="image-text-to-text",
+        min_gpu_memory_mib=30720,
+        quantization="bitsandbytes_4bit",
+        notes=(
+            "Larger Qwen2.5-VL profile for 32GB-class local GPUs using "
+            "bitsandbytes 4-bit NF4 quantization."
+        ),
     ),
     "llava_next_7b": VLMModelProfile(
         name="llava_next_7b",
@@ -77,6 +89,7 @@ class HuggingFaceVLMBackend:
         torch_dtype: str = "auto",
         max_new_tokens: int = 768,
         attn_implementation: str = "",
+        quantization: str = "",
         model_class: str = "auto",
         profile: str = "",
     ):
@@ -92,16 +105,11 @@ class HuggingFaceVLMBackend:
         self.torch_dtype = torch_dtype
         self.max_new_tokens = max_new_tokens
         self.attn_implementation = attn_implementation
+        self.quantization = normalize_vlm_quantization(quantization)
         self.model_class = model_class
         self.profile = profile
 
-        dtype = torch_dtype
-        if torch_dtype == "bfloat16":
-            dtype = torch.bfloat16
-        elif torch_dtype == "float16":
-            dtype = torch.float16
-        elif torch_dtype == "float32":
-            dtype = torch.float32
+        dtype = torch_dtype_value(torch, torch_dtype)
 
         try:
             self.processor = AutoProcessor.from_pretrained(model_name, trust_remote_code=True)
@@ -114,6 +122,13 @@ class HuggingFaceVLMBackend:
         }
         if attn_implementation:
             model_kwargs["attn_implementation"] = attn_implementation
+        if self.quantization:
+            model_kwargs["quantization_config"] = build_hf_quantization_config(
+                transformers,
+                torch,
+                self.quantization,
+                torch_dtype,
+            )
         try:
             self.model = load_hf_vlm_model(
                 transformers_module=transformers,
@@ -134,6 +149,7 @@ class HuggingFaceVLMBackend:
             "torch_dtype": self.torch_dtype,
             "max_new_tokens": self.max_new_tokens,
             "attn_implementation": self.attn_implementation,
+            "quantization": self.quantization,
         }
 
     def summarize(self, image_path: Path, prompt: str) -> str:
@@ -191,6 +207,79 @@ def hf_vlm_dependency_error_message() -> str:
         "Hugging Face VLM runtime dependencies are incomplete. "
         "Install chunking-docs[vision] and verify `chunking-docs doctor --require-vision` passes."
     )
+
+
+def normalize_vlm_quantization(value: str) -> str:
+    normalized = value.strip().lower().replace("-", "_")
+    aliases = {
+        "": "",
+        "none": "",
+        "no": "",
+        "false": "",
+        "bitsandbytes_4bit": "bitsandbytes_4bit",
+        "bnb_4bit": "bitsandbytes_4bit",
+        "bnb4": "bitsandbytes_4bit",
+        "4bit": "bitsandbytes_4bit",
+        "bitsandbytes_8bit": "bitsandbytes_8bit",
+        "bnb_8bit": "bitsandbytes_8bit",
+        "bnb8": "bitsandbytes_8bit",
+        "8bit": "bitsandbytes_8bit",
+    }
+    if normalized not in aliases:
+        supported = ", ".join(["none", "bitsandbytes_4bit", "bitsandbytes_8bit"])
+        raise ValueError(f"VLM quantization must be one of: {supported}")
+    return aliases[normalized]
+
+
+def effective_vlm_quantization(profile: VLMModelProfile, override: str = "auto") -> str:
+    normalized_override = override.strip().lower()
+    if normalized_override == "auto":
+        return normalize_vlm_quantization(profile.quantization)
+    return normalize_vlm_quantization(override)
+
+
+def vlm_quantization_requires_bitsandbytes(quantization: str) -> bool:
+    return normalize_vlm_quantization(quantization) in {
+        "bitsandbytes_4bit",
+        "bitsandbytes_8bit",
+    }
+
+
+def torch_dtype_value(torch_module, torch_dtype: str):
+    if torch_dtype == "bfloat16":
+        return torch_module.bfloat16
+    if torch_dtype == "float16":
+        return torch_module.float16
+    if torch_dtype == "float32":
+        return torch_module.float32
+    return torch_dtype
+
+
+def build_hf_quantization_config(
+    transformers_module,
+    torch_module,
+    quantization: str,
+    torch_dtype: str,
+):
+    normalized = normalize_vlm_quantization(quantization)
+    if not normalized:
+        return None
+    config_cls = getattr(transformers_module, "BitsAndBytesConfig", None)
+    if config_cls is None:
+        raise RuntimeError(
+            "Transformers BitsAndBytesConfig is unavailable. "
+            "Install chunking-docs[vision-quantized] for quantized VLM profiles."
+        )
+    if normalized == "bitsandbytes_4bit":
+        return config_cls(
+            load_in_4bit=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_compute_dtype=torch_dtype_value(torch_module, torch_dtype),
+            bnb_4bit_use_double_quant=True,
+        )
+    if normalized == "bitsandbytes_8bit":
+        return config_cls(load_in_8bit=True)
+    raise ValueError(f"Unsupported VLM quantization: {quantization}")
 
 
 def hf_vlm_model_loaders(transformers_module, model_class: str):

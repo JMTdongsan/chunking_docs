@@ -7,7 +7,11 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from chunking_docs.vision.hf_vlm import get_vlm_model_profile
+from chunking_docs.vision.hf_vlm import (
+    effective_vlm_quantization,
+    get_vlm_model_profile,
+    vlm_quantization_requires_bitsandbytes,
+)
 
 
 class DependencyStatus(BaseModel):
@@ -67,6 +71,7 @@ DEPENDENCIES = {
     "torchvision": ("torchvision", "torchvision"),
     "transformers": ("transformers", "transformers"),
     "accelerate": ("accelerate", "accelerate"),
+    "bitsandbytes": ("bitsandbytes", "bitsandbytes"),
     "paddleocr": ("paddleocr", "paddleocr"),
     "paddlepaddle": ("paddle", "paddlepaddle"),
 }
@@ -81,6 +86,7 @@ def inspect_runtime(
     require_ocr_gpu: bool = False,
     require_vision: bool = False,
     vlm_profiles: list[str] | None = None,
+    vlm_quantization: str = "auto",
     vlm_memory_margin_ratio: float = 0.0,
 ) -> RuntimeReport:
     dependencies = {name: dependency_status(name, module, package) for name, (module, package) in DEPENDENCIES.items()}
@@ -100,6 +106,7 @@ def inspect_runtime(
         require_ocr_gpu=require_ocr_gpu,
         require_vision=require_vision,
         vlm_profiles=vlm_profiles,
+        vlm_quantization=vlm_quantization,
         vlm_memory_margin_ratio=vlm_memory_margin_ratio,
     )
 
@@ -118,6 +125,7 @@ def build_runtime_report(
     require_ocr_gpu: bool = False,
     require_vision: bool = False,
     vlm_profiles: list[str] | None = None,
+    vlm_quantization: str = "auto",
     vlm_memory_margin_ratio: float = 0.0,
 ) -> RuntimeReport:
     checks = []
@@ -145,7 +153,9 @@ def build_runtime_report(
             vlm_profile_checks(
                 gpus,
                 vlm_profiles,
+                dependencies=dependencies,
                 torch_cuda_status=torch_cuda_status,
+                quantization_override=vlm_quantization,
                 memory_margin_ratio=vlm_memory_margin_ratio,
             )
         )
@@ -208,7 +218,9 @@ def build_runtime_report(
 def vlm_profile_checks(
     gpus: list[GPUDevice],
     profile_names: list[str],
+    dependencies: dict[str, DependencyStatus] | None = None,
     torch_cuda_status: TorchCudaStatus | None = None,
+    quantization_override: str = "auto",
     memory_margin_ratio: float = 0.0,
 ) -> list[RuntimeCheck]:
     checks = []
@@ -224,6 +236,18 @@ def vlm_profile_checks(
                     passed=False,
                     message="Requested VLM profile is not supported.",
                     metadata={"error": str(exc)},
+                )
+            )
+            continue
+        try:
+            quantization = effective_vlm_quantization(profile, quantization_override)
+        except ValueError as exc:
+            checks.append(
+                RuntimeCheck(
+                    name=f"vlm_profile_quantization:{profile.name}",
+                    passed=False,
+                    message="Requested VLM quantization setting is not supported.",
+                    metadata={"profile": profile.name, "error": str(exc)},
                 )
             )
             continue
@@ -247,6 +271,7 @@ def vlm_profile_checks(
                 metadata={
                     "profile": profile.name,
                     "model_name": profile.model_name,
+                    "quantization": quantization,
                     "required_memory_mib": required_mib,
                     "required_memory_with_margin_mib": required_with_margin_mib,
                     "memory_margin_ratio": margin_ratio,
@@ -265,11 +290,28 @@ def vlm_profile_checks(
                     metadata={
                         "profile": profile.name,
                         "model_name": profile.model_name,
+                        "quantization": quantization,
                         "required_memory_mib": required_mib,
                         "required_memory_with_margin_mib": required_with_margin_mib,
                         "memory_margin_ratio": margin_ratio,
                         "max_gpu_memory_mib": max_gpu_memory_mib,
                         "matching_gpus": margin_matching_gpus,
+                    },
+                )
+            )
+        if vlm_quantization_requires_bitsandbytes(quantization):
+            dependency = (dependencies or {}).get("bitsandbytes")
+            checks.append(
+                RuntimeCheck(
+                    name=f"vlm_profile_quantization:{profile.name}",
+                    passed=bool(dependency and dependency.installed),
+                    message="bitsandbytes is installed for the selected quantized VLM profile.",
+                    metadata={
+                        "profile": profile.name,
+                        "quantization": quantization,
+                        "module": "bitsandbytes",
+                        "package": "bitsandbytes",
+                        "version": dependency.version if dependency else None,
                     },
                 )
             )

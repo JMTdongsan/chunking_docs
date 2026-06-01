@@ -954,6 +954,7 @@ def test_build_vlm_backend_passes_hf_runtime_options(monkeypatch):
         "torch_dtype": "bfloat16",
         "max_new_tokens": 256,
         "attn_implementation": "sdpa",
+        "quantization": "",
         "model_class": "vision2seq",
         "profile": "",
     }
@@ -978,9 +979,28 @@ def test_build_vlm_backend_applies_named_profile(monkeypatch):
         "torch_dtype": "bfloat16",
         "max_new_tokens": 768,
         "attn_implementation": "",
+        "quantization": "",
         "model_class": "image-text-to-text",
         "profile": "qwen2_5_vl_7b",
     }
+
+
+def test_build_vlm_backend_applies_quantized_profile(monkeypatch):
+    captured = {}
+
+    class FakeHFBackend:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    monkeypatch.setattr("chunking_docs.vision.hf_vlm.HuggingFaceVLMBackend", FakeHFBackend)
+
+    backend, name = cli_module.build_vlm_backend("hf", "", profile="qwen2_5_vl_32b_bnb4")
+
+    assert isinstance(backend, FakeHFBackend)
+    assert name == "hf:qwen2_5_vl_32b_bnb4"
+    assert captured["model_name"] == "Qwen/Qwen2.5-VL-32B-Instruct"
+    assert captured["quantization"] == "bitsandbytes_4bit"
+    assert captured["profile"] == "qwen2_5_vl_32b_bnb4"
 
 
 def test_build_vlm_backend_rejects_unknown_profile():

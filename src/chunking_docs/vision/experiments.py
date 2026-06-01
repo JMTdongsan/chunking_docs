@@ -7,7 +7,7 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 
 from chunking_docs.io import read_jsonl
-from chunking_docs.vision.hf_vlm import get_vlm_model_profile
+from chunking_docs.vision.hf_vlm import effective_vlm_quantization, get_vlm_model_profile
 from chunking_docs.vision.jobs import VisualAnnotationJob
 
 
@@ -20,6 +20,7 @@ class VLMExperimentRecipe(BaseModel):
     torch_dtype: str
     max_new_tokens: int
     attn_implementation: str = ""
+    quantization: str = ""
     jobs_file: str
     doctor_output: str
     results_output: str
@@ -95,6 +96,7 @@ def build_vlm_experiment_plan(
     vlm_torch_dtype: str = "auto",
     vlm_max_new_tokens: int | None = None,
     vlm_attn_implementation: str = "",
+    vlm_quantization: str = "auto",
     vlm_memory_margin_ratio: float = 0.1,
 ) -> VLMExperimentPlan:
     output_dir = output_dir or package_dir
@@ -120,6 +122,7 @@ def build_vlm_experiment_plan(
             vlm_torch_dtype=vlm_torch_dtype,
             vlm_max_new_tokens=vlm_max_new_tokens,
             vlm_attn_implementation=vlm_attn_implementation,
+            vlm_quantization=vlm_quantization,
             vlm_memory_margin_ratio=vlm_memory_margin_ratio,
         )
         for profile_name in normalized_profiles
@@ -158,12 +161,14 @@ def vlm_experiment_recipe(
     vlm_torch_dtype: str,
     vlm_max_new_tokens: int | None,
     vlm_attn_implementation: str,
+    vlm_quantization: str,
     vlm_memory_margin_ratio: float,
 ) -> VLMExperimentRecipe:
     profile = get_vlm_model_profile(profile_name)
     device_map = vlm_device_map if vlm_device_map != "auto" else profile.device_map
     torch_dtype = vlm_torch_dtype if vlm_torch_dtype != "auto" else profile.torch_dtype
     max_new_tokens = vlm_max_new_tokens or profile.max_new_tokens
+    quantization = effective_vlm_quantization(profile, vlm_quantization)
     doctor_output = output_dir / f"runtime_doctor.{profile.name}.json"
     results_output = output_dir / f"visual_job_results.{profile.name}.jsonl"
     annotations_output = output_dir / f"visual_annotations.{profile.name}.jsonl"
@@ -190,6 +195,8 @@ def vlm_experiment_recipe(
         [
             "--vlm-profile",
             profile.name,
+            "--vlm-quantization",
+            quantization or "none",
             "--vlm-memory-margin-ratio",
             str(vlm_memory_margin_ratio),
         ]
@@ -231,6 +238,8 @@ def vlm_experiment_recipe(
             "--vlm-max-new-tokens",
             str(max_new_tokens),
         ]
+        if quantization:
+            command_args.extend(["--vlm-quantization", quantization])
         if offset:
             command_args.extend(["--offset", str(offset)])
         if ocr_use_gpu:
@@ -268,6 +277,7 @@ def vlm_experiment_recipe(
         torch_dtype=torch_dtype,
         max_new_tokens=max_new_tokens,
         attn_implementation=vlm_attn_implementation or profile.attn_implementation,
+        quantization=quantization,
         jobs_file=str(jobs_file),
         doctor_output=str(doctor_output),
         results_output=str(results_output),
@@ -279,6 +289,7 @@ def vlm_experiment_recipe(
         metadata={
             "profile_notes": profile.notes,
             "min_gpu_memory_mib": profile.min_gpu_memory_mib,
+            "quantization": quantization,
             "selected_job_count": job_summary.selected_job_count,
             "selected_vlm_job_count": selected_vlm_job_count,
             "selected_ocr_job_count": selected_ocr_job_count,

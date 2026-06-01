@@ -191,6 +191,11 @@ def doctor_command(
         "--vlm-profile",
         help="Check GPU memory against a VLM profile such as qwen2_5_vl_7b.",
     ),
+    vlm_quantization: str = typer.Option(
+        "auto",
+        "--vlm-quantization",
+        help="Override VLM profile quantization for runtime checks.",
+    ),
     vlm_memory_margin_ratio: float = typer.Option(
         0.0,
         "--vlm-memory-margin-ratio",
@@ -212,6 +217,7 @@ def doctor_command(
         require_ocr_gpu=require_ocr_gpu,
         require_vision=require_vision,
         vlm_profiles=vlm_profile,
+        vlm_quantization=vlm_quantization,
         vlm_memory_margin_ratio=vlm_memory_margin_ratio,
     )
     payload = report.model_dump()
@@ -3397,6 +3403,7 @@ def annotate_assets_command(
     vlm_torch_dtype: str = "auto",
     vlm_max_new_tokens: int = 768,
     vlm_attn_implementation: str = "",
+    vlm_quantization: str = "auto",
     in_place: bool = False,
     rebuild_search: bool = True,
 ):
@@ -3423,6 +3430,7 @@ def annotate_assets_command(
         torch_dtype=vlm_torch_dtype,
         max_new_tokens=vlm_max_new_tokens,
         attn_implementation=vlm_attn_implementation,
+        quantization=vlm_quantization,
     )
 
     annotated_assets = annotate_assets(
@@ -3519,6 +3527,7 @@ def run_visual_jobs_command(
     vlm_torch_dtype: str = "auto",
     vlm_max_new_tokens: int = 768,
     vlm_attn_implementation: str = "",
+    vlm_quantization: str = "auto",
     ocr_language: str = "kor+eng",
     apply: bool = False,
     rebuild_search: bool = True,
@@ -3548,6 +3557,7 @@ def run_visual_jobs_command(
         torch_dtype=vlm_torch_dtype,
         max_new_tokens=vlm_max_new_tokens,
         attn_implementation=vlm_attn_implementation,
+        quantization=vlm_quantization,
     )
     results = run_visual_jobs(
         planned_jobs,
@@ -3751,6 +3761,7 @@ def plan_vlm_experiments_command(
     vlm_torch_dtype: str = "auto",
     vlm_max_new_tokens: int | None = None,
     vlm_attn_implementation: str = "",
+    vlm_quantization: str = "auto",
     vlm_memory_margin_ratio: float = 0.1,
 ):
     """Write a reproducible command plan for comparing multiple Hugging Face VLM profiles."""
@@ -3773,6 +3784,7 @@ def plan_vlm_experiments_command(
             vlm_torch_dtype=vlm_torch_dtype,
             vlm_max_new_tokens=vlm_max_new_tokens,
             vlm_attn_implementation=vlm_attn_implementation,
+            vlm_quantization=vlm_quantization,
             vlm_memory_margin_ratio=vlm_memory_margin_ratio,
         )
     except ValueError as exc:
@@ -9164,17 +9176,20 @@ def build_vlm_backend(
     torch_dtype: str = "auto",
     max_new_tokens: int = 768,
     attn_implementation: str = "",
+    quantization: str = "auto",
 ) -> tuple[VLMBackend | None, str]:
     normalized = normalize_backend(backend)
     if normalized == "none":
         return None, ""
     if normalized == "hf":
         profile_name = ""
+        effective_quantization = ""
         if profile:
-            from chunking_docs.vision.hf_vlm import get_vlm_model_profile
+            from chunking_docs.vision.hf_vlm import effective_vlm_quantization, get_vlm_model_profile
 
             try:
                 model_profile = get_vlm_model_profile(profile)
+                effective_quantization = effective_vlm_quantization(model_profile, quantization)
             except ValueError as exc:
                 raise typer.BadParameter(str(exc)) from exc
             profile_name = model_profile.name
@@ -9184,6 +9199,13 @@ def build_vlm_backend(
             torch_dtype = torch_dtype if torch_dtype != "auto" else model_profile.torch_dtype
             max_new_tokens = max_new_tokens if max_new_tokens != 768 else model_profile.max_new_tokens
             attn_implementation = attn_implementation or model_profile.attn_implementation
+        elif quantization != "auto":
+            from chunking_docs.vision.hf_vlm import normalize_vlm_quantization
+
+            try:
+                effective_quantization = normalize_vlm_quantization(quantization)
+            except ValueError as exc:
+                raise typer.BadParameter(str(exc)) from exc
         if not model_name:
             raise typer.BadParameter("--vlm-model is required when --vlm hf")
         if max_new_tokens <= 0:
@@ -9197,6 +9219,7 @@ def build_vlm_backend(
                 torch_dtype=torch_dtype,
                 max_new_tokens=max_new_tokens,
                 attn_implementation=attn_implementation,
+                quantization=effective_quantization,
                 model_class=model_class,
                 profile=profile_name,
             ),

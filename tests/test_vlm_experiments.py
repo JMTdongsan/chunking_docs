@@ -32,11 +32,12 @@ def test_build_vlm_experiment_plan_writes_profile_commands(tmp_path):
     assert plan.recipes[0].model_name == "Qwen/Qwen2.5-VL-7B-Instruct"
     assert plan.recipes[0].torch_dtype == "float16"
     assert plan.recipes[0].metadata["min_gpu_memory_mib"] == 24576
+    assert plan.recipes[0].metadata["quantization"] == ""
     assert plan.recipes[0].doctor_output.endswith("runtime_doctor.qwen2_5_vl_7b.json")
     assert "--output" in plan.recipes[0].doctor_command
     assert "runtime_doctor.qwen2_5_vl_7b.json" in plan.recipes[0].doctor_command
     assert plan.recipes[0].doctor_command.endswith(
-        "--vlm-profile qwen2_5_vl_7b --vlm-memory-margin-ratio 0.1"
+        "--vlm-profile qwen2_5_vl_7b --vlm-quantization none --vlm-memory-margin-ratio 0.1"
     )
     assert "--require-ocr" not in plan.recipes[0].doctor_command
     assert "--ocr none" in plan.recipes[0].command
@@ -144,9 +145,31 @@ def test_build_vlm_experiment_plan_summarizes_selected_jobs(tmp_path):
     assert "--require-ocr" in plan.recipes[0].doctor_command
     assert "--require-ocr-gpu" not in plan.recipes[0].doctor_command
     assert plan.recipes[0].doctor_command.endswith(
-        "--vlm-profile phi3_5_vision --vlm-memory-margin-ratio 0.2"
+        "--vlm-profile phi3_5_vision --vlm-quantization none --vlm-memory-margin-ratio 0.2"
     )
     assert "--ocr paddleocr" in plan.recipes[0].command
+
+
+def test_build_vlm_experiment_plan_supports_quantized_32b_profile(tmp_path):
+    package_dir = tmp_path / "package"
+    package_dir.mkdir()
+    jobs = package_dir / "visual_jobs.priority.jsonl"
+    jobs.write_text("", encoding="utf-8")
+
+    plan = build_vlm_experiment_plan(
+        package_dir=package_dir,
+        jobs_file=jobs,
+        profiles=["qwen2_5_vl_32b_bnb4"],
+        limit=1,
+    )
+
+    recipe = plan.recipes[0]
+    assert recipe.model_name == "Qwen/Qwen2.5-VL-32B-Instruct"
+    assert recipe.quantization == "bitsandbytes_4bit"
+    assert recipe.metadata["min_gpu_memory_mib"] == 30720
+    assert recipe.metadata["quantization"] == "bitsandbytes_4bit"
+    assert "--vlm-quantization bitsandbytes_4bit" in recipe.doctor_command
+    assert "--vlm-quantization bitsandbytes_4bit" in recipe.command
 
 
 def test_build_vlm_experiment_plan_requires_ocr_gpu_only_when_requested(tmp_path):

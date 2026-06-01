@@ -144,13 +144,14 @@ def test_runtime_report_checks_vlm_profile_gpu_memory():
         "torchvision": dep("torchvision", True),
         "transformers": dep("transformers", True),
         "accelerate": dep("accelerate", True),
+        "bitsandbytes": dep("bitsandbytes", True),
     }
 
     report = build_runtime_report(
         dependencies=dependencies,
-        gpus=[GPUDevice(name="RTX", memory_total_mib=24576, driver_version="1")],
+        gpus=[GPUDevice(name="RTX", memory_total_mib=32768, driver_version="1")],
         require_vision=True,
-        vlm_profiles=["qwen2_5_vl_7b", "phi3_5_vision"],
+        vlm_profiles=["qwen2_5_vl_7b", "phi3_5_vision", "qwen2_5_vl_32b_bnb4"],
     )
 
     checks = {check.name: check for check in report.checks}
@@ -158,6 +159,12 @@ def test_runtime_report_checks_vlm_profile_gpu_memory():
     assert checks["vlm_profile_memory:qwen2_5_vl_7b"].passed is True
     assert checks["vlm_profile_memory:qwen2_5_vl_7b"].metadata["required_memory_mib"] == 24576
     assert checks["vlm_profile_memory:phi3_5_vision"].metadata["matching_gpus"] == ["RTX"]
+    assert checks["vlm_profile_memory:qwen2_5_vl_32b_bnb4"].passed is True
+    assert (
+        checks["vlm_profile_memory:qwen2_5_vl_32b_bnb4"].metadata["quantization"]
+        == "bitsandbytes_4bit"
+    )
+    assert checks["vlm_profile_quantization:qwen2_5_vl_32b_bnb4"].passed is True
 
 
 def test_runtime_report_warns_when_vlm_profile_lacks_memory_margin():
@@ -303,6 +310,21 @@ def test_runtime_report_fails_unknown_vlm_profile():
 
     assert report.passed is False
     assert report.checks[0].name == "vlm_profile_memory:unknown_profile"
+
+
+def test_runtime_report_fails_quantized_vlm_profile_without_bitsandbytes():
+    report = build_runtime_report(
+        dependencies={"bitsandbytes": dep("bitsandbytes", False)},
+        gpus=[GPUDevice(name="RTX 5090", memory_total_mib=32768)],
+        vlm_profiles=["qwen2_5_vl_32b_bnb4"],
+    )
+
+    checks = {check.name: check for check in report.checks}
+    assert report.passed is False
+    assert checks["vlm_profile_memory:qwen2_5_vl_32b_bnb4"].passed is True
+    quantization_check = checks["vlm_profile_quantization:qwen2_5_vl_32b_bnb4"]
+    assert quantization_check.passed is False
+    assert quantization_check.metadata["package"] == "bitsandbytes"
 
 
 def vision_dependencies() -> dict[str, DependencyStatus]:

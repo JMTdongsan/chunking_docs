@@ -321,8 +321,8 @@ For hierarchical candidates, enable parent collapse during `eval-retrieval`, `co
 The library exposes interfaces instead of locking in one model:
 
 - OCR: `TesseractOCRBackend` and `PaddleOCRBackend` for multilingual scanned pages.
-- VLM: `HuggingFaceVLMBackend` with configurable device map, torch dtype, generation length, optional attention implementation, and profile-level GPU memory, memory-margin, and bfloat16 compatibility checks through `doctor --vlm-profile`.
-- VLM profiles: named Hugging Face profiles record the model id, loader family, dtype, and generation defaults for reproducible local model comparisons.
+- VLM: `HuggingFaceVLMBackend` with configurable device map, torch dtype, generation length, optional attention implementation, optional bitsandbytes quantization, and profile-level GPU memory, memory-margin, quantization dependency, and bfloat16 compatibility checks through `doctor --vlm-profile`.
+- VLM profiles: named Hugging Face profiles record the model id, loader family, dtype, quantization mode, and generation defaults for reproducible local model comparisons, including a 32GB-class Qwen2.5-VL 32B 4-bit profile.
 - Text dense: `SentenceTransformerTextEmbedder`.
 - Image dense: `TransformersImageEmbedder`.
 

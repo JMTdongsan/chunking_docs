@@ -32,6 +32,7 @@ Optional integrations:
 pip install -e ".[qdrant]"              # Qdrant client
 pip install -e ".[postgres]"            # PostgreSQL writer
 pip install -e ".[embeddings,vision]"   # SentenceTransformer, CLIP, VLM backends
+pip install -e ".[vision,vision-quantized]"  # optional bitsandbytes 4-bit VLM profiles
 pip install -e ".[ocr]"                 # PaddleOCR backend and engine runtime
 ```
 
@@ -48,7 +49,7 @@ chunking-docs doctor \
   --vlm-memory-margin-ratio 0.1
 ```
 
-`--vlm-profile` compares the selected Hugging Face VLM profile with visible GPU memory before a long local run. It also records Torch CUDA device names, compute capability, CUDA version, compiled architecture targets, and bfloat16 support when Torch is installed. For GPU-backed embedding or VLM runs, `doctor` checks that the Torch CUDA build includes an architecture target for the visible GPU, which catches unsupported builds on newer cards before batch work starts. `--vlm-memory-margin-ratio` emits a warning when the selected profile only barely fits. Current 7B/8B profiles are marked for 24GB-class GPUs, while the compact Phi-3.5 Vision profile is marked for 12GB-class GPUs.
+`--vlm-profile` compares the selected Hugging Face VLM profile with visible GPU memory before a long local run. It also records Torch CUDA device names, compute capability, CUDA version, compiled architecture targets, and bfloat16 support when Torch is installed. For GPU-backed embedding or VLM runs, `doctor` checks that the Torch CUDA build includes an architecture target for the visible GPU, which catches unsupported builds on newer cards before batch work starts. `--vlm-memory-margin-ratio` emits a warning when the selected profile only barely fits. Current 7B/8B profiles are marked for 24GB-class GPUs, the compact Phi-3.5 Vision profile is marked for 12GB-class GPUs, and `qwen2_5_vl_32b_bnb4` targets 32GB-class GPUs with bitsandbytes 4-bit quantization.
 
 ## Basic Pipeline
 
@@ -165,7 +166,7 @@ chunking-docs run-visual-jobs \
 The command writes `visual_annotations.jsonl` and `visual_job_results.jsonl`. With `--apply`, annotations are merged into `assets.jsonl`, `chunks.jsonl`, `triples.jsonl`, and BM25. Chunk updates follow visual asset links from both `asset_ids` and `asset:` source refs. If an annotation contains structured VLM metadata such as entities, visual elements, or objects but no explicit relationships, the same derived triple rules populate `triples.jsonl` with visual asset provenance. Visual text chunks preserve compact asset scope, tile parent/grid, text-quality, and OCR/VLM work metadata so `text_dense` records can be filtered consistently with caption, object, and image records. Run `embed-package` after applying annotations to refresh dense, caption, object, image, and Qdrant record artifacts with the intended embedding models.
 PaddleOCR uses a CPU device by default because the standard `paddlepaddle` wheel is CPU-only in many environments. Use `--ocr-device gpu:0` only after `chunking-docs doctor --require-ocr-gpu` confirms Paddle CUDA support. `--require-ocr` checks OCR dependencies without requiring Paddle CUDA, which is useful for CPU OCR plus GPU VLM runs. `--ocr-enable-mkldnn` can improve CPU throughput after a local smoke test confirms the Paddle runtime is stable with oneDNN enabled.
 
-Use `--vlm-profile` for reproducible Hugging Face VLM experiments. Profiles provide the model id, loader family, dtype, and default generation length for common local VLM families such as Qwen2.5-VL, Qwen2-VL, LLaVA-NeXT, Idefics2, and Phi-3.5 Vision. The `vision` extra installs Transformers, Accelerate, PyTorch, and Torchvision; run `chunking-docs doctor --require-vision --vlm-profile <profile> --vlm-memory-margin-ratio 0.1` before long VLM batches to check memory fit, safety margin, CUDA visibility, and bfloat16 compatibility. Override any profile field with `--vlm-model`, `--vlm-model-class`, `--vlm-device-map`, `--vlm-torch-dtype`, `--vlm-max-new-tokens`, or `--vlm-attn-implementation`.
+Use `--vlm-profile` for reproducible Hugging Face VLM experiments. Profiles provide the model id, loader family, dtype, quantization mode, and default generation length for common local VLM families such as Qwen2.5-VL, Qwen2-VL, LLaVA-NeXT, Idefics2, and Phi-3.5 Vision. The `vision` extra installs Transformers, Accelerate, PyTorch, and Torchvision; add `vision-quantized` when using profiles such as `qwen2_5_vl_32b_bnb4`. Run `chunking-docs doctor --require-vision --vlm-profile <profile> --vlm-memory-margin-ratio 0.1` before long VLM batches to check memory fit, quantization dependencies, safety margin, CUDA visibility, and bfloat16 compatibility. Override any profile field with `--vlm-model`, `--vlm-model-class`, `--vlm-device-map`, `--vlm-torch-dtype`, `--vlm-max-new-tokens`, `--vlm-attn-implementation`, or `--vlm-quantization`.
 
 Create a reusable command plan when comparing several VLM profiles on the same job set:
 
@@ -173,7 +174,7 @@ Create a reusable command plan when comparing several VLM profiles on the same j
 chunking-docs plan-vlm-experiments \
   --package-dir outputs/package \
   --jobs outputs/package/visual_jobs.priority.jsonl \
-  --profiles qwen2_5_vl_7b,qwen2_vl_7b,llava_next_7b \
+  --profiles qwen2_5_vl_7b,qwen2_5_vl_32b_bnb4,llava_next_7b \
   --limit 10 \
   --batch-size 5 \
   --output outputs/package/vlm_experiment_plan.json
