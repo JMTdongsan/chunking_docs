@@ -9,7 +9,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from chunking_docs.embeddings.records import asset_text
+from chunking_docs.embeddings.records import asset_text, triple_text
 from chunking_docs.graph.provenance import (
     chunk_asset_ids,
     chunk_id_alias_map,
@@ -373,6 +373,7 @@ def audit_package(
         validate_qdrant_target_coverage(
             chunks=chunks,
             assets=assets,
+            triples=triples,
             package_dir=package_dir,
             collection_config=qdrant_collection,
             issues=issues,
@@ -838,6 +839,7 @@ def validate_qdrant_record(
 def validate_qdrant_target_coverage(
     chunks: list[DocumentChunk],
     assets: list[VisualAsset],
+    triples: list[GraphTriple],
     package_dir: Path,
     collection_config: dict[str, Any],
     issues: list[AuditIssue],
@@ -915,6 +917,36 @@ def validate_qdrant_target_coverage(
             target_label="caption_asset",
             payload_key="asset_id",
             expected_text_by_id=caption_text_by_asset_id,
+            package_dir=package_dir,
+            issues=issues,
+        )
+    if "triple_dense" in named_vectors:
+        triple_text_by_id = {triple.triple_id: triple_text(triple) for triple in triples}
+        triple_payload_fields_by_id = {
+            triple.triple_id: triple_payload_fields(triple)
+            for triple in triples
+        }
+        validate_target_record_ids(
+            vector_name="triple_dense",
+            target_label="triple",
+            payload_key="triple_id",
+            expected_ids=set(triple_text_by_id),
+            package_dir=package_dir,
+            issues=issues,
+        )
+        validate_target_payload_fields(
+            vector_name="triple_dense",
+            target_label="triple",
+            payload_key="triple_id",
+            expected_fields_by_id=triple_payload_fields_by_id,
+            package_dir=package_dir,
+            issues=issues,
+        )
+        validate_target_payload_text(
+            vector_name="triple_dense",
+            target_label="triple",
+            payload_key="triple_id",
+            expected_text_by_id=triple_text_by_id,
             package_dir=package_dir,
             issues=issues,
         )
@@ -1084,6 +1116,22 @@ def caption_asset_payload_fields(asset: VisualAsset) -> dict[str, Any]:
     )
 
 
+def triple_payload_fields(triple: GraphTriple) -> dict[str, Any]:
+    return non_empty_payload_fields(
+        {
+            "triple_id": triple.triple_id,
+            "chunk_id": triple.chunk_id,
+            "doc_id": triple.doc_id,
+            "kind": "graph_triple",
+            "subject": triple.subject,
+            "predicate": triple.predicate,
+            "object": triple.object,
+            "confidence": triple.confidence,
+            "qualifiers": triple.qualifiers,
+        }
+    )
+
+
 def non_empty_payload_fields(fields: dict[str, Any]) -> dict[str, Any]:
     return {
         key: value
@@ -1144,6 +1192,8 @@ def required_payload_fields(vector_name: str) -> set[str]:
         return {"asset_id", "doc_id", "page_no", "kind", "text"}
     if vector_name == "image_dense":
         return {"asset_id", "doc_id", "page_no", "kind"}
+    if vector_name == "triple_dense":
+        return {"triple_id", "chunk_id", "doc_id", "kind", "subject", "predicate", "object", "text"}
     return {"doc_id"}
 
 

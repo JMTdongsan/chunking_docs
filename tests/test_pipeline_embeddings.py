@@ -1,6 +1,6 @@
 import json
 
-from chunking_docs.models import AssetKind, ChunkKind, DocumentChunk, VisualAsset
+from chunking_docs.models import AssetKind, ChunkKind, DocumentChunk, GraphTriple, VisualAsset
 from chunking_docs.pipeline import rebuild_search_artifacts, write_embedding_artifacts
 from chunking_docs.storage.records import EmbeddingRecord
 
@@ -166,6 +166,48 @@ def test_caption_embedding_records_include_structured_visual_metadata(tmp_path):
     assert caption_records[0].payload["text"] == (
         "Visual elements: route legend\nObjects: station marker: red circle"
     )
+
+
+def test_write_embedding_artifacts_supports_triple_vectors(tmp_path):
+    triple = GraphTriple(
+        triple_id="triple-1",
+        doc_id="doc",
+        chunk_id="chunk-1",
+        subject="map panel",
+        predicate="mentions_entity",
+        object="station marker",
+        qualifiers={"asset_id": "asset-1"},
+    )
+
+    result = write_embedding_artifacts(
+        output_dir=tmp_path,
+        chunks=[],
+        assets=[],
+        triples=[triple],
+        triple_embedder=FakeTextEmbedder(6),
+        vector_notes={"triple_dense": "triple model"},
+        vector_metadata={
+            "triple_dense": {
+                "backend": "fake-triple",
+                "model": "fake-triple-model",
+                "device": "cpu",
+            }
+        },
+    )
+
+    assert result["records"] == {"triple_dense": 1}
+    config = json.loads((tmp_path / "qdrant_collection.json").read_text(encoding="utf-8"))
+    assert config["named_vectors"]["triple_dense"]["size"] == 6
+    assert {"field": "triple_id", "schema": "keyword"} in config["payload_indexes"]
+    triple_records = [
+        EmbeddingRecord.model_validate_json(line)
+        for line in (tmp_path / "qdrant_triple_records.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert triple_records[0].payload["triple_id"] == "triple-1"
+    assert triple_records[0].payload["text"] == "map panel mentions entity station marker"
+    manifest = json.loads((tmp_path / "embedding_manifest.json").read_text(encoding="utf-8"))
+    assert manifest["vectors"]["triple_dense"]["file"] == "qdrant_triple_records.jsonl"
+    assert manifest["vectors"]["triple_dense"]["embedding"]["backend"] == "fake-triple"
 
 
 def test_rebuild_search_artifacts_refreshes_bm25_without_overwriting_embeddings(tmp_path):

@@ -494,6 +494,7 @@ def package_artifact_presence(package_dir: Path) -> dict[str, bool]:
         "qdrant_text_records.jsonl",
         "qdrant_caption_records.jsonl",
         "qdrant_image_records.jsonl",
+        "qdrant_triple_records.jsonl",
     ]
     return {name: (package_dir / name).exists() for name in names}
 

@@ -951,6 +951,8 @@ def metric_source_keys(sources: list[str], family: bool = False) -> set[str]:
 
 def source_family(source: str) -> str:
     normalized = source.strip().lower()
+    if "triple_dense" in normalized:
+        return "graph"
     if "caption_dense" in normalized or "image_dense" in normalized:
         return "visual"
     if normalized == "dense" or "text_dense" in normalized:

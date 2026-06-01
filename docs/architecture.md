@@ -78,6 +78,7 @@
    - `text_dense`: chunk text, OCR text, VLM summaries, and any visual context included by the selected strategy.
    - `caption_dense`: asset caption, OCR, VLM summary text, and structured VLM metadata.
    - `image_dense`: rendered page or visual asset image.
+   - `triple_dense`: graph triple text built from subject, predicate, object, and selected provenance hints.
    - Default hashing embedders make the pipeline testable without model downloads.
    - `embed-package` regenerates artifacts with model-backed text and image embedders.
    - `embedding_manifest.json` records vector files, dimensions, counts, checksums, backend names, model IDs, devices, and batch sizes.
@@ -130,6 +131,7 @@
 - `qdrant_text_records.jsonl`
 - `qdrant_image_records.jsonl`
 - `qdrant_caption_records.jsonl`
+- `qdrant_triple_records.jsonl`
 - `qdrant_collection.json`
 
 Additional processing commands may create:
@@ -180,8 +182,9 @@ Named vectors:
 - `text_dense`
 - `image_dense`
 - `caption_dense`
+- `triple_dense`
 
-Payload fields include document ID, chunk ID, asset ID, page range, asset kind, chunking strategy, retrieval role, parent and source chunk links, section metadata, source references, standalone visual chunk flags, and text fields needed for answer citation.
+Payload fields include document ID, chunk ID, asset ID, triple ID, page range, asset kind, graph predicate, chunking strategy, retrieval role, parent and source chunk links, section metadata, source references, standalone visual chunk flags, and text fields needed for answer citation.
 
 The package writes payload index definitions with field schemas. Qdrant ingestion and package query commands apply those definitions so metadata filters such as document ID, asset ID, page, section, chunking strategy, hierarchy role, and standalone visual assets remain efficient on server-backed collections.
 
@@ -191,7 +194,7 @@ Qdrant search commands accept repeatable payload filters using exact and range f
 
 The Qdrant adapter supports both ingestion and named-vector querying. `qdrant-search-package` can upsert a package into qdrant-client local mode and immediately query `text_dense` or `caption_dense`, which keeps retrieval checks reproducible without requiring a running server.
 
-`qdrant-hybrid-search` queries Qdrant named vectors, BM25, and optional graph expansion, then fuses results with Reciprocal Rank Fusion. Caption vector hits from visual assets are mapped back to their parent chunks so text and visual evidence can be ranked together. Optional reranking can reorder fused candidates with lexical overlap or a sentence-transformers CrossEncoder.
+`qdrant-hybrid-search` queries Qdrant named vectors, BM25, and optional graph expansion, then fuses results with Reciprocal Rank Fusion. Caption vector hits from visual assets and triple vector hits from graph records are mapped back to their parent chunks so text, visual evidence, and relationship evidence can be ranked together. Optional reranking can reorder fused candidates with lexical overlap or a sentence-transformers CrossEncoder.
 Graph expansion resolves triples through chunk IDs, chunk aliases, and visual asset provenance so VLM-derived relationships can recover chunks linked to the source visual evidence.
 
 Image vectors may use a different embedding space from text vectors. When querying `image_dense`, the searcher can use a per-vector query encoder, such as CLIP text features for CLIP image embeddings, while continuing to use the document text embedder for `text_dense` and `caption_dense`.

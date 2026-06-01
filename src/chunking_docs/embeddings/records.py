@@ -5,8 +5,8 @@ from typing import Any
 
 from chunking_docs.embeddings.interfaces import DenseTextEmbedder
 from chunking_docs.embeddings.interfaces import DenseImageEmbedder
-from chunking_docs.graph.provenance import chunk_asset_ids
-from chunking_docs.models import DocumentChunk, VisualAsset
+from chunking_docs.graph.provenance import chunk_asset_ids, triple_asset_ids
+from chunking_docs.models import DocumentChunk, GraphTriple, VisualAsset
 from chunking_docs.storage.records import EmbeddingRecord
 
 VISUAL_OBJECT_METADATA_KEYS = (
@@ -126,6 +126,54 @@ def make_caption_embedding_records(
                 )
             )
     return records
+
+
+def make_triple_embedding_records(
+    triples: list[GraphTriple],
+    embedder: DenseTextEmbedder,
+    vector_name: str = "triple_dense",
+    batch_size: int = 32,
+) -> list[EmbeddingRecord]:
+    records: list[EmbeddingRecord] = []
+    for start in range(0, len(triples), batch_size):
+        batch = triples[start : start + batch_size]
+        texts = [triple_text(triple) for triple in batch]
+        vectors = embedder.embed_texts(texts)
+        for triple, text, vector in zip(batch, texts, vectors):
+            asset_ids = sorted(triple_asset_ids(triple))
+            records.append(
+                EmbeddingRecord(
+                    point_id=point_id(triple.triple_id, vector_name),
+                    chunk_id=triple.chunk_id,
+                    doc_id=triple.doc_id,
+                    vector_name=vector_name,
+                    vector=vector,
+                    payload={
+                        "triple_id": triple.triple_id,
+                        "chunk_id": triple.chunk_id,
+                        "doc_id": triple.doc_id,
+                        "kind": "graph_triple",
+                        "subject": triple.subject,
+                        "predicate": triple.predicate,
+                        "object": triple.object,
+                        "text": text,
+                        "asset_id": asset_ids,
+                        "asset_ids": asset_ids,
+                        "confidence": triple.confidence,
+                        "qualifiers": triple.qualifiers,
+                    },
+                )
+            )
+    return records
+
+
+def triple_text(triple: GraphTriple) -> str:
+    predicate = str(triple.predicate).replace("_", " ")
+    parts = [triple.subject, predicate, triple.object]
+    source_field = triple.qualifiers.get("source_field")
+    if source_field:
+        parts.append(f"source field {source_field}")
+    return " ".join(str(part).strip() for part in parts if str(part).strip())
 
 
 def asset_text(asset: VisualAsset) -> str:

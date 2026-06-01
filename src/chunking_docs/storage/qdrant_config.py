@@ -7,13 +7,16 @@ QDRANT_RECORD_FILES = {
     "text_dense": "qdrant_text_records.jsonl",
     "image_dense": "qdrant_image_records.jsonl",
     "caption_dense": "qdrant_caption_records.jsonl",
+    "triple_dense": "qdrant_triple_records.jsonl",
 }
 
 QDRANT_PAYLOAD_INDEXES = [
     {"field": "doc_id", "schema": "keyword"},
     {"field": "chunk_id", "schema": "keyword"},
     {"field": "asset_id", "schema": "keyword"},
+    {"field": "triple_id", "schema": "keyword"},
     {"field": "kind", "schema": "keyword"},
+    {"field": "predicate", "schema": "keyword"},
     {"field": "chunking_strategy", "schema": "keyword"},
     {"field": "retrieval_role", "schema": "keyword"},
     {"field": "parent_chunk_id", "schema": "keyword"},

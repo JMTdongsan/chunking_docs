@@ -7,8 +7,10 @@ from chunking_docs.embeddings.records import (
     make_caption_embedding_records,
     make_image_embedding_records,
     make_text_embedding_records,
+    make_triple_embedding_records,
+    triple_text,
 )
-from chunking_docs.models import AssetKind, ChunkKind, DocumentChunk, VisualAsset
+from chunking_docs.models import AssetKind, ChunkKind, DocumentChunk, GraphTriple, VisualAsset
 from chunking_docs.retrieval import RankedHit, reciprocal_rank_fusion
 
 
@@ -83,6 +85,30 @@ def test_make_caption_embedding_records():
     assert len(records) == 1
     assert records[0].vector_name == "caption_dense"
     assert records[0].payload["text"] == "north district development map"
+
+
+def test_make_triple_embedding_records():
+    triple = GraphTriple(
+        triple_id="triple-1",
+        doc_id="doc",
+        chunk_id="chunk-1",
+        subject="map panel",
+        predicate="contains_object",
+        object="station marker",
+        qualifiers={"asset_id": "asset-1", "source_field": "objects"},
+        confidence=0.8,
+    )
+
+    records = make_triple_embedding_records([triple], HashingTextEmbedder(embedding_dim=8))
+
+    assert len(records) == 1
+    assert records[0].vector_name == "triple_dense"
+    assert records[0].chunk_id == "chunk-1"
+    assert records[0].payload["triple_id"] == "triple-1"
+    assert records[0].payload["kind"] == "graph_triple"
+    assert records[0].payload["asset_id"] == ["asset-1"]
+    assert records[0].payload["text"] == "map panel contains object station marker source field objects"
+    assert triple_text(triple) == records[0].payload["text"]
 
 
 def test_reciprocal_rank_fusion_combines_sources():

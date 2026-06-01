@@ -64,6 +64,7 @@ DEFAULT_ARTIFACTS = [
     "qdrant_text_records.jsonl",
     "qdrant_caption_records.jsonl",
     "qdrant_image_records.jsonl",
+    "qdrant_triple_records.jsonl",
     "graph_nodes.jsonl",
     "graph_edges.jsonl",
     "visual_job_summary.json",

@@ -639,6 +639,74 @@ def test_audit_package_validates_qdrant_target_coverage(tmp_path):
     assert "qdrant_missing_caption_asset_records" in codes
 
 
+def test_audit_package_validates_qdrant_triple_records(tmp_path):
+    chunk = DocumentChunk(
+        chunk_id="chunk-a",
+        doc_id="doc",
+        page_start=1,
+        page_end=1,
+        kind=ChunkKind.TEXT,
+        text="visual graph evidence",
+    )
+    triples = [
+        GraphTriple(
+            triple_id="triple-a",
+            doc_id="doc",
+            chunk_id="chunk-a",
+            subject="map panel",
+            predicate="mentions_entity",
+            object="station marker",
+        ),
+        GraphTriple(
+            triple_id="triple-b",
+            doc_id="doc",
+            chunk_id="chunk-a",
+            subject="map panel",
+            predicate="contains_object",
+            object="route line",
+        ),
+    ]
+    (tmp_path / "qdrant_collection.json").write_text(
+        json.dumps(
+            {
+                "collection": "documents",
+                "named_vectors": {"triple_dense": {"size": 2}},
+                "payload_indexes": [{"field": "triple_id", "schema": "keyword"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    write_jsonl(
+        tmp_path / "qdrant_triple_records.jsonl",
+        [
+            EmbeddingRecord(
+                point_id="triple-a",
+                chunk_id="chunk-a",
+                doc_id="doc",
+                vector_name="triple_dense",
+                vector=[1.0, 0.0],
+                payload={
+                    "triple_id": "triple-a",
+                    "chunk_id": "chunk-a",
+                    "doc_id": "doc",
+                    "kind": "graph_triple",
+                    "subject": "map panel",
+                    "predicate": "mentions_entity",
+                    "object": "station marker",
+                    "text": "stale graph text",
+                },
+            )
+        ],
+    )
+
+    audit = audit_package([], [chunk], [], triples, package_dir=tmp_path, require_qdrant_records=True)
+    codes = {issue.code for issue in audit.issues}
+
+    assert not audit.passed
+    assert "qdrant_missing_triple_records" in codes
+    assert "qdrant_stale_triple_payload_text" in codes
+
+
 def test_audit_package_detects_stale_qdrant_payload_text(tmp_path):
     image_path = tmp_path / "asset.png"
     image_path.write_bytes(b"image")
@@ -1798,11 +1866,11 @@ def test_eval_qdrant_retrieval_cli_writes_report(monkeypatch, tmp_path):
 
 
 def test_parse_qdrant_vector_ablation_modes_returns_union():
-    modes = parse_qdrant_vector_ablation_modes("text,caption,text_caption_graph")
+    modes = parse_qdrant_vector_ablation_modes("text,caption,text_caption_graph,triple")
 
-    assert [mode.name for mode in modes] == ["text", "caption", "text_caption_graph"]
-    assert modes[-1].graph_expand is True
-    assert qdrant_vector_names_for_modes(modes) == ["text_dense", "caption_dense"]
+    assert [mode.name for mode in modes] == ["text", "caption", "text_caption_graph", "triple"]
+    assert modes[-2].graph_expand is True
+    assert qdrant_vector_names_for_modes(modes) == ["text_dense", "caption_dense", "triple_dense"]
 
 
 def test_eval_qdrant_vector_ablation_cli_writes_report(monkeypatch, tmp_path):

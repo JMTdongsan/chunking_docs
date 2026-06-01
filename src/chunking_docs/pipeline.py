@@ -21,6 +21,7 @@ from chunking_docs.embeddings.records import (
     make_caption_embedding_records,
     make_image_embedding_records,
     make_text_embedding_records,
+    make_triple_embedding_records,
 )
 from chunking_docs.graph.heuristics import section_triples
 from chunking_docs.ingest.pdf_loader import load_source_document
@@ -126,11 +127,17 @@ def write_package(
             output_dir=output_dir,
             chunks=manifest.chunks,
             assets=manifest.assets,
+            triples=manifest.triples,
             text_embedder=embedder,
             image_embedder=image_embedder,
             caption_embedder=embedder,
-            vector_notes=hashing_vector_notes(include_visual=True),
-            vector_metadata=hashing_vector_metadata(include_visual=True, embedding_dim=embedder.embedding_dim),
+            triple_embedder=embedder,
+            vector_notes=hashing_vector_notes(include_visual=True, include_triples=True),
+            vector_metadata=hashing_vector_metadata(
+                include_visual=True,
+                include_triples=True,
+                embedding_dim=embedder.embedding_dim,
+            ),
         )
 
 
@@ -138,6 +145,7 @@ def rebuild_search_artifacts(
     output_dir: Path,
     chunks,
     assets=None,
+    triples=None,
     tokenizer_config: LexicalTokenizerConfig | None = None,
     rebuild_embeddings: bool = False,
 ) -> None:
@@ -156,15 +164,21 @@ def rebuild_search_artifacts(
         output_dir=output_dir,
         chunks=chunks,
         assets=assets or [],
+        triples=triples or [],
         text_embedder=embedder,
         image_embedder=HashingImageEmbedder(embedding_dim=embedder.embedding_dim)
         if assets is not None
         else None,
         caption_embedder=embedder if assets is not None else None,
+        triple_embedder=embedder if triples is not None else None,
         collection=existing_collection_name(output_dir),
-        vector_notes=hashing_vector_notes(include_visual=assets is not None),
+        vector_notes=hashing_vector_notes(
+            include_visual=assets is not None,
+            include_triples=triples is not None,
+        ),
         vector_metadata=hashing_vector_metadata(
             include_visual=assets is not None,
+            include_triples=triples is not None,
             embedding_dim=embedder.embedding_dim,
         ),
     )
@@ -180,13 +194,16 @@ def write_embedding_artifacts(
     output_dir: Path,
     chunks: list[DocumentChunk],
     assets: list[VisualAsset],
+    triples: list[GraphTriple] | None = None,
     text_embedder: DenseTextEmbedder | None = None,
     image_embedder: DenseImageEmbedder | None = None,
     caption_embedder: DenseTextEmbedder | None = None,
+    triple_embedder: DenseTextEmbedder | None = None,
     collection: str = "document_chunks",
     text_batch_size: int = 32,
     image_batch_size: int = 16,
     caption_batch_size: int = 32,
+    triple_batch_size: int = 32,
     vector_notes: dict[str, str] | None = None,
     vector_metadata: dict[str, dict[str, Any]] | None = None,
     clear_existing: bool = True,
@@ -252,6 +269,20 @@ def write_embedding_artifacts(
         counts["caption_dense"] = len(caption_records)
         metadata.setdefault("caption_dense", {}).setdefault("batch_size", caption_batch_size)
 
+    if triple_embedder is not None:
+        triple_records = make_triple_embedding_records(
+            triples or [],
+            triple_embedder,
+            batch_size=triple_batch_size,
+        )
+        write_jsonl(output_dir / QDRANT_RECORD_FILES["triple_dense"], triple_records)
+        named_vectors["triple_dense"] = vector_config(
+            triple_embedder.embedding_dim,
+            notes.get("triple_dense"),
+        )
+        counts["triple_dense"] = len(triple_records)
+        metadata.setdefault("triple_dense", {}).setdefault("batch_size", triple_batch_size)
+
     write_qdrant_collection_config(output_dir, collection, named_vectors)
     write_embedding_manifest(
         output_dir=output_dir,
@@ -269,7 +300,7 @@ def write_embedding_artifacts(
     }
 
 
-def hashing_vector_notes(include_visual: bool = True) -> dict[str, str]:
+def hashing_vector_notes(include_visual: bool = True, include_triples: bool = False) -> dict[str, str]:
     notes = {
         "text_dense": "HashingTextEmbedder dry-run dimension. Replace with real dense model dimension.",
     }
@@ -280,10 +311,16 @@ def hashing_vector_notes(include_visual: bool = True) -> dict[str, str]:
                 "caption_dense": "Caption text dry-run dimension. Replace with real dense model dimension.",
             }
         )
+    if include_triples:
+        notes["triple_dense"] = "Graph triple text dry-run dimension. Replace with real dense model dimension."
     return notes
 
 
-def hashing_vector_metadata(include_visual: bool = True, embedding_dim: int = 384) -> dict[str, dict[str, Any]]:
+def hashing_vector_metadata(
+    include_visual: bool = True,
+    include_triples: bool = False,
+    embedding_dim: int = 384,
+) -> dict[str, dict[str, Any]]:
     metadata = {
         "text_dense": {
             "backend": "hashing",
@@ -310,6 +347,14 @@ def hashing_vector_metadata(include_visual: bool = True, embedding_dim: int = 38
                 },
             }
         )
+    if include_triples:
+        metadata["triple_dense"] = {
+            "backend": "hashing",
+            "model": "HashingTextEmbedder",
+            "dimension": embedding_dim,
+            "deterministic": True,
+            "same_as": "text_dense",
+        }
     return metadata
 
 
