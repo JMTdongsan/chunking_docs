@@ -85,6 +85,15 @@ class IngestionReadinessReport(BaseModel):
     failed_components: list[str] = Field(default_factory=list)
 
 
+def gate_check_metadata(report: Any) -> dict[str, Any]:
+    checks = list(getattr(report, "checks", []) or [])
+    return {
+        "check_count": len(checks),
+        "checks": [check.model_dump() for check in checks],
+        "failed_checks": list(getattr(report, "failed_checks", []) or []),
+    }
+
+
 def build_ingestion_readiness_report(
     package_dir: Path,
     manifest: ProcessingManifest,
@@ -224,7 +233,7 @@ def build_ingestion_readiness_report(
                 message="Visual OCR/VLM annotations meet configured quality thresholds.",
                 metadata={
                     "source": visual_quality_source,
-                    "failed_checks": visual_quality.failed_checks,
+                    **gate_check_metadata(visual_quality),
                     "completion_rate": visual_quality.completion_rate,
                     "ocr_text_coverage": visual_quality.ocr_text_coverage,
                     "vlm_summary_coverage": visual_quality.vlm_summary_coverage,
@@ -268,7 +277,7 @@ def build_ingestion_readiness_report(
                 passed=retrieval_case_audit.passed,
                 message="Retrieval benchmark cases are valid for the package and configured target coverage.",
                 metadata={
-                    "failed_checks": retrieval_case_audit.failed_checks,
+                    **gate_check_metadata(retrieval_case_audit),
                     "target_counts": retrieval_case_audit.target_counts,
                     "distinct_target_counts": retrieval_case_audit.distinct_target_counts,
                     "max_cases_per_target": retrieval_case_audit.max_cases_per_target,
@@ -335,9 +344,7 @@ def build_ingestion_readiness_report(
                 passed=retrieval_gate.passed,
                 message="Retrieval evaluation meets configured quality thresholds.",
                 metadata={
-                    "check_count": len(retrieval_gate.checks),
-                    "checks": [check.model_dump() for check in retrieval_gate.checks],
-                    "failed_checks": retrieval_gate.failed_checks,
+                    **gate_check_metadata(retrieval_gate),
                     "metrics": retrieval_gate.metrics,
                     "target_metrics": retrieval_gate.target_metrics,
                     "source_metrics": retrieval_gate.source_metrics,
@@ -373,7 +380,7 @@ def build_ingestion_readiness_report(
                 metadata={
                     "candidate": chunking_comparison_gate.candidate,
                     "baseline_candidate": chunking_comparison_gate.baseline_candidate,
-                    "failed_checks": chunking_comparison_gate.failed_checks,
+                    **gate_check_metadata(chunking_comparison_gate),
                     "metrics": chunking_comparison_gate.metrics,
                     "target_metrics": chunking_comparison_gate.target_metrics,
                     "source_family_metrics": chunking_comparison_gate.source_family_metrics,
@@ -419,7 +426,7 @@ def build_ingestion_readiness_report(
                         metadata={
                             "mode": retrieval_ablation_gate.mode,
                             "baseline_mode": retrieval_ablation_gate.baseline_mode,
-                            "failed_checks": retrieval_ablation_gate.failed_checks,
+                            **gate_check_metadata(retrieval_ablation_gate),
                             "metrics": retrieval_ablation_gate.metrics,
                             "baseline_metrics": retrieval_ablation_gate.baseline_metrics,
                             "target_metrics": retrieval_ablation_gate.target_metrics,
@@ -491,7 +498,7 @@ def build_ingestion_readiness_report(
                             "mode": qdrant_vector_ablation_gate.mode,
                             "baseline_mode": qdrant_vector_ablation_gate.baseline_mode,
                             "vector_names": qdrant_vector_ablation_gate.vector_names,
-                            "failed_checks": qdrant_vector_ablation_gate.failed_checks,
+                            **gate_check_metadata(qdrant_vector_ablation_gate),
                             "metrics": qdrant_vector_ablation_gate.metrics,
                             "baseline_metrics": qdrant_vector_ablation_gate.baseline_metrics,
                             "target_metrics": qdrant_vector_ablation_gate.target_metrics,
@@ -564,7 +571,7 @@ def build_ingestion_readiness_report(
                             "baseline_mode": qdrant_reranker_ablation_gate.baseline_mode,
                             "reranker": qdrant_reranker_ablation_gate.reranker,
                             "rerank_top_k": qdrant_reranker_ablation_gate.rerank_top_k,
-                            "failed_checks": qdrant_reranker_ablation_gate.failed_checks,
+                            **gate_check_metadata(qdrant_reranker_ablation_gate),
                             "metrics": qdrant_reranker_ablation_gate.metrics,
                             "baseline_metrics": qdrant_reranker_ablation_gate.baseline_metrics,
                             "target_metrics": qdrant_reranker_ablation_gate.target_metrics,
@@ -640,7 +647,7 @@ def build_ingestion_readiness_report(
                 passed=rag_context_gate.passed,
                 message="Final RAG context bundles meet configured evidence and size thresholds.",
                 metadata={
-                    "failed_checks": rag_context_gate.failed_checks,
+                    **gate_check_metadata(rag_context_gate),
                     "metrics": rag_context_gate.metrics,
                     "target_metrics": rag_context_gate.target_metrics,
                     "case_group_metrics": rag_context_gate.case_group_metrics,

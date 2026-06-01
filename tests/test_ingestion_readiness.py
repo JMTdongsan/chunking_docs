@@ -609,6 +609,8 @@ def test_ingestion_readiness_includes_retrieval_cases_and_chunking_gate(tmp_path
     retrieval_component = next(
         component for component in report.components if component.name == "retrieval_case_audit"
     )
+    assert retrieval_component.metadata["check_count"] == len(report.retrieval_case_audit.checks)
+    assert retrieval_component.metadata["checks"]
     assert retrieval_component.metadata["visual_object_probe_count"] == 1
     assert retrieval_component.metadata["distinct_target_counts"]["asset"] == 1
     assert retrieval_component.metadata["max_cases_per_target"]["asset"] == 1
@@ -634,6 +636,11 @@ def test_ingestion_readiness_includes_retrieval_cases_and_chunking_gate(tmp_path
     assert report.chunking_comparison_gate.source_family_metrics["lexical"][
         "target_coverage_at_k"
     ] == 0.9
+    chunking_component = next(
+        component for component in report.components if component.name == "chunking_comparison_gate"
+    )
+    assert chunking_component.metadata["check_count"] == len(report.chunking_comparison_gate.checks)
+    assert chunking_component.metadata["checks"]
     assert report.failed_components == []
 
 
@@ -688,6 +695,13 @@ def test_ingestion_readiness_includes_qdrant_vector_ablation_gate(tmp_path):
     assert report.qdrant_vector_ablation_gate.case_group_metrics["case_source"][
         "visual_object_probe"
     ]["target_coverage_at_k"] == 1.0
+    component = next(
+        component
+        for component in report.components
+        if component.name == "qdrant_vector_ablation_gate"
+    )
+    assert component.metadata["check_count"] == len(report.qdrant_vector_ablation_gate.checks)
+    assert component.metadata["checks"]
     assert report.failed_components == []
 
 
@@ -735,6 +749,8 @@ def test_ingestion_readiness_includes_qdrant_reranker_ablation_gate(tmp_path):
     )
     assert component.metadata["reranker"] == "lexical"
     assert component.metadata["rerank_top_k"] == 20
+    assert component.metadata["check_count"] == len(report.qdrant_reranker_ablation_gate.checks)
+    assert component.metadata["checks"]
     assert component.metadata["source_metrics"]["rerank:lexical"]["target_coverage_at_k"] == 1.0
     assert report.failed_components == []
 
@@ -780,6 +796,8 @@ def test_ingestion_readiness_includes_retrieval_ablation_lift_gate(tmp_path):
     component = next(
         component for component in report.components if component.name == "retrieval_ablation_gate"
     )
+    assert component.metadata["check_count"] == len(report.retrieval_ablation_gate.checks)
+    assert component.metadata["checks"]
     assert component.metadata["metrics"]["target_type.asset.coverage_at_k"] == 1.0
     assert component.metadata["source_metrics"]["bm25"]["target_coverage_at_k"] == 1.0
     assert (
@@ -861,6 +879,8 @@ def test_ingestion_readiness_includes_rag_context_gate(tmp_path):
     component = next(
         component for component in report.components if component.name == "rag_context_gate"
     )
+    assert component.metadata["check_count"] == len(report.rag_context_gate.checks)
+    assert component.metadata["checks"]
     assert component.metadata["metrics"]["mean_context_char_count"] == 4200.0
     assert report.failed_components == []
 
@@ -1070,6 +1090,8 @@ def test_ingestion_readiness_can_gate_visual_quality_from_assets(tmp_path):
     assert report.visual_quality is not None
     assert report.visual_quality.vlm_json_parse_rate == 1.0
     assert visual_component.metadata["source"] == "assets"
+    assert visual_component.metadata["check_count"] == len(report.visual_quality.checks)
+    assert visual_component.metadata["checks"]
 
 
 def test_ingestion_readiness_can_gate_visual_run_comparison(tmp_path):
