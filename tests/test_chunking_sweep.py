@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 from typer.testing import CliRunner
 
@@ -12,7 +13,7 @@ from chunking_docs.evaluation.sweep import (
     dominates,
     run_chunking_sweep,
 )
-from chunking_docs.io import write_jsonl
+from chunking_docs.io import read_jsonl, write_jsonl
 from chunking_docs.models import (
     AssetKind,
     ChunkKind,
@@ -527,6 +528,84 @@ def test_sweep_chunking_cli_writes_report(tmp_path):
     assert len(payload["candidates"]) == 2
     assert payload["candidates"][0]["name"] == payload["selection"]["recommended"]
     assert any(candidates_dir.glob("chunks.semantic-*.jsonl"))
+
+
+def test_apply_chunking_sweep_cli_promotes_recommended_candidate(tmp_path):
+    package_dir = write_package(tmp_path)
+    cases_path = tmp_path / "cases.jsonl"
+    output_path = tmp_path / "sweep_report.json"
+    candidates_dir = tmp_path / "candidates"
+    write_jsonl(
+        cases_path,
+        [RetrievalCase(query="capital investment table", expected_pages=[1])],
+    )
+
+    sweep_result = CliRunner().invoke(
+        app,
+        [
+            "sweep-chunking",
+            "--package-dir",
+            str(package_dir),
+            "--strategies",
+            "semantic,hierarchical",
+            "--max-chars",
+            "140",
+            "--overlap-chars",
+            "20",
+            "--min-chars",
+            "40",
+            "--parent-max-chars",
+            "90",
+            "--visual-context-chars",
+            "120",
+            "--cases",
+            str(cases_path),
+            "--output",
+            str(output_path),
+            "--candidates-dir",
+            str(candidates_dir),
+        ],
+    )
+    assert sweep_result.exit_code == 0, sweep_result.output
+    sweep_payload = json.loads(output_path.read_text(encoding="utf-8"))
+    recommended = sweep_payload["selection"]["recommended"]
+    candidate_file = Path(
+        next(
+            candidate["chunks_file"]
+            for candidate in sweep_payload["candidates"]
+            if candidate["name"] == recommended
+        )
+    )
+    candidate_chunks = read_jsonl(candidate_file, DocumentChunk)
+
+    apply_result = CliRunner().invoke(
+        app,
+        [
+            "apply-chunking-sweep",
+            "--package-dir",
+            str(package_dir),
+            "--report",
+            str(output_path),
+        ],
+    )
+
+    assert apply_result.exit_code == 0, apply_result.output
+    applied_chunks = read_jsonl(package_dir / "chunks.jsonl", DocumentChunk)
+    assert [chunk.chunk_id for chunk in applied_chunks] == [
+        chunk.chunk_id for chunk in candidate_chunks
+    ]
+    safe_name = recommended.replace(":", "_")
+    assert (package_dir / f"chunks.before-{safe_name}.jsonl").exists()
+    assert (package_dir / f"triples.before-{safe_name}.jsonl").exists()
+    assert (package_dir / "bm25_tokens.json").exists()
+    manifest_payload = json.loads((package_dir / "manifest.json").read_text(encoding="utf-8"))
+    selection = manifest_payload["metadata"]["selected_chunking_candidate"]
+    assert selection["name"] == recommended
+    assert selection["chunks_file"] == str(candidate_file)
+    assert manifest_payload["metadata"]["package_config"]["base_chunking_strategy"] in {
+        "semantic",
+        "hierarchical",
+    }
 
 
 def test_sweep_chunking_cli_can_require_visual_text_part_coverage(tmp_path):

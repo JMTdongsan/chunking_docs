@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import builtins
 import json
+import shlex
 from pathlib import Path
 from time import perf_counter
 
@@ -60,7 +61,11 @@ from chunking_docs.evaluation.retrieval import (
     evaluate_search_results,
     load_retrieval_cases,
 )
-from chunking_docs.evaluation.sweep import run_chunking_sweep
+from chunking_docs.evaluation.sweep import (
+    ChunkingSweepCandidate,
+    ChunkingSweepReport,
+    run_chunking_sweep,
+)
 from chunking_docs.graph.heuristics import section_triples
 from chunking_docs.graph.quality import normalize_graph_triples
 from chunking_docs.graph.repair import remap_triples_to_available_chunks
@@ -4825,6 +4830,86 @@ def sweep_chunking_command(
     )
 
 
+@app.command(name="apply-chunking-sweep")
+def apply_chunking_sweep_command(
+    package_dir: Path = Path("outputs/package"),
+    report: Path = Path("outputs/package/chunking_sweep.json"),
+    candidate: str = "",
+    chunks_file: Path | None = None,
+    dry_run: bool = False,
+    backup: bool = True,
+    rebuild_search: bool = True,
+    rebuild_dry_run_embeddings: bool = False,
+):
+    """Apply a recommended chunking sweep candidate as the package chunk set."""
+    if rebuild_dry_run_embeddings and not rebuild_search:
+        raise typer.BadParameter("--rebuild-dry-run-embeddings requires --rebuild-search")
+
+    manifest = load_processing_package(package_dir)
+    sweep_report = load_chunking_sweep_report(report)
+    selected = select_chunking_sweep_candidate(sweep_report, candidate or None)
+    selected_chunks_path = resolve_sweep_chunks_file(selected, chunks_file, report)
+    selected_chunks = read_jsonl(selected_chunks_path, DocumentChunk)
+    if not selected_chunks:
+        raise typer.BadParameter(f"Selected chunk file is empty: {selected_chunks_path}")
+
+    remapped_triples = remap_triples_to_available_chunks(manifest.triples, selected_chunks)
+    backup_files = {}
+    if backup:
+        safe_name = safe_filename_part(selected.name)
+        backup_files = {
+            "chunks": str(package_dir / f"chunks.before-{safe_name}.jsonl"),
+            "triples": str(package_dir / f"triples.before-{safe_name}.jsonl"),
+        }
+
+    payload = {
+        "package_dir": str(package_dir),
+        "report": str(report),
+        "candidate": selected.name,
+        "strategy": selected.strategy,
+        "candidate_chunks_file": str(selected_chunks_path),
+        "previous_chunk_count": len(manifest.chunks),
+        "applied_chunk_count": len(selected_chunks),
+        "previous_triple_count": len(manifest.triples),
+        "remapped_triple_count": len(remapped_triples),
+        "backup_files": backup_files,
+        "rebuilt_search": bool(rebuild_search and not dry_run),
+        "rebuilt_dry_run_embeddings": bool(rebuild_dry_run_embeddings and not dry_run),
+        "requires_embedding_rebuild": not rebuild_dry_run_embeddings,
+        "next_embedding_command": (
+            f"chunking-docs embed-package --package-dir {shlex.quote(package_dir.as_posix())}"
+        ),
+        "dry_run": dry_run,
+    }
+    if dry_run:
+        print(payload)
+        return
+
+    if backup:
+        write_jsonl(Path(backup_files["chunks"]), manifest.chunks)
+        write_jsonl(Path(backup_files["triples"]), manifest.triples)
+    write_jsonl(package_dir / "chunks.jsonl", selected_chunks)
+    write_jsonl(package_dir / "triples.jsonl", remapped_triples)
+
+    if rebuild_search:
+        rebuild_search_artifacts(
+            package_dir,
+            selected_chunks,
+            assets=manifest.assets,
+            triples=remapped_triples,
+            tokenizer_config=manifest_tokenizer_config(manifest),
+            rebuild_embeddings=rebuild_dry_run_embeddings,
+        )
+    update_manifest_chunking_selection(
+        package_dir=package_dir,
+        report=report,
+        candidate=selected,
+        chunks_file=selected_chunks_path,
+        chunk_count=len(selected_chunks),
+    )
+    print(payload)
+
+
 @app.command(name="write-experiment-report")
 def write_experiment_report_command(
     package_dir: Path = Path("outputs/package"),
@@ -5783,6 +5868,100 @@ def parse_candidates(values: list[str] | None, package_dir: Path) -> dict[str, P
             candidate_path = package_dir / candidate_path
         parsed[name] = candidate_path
     return parsed
+
+
+def load_chunking_sweep_report(path: Path) -> ChunkingSweepReport:
+    if not path.exists():
+        raise typer.BadParameter(f"Chunking sweep report does not exist: {path}")
+    try:
+        return ChunkingSweepReport.model_validate_json(path.read_text(encoding="utf-8"))
+    except ValueError as exc:
+        raise typer.BadParameter(f"Invalid chunking sweep report: {path}") from exc
+
+
+def select_chunking_sweep_candidate(
+    report: ChunkingSweepReport,
+    candidate_name: str | None,
+) -> ChunkingSweepCandidate:
+    selected_name = candidate_name or report.selection.recommended
+    if not selected_name:
+        raise typer.BadParameter(
+            "No sweep candidate was selected. Pass --candidate or run sweep-chunking "
+            "with constraints that leave an eligible recommendation."
+        )
+    for candidate in report.candidates:
+        if candidate.name == selected_name:
+            return candidate
+    raise typer.BadParameter(f"Unknown sweep candidate: {selected_name}")
+
+
+def resolve_sweep_chunks_file(
+    candidate: ChunkingSweepCandidate,
+    chunks_file: Path | None,
+    report_path: Path,
+) -> Path:
+    path = chunks_file or (Path(candidate.chunks_file) if candidate.chunks_file else None)
+    if path is None:
+        raise typer.BadParameter(
+            f"Candidate {candidate.name} does not record a chunks_file. "
+            "Pass --chunks-file to apply it."
+        )
+    resolved = resolve_existing_path(path, base_dir=report_path.parent)
+    if not resolved.exists():
+        raise typer.BadParameter(f"Selected chunk file does not exist: {path}")
+    return resolved
+
+
+def resolve_existing_path(path: Path, base_dir: Path) -> Path:
+    if path.is_absolute() or path.exists():
+        return path
+    candidate = base_dir / path
+    if candidate.exists():
+        return candidate
+    return path
+
+
+def manifest_tokenizer_config(manifest) -> LexicalTokenizerConfig | None:
+    package_config = manifest.metadata.get("package_config")
+    if not isinstance(package_config, dict):
+        return None
+    tokenizer_payload = package_config.get("lexical_tokenizer")
+    if not isinstance(tokenizer_payload, dict):
+        return None
+    try:
+        return LexicalTokenizerConfig.model_validate(tokenizer_payload)
+    except ValueError:
+        return None
+
+
+def update_manifest_chunking_selection(
+    package_dir: Path,
+    report: Path,
+    candidate: ChunkingSweepCandidate,
+    chunks_file: Path,
+    chunk_count: int,
+) -> None:
+    manifest_path = package_dir / "manifest.json"
+    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    metadata = payload.setdefault("metadata", {})
+    package_config = metadata.setdefault("package_config", {})
+    package_config["base_chunking_strategy"] = candidate.strategy
+    metadata["selected_chunking_candidate"] = {
+        "name": candidate.name,
+        "strategy": candidate.strategy,
+        "config": candidate.config,
+        "sweep_report": str(report),
+        "chunks_file": str(chunks_file),
+        "chunk_count": chunk_count,
+    }
+    manifest_path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
+def safe_filename_part(value: str) -> str:
+    return "".join(char if char.isalnum() or char in "._-" else "_" for char in value)
 
 
 def parse_visual_run_inputs(values: list[str] | None) -> dict[str, Path]:

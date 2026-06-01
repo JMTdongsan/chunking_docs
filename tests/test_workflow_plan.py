@@ -54,6 +54,11 @@ def test_build_ingestion_workflow_plan_orders_runtime_visual_embedding_and_readi
     assert any("plan-vlm-experiments" in command for command in visual_commands)
     assert any("--profiles qwen2_5_vl_7b,llava_next_7b" in command for command in visual_commands)
     assert any("--ocr paddleocr --vlm hf" in command for command in visual_commands)
+    assert any(
+        "apply-chunking-sweep" in command
+        for step in plan.steps
+        for command in step.commands
+    )
     assert all("outputs/package" not in command for step in plan.steps for command in step.commands)
     assert any(str(cases) in command for step in plan.steps for command in step.commands)
 

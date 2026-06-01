@@ -64,6 +64,11 @@ def test_characterize_package_reports_strategy_observations(tmp_path):
     assert "compare_multimodal_hierarchical_chunking" in recommendation_codes
     assert "build_triple_vector_artifacts" in recommendation_codes
     assert "maintain_retrieval_benchmark" in recommendation_codes
+    chunking_recommendation = next(
+        item for item in report.recommendations if item.code == "compare_multimodal_hierarchical_chunking"
+    )
+    assert "sweep-chunking" in chunking_recommendation.commands[0]
+    assert "apply-chunking-sweep" in chunking_recommendation.commands[-1]
     visual_vector_recommendation = next(
         item for item in report.recommendations if item.code == "evaluate_visual_vectors"
     )

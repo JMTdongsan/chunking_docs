@@ -571,8 +571,17 @@ def recommendations(
                     "benchmark cases before changing default chunking settings."
                 ),
                 commands=[
+                    (
+                        "chunking-docs sweep-chunking --package-dir outputs/package "
+                        "--cases examples/retrieval_cases.jsonl "
+                        "--output outputs/package/chunking_sweep.json"
+                    ),
                     "chunking-docs compare-chunking --package-dir outputs/package --candidate semantic=outputs/package/chunks.semantic.jsonl --candidate multimodal=outputs/package/chunks.multimodal.jsonl --candidate object_aware=outputs/package/chunks.object_aware.jsonl",
                     "chunking-docs gate-chunking-comparison outputs/package/chunking_comparison.json",
+                    (
+                        "chunking-docs apply-chunking-sweep --package-dir outputs/package "
+                        "--report outputs/package/chunking_sweep.json"
+                    ),
                 ],
                 metadata={
                     "chunks_with_assets": chunks.chunks_with_assets,
