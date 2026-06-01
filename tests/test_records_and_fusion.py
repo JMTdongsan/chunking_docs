@@ -222,6 +222,25 @@ def test_make_object_embedding_records_uses_visual_elements_as_features():
     )
 
 
+def test_make_object_embedding_records_keeps_matching_object_and_visual_feature_labels():
+    asset = VisualAsset(
+        asset_id="asset-1",
+        doc_id="doc",
+        page_no=1,
+        kind=AssetKind.MAP,
+        metadata={
+            "objects": [{"label": "station marker"}],
+            "visual_elements": ["station marker"],
+        },
+    )
+
+    records = make_object_embedding_records([asset], HashingTextEmbedder(embedding_dim=8))
+
+    assert [record.payload["source_key"] for record in records] == ["objects", "visual_elements"]
+    assert records[0].payload.get("visual_feature_type") is None
+    assert records[1].payload["visual_feature_type"] == "visual_element"
+
+
 def test_make_triple_embedding_records():
     chunk = DocumentChunk(
         chunk_id="chunk-1",

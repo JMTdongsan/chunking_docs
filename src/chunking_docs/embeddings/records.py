@@ -508,6 +508,8 @@ def dedupe_visual_object_records(objects: list[dict[str, Any]], limit: int) -> l
             metadata_text_value(item.get("description")).casefold(),
             metadata_text_value(item.get("location")).casefold(),
             metadata_text_value(item.get("bbox_region")).casefold(),
+            metadata_text_value(item.get("source_key")).casefold(),
+            metadata_text_value(item.get("visual_feature_type")).casefold(),
             tuple(item.get("bbox", [])),
         )
         if not key[0] or key in seen:

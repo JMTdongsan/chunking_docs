@@ -22,7 +22,7 @@
    - Classify the text layer as `good`, `degraded`, or `empty` using language-neutral control-character and readable-character signals.
    - Use the profile to decide which pages need OCR, VLM summaries, or visual embeddings.
    - Identify dense visual pages that should be rendered as overlapping tiles before OCR/VLM processing.
-   - Summarize package characteristics and recommended next processing steps for chunking, OCR/VLM, VLM object probes, graph, embeddings, and retrieval benchmarks, including missing object or triple vector families when the source metadata exists.
+   - Summarize package characteristics and recommended next processing steps for chunking, OCR/VLM, VLM object and visual-element probes, graph, embeddings, and retrieval benchmarks, including missing object or triple vector families when the source metadata exists.
    - Convert those recommendations into an ordered ingestion workflow plan that records runtime checks, visual processing, embedding rebuilds, retrieval cases, chunking comparison, and final readiness commands.
 
 3. **Section Mapping**
@@ -78,7 +78,7 @@
    - `page`: baseline page chunks with optional context prefix.
    - `semantic`: boundary-aware subchunks for long text.
    - `multimodal`: semantic chunks with bounded linked visual context plus visual asset text chunks from captions, OCR, VLM summaries, and structured VLM metadata. Visual links can come from `asset_ids` or `asset:` source refs; text-bearing assets without a linked parent become standalone visual chunks.
-   - `object_aware`: multimodal chunks plus one visual object text chunk per normalized VLM object or detected region, preserving object ID, label, attributes, location, bbox region, source field, asset provenance, and parent chunk linkage.
+   - `object_aware`: multimodal chunks plus one visual object text chunk per normalized VLM object, detected region, or visual element, preserving object ID, label, attributes, location, bbox region, source field, feature type, asset provenance, and parent chunk linkage.
    - `hierarchical`: coarse parent chunks plus fine child chunks that share page, section, and visual context resolved from the same asset provenance, with standalone visual chunks for unlinked asset text.
    - `compare-chunking` evaluates candidate files with the same benchmark cases.
    - `sweep-chunking` generates a strategy and parameter grid, writes candidate chunk files, ranks the results, and reports eligibility-filtered recommendations plus Pareto-efficient candidates across retrieval quality, visual text asset and part coverage, target-type coverage, case-group coverage, target rank, latency, chunk-count cost, embedding text volume, and visual-object chunk cost.
@@ -260,7 +260,7 @@ Recommended checks:
 - `eval-chunking`: page coverage, chunk size distribution, section coverage, visual linkage, annotation coverage, retrieval recall@k, MRR, target coverage@k, target nDCG@k, precision@k, latency, failed queries, and aggregate quality score.
 - `audit-retrieval-cases`: benchmark case validation for empty or TODO queries, weak short queries, unknown page/chunk/asset/triple targets, duplicate queries, graph-expansion hints, target-family coverage, distinct target coverage, case-group distinct target coverage, per-target concentration limits, required case metadata group counts such as visual object probes, and optional enforcement that object probes use visual-only VLM/object terms.
 - `eval-retrieval`: focused top-k retrieval benchmark cases with optional repeated latency and result-stability sampling, target-specific page/chunk/asset/triple metrics, visual asset provenance matching for triple targets, source-family contribution metrics, chunking-strategy or retrieval-role contribution metrics, and case metadata group metrics such as `case_source` or `query_mode`.
-- `generate-retrieval-cases`: benchmark draft generation from package pages, candidate chunk files, visual assets, graph triples, optional visual lexical probes, rendered-image probes for `image_dense`, and VLM object-detection probes, with snippet or document-frequency-weighted salient-term query modes, visual-only object probe terms by default, and visual asset targets for asset-provenance triples.
+- `generate-retrieval-cases`: benchmark draft generation from package pages, candidate chunk files, visual assets, graph triples, optional visual lexical probes, rendered-image probes for `image_dense`, and VLM object-detection or visual-element probes, with snippet or document-frequency-weighted salient-term query modes, visual-only object probe terms by default, and visual asset targets for asset-provenance triples.
 - `diagnose-retrieval`: failure, partial-coverage, low-ranking, and low-precision analysis for retrieval evaluation JSON outputs, including case metadata and case-group failure breakdowns for benchmark subsets such as visual object probes.
 - `eval-qdrant-retrieval`: the same benchmark cases against Qdrant named vectors plus BM25 and optional graph expansion.
 - `eval-qdrant-vector-ablation`: Qdrant text, visual caption, visual object, optional image, and graph-expanded vector comparison on the same cases, including case-group best-mode summaries, query-paired rank deltas, and candidate-vs-baseline comparisons for benchmark subsets such as visual object probes.

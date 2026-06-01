@@ -44,8 +44,10 @@ def test_characterize_package_reports_strategy_observations(tmp_path):
     ]
     assert report.visual.pages_requiring_ocr_count == 1
     assert report.visual.vlm_object_asset_count == 1
-    assert report.visual.vlm_object_count == 2
+    assert report.visual.vlm_object_count == 3
     assert report.visual.vlm_object_bbox_count == 1
+    assert report.visual.vlm_visual_feature_asset_count == 1
+    assert report.visual.vlm_visual_feature_count == 1
     assert report.graph.visual_triple_count == 1
     assert "text_layer_degraded" in observation_codes
     assert "visual_retrieval_required" in observation_codes
@@ -96,13 +98,14 @@ def test_characterize_package_reports_strategy_observations(tmp_path):
     )
     object_probe_audit_command = object_probe_recommendation.commands[1]
     assert "--query-mode salient_terms" in object_probe_recommendation.commands[0]
-    assert "--min-case-group-count case_source:visual_object_probe=2" in object_probe_audit_command
+    assert "--min-case-group-count case_source:visual_object_probe=3" in object_probe_audit_command
     assert "--min-distinct-asset-targets 1" in object_probe_audit_command
     assert "--min-case-group-distinct-targets case_source:visual_object_probe:asset=1" in object_probe_audit_command
     assert "--max-asset-cases-per-target 3" in object_probe_audit_command
     assert "--min-query-terms-per-case 3" in object_probe_audit_command
     assert "--require-visual-only-object-probes" in object_probe_audit_command
-    assert object_probe_recommendation.metadata["recommended_object_probe_case_threshold"] == 2
+    assert object_probe_recommendation.metadata["vlm_visual_feature_count"] == 1
+    assert object_probe_recommendation.metadata["recommended_object_probe_case_threshold"] == 3
     assert object_probe_recommendation.metadata["recommended_distinct_asset_threshold"] == 1
     benchmark_recommendation = next(
         item for item in report.recommendations if item.code == "maintain_retrieval_benchmark"
@@ -139,7 +142,8 @@ def test_characterize_package_cli_writes_json(tmp_path):
     assert payload["visual"]["asset_kind_counts"]["map"] == 1
     assert payload["visual"]["rendered_asset_count"] == 1
     assert payload["visual"]["tile_candidate_pages"] == [1]
-    assert payload["visual"]["vlm_object_count"] == 2
+    assert payload["visual"]["vlm_object_count"] == 3
+    assert payload["visual"]["vlm_visual_feature_count"] == 1
     assert any(item["code"] == "visual_retrieval_required" for item in payload["observations"])
     assert any(item["code"] == "evaluate_visual_vectors" for item in payload["recommendations"])
     assert any(
@@ -155,7 +159,55 @@ def test_characterize_package_cli_writes_json(tmp_path):
         item for item in payload["recommendations"] if item["code"] == "generate_visual_object_probe_cases"
     )
     assert "--require-visual-only-object-probes" in object_probe_recommendation["commands"][1]
-    assert object_probe_recommendation["metadata"]["recommended_object_probe_case_threshold"] == 2
+    assert object_probe_recommendation["metadata"]["recommended_object_probe_case_threshold"] == 3
+
+
+def test_characterize_package_recommends_object_probes_for_visual_elements_only(tmp_path):
+    package_dir = tmp_path / "package"
+    package_dir.mkdir()
+    profile = PageProfile(
+        doc_id="doc",
+        page_no=1,
+        width=100,
+        height=100,
+        char_count=100,
+        line_count=4,
+        text_block_count=1,
+        image_block_count=1,
+        embedded_image_count=1,
+        drawing_count=0,
+        text_quality=TextQuality.GOOD,
+    )
+    chunk = DocumentChunk(
+        chunk_id="chunk-1",
+        doc_id="doc",
+        page_start=1,
+        page_end=1,
+        kind=ChunkKind.TEXT,
+        text="page text",
+        asset_ids=["asset-1"],
+    )
+    asset = VisualAsset(
+        asset_id="asset-1",
+        doc_id="doc",
+        page_no=1,
+        kind=AssetKind.MAP,
+        path=package_dir / "assets/page.png",
+        metadata={"visual_elements": ["station access corridor", "legend marker"]},
+    )
+
+    report = characterize_package([profile], [chunk], [asset], [], package_dir=package_dir)
+
+    assert report.visual.vlm_object_asset_count == 1
+    assert report.visual.vlm_object_count == 2
+    assert report.visual.vlm_visual_feature_asset_count == 1
+    assert report.visual.vlm_visual_feature_count == 2
+    assert any(item.code == "vlm_objects_available" for item in report.observations)
+    object_probe = next(
+        item for item in report.recommendations if item.code == "generate_visual_object_probe_cases"
+    )
+    assert object_probe.metadata["vlm_visual_feature_count"] == 2
+    assert "--require-visual-only-object-probes" in object_probe.commands[1]
 
 
 def test_characterize_package_warns_when_rendered_image_vectors_are_missing(tmp_path):
@@ -258,6 +310,7 @@ def make_characteristic_package(tmp_path: Path):
                     {"label": "station marker", "bbox": [0.1, 0.2, 0.3, 0.4]},
                     {"label": "corridor line"},
                 ],
+                "visual_elements": ["legend marker"],
             },
         )
     ]

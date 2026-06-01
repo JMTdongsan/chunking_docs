@@ -7,6 +7,12 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from chunking_docs.embeddings.records import (
+    VISUAL_FEATURE_METADATA_KEYS,
+    VISUAL_OBJECT_METADATA_KEYS,
+    dedupe_visual_object_records,
+    metadata_object_records,
+)
 from chunking_docs.graph.provenance import chunk_asset_ids
 from chunking_docs.models import DocumentChunk, GraphTriple, PageProfile, TextQuality, VisualAsset
 
@@ -55,6 +61,8 @@ class VisualCharacteristics(BaseModel):
     vlm_object_asset_count: int = 0
     vlm_object_count: int = 0
     vlm_object_bbox_count: int = 0
+    vlm_visual_feature_asset_count: int = 0
+    vlm_visual_feature_count: int = 0
 
 
 class ChunkCharacteristics(BaseModel):
@@ -156,11 +164,17 @@ def visual_characteristics(
     annotated_asset_count = sum(1 for asset in assets if asset.ocr_text or asset.vlm_summary)
     asset_objects = [asset_visual_objects(asset) for asset in assets]
     object_count = sum(len(objects) for objects in asset_objects)
+    visual_feature_count = sum(
+        1
+        for objects in asset_objects
+        for item in objects
+        if item.get("visual_feature_type")
+    )
     object_bbox_count = sum(
         1
         for objects in asset_objects
         for item in objects
-        if isinstance(item, dict) and item.get("bbox")
+        if item.get("bbox")
     )
     visual_scores = [
         {
@@ -200,6 +214,10 @@ def visual_characteristics(
         vlm_object_asset_count=sum(1 for objects in asset_objects if objects),
         vlm_object_count=object_count,
         vlm_object_bbox_count=object_bbox_count,
+        vlm_visual_feature_asset_count=sum(
+            1 for objects in asset_objects if any(item.get("visual_feature_type") for item in objects)
+        ),
+        vlm_visual_feature_count=visual_feature_count,
     )
 
 
@@ -296,11 +314,16 @@ def observations(
             CharacteristicObservation(
                 code="vlm_objects_available",
                 severity="info",
-                message="Structured VLM object metadata is available and should be evaluated as its own retrieval case group.",
+                message=(
+                    "Structured VLM object or visual-element metadata is available and should be evaluated "
+                    "as its own retrieval case group."
+                ),
                 metadata={
                     "vlm_object_asset_count": visual.vlm_object_asset_count,
                     "vlm_object_count": visual.vlm_object_count,
                     "vlm_object_bbox_count": visual.vlm_object_bbox_count,
+                    "vlm_visual_feature_asset_count": visual.vlm_visual_feature_asset_count,
+                    "vlm_visual_feature_count": visual.vlm_visual_feature_count,
                 },
             )
         )
@@ -329,9 +352,10 @@ def observations(
             CharacteristicObservation(
                 code="object_vector_records_missing",
                 severity="warning",
-                message="Structured VLM objects are present but object_dense Qdrant records are missing.",
+                message="Structured VLM objects or visual elements are present but object_dense Qdrant records are missing.",
                 metadata={
                     "vlm_object_count": visual.vlm_object_count,
+                    "vlm_visual_feature_count": visual.vlm_visual_feature_count,
                     "qdrant_record_files": artifacts.qdrant_record_files,
                 },
             )
@@ -517,8 +541,8 @@ def recommendations(
                 area="evaluation",
                 priority="required",
                 message=(
-                    "Generate and gate visual object probe retrieval cases so VLM object detections are measured "
-                    "separately from text and caption averages."
+                    "Generate and gate visual object probe retrieval cases so VLM object detections and "
+                    "visual elements are measured separately from text and caption averages."
                 ),
                 commands=[
                     "chunking-docs generate-retrieval-cases --package-dir outputs/package --query-mode salient_terms --selection-strategy salience --object-probe-limit 20 --output examples/retrieval_cases.jsonl",
@@ -538,6 +562,8 @@ def recommendations(
                     "vlm_object_asset_count": visual.vlm_object_asset_count,
                     "vlm_object_count": visual.vlm_object_count,
                     "vlm_object_bbox_count": visual.vlm_object_bbox_count,
+                    "vlm_visual_feature_asset_count": visual.vlm_visual_feature_asset_count,
+                    "vlm_visual_feature_count": visual.vlm_visual_feature_count,
                     "recommended_object_probe_case_threshold": object_probe_case_threshold,
                     "recommended_distinct_asset_threshold": object_probe_asset_threshold,
                 },
@@ -727,20 +753,26 @@ def page_range_spec(pages: list[int]) -> str:
     return ",".join(ranges)
 
 
-def asset_visual_objects(asset: VisualAsset) -> list[Any]:
-    objects = []
-    for key in ("objects", "detected_objects", "visual_objects"):
-        value = asset.metadata.get(key)
-        if isinstance(value, list):
-            objects.extend(value)
-    for key in ("detections", "regions", "areas"):
-        value = asset.metadata.get(key)
-        if isinstance(value, list):
-            objects.extend(value)
-        elif isinstance(value, dict):
-            for nested in value.values():
-                if isinstance(nested, list):
-                    objects.extend(nested)
-                elif isinstance(nested, dict):
-                    objects.append(nested)
-    return objects
+def asset_visual_objects(asset: VisualAsset) -> list[dict[str, Any]]:
+    objects: list[dict[str, Any]] = []
+    for source_key in VISUAL_OBJECT_METADATA_KEYS:
+        objects.extend(
+            metadata_object_records(
+                asset.metadata.get(source_key),
+                source_key=source_key,
+                limit=64,
+            )
+        )
+    for source_key in VISUAL_FEATURE_METADATA_KEYS:
+        for item in metadata_object_records(
+            asset.metadata.get(source_key),
+            source_key=source_key,
+            limit=64,
+        ):
+            objects.append(
+                {
+                    **item,
+                    "visual_feature_type": source_key.removesuffix("s"),
+                }
+            )
+    return dedupe_visual_object_records(objects, limit=64)
