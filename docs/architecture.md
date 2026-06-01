@@ -193,6 +193,7 @@ Additional processing commands may create:
 - `rag_context.qdrant.json`
 - `rag_context.config.cases.jsonl`
 - `qdrant_rag_context_config_eval.json`
+- `qdrant_rag_context_gate.json`
 
 ## Qdrant Design
 
@@ -268,6 +269,7 @@ Recommended checks:
 - `eval-qdrant-retrieval-config`: reloads an exported Qdrant retrieval config and evaluates benchmark cases with its vector names, fusion weights, graph expansion, hierarchy collapse, tokenizer settings, and selection metadata.
 - `qdrant-rag-context-config`: reloads an exported Qdrant retrieval config and builds citation-ready context with the same vector names, fusion weights, graph expansion, hierarchy collapse, tokenizer settings, and selection metadata.
 - `eval-qdrant-rag-context-config`: builds final context bundles from an exported Qdrant retrieval config and evaluates page, chunk, visual asset, graph triple, hard-negative, context-size, latency, and case-group metrics.
+- `gate-rag-context`: pass/fail checks for final context target coverage, target-type coverage, case-group coverage, hard-negative leakage, context length, context item counts, and latency.
 - `eval-qdrant-vector-ablation`: Qdrant text, visual caption, visual object, optional image, and graph-expanded vector comparison on the same cases, including hard-negative excluded-target metrics, case-group best-mode summaries, query-paired rank deltas, and candidate-vs-baseline comparisons for benchmark subsets such as visual object probes.
 - `sweep-qdrant-fusion`: grid search over Qdrant, BM25, exact vector-source, and graph fusion weights with eligibility gates, aggregate and source/family/strategy/role hard-negative excluded-target penalties, mean/p95 latency-aware selection scores, top-candidate query-paired win/lift comparisons, case-group recommendations for benchmark subsets such as visual object probes, and a recommended production retrieval configuration.
 - `export-qdrant-retrieval-config`: converts a fusion sweep recommendation into a reusable JSON retrieval configuration for a RAG service, including vector names, fusion weights, query encoders, tokenizer settings, top-k, aggregate and case-group selection metrics, and selected-vs-baseline pairwise evidence.
@@ -298,6 +300,8 @@ Fusion weights are also part of the retrieval experiment. Use `--fusion-weight` 
 Reranking is a separate experiment knob. Keep `--reranker`, `--rerank-top-k`, and the reranker model fixed when comparing chunking strategies unless the experiment is explicitly measuring reranking.
 
 Rank gates are separate from recall gates. `gate-retrieval`, `gate-chunking-comparison`, `gate-retrieval-ablation`, and `gate-qdrant-vector-ablation` can cap mean or p95 first relevant rank and target rank, with missing expected targets counted as `top_k + 1`, so a run that technically retrieves the right evidence but buries it below stronger candidates can still fail.
+
+Final context gates are separate from retrieval-rank gates. `gate-rag-context` checks whether the answer-generation bundle contains the expected page, chunk, visual asset, or graph triple evidence, whether hard-negative targets leaked into the context, and whether context size stays within configured bounds.
 
 Use repeated retrieval evaluation when comparing strategies whose recall is similar. The latency fields are intended to show whether higher recall comes with an acceptable retrieval cost. Pairwise comparison metrics are computed on shared benchmark queries, so they should be used with a stable, reviewed retrieval-case set.
 

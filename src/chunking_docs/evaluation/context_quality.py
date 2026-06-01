@@ -102,6 +102,26 @@ class RAGContextEvaluation(BaseModel):
     results: list[RAGContextCaseResult] = Field(default_factory=list)
 
 
+class RAGContextGateCheck(BaseModel):
+    name: str
+    metric: str
+    operator: str
+    actual: float
+    threshold: float
+    passed: bool
+
+
+class RAGContextGateReport(BaseModel):
+    passed: bool
+    metrics: dict[str, float]
+    target_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
+    case_group_metrics: dict[str, dict[str, dict[str, float]]] = Field(
+        default_factory=dict
+    )
+    failed_checks: list[str] = Field(default_factory=list)
+    checks: list[RAGContextGateCheck] = Field(default_factory=list)
+
+
 def evaluate_rag_contexts(
     cases: list[RetrievalCase],
     bundles: list[RAGContextBundle],
@@ -168,6 +188,362 @@ def evaluate_rag_contexts(
         failed_queries=[result.query for result in results if not result.passed],
         results=results,
     )
+
+
+def load_rag_context_evaluation(path) -> RAGContextEvaluation:
+    return RAGContextEvaluation.model_validate_json(path.read_text(encoding="utf-8"))
+
+
+def gate_rag_context_evaluation(
+    evaluation: RAGContextEvaluation,
+    min_case_count: int = 0,
+    min_expected_case_count: int = 0,
+    min_expected_target_count: int = 0,
+    min_passed_case_count: int = 0,
+    max_failed_case_count: int | None = None,
+    min_hit_rate: float = 0.0,
+    min_target_coverage: float = 0.0,
+    max_excluded_target_hit_rate: float | None = None,
+    max_excluded_query_hit_rate: float | None = None,
+    max_excluded_hit_query_count: int | None = None,
+    max_mean_latency_ms: float | None = None,
+    max_mean_context_char_count: float | None = None,
+    max_context_char_count: int | None = None,
+    max_mean_chunk_count: float | None = None,
+    max_mean_asset_count: float | None = None,
+    max_mean_triple_count: float | None = None,
+    min_target_type_coverage: dict[str, float] | None = None,
+    min_case_group_target_coverage: dict[str, float] | None = None,
+    max_case_group_excluded_target_hit_rate: dict[str, float] | None = None,
+) -> RAGContextGateReport:
+    target_metrics = rag_context_target_metric_payload(evaluation)
+    case_group_metrics = rag_context_case_group_metric_payload(evaluation)
+    metrics = rag_context_gate_metrics(
+        evaluation,
+        target_metrics=target_metrics,
+        case_group_metrics=case_group_metrics,
+    )
+    checks = [
+        context_minimum_check("min_case_count", "case_count", metrics, min_case_count),
+        context_minimum_check(
+            "min_expected_case_count",
+            "expected_case_count",
+            metrics,
+            min_expected_case_count,
+        ),
+        context_minimum_check(
+            "min_expected_target_count",
+            "expected_target_count",
+            metrics,
+            min_expected_target_count,
+        ),
+        context_minimum_check(
+            "min_passed_case_count",
+            "passed_case_count",
+            metrics,
+            min_passed_case_count,
+        ),
+        context_minimum_check("min_hit_rate", "hit_rate", metrics, min_hit_rate),
+        context_minimum_check(
+            "min_target_coverage",
+            "target_coverage",
+            metrics,
+            min_target_coverage,
+        ),
+    ]
+    if max_failed_case_count is not None:
+        checks.append(
+            context_maximum_check(
+                "max_failed_case_count",
+                "failed_case_count",
+                metrics,
+                max_failed_case_count,
+            )
+        )
+    if max_excluded_target_hit_rate is not None:
+        checks.append(
+            context_maximum_check(
+                "max_excluded_target_hit_rate",
+                "excluded_target_hit_rate",
+                metrics,
+                max_excluded_target_hit_rate,
+            )
+        )
+    if max_excluded_query_hit_rate is not None:
+        checks.append(
+            context_maximum_check(
+                "max_excluded_query_hit_rate",
+                "excluded_query_hit_rate",
+                metrics,
+                max_excluded_query_hit_rate,
+            )
+        )
+    if max_excluded_hit_query_count is not None:
+        checks.append(
+            context_maximum_check(
+                "max_excluded_hit_query_count",
+                "excluded_hit_query_count",
+                metrics,
+                max_excluded_hit_query_count,
+            )
+        )
+    for name, metric, threshold in (
+        ("max_mean_latency_ms", "mean_latency_ms", max_mean_latency_ms),
+        (
+            "max_mean_context_char_count",
+            "mean_context_char_count",
+            max_mean_context_char_count,
+        ),
+        ("max_context_char_count", "max_context_char_count", max_context_char_count),
+        ("max_mean_chunk_count", "mean_chunk_count", max_mean_chunk_count),
+        ("max_mean_asset_count", "mean_asset_count", max_mean_asset_count),
+        ("max_mean_triple_count", "mean_triple_count", max_mean_triple_count),
+    ):
+        if threshold is not None:
+            checks.append(context_maximum_check(name, metric, metrics, threshold))
+    checks.extend(
+        context_target_type_coverage_checks(metrics, min_target_type_coverage or {})
+    )
+    checks.extend(
+        context_case_group_target_coverage_checks(
+            metrics,
+            min_case_group_target_coverage or {},
+        )
+    )
+    checks.extend(
+        context_case_group_excluded_hit_rate_checks(
+            metrics,
+            max_case_group_excluded_target_hit_rate or {},
+        )
+    )
+    failed_checks = [check.name for check in checks if not check.passed]
+    return RAGContextGateReport(
+        passed=not failed_checks,
+        metrics=metrics,
+        target_metrics=target_metrics,
+        case_group_metrics=case_group_metrics,
+        failed_checks=failed_checks,
+        checks=checks,
+    )
+
+
+def rag_context_gate_metrics(
+    evaluation: RAGContextEvaluation,
+    target_metrics: dict[str, dict[str, float]] | None = None,
+    case_group_metrics: dict[str, dict[str, dict[str, float]]] | None = None,
+) -> dict[str, float]:
+    expected_target_count = sum(
+        metric.target_count for metric in evaluation.target_metrics.values()
+    )
+    matched_target_count = sum(
+        metric.matched_target_count for metric in evaluation.target_metrics.values()
+    )
+    if expected_target_count <= 0 and evaluation.results:
+        expected_target_count = sum(result.expected_target_count for result in evaluation.results)
+        matched_target_count = sum(result.matched_target_count for result in evaluation.results)
+    metrics = {
+        "case_count": float(evaluation.case_count),
+        "expected_case_count": float(evaluation.expected_case_count),
+        "expected_target_count": float(expected_target_count),
+        "matched_target_count": float(matched_target_count),
+        "passed_case_count": float(evaluation.passed_count),
+        "failed_case_count": float(evaluation.failed_count),
+        "hit_rate": evaluation.hit_rate,
+        "target_coverage": evaluation.target_coverage,
+        "excluded_query_count": float(evaluation.excluded_query_count),
+        "excluded_hit_query_count": float(evaluation.excluded_hit_query_count),
+        "excluded_query_hit_rate": evaluation.excluded_query_hit_rate,
+        "excluded_target_count": float(evaluation.excluded_target_count),
+        "excluded_matched_target_count": float(evaluation.excluded_matched_target_count),
+        "excluded_target_hit_rate": evaluation.excluded_target_hit_rate,
+        "mean_latency_ms": evaluation.mean_latency_ms,
+        "mean_context_char_count": evaluation.mean_context_char_count,
+        "max_context_char_count": float(evaluation.max_context_char_count),
+        "mean_chunk_count": evaluation.mean_chunk_count,
+        "mean_asset_count": evaluation.mean_asset_count,
+        "mean_triple_count": evaluation.mean_triple_count,
+    }
+    for target_type, values in (target_metrics or {}).items():
+        for key, value in values.items():
+            metrics[context_target_type_metric_key(target_type, key)] = value
+    for group_name, group_values in (case_group_metrics or {}).items():
+        for group_value, values in group_values.items():
+            for key, value in values.items():
+                metrics[context_case_group_metric_key(group_name, group_value, key)] = (
+                    value
+                )
+    return metrics
+
+
+def rag_context_target_metric_payload(
+    evaluation: RAGContextEvaluation,
+) -> dict[str, dict[str, float]]:
+    return {
+        target_type: {
+            "expected_count": float(metric.expected_count),
+            "passed_count": float(metric.passed_count),
+            "target_count": float(metric.target_count),
+            "matched_target_count": float(metric.matched_target_count),
+            "coverage": metric.coverage,
+        }
+        for target_type, metric in sorted(evaluation.target_metrics.items())
+    }
+
+
+def rag_context_case_group_metric_payload(
+    evaluation: RAGContextEvaluation,
+) -> dict[str, dict[str, dict[str, float]]]:
+    return {
+        normalize_case_group_key(group_name): {
+            normalize_case_group_key(group_value): {
+                "case_count": float(metric.case_count),
+                "expected_case_count": float(metric.expected_case_count),
+                "passed_count": float(metric.passed_count),
+                "failed_count": float(metric.failed_count),
+                "target_count": float(metric.target_count),
+                "matched_target_count": float(metric.matched_target_count),
+                "target_coverage": metric.target_coverage,
+                "excluded_target_count": float(metric.excluded_target_count),
+                "excluded_matched_target_count": float(
+                    metric.excluded_matched_target_count
+                ),
+                "excluded_target_hit_rate": metric.excluded_target_hit_rate,
+                "mean_latency_ms": metric.mean_latency_ms,
+                "mean_context_char_count": metric.mean_context_char_count,
+            }
+            for group_value, metric in sorted(group_values.items())
+        }
+        for group_name, group_values in sorted(evaluation.case_group_metrics.items())
+    }
+
+
+def context_target_type_coverage_checks(
+    metrics: dict[str, float],
+    thresholds: dict[str, float],
+) -> list[RAGContextGateCheck]:
+    checks = []
+    for target_type, threshold in sorted(thresholds.items()):
+        normalized_target_type = target_type.strip().lower()
+        metric = context_target_type_metric_key(normalized_target_type, "coverage")
+        metrics.setdefault(metric, 0.0)
+        checks.append(
+            context_minimum_check(
+                f"min_target_type_coverage:{normalized_target_type}",
+                metric,
+                metrics,
+                threshold,
+            )
+        )
+    return checks
+
+
+def context_case_group_target_coverage_checks(
+    metrics: dict[str, float],
+    thresholds: dict[str, float],
+) -> list[RAGContextGateCheck]:
+    checks = []
+    for group_spec, threshold in sorted(thresholds.items()):
+        group_name, group_value = parse_case_group_spec(group_spec)
+        metric = context_case_group_metric_key(group_name, group_value, "target_coverage")
+        metrics.setdefault(metric, 0.0)
+        checks.append(
+            context_minimum_check(
+                f"min_case_group_target_coverage:{group_name}:{group_value}",
+                metric,
+                metrics,
+                threshold,
+            )
+        )
+    return checks
+
+
+def context_case_group_excluded_hit_rate_checks(
+    metrics: dict[str, float],
+    thresholds: dict[str, float],
+) -> list[RAGContextGateCheck]:
+    checks = []
+    for group_spec, threshold in sorted(thresholds.items()):
+        group_name, group_value = parse_case_group_spec(group_spec)
+        metric = context_case_group_metric_key(
+            group_name,
+            group_value,
+            "excluded_target_hit_rate",
+        )
+        metrics.setdefault(metric, 0.0)
+        checks.append(
+            context_maximum_check(
+                f"max_case_group_excluded_target_hit_rate:{group_name}:{group_value}",
+                metric,
+                metrics,
+                threshold,
+            )
+        )
+    return checks
+
+
+def context_target_type_metric_key(target_type: str, metric: str) -> str:
+    return f"target_type.{target_type}.{metric}"
+
+
+def context_case_group_metric_key(group_name: str, group_value: str, metric: str) -> str:
+    return f"case_group.{group_name}.{group_value}.{metric}"
+
+
+def parse_case_group_spec(value: str) -> tuple[str, str]:
+    if ":" in value:
+        group_name, group_value = value.split(":", 1)
+    else:
+        group_name, group_value = "case_source", value
+    return normalize_case_group_key(group_name), normalize_case_group_key(group_value)
+
+
+def normalize_case_group_key(value: str) -> str:
+    normalized = str(value).strip().lower().replace(" ", "_")
+    return normalized or "unspecified"
+
+
+def context_minimum_check(
+    name: str,
+    metric: str,
+    metrics: dict[str, float],
+    threshold: float,
+) -> RAGContextGateCheck:
+    actual = metrics[metric]
+    return RAGContextGateCheck(
+        name=name,
+        metric=metric,
+        operator=">=",
+        actual=actual,
+        threshold=float(threshold),
+        passed=actual >= threshold,
+    )
+
+
+def context_maximum_check(
+    name: str,
+    metric: str,
+    metrics: dict[str, float],
+    threshold: float,
+) -> RAGContextGateCheck:
+    actual = metrics[metric]
+    return RAGContextGateCheck(
+        name=name,
+        metric=metric,
+        operator="<=",
+        actual=actual,
+        threshold=float(threshold),
+        passed=actual <= threshold,
+    )
+
+
+def rag_context_gate_summary_payload(report: RAGContextGateReport) -> dict[str, Any]:
+    return {
+        "passed": report.passed,
+        "failed_checks": report.failed_checks,
+        "metrics": report.metrics,
+        "target_metrics": report.target_metrics,
+        "case_group_metrics": report.case_group_metrics,
+    }
 
 
 def evaluate_rag_context_case(

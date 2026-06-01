@@ -50,7 +50,12 @@ from chunking_docs.evaluation.chunking_gate import (
 )
 from chunking_docs.evaluation.chunking_quality import evaluate_chunking_quality
 from chunking_docs.evaluation.compare import compare_chunking_reports
-from chunking_docs.evaluation.context_quality import evaluate_rag_contexts
+from chunking_docs.evaluation.context_quality import (
+    gate_rag_context_evaluation,
+    load_rag_context_evaluation,
+    evaluate_rag_contexts,
+    rag_context_gate_summary_payload,
+)
 from chunking_docs.evaluation.diagnostics import (
     analyze_retrieval_evaluation,
     load_retrieval_evaluation,
@@ -1111,6 +1116,125 @@ def eval_qdrant_rag_context_config_command(
             "config_selection": retrieval_config.selection.model_dump(),
         }
     )
+
+
+@app.command(name="gate-rag-context")
+def gate_rag_context_command(
+    evaluation: Path,
+    output: Path | None = None,
+    min_case_count: int = typer.Option(
+        0,
+        "--min-case-count",
+        help="Require at least this many context benchmark cases.",
+    ),
+    min_expected_case_count: int = typer.Option(
+        0,
+        "--min-expected-case-count",
+        help="Require at least this many cases with expected targets.",
+    ),
+    min_expected_target_count: int = typer.Option(
+        0,
+        "--min-expected-target-count",
+        help="Require at least this many expected page/chunk/asset/triple targets.",
+    ),
+    min_passed_case_count: int = typer.Option(
+        0,
+        "--min-passed-case-count",
+        help="Require at least this many context cases to pass.",
+    ),
+    max_failed_cases: int | None = typer.Option(
+        None,
+        "--max-failed-cases",
+        help="Limit context benchmark cases that miss expected evidence or include hard negatives.",
+    ),
+    min_hit_rate: float = 0.0,
+    min_target_coverage: float = 0.0,
+    max_excluded_target_hit_rate: float | None = typer.Option(
+        None,
+        "--max-excluded-target-hit-rate",
+        help="Limit the fraction of explicit excluded targets present in final context.",
+    ),
+    max_excluded_query_hit_rate: float | None = typer.Option(
+        None,
+        "--max-excluded-query-hit-rate",
+        help="Limit hard-negative cases whose final context includes any excluded target.",
+    ),
+    max_excluded_hit_query_count: int | None = typer.Option(
+        None,
+        "--max-excluded-hit-query-count",
+        help="Limit hard-negative cases whose final context includes any excluded target.",
+    ),
+    max_mean_latency_ms: float | None = None,
+    max_mean_context_char_count: float | None = None,
+    max_context_char_count: int | None = None,
+    max_mean_chunk_count: float | None = None,
+    max_mean_asset_count: float | None = None,
+    max_mean_triple_count: float | None = None,
+    min_target_type_coverage: list[str] = typer.Option(
+        None,
+        "--min-target-type-coverage",
+        help="Require final-context target coverage such as asset=1.0 or triple=1.0.",
+    ),
+    min_case_group_target_coverage: list[str] = typer.Option(
+        None,
+        "--min-case-group-target-coverage",
+        help="Require case metadata group coverage such as case_source:visual_object_probe=0.8.",
+    ),
+    max_case_group_excluded_target_hit_rate: list[str] = typer.Option(
+        None,
+        "--max-case-group-excluded-target-hit-rate",
+        help="Limit case metadata group hard-negative rate such as case_source:visual_image_probe=0.0.",
+    ),
+    fail: bool = typer.Option(
+        True,
+        "--fail/--no-fail",
+        help="Exit with status 1 when any context gate check fails.",
+    ),
+):
+    """Fail a RAG context evaluation when final context quality gates are missed."""
+    parsed_evaluation = load_rag_context_evaluation(evaluation)
+    target_type_thresholds = parse_named_float_thresholds(
+        min_target_type_coverage,
+        "target type coverage",
+    )
+    case_group_thresholds = parse_named_float_thresholds(
+        min_case_group_target_coverage,
+        "case group target coverage",
+    )
+    case_group_excluded_thresholds = parse_named_float_thresholds(
+        max_case_group_excluded_target_hit_rate,
+        "case group excluded-target hit rate",
+    )
+    report = gate_rag_context_evaluation(
+        parsed_evaluation,
+        min_case_count=min_case_count,
+        min_expected_case_count=min_expected_case_count,
+        min_expected_target_count=min_expected_target_count,
+        min_passed_case_count=min_passed_case_count,
+        max_failed_case_count=max_failed_cases,
+        min_hit_rate=min_hit_rate,
+        min_target_coverage=min_target_coverage,
+        max_excluded_target_hit_rate=max_excluded_target_hit_rate,
+        max_excluded_query_hit_rate=max_excluded_query_hit_rate,
+        max_excluded_hit_query_count=max_excluded_hit_query_count,
+        max_mean_latency_ms=max_mean_latency_ms,
+        max_mean_context_char_count=max_mean_context_char_count,
+        max_context_char_count=max_context_char_count,
+        max_mean_chunk_count=max_mean_chunk_count,
+        max_mean_asset_count=max_mean_asset_count,
+        max_mean_triple_count=max_mean_triple_count,
+        min_target_type_coverage=target_type_thresholds,
+        min_case_group_target_coverage=case_group_thresholds,
+        max_case_group_excluded_target_hit_rate=case_group_excluded_thresholds,
+    )
+    payload = report.model_dump()
+    if output is not None:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(report.model_dump_json(indent=2), encoding="utf-8")
+        payload = {"output": str(output), **rag_context_gate_summary_payload(report)}
+    print(payload)
+    if fail and not report.passed:
+        raise typer.Exit(1)
 
 
 @app.command(name="eval-qdrant-retrieval")
