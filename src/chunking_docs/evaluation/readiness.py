@@ -34,6 +34,7 @@ from chunking_docs.evaluation.context_quality import (
 )
 from chunking_docs.evaluation.gate import RetrievalGateReport, gate_retrieval_evaluation
 from chunking_docs.evaluation.retrieval import RetrievalCase, RetrievalEvaluation
+from chunking_docs.evaluation.retrieval_config import QdrantRetrievalConfig
 from chunking_docs.embeddings.bm25 import asset_text_parts, chunk_lexical_texts
 from chunking_docs.embeddings.tokenizers import LexicalTokenizer, LexicalTokenizerConfig
 from chunking_docs.graph.provenance import chunk_asset_ids
@@ -112,6 +113,8 @@ def build_ingestion_readiness_report(
     require_qdrant_vector_ablation: bool = False,
     qdrant_vector_ablation_mode: str | None = None,
     qdrant_vector_ablation_gate_options: dict[str, Any] | None = None,
+    qdrant_retrieval_config: QdrantRetrievalConfig | None = None,
+    require_qdrant_retrieval_config: bool = False,
     rag_context_evaluation: RAGContextEvaluation | None = None,
     require_rag_context_evaluation: bool = False,
     rag_context_gate_options: dict[str, Any] | None = None,
@@ -493,6 +496,24 @@ def build_ingestion_readiness_report(
                 name="qdrant_vector_ablation_gate",
                 passed=False,
                 message="Qdrant vector ablation gate is required but no report was supplied.",
+            )
+        )
+
+    if qdrant_retrieval_config is not None:
+        components.append(
+            qdrant_retrieval_config_component(
+                package_dir,
+                qdrant_retrieval_config,
+                retrieval_evaluation=retrieval_evaluation,
+                rag_context_evaluation=rag_context_evaluation,
+            )
+        )
+    elif require_qdrant_retrieval_config:
+        components.append(
+            ReadinessComponent(
+                name="qdrant_retrieval_config",
+                passed=False,
+                message="Qdrant retrieval config is required but was not supplied.",
             )
         )
 
@@ -993,6 +1014,332 @@ def derived_embedding_vectors_component(
         ),
         metadata=metadata,
     )
+
+
+def qdrant_retrieval_config_component(
+    package_dir: Path,
+    config: QdrantRetrievalConfig,
+    retrieval_evaluation: RetrievalEvaluation | None = None,
+    rag_context_evaluation: RAGContextEvaluation | None = None,
+) -> ReadinessComponent:
+    collection_path = package_dir / "qdrant_collection.json"
+    bm25_path = resolve_config_path(package_dir, config.bm25_tokens_path)
+    collection_payload = load_json_object(collection_path)
+    failed_checks: list[str] = []
+    metadata: dict[str, Any] = {
+        "backend": config.backend,
+        "collection_name": config.collection_name,
+        "package_dir": config.package_dir,
+        "bm25_tokens_path": config.bm25_tokens_path,
+        "resolved_bm25_tokens_path": str(bm25_path) if bm25_path is not None else None,
+        "bm25_tokens_exists": bm25_path is not None and bm25_path.exists(),
+        "vector_names": config.vector_names,
+        "top_k": config.top_k,
+        "graph_expand": config.graph_expand,
+        "collapse_hierarchical": config.collapse_hierarchical,
+        "fusion_weights": config.fusion_weights,
+        "query_encoders": config.query_encoders,
+        "lexical_tokenizer": normalized_retrieval_config_tokenizer(config.lexical_tokenizer),
+        "selection": config.selection.model_dump(),
+    }
+
+    if config.backend != "qdrant_hybrid":
+        failed_checks.append("unsupported_backend")
+    if not config.vector_names:
+        failed_checks.append("missing_config_vector_names")
+    if bm25_path is None or not bm25_path.exists():
+        failed_checks.append("missing_bm25_tokens_path")
+
+    package_dir_match = package_dir_matches(package_dir, config.package_dir)
+    metadata["package_dir_matches"] = package_dir_match
+    if package_dir_match is False:
+        failed_checks.append("package_dir_mismatch")
+
+    collection_vectors: list[str] = []
+    collection_name: str | None = None
+    if collection_payload.get("error"):
+        failed_checks.append(str(collection_payload["error"]))
+        metadata["collection_error"] = collection_payload["error"]
+        metadata["collection_error_detail"] = collection_payload.get("detail")
+    else:
+        collection = collection_payload["payload"]
+        collection_name = collection_string(collection, "collection") or collection_string(
+            collection,
+            "collection_name",
+        )
+        named_vectors = collection.get("named_vectors")
+        if isinstance(named_vectors, dict):
+            collection_vectors = sorted(str(name) for name in named_vectors)
+        else:
+            failed_checks.append("missing_qdrant_named_vectors")
+        if (
+            config.collection_name
+            and collection_name
+            and config.collection_name != collection_name
+        ):
+            failed_checks.append("collection_name_mismatch")
+
+    missing_collection_vectors = [
+        vector for vector in config.vector_names if vector not in collection_vectors
+    ]
+    missing_query_encoders = [
+        vector for vector in config.vector_names if vector not in config.query_encoders
+    ]
+    if missing_collection_vectors:
+        failed_checks.append("missing_collection_vectors")
+    if missing_query_encoders:
+        failed_checks.append("missing_query_encoders")
+
+    bm25_tokenizer_alignment = bm25_tokenizer_alignment_metadata(bm25_path, metadata["lexical_tokenizer"])
+    if bm25_tokenizer_alignment.get("failed_check"):
+        failed_checks.append(str(bm25_tokenizer_alignment["failed_check"]))
+
+    retrieval_alignment = qdrant_config_evaluation_alignment(
+        config,
+        retrieval_evaluation,
+        label="retrieval_evaluation",
+        expected_backend="qdrant_hybrid_config",
+    )
+    rag_alignment = qdrant_config_evaluation_alignment(
+        config,
+        rag_context_evaluation,
+        label="rag_context_evaluation",
+        expected_backend="qdrant_rag_context_config",
+    )
+    failed_checks.extend(retrieval_alignment["failed_checks"])
+    failed_checks.extend(rag_alignment["failed_checks"])
+
+    metadata.update(
+        {
+            "collection_file": collection_path.name,
+            "collection_name_from_file": collection_name,
+            "collection_vectors": collection_vectors,
+            "missing_collection_vectors": missing_collection_vectors,
+            "missing_query_encoders": missing_query_encoders,
+            "bm25_tokenizer_alignment": bm25_tokenizer_alignment,
+            "retrieval_evaluation_alignment": retrieval_alignment,
+            "rag_context_evaluation_alignment": rag_alignment,
+        }
+    )
+    failed_checks = sorted(set(failed_checks))
+    metadata["failed_checks"] = failed_checks
+    return ReadinessComponent(
+        name="qdrant_retrieval_config",
+        passed=not failed_checks,
+        message=(
+            "Qdrant retrieval config matches package artifacts and supplied evaluations."
+            if not failed_checks
+            else "Qdrant retrieval config does not match package artifacts or supplied evaluations."
+        ),
+        metadata=metadata,
+    )
+
+
+def resolve_config_path(package_dir: Path, configured_path: str | None) -> Path | None:
+    if configured_path is None or not str(configured_path).strip():
+        return None
+    path = Path(str(configured_path))
+    candidates = [path] if path.is_absolute() else [path, package_dir / path, package_dir / path.name]
+    for candidate in unique_paths(candidates):
+        if candidate.exists():
+            return candidate
+    return unique_paths(candidates)[0]
+
+
+def unique_paths(paths: list[Path]) -> list[Path]:
+    seen: set[str] = set()
+    unique: list[Path] = []
+    for path in paths:
+        key = str(path)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(path)
+    return unique
+
+
+def load_json_object(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {"error": f"missing_{path.stem}"}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        return {"error": "invalid_json", "detail": str(exc)}
+    if not isinstance(payload, dict):
+        return {"error": "invalid_payload_type"}
+    return {"payload": payload}
+
+
+def package_dir_matches(package_dir: Path, configured_package_dir: str | None) -> bool | None:
+    if configured_package_dir is None or not str(configured_package_dir).strip():
+        return None
+    configured = Path(str(configured_package_dir))
+    return configured.resolve(strict=False) == package_dir.resolve(strict=False)
+
+
+def collection_string(payload: dict[str, Any], key: str) -> str | None:
+    value = payload.get(key)
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def normalized_retrieval_config_tokenizer(payload: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "strategy": str(payload.get("strategy") or "mixed"),
+        "lowercase": bool_config(payload.get("lowercase"), default=True),
+        "min_n": int_config(payload.get("min_n"), default=2),
+        "max_n": int_config(payload.get("max_n"), default=4),
+        "ngram_cjk_only": bool_config(payload.get("ngram_cjk_only"), default=True),
+        "deduplicate": bool_config(payload.get("deduplicate"), default=False),
+    }
+
+
+def int_config(value: Any, default: int) -> int:
+    if value is None or value == "":
+        return default
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+    return parsed
+
+
+def bool_config(value: Any, default: bool) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return bool(value)
+
+
+def bm25_tokenizer_alignment_metadata(
+    bm25_path: Path | None,
+    expected_tokenizer: dict[str, Any],
+) -> dict[str, Any]:
+    metadata: dict[str, Any] = {
+        "expected": expected_tokenizer,
+        "actual": None,
+        "matches": None,
+    }
+    if bm25_path is None or not bm25_path.exists():
+        metadata["failed_check"] = "missing_bm25_tokens_path"
+        return metadata
+    try:
+        payload = json.loads(bm25_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        metadata["failed_check"] = "invalid_bm25_tokens_json"
+        metadata["error"] = str(exc)
+        return metadata
+    token_payload = payload.get("tokenizer") if isinstance(payload, dict) else None
+    if not isinstance(token_payload, dict):
+        metadata["failed_check"] = "missing_bm25_tokenizer_config"
+        return metadata
+    try:
+        actual = LexicalTokenizerConfig.model_validate(token_payload).model_dump()
+    except ValidationError as exc:
+        metadata["failed_check"] = "invalid_bm25_tokenizer_config"
+        metadata["errors"] = exc.errors()
+        return metadata
+    metadata["actual"] = actual
+    metadata["matches"] = actual == expected_tokenizer
+    if actual != expected_tokenizer:
+        metadata["failed_check"] = "bm25_tokenizer_mismatch"
+    return metadata
+
+
+def qdrant_config_evaluation_alignment(
+    config: QdrantRetrievalConfig,
+    evaluation: RetrievalEvaluation | RAGContextEvaluation | None,
+    label: str,
+    expected_backend: str,
+) -> dict[str, Any]:
+    if evaluation is None:
+        return {"supplied": False, "failed_checks": []}
+    metadata = evaluation.metadata
+    observed = {
+        "backend": metadata.get("backend"),
+        "collection": metadata.get("collection"),
+        "vector_names": metadata.get("vector_names"),
+        "graph_expand": metadata.get("graph_expand"),
+        "collapse_hierarchical": metadata.get("collapse_hierarchical"),
+        "fusion_weights": metadata.get("fusion_weights"),
+        "query_encoders": metadata.get("query_encoders"),
+        "lexical_tokenizer": metadata.get("lexical_tokenizer"),
+        "selection_candidate": selection_candidate(metadata.get("config_selection")),
+        "top_k": getattr(evaluation, "top_k", None),
+    }
+    failed_checks: list[str] = []
+    if observed["backend"] != expected_backend:
+        failed_checks.append(f"{label}_backend_mismatch")
+    if (
+        config.collection_name
+        and observed["collection"] is not None
+        and observed["collection"] != config.collection_name
+    ):
+        failed_checks.append(f"{label}_collection_mismatch")
+    observed_vectors = metadata_string_list(observed["vector_names"])
+    if observed["vector_names"] is not None and observed_vectors != config.vector_names:
+        failed_checks.append(f"{label}_vector_names_mismatch")
+    if observed["graph_expand"] is not None and observed["graph_expand"] != config.graph_expand:
+        failed_checks.append(f"{label}_graph_expand_mismatch")
+    if (
+        observed["collapse_hierarchical"] is not None
+        and observed["collapse_hierarchical"] != config.collapse_hierarchical
+    ):
+        failed_checks.append(f"{label}_collapse_hierarchical_mismatch")
+    observed_weights = metadata_mapping(observed["fusion_weights"])
+    if observed["fusion_weights"] is not None and observed_weights != config.fusion_weights:
+        failed_checks.append(f"{label}_fusion_weights_mismatch")
+    observed_encoders = metadata_mapping(observed["query_encoders"])
+    if observed["query_encoders"] is not None and observed_encoders != config.query_encoders:
+        failed_checks.append(f"{label}_query_encoders_mismatch")
+    observed_tokenizer = metadata_mapping(observed["lexical_tokenizer"])
+    if observed["lexical_tokenizer"] is not None and normalized_retrieval_config_tokenizer(
+        observed_tokenizer
+    ) != normalized_retrieval_config_tokenizer(config.lexical_tokenizer):
+        failed_checks.append(f"{label}_lexical_tokenizer_mismatch")
+    if (
+        observed["selection_candidate"] is not None
+        and observed["selection_candidate"] != config.selection.candidate
+    ):
+        failed_checks.append(f"{label}_selection_candidate_mismatch")
+    if observed["top_k"] is not None and observed["top_k"] != config.top_k:
+        failed_checks.append(f"{label}_top_k_mismatch")
+    return {
+        "supplied": True,
+        "expected_backend": expected_backend,
+        "observed": observed,
+        "failed_checks": failed_checks,
+        "matches": not failed_checks,
+    }
+
+
+def selection_candidate(payload: Any) -> str | None:
+    if not isinstance(payload, dict):
+        return None
+    value = payload.get("candidate")
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def metadata_string_list(value: Any) -> list[str]:
+    if isinstance(value, list):
+        return [str(item) for item in value]
+    if isinstance(value, tuple):
+        return [str(item) for item in value]
+    return []
+
+
+def metadata_mapping(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return value
+    return {}
 
 
 def derived_vector_issue_names(

@@ -32,6 +32,10 @@ from chunking_docs.evaluation.retrieval import (
     RetrievalEvaluation,
     evaluate_search_results,
 )
+from chunking_docs.evaluation.retrieval_config import (
+    QdrantRetrievalConfig,
+    QdrantRetrievalConfigSelection,
+)
 from chunking_docs.io import read_jsonl, write_jsonl
 from chunking_docs.models import (
     AssetKind,
@@ -773,6 +777,95 @@ def test_ingestion_readiness_requires_rag_context_evaluation(tmp_path):
 
     assert report.passed is False
     assert "rag_context_gate" in report.failed_components
+
+
+def test_ingestion_readiness_validates_qdrant_retrieval_config(tmp_path):
+    package_dir, manifest = write_ready_package(tmp_path)
+    config = readiness_qdrant_retrieval_config(package_dir)
+    retrieval_eval = readiness_retrieval_evaluation(target_coverage=1.0).model_copy(
+        update={"metadata": qdrant_config_metadata(config, "qdrant_hybrid_config")}
+    )
+    context_eval = readiness_rag_context_evaluation().model_copy(
+        update={
+            "metadata": qdrant_config_metadata(
+                config,
+                "qdrant_rag_context_config",
+            )
+        }
+    )
+
+    report = build_ingestion_readiness_report(
+        package_dir,
+        manifest,
+        qdrant_retrieval_config=config,
+        retrieval_evaluation=retrieval_eval,
+        rag_context_evaluation=context_eval,
+    )
+
+    component = next(
+        component
+        for component in report.components
+        if component.name == "qdrant_retrieval_config"
+    )
+    assert report.passed is True
+    assert component.metadata["failed_checks"] == []
+    assert component.metadata["collection_vectors"] == ["text_dense"]
+    assert component.metadata["missing_collection_vectors"] == []
+    assert component.metadata["bm25_tokenizer_alignment"]["matches"] is True
+    assert component.metadata["retrieval_evaluation_alignment"]["matches"] is True
+    assert component.metadata["rag_context_evaluation_alignment"]["matches"] is True
+
+
+def test_ingestion_readiness_flags_qdrant_retrieval_config_mismatch(tmp_path):
+    package_dir, manifest = write_ready_package(tmp_path)
+    config = readiness_qdrant_retrieval_config(package_dir).model_copy(
+        update={
+            "vector_names": ["caption_dense"],
+            "query_encoders": {},
+        }
+    )
+    retrieval_eval = readiness_retrieval_evaluation(target_coverage=1.0).model_copy(
+        update={
+            "metadata": qdrant_config_metadata(
+                readiness_qdrant_retrieval_config(package_dir),
+                "qdrant_hybrid_config",
+            )
+        }
+    )
+
+    report = build_ingestion_readiness_report(
+        package_dir,
+        manifest,
+        qdrant_retrieval_config=config,
+        retrieval_evaluation=retrieval_eval,
+    )
+
+    component = next(
+        component
+        for component in report.components
+        if component.name == "qdrant_retrieval_config"
+    )
+    assert report.passed is False
+    assert "qdrant_retrieval_config" in report.failed_components
+    assert "missing_collection_vectors" in component.metadata["failed_checks"]
+    assert "missing_query_encoders" in component.metadata["failed_checks"]
+    assert (
+        "retrieval_evaluation_vector_names_mismatch"
+        in component.metadata["failed_checks"]
+    )
+
+
+def test_ingestion_readiness_requires_qdrant_retrieval_config(tmp_path):
+    package_dir, manifest = write_ready_package(tmp_path)
+
+    report = build_ingestion_readiness_report(
+        package_dir,
+        manifest,
+        require_qdrant_retrieval_config=True,
+    )
+
+    assert report.passed is False
+    assert "qdrant_retrieval_config" in report.failed_components
 
 
 def test_ingestion_readiness_can_gate_retrieval_source(tmp_path):
@@ -1603,6 +1696,56 @@ def test_ingestion_readiness_cli_can_gate_rag_context(tmp_path):
     ]["target_coverage"] == 1.0
 
 
+def test_ingestion_readiness_cli_can_validate_qdrant_retrieval_config(tmp_path):
+    package_dir, _ = write_ready_package(tmp_path)
+    config = readiness_qdrant_retrieval_config(package_dir)
+    config_path = tmp_path / "qdrant_retrieval_config.json"
+    context_eval_path = tmp_path / "rag_context_eval.json"
+    output = tmp_path / "readiness.json"
+    config_path.write_text(config.model_dump_json(indent=2), encoding="utf-8")
+    context_eval_path.write_text(
+        readiness_rag_context_evaluation()
+        .model_copy(
+            update={
+                "metadata": qdrant_config_metadata(
+                    config,
+                    "qdrant_rag_context_config",
+                )
+            }
+        )
+        .model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "ingestion-readiness",
+            "--package-dir",
+            str(package_dir),
+            "--qdrant-retrieval-config",
+            str(config_path),
+            "--rag-context-evaluation",
+            str(context_eval_path),
+            "--min-rag-context-target-coverage",
+            "1.0",
+            "--output",
+            str(output),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    component = next(
+        component
+        for component in payload["components"]
+        if component["name"] == "qdrant_retrieval_config"
+    )
+    assert payload["passed"] is True
+    assert component["metadata"]["failed_checks"] == []
+    assert component["metadata"]["rag_context_evaluation_alignment"]["matches"] is True
+
+
 def test_ingestion_readiness_cli_can_gate_retrieval_ablation_lift(tmp_path):
     package_dir, _ = write_ready_package(tmp_path)
     ablation_path = tmp_path / "retrieval_ablation.json"
@@ -2121,6 +2264,44 @@ def readiness_retrieval_evaluation(target_coverage: float) -> RetrievalEvaluatio
         failed_queries=[],
         results=[],
     )
+
+
+def readiness_qdrant_retrieval_config(package_dir: Path) -> QdrantRetrievalConfig:
+    return QdrantRetrievalConfig(
+        collection_name="document_chunks",
+        package_dir=str(package_dir),
+        bm25_tokens_path="bm25_tokens.json",
+        vector_names=["text_dense"],
+        graph_expand=False,
+        fusion_weights={"bm25": 1.0, "qdrant:text_dense": 1.0},
+        top_k=5,
+        collapse_hierarchical=False,
+        query_encoders={"text_dense": "default_text"},
+        lexical_tokenizer=LexicalTokenizerConfig().model_dump(),
+        selection=QdrantRetrievalConfigSelection(
+            candidate="bm25_1__qdrant_text_dense_1",
+            source="global_recommended",
+            candidate_rank=1,
+            candidate_eligible=True,
+        ),
+    )
+
+
+def qdrant_config_metadata(
+    config: QdrantRetrievalConfig,
+    backend: str,
+) -> dict[str, object]:
+    return {
+        "backend": backend,
+        "config_selection": config.selection.model_dump(),
+        "collection": config.collection_name,
+        "vector_names": config.vector_names,
+        "graph_expand": config.graph_expand,
+        "query_encoders": config.query_encoders,
+        "fusion_weights": config.fusion_weights,
+        "collapse_hierarchical": config.collapse_hierarchical,
+        "lexical_tokenizer": config.lexical_tokenizer,
+    }
 
 
 def readiness_rag_context_evaluation(target_coverage: float = 1.0) -> RAGContextEvaluation:

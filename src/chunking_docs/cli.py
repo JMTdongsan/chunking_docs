@@ -4052,6 +4052,16 @@ def ingestion_readiness_command(
         "--min-retrieval-case-group-target-coverage",
         help="Require retrieval case group target coverage such as case_source:visual_lexical_probe=0.8.",
     ),
+    qdrant_retrieval_config: Path | None = typer.Option(
+        None,
+        "--qdrant-retrieval-config",
+        help="Service Qdrant retrieval config JSON produced by export-qdrant-retrieval-config.",
+    ),
+    require_qdrant_retrieval_config: bool = typer.Option(
+        False,
+        "--require-qdrant-retrieval-config",
+        help="Fail readiness when no service Qdrant retrieval config is supplied.",
+    ),
     rag_context_evaluation: Path | None = typer.Option(
         None,
         "--rag-context-evaluation",
@@ -4288,6 +4298,11 @@ def ingestion_readiness_command(
     )
     parsed_retrieval_cases = load_retrieval_cases(retrieval_cases) if retrieval_cases else None
     parsed_retrieval = load_retrieval_evaluation(retrieval_evaluation) if retrieval_evaluation else None
+    parsed_qdrant_retrieval_config = (
+        read_qdrant_retrieval_config(qdrant_retrieval_config)
+        if qdrant_retrieval_config
+        else None
+    )
     parsed_rag_context = (
         load_rag_context_evaluation(rag_context_evaluation)
         if rag_context_evaluation
@@ -4467,6 +4482,8 @@ def ingestion_readiness_command(
             "min_source_family_target_coverage": retrieval_source_family_thresholds,
             "min_case_group_target_coverage": retrieval_case_group_thresholds,
         },
+        qdrant_retrieval_config=parsed_qdrant_retrieval_config,
+        require_qdrant_retrieval_config=require_qdrant_retrieval_config,
         rag_context_evaluation=parsed_rag_context,
         require_rag_context_evaluation=require_rag_context_evaluation,
         rag_context_gate_options={
