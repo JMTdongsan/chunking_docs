@@ -43,6 +43,8 @@ class ExperimentReport(BaseModel):
     candidate_files: dict[str, str] = Field(default_factory=dict)
     package_counts: dict[str, int] = Field(default_factory=dict)
     profile_summary: dict[str, Any] = Field(default_factory=dict)
+    source_file: dict[str, Any] = Field(default_factory=dict)
+    package_config: dict[str, Any] = Field(default_factory=dict)
     qdrant_collection: dict[str, Any] = Field(default_factory=dict)
     bm25_tokenizer: dict[str, Any] = Field(default_factory=dict)
     artifacts: list[ArtifactSummary] = Field(default_factory=list)
@@ -227,6 +229,8 @@ def build_experiment_report(
             "triples": len(manifest.triples),
         },
         profile_summary=manifest.metadata.get("profile_summary", {}),
+        source_file=manifest.metadata.get("source_file", {}),
+        package_config=manifest.metadata.get("package_config", {}),
         qdrant_collection=read_json(package_dir / "qdrant_collection.json"),
         bm25_tokenizer=read_json(package_dir / "bm25_tokens.json").get("tokenizer", {}),
         artifacts=[artifact_summary(path, root=package_dir) for path in artifact_paths],

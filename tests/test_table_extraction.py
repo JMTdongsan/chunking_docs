@@ -1,10 +1,12 @@
 import json
+import hashlib
 from pathlib import Path
 
 import fitz
 from typer.testing import CliRunner
 
 from chunking_docs.cli import app
+from chunking_docs.embeddings.tokenizers import LexicalTokenizerConfig
 from chunking_docs.ingest.pdf_loader import stable_doc_id
 from chunking_docs.ingest.tables import (
     extract_pdf_tables,
@@ -91,6 +93,44 @@ def test_extract_tables_cli_updates_package(tmp_path):
     assert any(table_assets[0].asset_id in chunk.asset_ids for chunk in chunks)
     assert any(triple.chunk_id == table_chunks[0].chunk_id for triple in triples)
     assert payload["named_vectors"]["caption_dense"]["size"] == 384
+
+
+def test_build_processing_package_records_reproducible_package_metadata(tmp_path):
+    pdf_path = make_table_pdf(tmp_path / "tables.pdf")
+    package_dir = tmp_path / "package"
+
+    manifest = build_processing_package(
+        pdf_path,
+        package_dir,
+        render_zoom=2.0,
+        tokenizer_config=LexicalTokenizerConfig(strategy="word", deduplicate=True),
+        extract_tables=False,
+    )
+
+    persisted = json.loads((package_dir / "manifest.json").read_text(encoding="utf-8"))
+    metadata = manifest.metadata
+
+    assert persisted["metadata"] == metadata
+    assert metadata["source_file"] == {
+        "name": "tables.pdf",
+        "bytes": pdf_path.stat().st_size,
+        "sha256": hashlib.sha256(pdf_path.read_bytes()).hexdigest(),
+    }
+    assert metadata["package_config"] == {
+        "base_chunking_strategy": "page",
+        "render_zoom": 2.0,
+        "dry_run_embeddings": True,
+        "section_map_count": 0,
+        "extract_tables": False,
+        "lexical_tokenizer": {
+            "strategy": "word",
+            "lowercase": True,
+            "min_n": 2,
+            "max_n": 4,
+            "ngram_cjk_only": True,
+            "deduplicate": True,
+        },
+    }
 
 
 def make_table_pdf(path: Path) -> Path:

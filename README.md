@@ -60,7 +60,7 @@ chunking-docs package data/raw/document.pdf --output-dir outputs/package
 
 The package directory contains:
 
-- `manifest.json`: document and processing metadata
+- `manifest.json`: document metadata plus reproducibility metadata such as source-file checksum, package settings, tokenizer config, and profile summary
 - `pages.jsonl`: page profiles and language-neutral text quality signals such as control-character ratio, readable-character ratio, and quality reasons
 - `chunks.jsonl`: chunk records
 - `assets.jsonl`: rendered visual asset records
@@ -754,7 +754,7 @@ chunking-docs write-experiment-report \
   --output outputs/package/experiment_report.json
 ```
 
-The report records package artifact checksums, JSONL record counts, BM25 tokenizer settings, Qdrant named-vector configuration, readiness, evaluation, audit, gate artifact variants, visual run comparison summaries, top-level and component-level validation pass/fail summaries, chunking quality metrics, linked visual text coverage, retrieval recall@k, MRR, target coverage@k, target nDCG@k, target rank, precision@k, latency, failed queries, case-group metrics such as visual object probe coverage, paired confidence metrics from chunking gates, and the best candidate by retrieval behavior. This makes chunking changes reviewable and repeatable before new defaults are adopted.
+The report records source-file checksum, package settings, package artifact checksums, JSONL record counts, BM25 tokenizer settings, Qdrant named-vector configuration, readiness, evaluation, audit, gate artifact variants, visual run comparison summaries, top-level and component-level validation pass/fail summaries, chunking quality metrics, linked visual text coverage, retrieval recall@k, MRR, target coverage@k, target nDCG@k, target rank, precision@k, latency, failed queries, case-group metrics such as visual object probe coverage, paired confidence metrics from chunking gates, and the best candidate by retrieval behavior. This makes chunking changes reviewable and repeatable before new defaults are adopted.
 
 ## Development Checks
 

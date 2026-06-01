@@ -82,12 +82,16 @@ def build_processing_package(
         chunks=chunks,
         assets=assets,
         triples=triples,
-        metadata={
-            "profile_summary": summarize_profiles(profiles),
-            "embedding_mode": "hashing_dry_run" if dry_run_embeddings else "external",
-            "section_map_count": len(section_ranges or []),
-            "table_count": len(table_chunks),
-        },
+        metadata=package_metadata(
+            pdf_path=pdf_path,
+            profiles=profiles,
+            render_zoom=render_zoom,
+            dry_run_embeddings=dry_run_embeddings,
+            section_ranges=section_ranges,
+            tokenizer_config=tokenizer_config,
+            extract_tables=extract_tables,
+            table_count=len(table_chunks),
+        ),
     )
     write_package(
         output_dir,
@@ -139,6 +143,43 @@ def write_package(
                 embedding_dim=embedder.embedding_dim,
             ),
         )
+
+
+def package_metadata(
+    pdf_path: Path,
+    profiles: list[PageProfile],
+    render_zoom: float,
+    dry_run_embeddings: bool,
+    section_ranges: list[SectionRange] | None,
+    tokenizer_config: LexicalTokenizerConfig | None,
+    extract_tables: bool,
+    table_count: int,
+) -> dict[str, Any]:
+    tokenizer = tokenizer_config or LexicalTokenizerConfig()
+    return {
+        "profile_summary": summarize_profiles(profiles),
+        "source_file": source_file_metadata(pdf_path),
+        "package_config": {
+            "base_chunking_strategy": "page",
+            "render_zoom": render_zoom,
+            "dry_run_embeddings": dry_run_embeddings,
+            "section_map_count": len(section_ranges or []),
+            "extract_tables": extract_tables,
+            "lexical_tokenizer": tokenizer.model_dump(),
+        },
+        "embedding_mode": "hashing_dry_run" if dry_run_embeddings else "external",
+        "section_map_count": len(section_ranges or []),
+        "table_count": table_count,
+    }
+
+
+def source_file_metadata(path: Path) -> dict[str, Any]:
+    summary = file_summary(path)
+    return {
+        "name": path.name,
+        "bytes": summary["bytes"],
+        "sha256": summary["sha256"],
+    }
 
 
 def rebuild_search_artifacts(

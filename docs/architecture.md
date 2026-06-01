@@ -14,6 +14,7 @@
    - Download or load a PDF.
    - Generate a stable `doc_id` from file content.
    - Store source metadata and local path.
+   - Record source file name, byte count, and SHA-256 in `manifest.json` for reproducible packages.
 
 2. **Page Profiling**
    - Measure page size, text length, text blocks, image blocks, embedded images, and drawing count.
@@ -93,25 +94,30 @@
     - The default `mixed` tokenizer adds CJK character n-grams so compound terms without whitespace remain retrievable, while preserving repeated term frequencies for BM25 ranking.
     - Dense and lexical results are combined with Reciprocal Rank Fusion in the local evaluator.
 
-12. **Graph Triples**
+12. **Package Reproducibility**
+    - `manifest.json` records source-file checksum, base chunking strategy, render zoom, section-map count, table extraction setting, tokenizer config, embedding mode, table count, and profile summary.
+    - `embedding_manifest.json` records vector files, dimensions, counts, checksums, backend names, model IDs, devices, and batch sizes.
+    - Readiness and experiment reports can validate these artifacts before Qdrant or PostgreSQL ingestion.
+
+13. **Graph Triples**
     - Section metadata creates baseline graph relationships.
     - OCR/VLM JSON or external annotations can add `subject, predicate, object` triples.
     - Triple normalization canonicalizes labels, predicate names, and stable IDs.
     - Triple audit flags duplicates, orphan chunk references, empty fields, invalid confidence values, and optional gaps between VLM-derived visual metadata and asset-provenance graph triples.
     - Graph terms are used for query expansion and relationship browsing.
 
-13. **Storage**
+14. **Storage**
     - Qdrant stores named vectors and payloads.
     - Text vector payloads preserve chunk IDs, page ranges, source refs, and visual asset link IDs for filtering and downstream context assembly.
     - PostgreSQL stores normalized document, page, chunk, asset, triple, and embedding artifact metadata.
     - BM25 can remain as a local manifest or be replaced by a dedicated lexical search service.
 
-14. **Ingestion Readiness**
+15. **Ingestion Readiness**
     - Combine package audit, required artifact checks, Qdrant record validation, and PostgreSQL row conversion.
     - Optionally include retrieval case audit, visual quality gates, chunking comparison gates, and retrieval quality gates before a package is loaded into serving systems.
     - Emit a single pass/fail report for CI, portfolio review, or deployment handoff.
 
-15. **RAG Context Assembly**
+16. **RAG Context Assembly**
     - Convert retrieval hits into a structured context bundle.
     - Support both local hybrid retrieval and Qdrant hybrid retrieval.
     - Include hit chunks, optional neighboring chunks, hierarchical evidence chunks, linked visual assets, and graph triples.
@@ -254,7 +260,7 @@ Recommended checks:
 - `compare-chunking`: side-by-side strategy comparison by quality score, recall@k, MRR, target coverage@k, target nDCG@k, target rank, precision@k, target-type coverage, source-family target coverage, chunking-strategy coverage, retrieval-role coverage, case group coverage, linked visual text asset and part coverage, latency, failed queries, query-paired baseline deltas, and paired bootstrap confidence intervals.
 - `gate-chunking-comparison`: pass/fail checks for selected chunking candidates using quality, page coverage, visual text asset/part coverage, retrieval floors, target rank limits, target-type coverage, source-family target coverage, chunking-strategy coverage, retrieval-role coverage, case group coverage, failed-query limits, baseline regression limits, pairwise lift requirements, pairwise rank-delta ceilings, and paired confidence bounds.
 - `sweep-chunking`: parameter grid generation for max size, overlap, parent size, and multimodal or hierarchical visual context size, with weighted selection scores, optional hard selection constraints for aggregate metrics, target types, source families, case groups, chunk text volume, chunk length, and standalone visual chunk count, eligibility failures, and a Pareto front that treats latency, rank, chunk count, chunk text volume, embedding text volume, and standalone visual chunk count as cost axes for retrieval quality-versus-cost review.
-- `write-experiment-report`: reproducible package report with artifact checksums, record counts, tokenizer settings, Qdrant configuration, readiness, evaluation, audit, gate artifact variants, visual run comparison summaries, top-level and component-level validation pass/fail summaries, linked visual text asset/part coverage, target rank metrics, case metadata group metrics, paired confidence metrics, and candidate comparison metrics.
+- `write-experiment-report`: reproducible package report with source-file/package config metadata, artifact checksums, record counts, tokenizer settings, Qdrant configuration, readiness, evaluation, audit, gate artifact variants, visual run comparison summaries, top-level and component-level validation pass/fail summaries, linked visual text asset/part coverage, target rank metrics, case metadata group metrics, paired confidence metrics, and candidate comparison metrics.
 - Qdrant local mode upsert: validates named vector records and payloads.
 
 Benchmark cases should be maintained per document family. A useful case specifies the query, expected page, chunk, visual asset, graph triple, and whether graph expansion should be enabled.

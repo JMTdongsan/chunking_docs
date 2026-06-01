@@ -87,6 +87,9 @@ def test_build_experiment_report_summarizes_artifacts_and_candidates(tmp_path):
     assert validations["visual_run_comparison.json"].metrics["best_quality_score"] == 0.92
     assert report.qdrant_collection["collection"] == "document_chunks"
     assert report.bm25_tokenizer["strategy"] == "mixed"
+    assert report.source_file == {"name": "reference.pdf", "bytes": 1234, "sha256": "abc"}
+    assert report.package_config["base_chunking_strategy"] == "page"
+    assert report.package_config["lexical_tokenizer"]["strategy"] == "mixed"
     assert report.candidate_files == {"current": str(package_dir / "chunks.jsonl")}
     assert report.comparison is not None
     assert report.comparison.best_by_retrieval == "current"
@@ -184,7 +187,18 @@ def write_minimal_package(tmp_path):
         chunks=chunks,
         assets=assets,
         triples=[],
-        metadata={"profile_summary": {"page_count": 1, "degraded_page_count": 0}},
+        metadata={
+            "profile_summary": {"page_count": 1, "degraded_page_count": 0},
+            "source_file": {"name": "reference.pdf", "bytes": 1234, "sha256": "abc"},
+            "package_config": {
+                "base_chunking_strategy": "page",
+                "render_zoom": 1.5,
+                "dry_run_embeddings": True,
+                "section_map_count": 0,
+                "extract_tables": True,
+                "lexical_tokenizer": {"strategy": "mixed"},
+            },
+        },
     )
     (package_dir / "manifest.json").write_text(manifest.model_dump_json(indent=2), encoding="utf-8")
     write_jsonl(package_dir / "pages.jsonl", profiles)
