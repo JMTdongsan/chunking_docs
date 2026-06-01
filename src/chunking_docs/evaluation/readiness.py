@@ -280,6 +280,13 @@ def build_ingestion_readiness_report(
                     **gate_check_metadata(retrieval_case_audit),
                     "target_counts": retrieval_case_audit.target_counts,
                     "distinct_target_counts": retrieval_case_audit.distinct_target_counts,
+                    "excluded_target_counts": retrieval_case_audit.excluded_target_counts,
+                    "excluded_distinct_target_counts": (
+                        retrieval_case_audit.excluded_distinct_target_counts
+                    ),
+                    "excluded_max_cases_per_target": (
+                        retrieval_case_audit.excluded_max_cases_per_target
+                    ),
                     "max_cases_per_target": retrieval_case_audit.max_cases_per_target,
                     "case_group_counts": retrieval_case_audit.case_group_counts,
                     "case_group_distinct_target_counts": (

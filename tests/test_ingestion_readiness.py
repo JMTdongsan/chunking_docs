@@ -562,7 +562,7 @@ def test_ingestion_readiness_reports_standalone_visual_text_chunks(tmp_path):
 def test_ingestion_readiness_includes_retrieval_cases_and_chunking_gate(tmp_path):
     package_dir, manifest = write_ready_package(tmp_path)
     cases = [
-        RetrievalCase(query="reference evidence", expected_pages=[1]),
+        RetrievalCase(query="reference evidence", expected_pages=[1], excluded_asset_ids=["asset-1"]),
         RetrievalCase(
             query="visual evidence",
             expected_asset_ids=["asset-1"],
@@ -581,6 +581,9 @@ def test_ingestion_readiness_includes_retrieval_cases_and_chunking_gate(tmp_path
             "min_asset_cases": 1,
             "min_distinct_asset_targets": 1,
             "max_asset_cases_per_target": 1,
+            "min_excluded_target_cases": {"asset": 1},
+            "min_distinct_excluded_targets": {"asset": 1},
+            "max_excluded_cases_per_target": {"asset": 1},
             "min_case_group_distinct_targets": {"case_source:visual_object_probe:asset": 1},
             "max_case_group_cases_per_target": {"case_source:visual_object_probe:asset": 1},
             "require_visual_only_object_probes": True,
@@ -623,6 +626,9 @@ def test_ingestion_readiness_includes_retrieval_cases_and_chunking_gate(tmp_path
     assert retrieval_component.metadata["visual_object_probe_count"] == 1
     assert retrieval_component.metadata["distinct_target_counts"]["asset"] == 1
     assert retrieval_component.metadata["max_cases_per_target"]["asset"] == 1
+    assert retrieval_component.metadata["excluded_target_counts"]["asset"] == 1
+    assert retrieval_component.metadata["excluded_distinct_target_counts"]["asset"] == 1
+    assert retrieval_component.metadata["excluded_max_cases_per_target"]["asset"] == 1
     assert retrieval_component.metadata["case_group_distinct_target_counts"]["case_source"][
         "visual_object_probe"
     ]["asset"] == 1

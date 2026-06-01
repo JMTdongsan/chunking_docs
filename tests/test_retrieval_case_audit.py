@@ -379,6 +379,63 @@ def test_audit_retrieval_cases_checks_case_group_target_concentration():
     assert check.threshold == 1
 
 
+def test_audit_retrieval_cases_checks_hard_negative_distribution():
+    profiles, chunks, assets, triples = package_records()
+    cases = [
+        RetrievalCase(
+            query="hard negative one",
+            expected_pages=[1],
+            excluded_asset_ids=["asset-1"],
+        ),
+        RetrievalCase(
+            query="hard negative two",
+            expected_pages=[1],
+            excluded_asset_ids=["asset-1"],
+        ),
+    ]
+
+    passing_report = audit_retrieval_cases(
+        cases,
+        profiles=profiles,
+        chunks=chunks,
+        assets=assets,
+        triples=triples,
+        min_excluded_target_cases={"asset": 2},
+        min_distinct_excluded_targets={"asset": 1},
+        max_excluded_cases_per_target={"asset": 2},
+    )
+    assert passing_report.passed is True
+    assert passing_report.excluded_target_counts["asset"] == 2
+    assert passing_report.excluded_distinct_target_counts["asset"] == 1
+    assert passing_report.excluded_max_cases_per_target["asset"] == 2
+
+    failing_report = audit_retrieval_cases(
+        cases,
+        profiles=profiles,
+        chunks=chunks,
+        assets=assets,
+        triples=triples,
+        min_distinct_excluded_targets={"asset": 2},
+        max_excluded_cases_per_target={"asset": 1},
+    )
+
+    assert failing_report.passed is False
+    assert "distinct_excluded_asset_targets" in failing_report.failed_checks
+    assert "max_excluded_asset_cases_per_target" in failing_report.failed_checks
+    distinct_check = next(
+        check for check in failing_report.checks if check.name == "distinct_excluded_asset_targets"
+    )
+    assert distinct_check.actual == 1
+    assert distinct_check.threshold == 2
+    concentration_check = next(
+        check
+        for check in failing_report.checks
+        if check.name == "max_excluded_asset_cases_per_target"
+    )
+    assert concentration_check.actual == 2
+    assert concentration_check.threshold == 1
+
+
 def test_audit_retrieval_cases_checks_query_term_strength():
     profiles, chunks, assets, triples = package_records()
     cases = [
@@ -519,6 +576,7 @@ def test_audit_retrieval_cases_cli_writes_report(tmp_path):
             RetrievalCase(
                 query="overview target",
                 expected_pages=[1],
+                excluded_asset_ids=["asset-1"],
                 metadata={"case_source": "page"},
             ),
             RetrievalCase(
@@ -546,6 +604,12 @@ def test_audit_retrieval_cases_cli_writes_report(tmp_path):
             "1",
             "--max-asset-cases-per-target",
             "1",
+            "--min-excluded-target-cases",
+            "asset=1",
+            "--min-distinct-excluded-targets",
+            "asset=1",
+            "--max-excluded-cases-per-target",
+            "asset=1",
             "--min-case-group-count",
             "case_source:visual_object_probe=1",
             "--min-case-group-distinct-targets",
@@ -570,6 +634,9 @@ def test_audit_retrieval_cases_cli_writes_report(tmp_path):
     assert payload["target_counts"]["asset"] == 1
     assert payload["distinct_target_counts"]["asset"] == 1
     assert payload["max_cases_per_target"]["asset"] == 1
+    assert payload["excluded_target_counts"]["asset"] == 1
+    assert payload["excluded_distinct_target_counts"]["asset"] == 1
+    assert payload["excluded_max_cases_per_target"]["asset"] == 1
     assert payload["case_group_counts"]["case_source"]["visual_object_probe"] == 1
     assert payload["case_group_distinct_target_counts"]["case_source"]["visual_object_probe"]["asset"] == 1
     assert payload["case_group_max_cases_per_target"]["case_source"]["visual_object_probe"]["asset"] == 1

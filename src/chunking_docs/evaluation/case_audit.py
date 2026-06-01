@@ -64,6 +64,7 @@ class RetrievalCaseAuditReport(BaseModel):
     distinct_target_counts: dict[str, int] = Field(default_factory=dict)
     excluded_target_counts: dict[str, int] = Field(default_factory=dict)
     excluded_distinct_target_counts: dict[str, int] = Field(default_factory=dict)
+    excluded_max_cases_per_target: dict[str, int] = Field(default_factory=dict)
     max_cases_per_target: dict[str, int] = Field(default_factory=dict)
     case_group_counts: dict[str, dict[str, int]] = Field(default_factory=dict)
     case_group_distinct_target_counts: dict[str, dict[str, dict[str, int]]] = Field(default_factory=dict)
@@ -108,10 +109,13 @@ def audit_retrieval_cases(
     min_distinct_chunk_targets: int = 0,
     min_distinct_asset_targets: int = 0,
     min_distinct_triple_targets: int = 0,
+    min_excluded_target_cases: dict[str, int] | None = None,
+    min_distinct_excluded_targets: dict[str, int] | None = None,
     max_page_cases_per_target: int | None = None,
     max_chunk_cases_per_target: int | None = None,
     max_asset_cases_per_target: int | None = None,
     max_triple_cases_per_target: int | None = None,
+    max_excluded_cases_per_target: dict[str, int] | None = None,
     min_case_group_counts: dict[str, int] | None = None,
     min_case_group_distinct_targets: dict[str, int] | None = None,
     max_case_group_cases_per_target: dict[str, int] | None = None,
@@ -134,6 +138,7 @@ def audit_retrieval_cases(
     distinct_target_counts = count_retrieval_case_distinct_targets(cases)
     excluded_target_counts = count_retrieval_case_excluded_targets(cases)
     excluded_distinct_target_counts = count_retrieval_case_distinct_excluded_targets(cases)
+    excluded_max_cases_per_target = count_retrieval_case_max_excluded_target_mentions(cases)
     max_cases_per_target = count_retrieval_case_max_target_mentions(cases)
     group_counts = count_case_groups(cases)
     group_distinct_target_counts = count_case_group_distinct_targets(cases)
@@ -418,10 +423,22 @@ def audit_retrieval_cases(
         "distinct_chunk_targets": distinct_target_counts["chunk"],
         "distinct_asset_targets": distinct_target_counts["asset"],
         "distinct_triple_targets": distinct_target_counts["triple"],
+        "excluded_page_cases": excluded_target_counts["page"],
+        "excluded_chunk_cases": excluded_target_counts["chunk"],
+        "excluded_asset_cases": excluded_target_counts["asset"],
+        "excluded_triple_cases": excluded_target_counts["triple"],
+        "distinct_excluded_page_targets": excluded_distinct_target_counts["page"],
+        "distinct_excluded_chunk_targets": excluded_distinct_target_counts["chunk"],
+        "distinct_excluded_asset_targets": excluded_distinct_target_counts["asset"],
+        "distinct_excluded_triple_targets": excluded_distinct_target_counts["triple"],
         "max_page_cases_per_target": max_cases_per_target["page"],
         "max_chunk_cases_per_target": max_cases_per_target["chunk"],
         "max_asset_cases_per_target": max_cases_per_target["asset"],
         "max_triple_cases_per_target": max_cases_per_target["triple"],
+        "max_excluded_page_cases_per_target": excluded_max_cases_per_target["page"],
+        "max_excluded_chunk_cases_per_target": excluded_max_cases_per_target["chunk"],
+        "max_excluded_asset_cases_per_target": excluded_max_cases_per_target["asset"],
+        "max_excluded_triple_cases_per_target": excluded_max_cases_per_target["triple"],
         "non_visual_only_object_probe_count": visual_object_probe_counts["non_visual_only"],
         "duplicate_query_count": duplicate_query_count,
         "min_query_term_count": min_query_term_count,
@@ -509,6 +526,30 @@ def audit_retrieval_cases(
             },
         )
     )
+    checks.extend(
+        min_target_type_checks(
+            metrics,
+            min_excluded_target_cases or {},
+            prefix="excluded",
+            suffix="cases",
+        )
+    )
+    checks.extend(
+        min_target_type_checks(
+            metrics,
+            min_distinct_excluded_targets or {},
+            prefix="distinct_excluded",
+            suffix="targets",
+        )
+    )
+    checks.extend(
+        max_target_type_checks(
+            metrics,
+            max_excluded_cases_per_target or {},
+            prefix="max_excluded",
+            suffix="cases_per_target",
+        )
+    )
     if require_visual_only_object_probes:
         checks.append(
             max_check(
@@ -540,6 +581,7 @@ def audit_retrieval_cases(
         distinct_target_counts=distinct_target_counts,
         excluded_target_counts=excluded_target_counts,
         excluded_distinct_target_counts=excluded_distinct_target_counts,
+        excluded_max_cases_per_target=excluded_max_cases_per_target,
         max_cases_per_target=max_cases_per_target,
         case_group_counts=group_counts,
         case_group_distinct_target_counts=group_distinct_target_counts,
@@ -612,6 +654,15 @@ def count_retrieval_case_distinct_excluded_targets(cases: list[RetrievalCase]) -
         "chunk": len({chunk_id for case in cases for chunk_id in case.excluded_chunk_ids}),
         "asset": len({asset_id for case in cases for asset_id in case.excluded_asset_ids}),
         "triple": len({triple_id for case in cases for triple_id in case.excluded_triple_ids}),
+    }
+
+
+def count_retrieval_case_max_excluded_target_mentions(cases: list[RetrievalCase]) -> dict[str, int]:
+    return {
+        "page": max_target_mentions(case.excluded_pages for case in cases),
+        "chunk": max_target_mentions(case.excluded_chunk_ids for case in cases),
+        "asset": max_target_mentions(case.excluded_asset_ids for case in cases),
+        "triple": max_target_mentions(case.excluded_triple_ids for case in cases),
     }
 
 
@@ -907,6 +958,44 @@ def max_cases_per_target_checks(
         metric = f"max_{target_name}_cases_per_target"
         checks.append(max_check(metric, metric, metrics, threshold))
     return checks
+
+
+def min_target_type_checks(
+    metrics: dict[str, int | float],
+    thresholds: dict[str, int],
+    *,
+    prefix: str,
+    suffix: str,
+) -> list[RetrievalCaseAuditCheck]:
+    checks = []
+    for target_name, threshold in sorted_target_type_thresholds(thresholds):
+        metric = f"{prefix}_{target_name}_{suffix}"
+        checks.append(min_check(metric, metric, metrics, threshold))
+    return checks
+
+
+def max_target_type_checks(
+    metrics: dict[str, int | float],
+    thresholds: dict[str, int],
+    *,
+    prefix: str,
+    suffix: str,
+) -> list[RetrievalCaseAuditCheck]:
+    checks = []
+    for target_name, threshold in sorted_target_type_thresholds(thresholds):
+        metric = f"{prefix}_{target_name}_{suffix}"
+        checks.append(max_check(metric, metric, metrics, threshold))
+    return checks
+
+
+def sorted_target_type_thresholds(thresholds: dict[str, int]) -> list[tuple[str, int]]:
+    values = []
+    for target_name, threshold in thresholds.items():
+        normalized_target = normalized_metric_label(target_name)
+        if normalized_target not in {"page", "chunk", "asset", "triple"}:
+            raise ValueError("target type threshold must use page, chunk, asset, or triple")
+        values.append((normalized_target, threshold))
+    return sorted(values)
 
 
 def parse_case_group_count_spec(value: str) -> tuple[str, str]:

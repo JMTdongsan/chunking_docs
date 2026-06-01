@@ -46,6 +46,7 @@ from chunking_docs.evaluation.case_audit import (
     count_retrieval_case_distinct_excluded_targets,
     count_retrieval_case_distinct_targets,
     count_retrieval_case_excluded_targets,
+    count_retrieval_case_max_excluded_target_mentions,
     count_retrieval_case_max_target_mentions,
     count_retrieval_case_targets,
     count_visual_image_probes,
@@ -4962,6 +4963,21 @@ def ingestion_readiness_command(
             "page/chunk/asset/triple targets than this ceiling."
         ),
     ),
+    min_retrieval_excluded_target_cases: list[str] = typer.Option(
+        None,
+        "--min-retrieval-excluded-target-cases",
+        help="Require hard-negative cases by target type, such as chunk=10 or asset=5.",
+    ),
+    min_retrieval_distinct_excluded_targets: list[str] = typer.Option(
+        None,
+        "--min-retrieval-distinct-excluded-targets",
+        help="Require distinct hard-negative targets by type, such as chunk=10 or asset=5.",
+    ),
+    max_retrieval_excluded_cases_per_target: list[str] = typer.Option(
+        None,
+        "--max-retrieval-excluded-cases-per-target",
+        help="Limit hard-negative target concentration by type, such as chunk=2 or asset=2.",
+    ),
     min_retrieval_case_group_distinct_targets: list[str] = typer.Option(
         None,
         "--min-retrieval-case-group-distinct-targets",
@@ -5789,6 +5805,18 @@ def ingestion_readiness_command(
         max_retrieval_case_group_cases_per_target,
         "retrieval case group target concentration",
     )
+    retrieval_excluded_case_thresholds = parse_named_int_thresholds(
+        min_retrieval_excluded_target_cases,
+        "retrieval hard-negative case count",
+    )
+    retrieval_distinct_excluded_thresholds = parse_named_int_thresholds(
+        min_retrieval_distinct_excluded_targets,
+        "retrieval distinct hard-negative target count",
+    )
+    retrieval_excluded_max_target_thresholds = parse_named_int_thresholds(
+        max_retrieval_excluded_cases_per_target,
+        "retrieval hard-negative target concentration",
+    )
     chunking_source_family_thresholds = parse_named_float_thresholds(
         min_chunking_source_family_target_coverage,
         "chunking source family target coverage",
@@ -5908,6 +5936,9 @@ def ingestion_readiness_command(
             "max_chunk_cases_per_target": max_retrieval_chunk_cases_per_target,
             "max_asset_cases_per_target": max_retrieval_asset_cases_per_target,
             "max_triple_cases_per_target": max_retrieval_triple_cases_per_target,
+            "min_excluded_target_cases": retrieval_excluded_case_thresholds,
+            "min_distinct_excluded_targets": retrieval_distinct_excluded_thresholds,
+            "max_excluded_cases_per_target": retrieval_excluded_max_target_thresholds,
             "min_case_group_counts": retrieval_case_group_count_thresholds,
             "min_case_group_distinct_targets": retrieval_case_group_distinct_thresholds,
             "max_case_group_cases_per_target": retrieval_case_group_max_target_thresholds,
@@ -6654,6 +6685,7 @@ def generate_retrieval_cases_command(
             "distinct_target_counts": count_retrieval_case_distinct_targets(cases),
             "excluded_target_counts": count_retrieval_case_excluded_targets(cases),
             "excluded_distinct_target_counts": count_retrieval_case_distinct_excluded_targets(cases),
+            "excluded_max_cases_per_target": count_retrieval_case_max_excluded_target_mentions(cases),
             "max_cases_per_target": count_retrieval_case_max_target_mentions(cases),
             "case_group_counts": count_case_groups(cases),
             "case_group_distinct_target_counts": count_case_group_distinct_targets(cases),
@@ -6705,6 +6737,21 @@ def audit_retrieval_cases_command(
     max_chunk_cases_per_target: int | None = None,
     max_asset_cases_per_target: int | None = None,
     max_triple_cases_per_target: int | None = None,
+    min_excluded_target_cases: list[str] = typer.Option(
+        None,
+        "--min-excluded-target-cases",
+        help="Require hard-negative cases by target type, such as chunk=10 or asset=5.",
+    ),
+    min_distinct_excluded_targets: list[str] = typer.Option(
+        None,
+        "--min-distinct-excluded-targets",
+        help="Require distinct hard-negative targets by type, such as chunk=10 or asset=5.",
+    ),
+    max_excluded_cases_per_target: list[str] = typer.Option(
+        None,
+        "--max-excluded-cases-per-target",
+        help="Limit hard-negative target concentration by type, such as chunk=2 or asset=2.",
+    ),
     min_query_terms_per_case: int = 0,
     max_target_query_overlap_ratio: float | None = typer.Option(
         None,
@@ -6782,6 +6829,18 @@ def audit_retrieval_cases_command(
         max_case_group_cases_per_target,
         "case group target concentration",
     )
+    excluded_case_thresholds = parse_named_int_thresholds(
+        min_excluded_target_cases,
+        "hard-negative case count",
+    )
+    distinct_excluded_thresholds = parse_named_int_thresholds(
+        min_distinct_excluded_targets,
+        "distinct hard-negative target count",
+    )
+    excluded_max_target_thresholds = parse_named_int_thresholds(
+        max_excluded_cases_per_target,
+        "hard-negative target concentration",
+    )
     report = audit_retrieval_cases(
         parsed_cases,
         profiles=manifest.profiles,
@@ -6801,6 +6860,9 @@ def audit_retrieval_cases_command(
         max_chunk_cases_per_target=max_chunk_cases_per_target,
         max_asset_cases_per_target=max_asset_cases_per_target,
         max_triple_cases_per_target=max_triple_cases_per_target,
+        min_excluded_target_cases=excluded_case_thresholds,
+        min_distinct_excluded_targets=distinct_excluded_thresholds,
+        max_excluded_cases_per_target=excluded_max_target_thresholds,
         min_case_group_counts=case_group_thresholds,
         min_case_group_distinct_targets=case_group_distinct_thresholds,
         max_case_group_cases_per_target=case_group_max_target_thresholds,
@@ -6824,9 +6886,11 @@ def audit_retrieval_cases_command(
             "distinct_target_counts": report.distinct_target_counts,
             "excluded_target_counts": report.excluded_target_counts,
             "excluded_distinct_target_counts": report.excluded_distinct_target_counts,
+            "excluded_max_cases_per_target": report.excluded_max_cases_per_target,
             "max_cases_per_target": report.max_cases_per_target,
             "case_group_counts": report.case_group_counts,
             "case_group_distinct_target_counts": report.case_group_distinct_target_counts,
+            "case_group_max_cases_per_target": report.case_group_max_cases_per_target,
             "visual_object_probe_count": report.visual_object_probe_count,
             "visual_only_object_probe_count": report.visual_only_object_probe_count,
             "non_visual_only_object_probe_count": report.non_visual_only_object_probe_count,
