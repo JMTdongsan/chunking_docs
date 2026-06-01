@@ -49,6 +49,23 @@ def test_characterize_package_reports_strategy_observations(tmp_path):
     assert "generate_visual_object_probe_cases" in recommendation_codes
     assert "compare_multimodal_hierarchical_chunking" in recommendation_codes
     assert "maintain_retrieval_benchmark" in recommendation_codes
+    object_probe_recommendation = next(
+        item for item in report.recommendations if item.code == "generate_visual_object_probe_cases"
+    )
+    object_probe_audit_command = object_probe_recommendation.commands[1]
+    assert "--query-mode salient_terms" in object_probe_recommendation.commands[0]
+    assert "--min-case-group-count case_source:visual_object_probe=2" in object_probe_audit_command
+    assert "--min-distinct-asset-targets 1" in object_probe_audit_command
+    assert "--max-asset-cases-per-target 3" in object_probe_audit_command
+    assert "--min-query-terms-per-case 3" in object_probe_audit_command
+    assert "--require-visual-only-object-probes" in object_probe_audit_command
+    assert object_probe_recommendation.metadata["recommended_object_probe_case_threshold"] == 2
+    assert object_probe_recommendation.metadata["recommended_distinct_asset_threshold"] == 1
+    benchmark_recommendation = next(
+        item for item in report.recommendations if item.code == "maintain_retrieval_benchmark"
+    )
+    assert "--min-query-terms-per-case 3" in benchmark_recommendation.commands[0]
+    assert "--max-duplicate-queries 0" in benchmark_recommendation.commands[0]
 
 
 def test_characterize_package_cli_writes_json(tmp_path):
@@ -78,6 +95,11 @@ def test_characterize_package_cli_writes_json(tmp_path):
         item["code"] == "generate_visual_object_probe_cases"
         for item in payload["recommendations"]
     )
+    object_probe_recommendation = next(
+        item for item in payload["recommendations"] if item["code"] == "generate_visual_object_probe_cases"
+    )
+    assert "--require-visual-only-object-probes" in object_probe_recommendation["commands"][1]
+    assert object_probe_recommendation["metadata"]["recommended_object_probe_case_threshold"] == 2
 
 
 def test_chunk_characteristics_counts_source_ref_visual_links():

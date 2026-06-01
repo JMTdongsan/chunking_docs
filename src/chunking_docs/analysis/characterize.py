@@ -347,6 +347,8 @@ def recommendations(
             )
         )
     if visual.vlm_object_count:
+        object_probe_case_threshold = bounded_threshold(visual.vlm_object_count)
+        object_probe_asset_threshold = bounded_threshold(visual.vlm_object_asset_count)
         result.append(
             ProcessingRecommendation(
                 code="generate_visual_object_probe_cases",
@@ -357,14 +359,24 @@ def recommendations(
                     "separately from text and caption averages."
                 ),
                 commands=[
-                    "chunking-docs generate-retrieval-cases --package-dir outputs/package --object-probe-limit 20 --output examples/retrieval_cases.jsonl",
-                    "chunking-docs audit-retrieval-cases examples/retrieval_cases.jsonl --package-dir outputs/package --min-case-group-count case_source:visual_object_probe=5",
+                    "chunking-docs generate-retrieval-cases --package-dir outputs/package --query-mode salient_terms --selection-strategy salience --object-probe-limit 20 --output examples/retrieval_cases.jsonl",
+                    (
+                        "chunking-docs audit-retrieval-cases examples/retrieval_cases.jsonl "
+                        "--package-dir outputs/package "
+                        f"--min-case-group-count case_source:visual_object_probe={object_probe_case_threshold} "
+                        f"--min-distinct-asset-targets {object_probe_asset_threshold} "
+                        "--max-asset-cases-per-target 3 "
+                        "--min-query-terms-per-case 3 "
+                        "--require-visual-only-object-probes"
+                    ),
                     "chunking-docs gate-qdrant-vector-ablation outputs/package/qdrant_vector_ablation.json --mode text_caption --min-case-group-target-coverage case_source:visual_object_probe=0.7",
                 ],
                 metadata={
                     "vlm_object_asset_count": visual.vlm_object_asset_count,
                     "vlm_object_count": visual.vlm_object_count,
                     "vlm_object_bbox_count": visual.vlm_object_bbox_count,
+                    "recommended_object_probe_case_threshold": object_probe_case_threshold,
+                    "recommended_distinct_asset_threshold": object_probe_asset_threshold,
                 },
             )
         )
@@ -452,7 +464,7 @@ def recommendations(
                 "a chunking strategy is an improvement."
             ),
             commands=[
-                "chunking-docs audit-retrieval-cases examples/retrieval_cases.jsonl --package-dir outputs/package",
+                "chunking-docs audit-retrieval-cases examples/retrieval_cases.jsonl --package-dir outputs/package --min-query-terms-per-case 3 --max-duplicate-queries 0",
                 "chunking-docs eval-retrieval examples/retrieval_cases.jsonl --package-dir outputs/package --repeat 3",
                 "chunking-docs gate-retrieval outputs/package/retrieval_eval.json",
             ],
@@ -465,6 +477,10 @@ def recommendations(
         )
     )
     return result
+
+
+def bounded_threshold(value: int, cap: int = 5) -> int:
+    return max(1, min(cap, value))
 
 
 def page_visual_score(profile: PageProfile) -> int:
