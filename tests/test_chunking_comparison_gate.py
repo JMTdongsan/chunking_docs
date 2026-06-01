@@ -28,6 +28,8 @@ def test_gate_chunking_comparison_passes_selected_candidate_against_baseline():
         min_target_ndcg_at_k=0.75,
         min_precision_at_k=0.5,
         max_mean_target_rank=2.0,
+        min_result_stability_rate=1.0,
+        max_unstable_result_count=0,
         min_visual_text_coverage_ratio=0.8,
         min_visual_text_part_coverage_ratio=0.8,
         min_target_type_coverage={"asset": 0.8},
@@ -46,6 +48,8 @@ def test_gate_chunking_comparison_passes_selected_candidate_against_baseline():
     assert report.failed_checks == []
     assert report.metrics["retrieval_recall_at_k"] == 0.9
     assert report.metrics["retrieval_mean_target_rank"] == 1.0
+    assert report.metrics["retrieval_result_stability_rate"] == 1.0
+    assert report.metrics["retrieval_unstable_result_count"] == 0.0
     assert report.metrics["visual_text_coverage_ratio"] == 0.9
     assert report.metrics["visual_text_part_coverage_ratio"] == 0.9
     assert report.metrics["target_type.asset.coverage_at_k"] == 0.85
@@ -73,6 +77,8 @@ def test_gate_chunking_comparison_flags_retrieval_regressions():
         min_recall_at_k=0.8,
         min_target_coverage_at_k=0.75,
         max_mean_target_rank=2.0,
+        min_result_stability_rate=1.0,
+        max_unstable_result_count=0,
         min_visual_text_coverage_ratio=0.8,
         min_visual_text_part_coverage_ratio=0.8,
         min_target_type_coverage={"asset": 0.8},
@@ -89,6 +95,8 @@ def test_gate_chunking_comparison_flags_retrieval_regressions():
     assert "min_recall_at_k" in report.failed_checks
     assert "min_target_coverage_at_k" in report.failed_checks
     assert "max_mean_target_rank" in report.failed_checks
+    assert "min_result_stability_rate" in report.failed_checks
+    assert "max_unstable_result_count" in report.failed_checks
     assert "min_visual_text_coverage_ratio" in report.failed_checks
     assert "min_visual_text_part_coverage_ratio" in report.failed_checks
     assert "min_target_type_coverage:asset" in report.failed_checks
@@ -196,6 +204,10 @@ def test_gate_chunking_comparison_cli_writes_json_and_fails(tmp_path):
             "0.8",
             "--max-mean-target-rank",
             "2.0",
+            "--min-result-stability-rate",
+            "1.0",
+            "--max-unstable-result-count",
+            "0",
             "--min-target-type-coverage",
             "asset=0.8",
             "--min-visual-text-coverage-ratio",
@@ -228,6 +240,8 @@ def test_gate_chunking_comparison_cli_writes_json_and_fails(tmp_path):
     assert payload["candidate"] == "weak"
     assert "min_recall_at_k" in payload["failed_checks"]
     assert "max_mean_target_rank" in payload["failed_checks"]
+    assert "min_result_stability_rate" in payload["failed_checks"]
+    assert "max_unstable_result_count" in payload["failed_checks"]
     assert "min_visual_text_coverage_ratio" in payload["failed_checks"]
     assert "min_visual_text_part_coverage_ratio" in payload["failed_checks"]
     assert "min_target_type_coverage:asset" in payload["failed_checks"]
@@ -295,6 +309,8 @@ def comparison_report() -> ChunkingComparison:
                     "case_source": {"visual_lexical_probe": {"target_coverage_at_k": 0.2}}
                 },
                 visual_text_coverage=0.2,
+                result_stability=0.5,
+                unstable_results=1.0,
             ),
         ],
         best_by_quality="strong",
@@ -389,6 +405,8 @@ def row(
     case_group_metrics: dict[str, dict[str, dict[str, float]]] | None = None,
     visual_text_coverage: float = 1.0,
     visual_text_part_coverage: float | None = None,
+    result_stability: float = 1.0,
+    unstable_results: float = 0.0,
 ) -> ChunkingComparisonRow:
     visual_text_part_coverage = (
         visual_text_coverage if visual_text_part_coverage is None else visual_text_part_coverage
@@ -411,6 +429,8 @@ def row(
         retrieval_p95_target_rank=mean_target_rank,
         retrieval_ranked_expected_case_count=10.0,
         retrieval_ranked_target_count=10.0,
+        retrieval_result_stability_rate=result_stability,
+        retrieval_unstable_result_count=unstable_results,
         target_metrics=target_metrics or {},
         source_family_metrics=source_family_metrics or {},
         chunk_strategy_metrics=chunk_strategy_metrics or {},

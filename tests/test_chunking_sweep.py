@@ -43,6 +43,8 @@ def test_run_chunking_sweep_writes_candidates_and_comparison(tmp_path):
     assert report.selection.ranking[0].score >= report.selection.ranking[-1].score
     assert report.selection.ranking[0].metrics["mean_target_rank"] is not None
     assert report.selection.ranking[0].metrics["target_rank_efficiency"] is not None
+    assert report.selection.ranking[0].metrics["result_stability_rate"] == 1.0
+    assert report.selection.ranking[0].metrics["unstable_result_count"] == 0.0
     assert report.selection.ranking[0].metrics["total_chunk_chars"] is not None
     assert report.selection.ranking[0].metrics["embedding_text_kchars"] is not None
     assert report.selection.eligible_count == 2

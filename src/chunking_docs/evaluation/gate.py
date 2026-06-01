@@ -47,6 +47,8 @@ def gate_retrieval_evaluation(
     max_p95_target_rank: float | None = None,
     max_mean_latency_ms: float | None = None,
     max_p95_latency_ms: float | None = None,
+    min_result_stability_rate: float = 0.0,
+    max_unstable_result_count: int | None = None,
     min_target_type_coverage: dict[str, float] | None = None,
     min_source_target_coverage: dict[str, float] | None = None,
     min_source_family_target_coverage: dict[str, float] | None = None,
@@ -106,7 +108,22 @@ def gate_retrieval_evaluation(
         ),
         minimum_check("min_mrr", "mrr", metrics, min_mrr),
         minimum_check("min_precision_at_k", "mean_precision_at_k", metrics, min_precision_at_k),
+        minimum_check(
+            "min_result_stability_rate",
+            "result_stability_rate",
+            metrics,
+            min_result_stability_rate,
+        ),
     ]
+    if max_unstable_result_count is not None:
+        checks.append(
+            maximum_check(
+                "max_unstable_result_count",
+                "unstable_result_count",
+                metrics,
+                float(max_unstable_result_count),
+            )
+        )
     if max_mean_latency_ms is not None:
         checks.append(maximum_check("max_mean_latency_ms", "mean_latency_ms", metrics, max_mean_latency_ms))
     if max_p95_latency_ms is not None:
@@ -229,6 +246,8 @@ def retrieval_metrics(
         "mean_precision_at_k": evaluation.mean_precision_at_k,
         "mean_latency_ms": evaluation.mean_latency_ms,
         "p95_latency_ms": evaluation.p95_latency_ms,
+        "unstable_result_count": float(evaluation.unstable_result_count),
+        "result_stability_rate": evaluation.result_stability_rate,
     }
     metrics.update(retrieval_rank_metrics(evaluation))
     for source, source_metric_values in (source_metrics or {}).items():

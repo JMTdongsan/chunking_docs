@@ -64,15 +64,16 @@ class ChunkingSweepReport(BaseModel):
 
 
 SWEEP_SELECTION_WEIGHTS = {
-    "retrieval_recall_at_k": 0.22,
-    "target_coverage_at_k": 0.22,
+    "retrieval_recall_at_k": 0.21,
+    "target_coverage_at_k": 0.21,
     "target_ndcg_at_k": 0.16,
     "target_rank_efficiency": 0.12,
     "precision_at_k": 0.09,
     "quality_score": 0.09,
     "visual_text_coverage_ratio": 0.05,
+    "result_stability_rate": 0.03,
     "latency_efficiency": 0.03,
-    "chunk_count_efficiency": 0.02,
+    "chunk_count_efficiency": 0.01,
 }
 
 PARETO_HIGHER_IS_BETTER = [
@@ -83,12 +84,14 @@ PARETO_HIGHER_IS_BETTER = [
     "quality_score",
     "visual_text_coverage_ratio",
     "target_rank_efficiency",
+    "result_stability_rate",
 ]
 
 PARETO_LOWER_IS_BETTER = [
     "mean_target_rank",
     "p95_target_rank",
     "mean_latency_ms",
+    "unstable_result_count",
     "chunk_count",
     "total_chunk_chars",
     "mean_chunk_chars",
@@ -104,12 +107,14 @@ MIN_SELECTION_CONSTRAINTS = {
     "min_precision_at_k": "precision_at_k",
     "min_quality_score": "quality_score",
     "min_visual_text_coverage_ratio": "visual_text_coverage_ratio",
+    "min_result_stability_rate": "result_stability_rate",
 }
 
 MAX_SELECTION_CONSTRAINTS = {
     "max_mean_target_rank": "mean_target_rank",
     "max_p95_target_rank": "p95_target_rank",
     "max_mean_latency_ms": "mean_latency_ms",
+    "max_unstable_result_count": "unstable_result_count",
     "max_chunk_count": "chunk_count",
     "max_total_chunk_chars": "total_chunk_chars",
     "max_mean_chunk_chars": "mean_chunk_chars",
@@ -363,6 +368,8 @@ def selection_metrics(candidate: ChunkingSweepCandidate) -> dict[str, float | No
         "p95_target_rank": p95_target_rank,
         "target_rank_efficiency": rank_efficiency(mean_target_rank),
         "mean_latency_ms": mean_latency_ms,
+        "unstable_result_count": float(retrieval.unstable_result_count) if retrieval else None,
+        "result_stability_rate": retrieval.result_stability_rate if retrieval else None,
         "latency_efficiency": latency_efficiency(mean_latency_ms),
         "quality_score": candidate.report.quality_score,
         "visual_text_coverage_ratio": candidate.report.visual_text_coverage_ratio,

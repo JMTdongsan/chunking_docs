@@ -21,6 +21,8 @@ def make_evaluation(
     precision: float = 0.7,
     mean_latency: float = 12.0,
     p95_latency: float = 20.0,
+    result_stability_rate: float = 1.0,
+    unstable_result_count: int = 0,
     target_type_coverage: dict[str, float] | None = None,
     source_coverage: dict[str, float] | None = None,
     source_family_coverage: dict[str, float] | None = None,
@@ -42,6 +44,8 @@ def make_evaluation(
         top_k=5,
         mean_latency_ms=mean_latency,
         p95_latency_ms=p95_latency,
+        unstable_result_count=unstable_result_count,
+        result_stability_rate=result_stability_rate,
         target_metrics={
             target_type: target_type_metric(coverage)
             for target_type, coverage in (target_type_coverage or {}).items()
@@ -88,6 +92,22 @@ def test_retrieval_gate_passes_absolute_thresholds():
     assert report.passed is True
     assert report.failed_checks == []
     assert report.metrics["recall_at_k"] == 0.9
+
+
+def test_retrieval_gate_checks_result_stability():
+    report = gate_retrieval_evaluation(
+        make_evaluation(result_stability_rate=0.75, unstable_result_count=2),
+        min_result_stability_rate=0.8,
+        max_unstable_result_count=1,
+    )
+
+    assert report.passed is False
+    assert report.metrics["result_stability_rate"] == 0.75
+    assert report.metrics["unstable_result_count"] == 2.0
+    assert report.failed_checks == [
+        "min_result_stability_rate",
+        "max_unstable_result_count",
+    ]
 
 
 def test_retrieval_gate_checks_target_rank_metrics():
@@ -455,6 +475,41 @@ def test_gate_retrieval_cli_checks_target_rank_metrics(tmp_path):
     payload = json.loads(output.read_text(encoding="utf-8"))
     assert payload["metrics"]["mean_target_rank"] == 3.0
     assert payload["failed_checks"] == ["max_mean_target_rank"]
+
+
+def test_gate_retrieval_cli_checks_result_stability(tmp_path):
+    evaluation_path = tmp_path / "retrieval_eval.json"
+    output = tmp_path / "retrieval_gate.json"
+    evaluation_path.write_text(
+        make_evaluation(result_stability_rate=0.5, unstable_result_count=1).model_dump_json(
+            indent=2
+        ),
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "gate-retrieval",
+            str(evaluation_path),
+            "--min-result-stability-rate",
+            "1.0",
+            "--max-unstable-result-count",
+            "0",
+            "--output",
+            str(output),
+            "--no-fail",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["metrics"]["result_stability_rate"] == 0.5
+    assert payload["metrics"]["unstable_result_count"] == 1.0
+    assert payload["failed_checks"] == [
+        "min_result_stability_rate",
+        "max_unstable_result_count",
+    ]
 
 
 def make_evaluation_with_rank_results() -> RetrievalEvaluation:

@@ -35,6 +35,8 @@ class ChunkingComparisonRow(BaseModel):
     retrieval_p95_target_rank: float | None = None
     retrieval_ranked_expected_case_count: float | None = None
     retrieval_ranked_target_count: float | None = None
+    retrieval_unstable_result_count: float | None = None
+    retrieval_result_stability_rate: float | None = None
     target_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
     source_family_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
     chunk_strategy_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
@@ -140,6 +142,12 @@ def compare_chunking_reports(
                     "ranked_expected_case_count"
                 ),
                 retrieval_ranked_target_count=rank_metrics.get("ranked_target_count"),
+                retrieval_unstable_result_count=float(report.retrieval.unstable_result_count)
+                if report.retrieval
+                else None,
+                retrieval_result_stability_rate=report.retrieval.result_stability_rate
+                if report.retrieval
+                else None,
                 target_metrics=target_metrics,
                 source_family_metrics=source_family_metrics,
                 chunk_strategy_metrics=chunk_strategy_metrics,

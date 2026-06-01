@@ -32,6 +32,8 @@ class RetrievalCaseResult(BaseModel):
     passed: bool
     latency_ms: float = 0.0
     latency_samples_ms: list[float] = Field(default_factory=list)
+    result_consistent: bool = True
+    distinct_result_sets: int = 1
     top_pages: list[int]
     top_page_ranges: list[tuple[int, int]] = Field(default_factory=list)
     top_chunk_ids: list[str]
@@ -118,6 +120,8 @@ class RetrievalEvaluation(BaseModel):
     mean_precision_at_k: float = 0.0
     top_k: int
     repeat: int = 1
+    unstable_result_count: int = 0
+    result_stability_rate: float = 1.0
     index_build_ms: float = 0.0
     total_query_latency_ms: float = 0.0
     mean_latency_ms: float = 0.0
@@ -140,6 +144,11 @@ CASE_GROUP_METADATA_KEYS = (
     "modality",
     "evidence_family",
 )
+
+SearchResultSignature = tuple[
+    tuple[str, tuple[str, ...], tuple[str, ...], tuple[str, ...]],
+    ...,
+]
 
 
 def evaluate_retrieval(
@@ -216,13 +225,16 @@ def evaluate_search_results(
         graph_expand = case.graph_expand if graph_expand_override is None else graph_expand_override
         hits = []
         case_latencies = []
+        result_signatures = []
         for index in range(repeat):
             query_start = perf_counter()
             search_hits = search_fn(case, graph_expand)
             case_latencies.append(elapsed_ms(query_start))
+            result_signatures.append(search_result_signature(search_hits, top_k))
             if index == 0:
                 hits = search_hits
         latency_samples.extend(case_latencies)
+        distinct_result_sets = len(set(result_signatures)) if result_signatures else 0
         hits_with_chunks = [hit for hit in hits if hit_chunk(hit) is not None]
         hits_with_chunks = hits_with_chunks[:top_k] if top_k > 0 else []
         top_pages = [hit_chunk(hit).page_start for hit in hits_with_chunks]
@@ -288,6 +300,8 @@ def evaluate_search_results(
                 passed=passed,
                 latency_ms=sum(case_latencies) / len(case_latencies) if case_latencies else 0.0,
                 latency_samples_ms=case_latencies,
+                result_consistent=distinct_result_sets <= 1,
+                distinct_result_sets=distinct_result_sets,
                 top_pages=top_pages,
                 top_page_ranges=top_page_ranges,
                 top_chunk_ids=top_chunk_ids,
@@ -333,6 +347,7 @@ def evaluate_search_results(
         if case.expected_pages or case.expected_chunk_ids or case.expected_asset_ids or case.expected_triple_ids
     ]
     expected_passed = sum(1 for result in expected_results if result.passed)
+    unstable_result_count = sum(1 for result in results if not result.result_consistent)
     return RetrievalEvaluation(
         case_count=len(cases),
         expected_case_count=len(expected_results),
@@ -357,6 +372,10 @@ def evaluate_search_results(
         else 0.0,
         top_k=top_k,
         repeat=repeat,
+        unstable_result_count=unstable_result_count,
+        result_stability_rate=(len(results) - unstable_result_count) / len(results)
+        if results
+        else 1.0,
         index_build_ms=index_build_ms,
         total_query_latency_ms=sum(latency_samples),
         mean_latency_ms=sum(latency_samples) / len(latency_samples) if latency_samples else 0.0,
@@ -555,6 +574,20 @@ def hit_target_keys(
 def sorted_target_keys(keys: set[str]) -> list[str]:
     order = {"page": 0, "chunk": 1, "asset": 2, "triple": 3}
     return sorted(keys, key=lambda key: (order.get(key.split(":", 1)[0], 99), key))
+
+
+def search_result_signature(hits, top_k: int) -> SearchResultSignature:
+    hits_with_chunks = [hit for hit in hits if hit_chunk(hit) is not None]
+    limited_hits = hits_with_chunks[:top_k] if top_k > 0 else []
+    return tuple(
+        (
+            hit_chunk(hit).chunk_id,
+            tuple(hit_sources(hit)),
+            tuple(hit_asset_ids(hit)),
+            tuple(chunk.chunk_id for chunk in hit_evidence_chunks(hit)),
+        )
+        for hit in limited_hits
+    )
 
 
 def hit_chunk(hit):

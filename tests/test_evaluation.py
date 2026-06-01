@@ -1083,6 +1083,8 @@ def test_evaluate_retrieval_hit_rate():
     assert result.mrr == 1.0
     assert result.mean_target_ndcg_at_k == 1.0
     assert result.repeat == 2
+    assert result.unstable_result_count == 0
+    assert result.result_stability_rate == 1.0
     assert result.mean_latency_ms >= 0.0
     assert result.p95_latency_ms >= 0.0
     assert result.target_metrics["page"].recall_at_k == 1.0
@@ -1094,8 +1096,48 @@ def test_evaluate_retrieval_hit_rate():
     assert result.results[0].target_key_matched_ranks == {"page:12": 1}
     assert result.results[0].target_ndcg_at_k == 1.0
     assert len(result.results[0].latency_samples_ms) == 2
+    assert result.results[0].result_consistent is True
+    assert result.results[0].distinct_result_sets == 1
     assert result.results[0].matched_rank == 1
     assert result.results[0].matched_page == 12
+
+
+def test_evaluate_search_results_reports_unstable_repeated_results():
+    chunk_a = DocumentChunk(
+        chunk_id="a",
+        doc_id="doc",
+        page_start=1,
+        page_end=1,
+        kind=ChunkKind.TEXT,
+        text="alpha",
+    )
+    chunk_b = DocumentChunk(
+        chunk_id="b",
+        doc_id="doc",
+        page_start=2,
+        page_end=2,
+        kind=ChunkKind.TEXT,
+        text="alpha alternative",
+    )
+    calls = 0
+
+    def alternating_search(case, graph_expand):
+        nonlocal calls
+        calls += 1
+        chunk = chunk_a if calls % 2 else chunk_b
+        return [HybridSearchHit(chunk=chunk, score=1.0, sources=["test"])]
+
+    result = evaluate_search_results(
+        cases=[RetrievalCase(query="alpha", expected_pages=[1])],
+        search_fn=alternating_search,
+        top_k=1,
+        repeat=2,
+    )
+
+    assert result.unstable_result_count == 1
+    assert result.result_stability_rate == 0.0
+    assert result.results[0].result_consistent is False
+    assert result.results[0].distinct_result_sets == 2
 
 
 def test_evaluate_retrieval_reports_target_type_metrics():
