@@ -1153,6 +1153,7 @@ def gate_qdrant_vector_ablation_command(
             "metrics": gate_report.metrics,
             "baseline_metrics": gate_report.baseline_metrics,
             "target_metrics": gate_report.target_metrics,
+            "source_metrics": gate_report.source_metrics,
             "source_family_metrics": gate_report.source_family_metrics,
             "chunk_strategy_metrics": gate_report.chunk_strategy_metrics,
             "retrieval_role_metrics": gate_report.retrieval_role_metrics,
@@ -2548,6 +2549,11 @@ def ingestion_readiness_command(
         "--min-retrieval-source-family-target-coverage",
         help="Require retrieval source-family target coverage such as lexical=0.8.",
     ),
+    min_retrieval_source_target_coverage: list[str] = typer.Option(
+        None,
+        "--min-retrieval-source-target-coverage",
+        help="Require retrieval exact-source target coverage such as qdrant:caption_dense=0.8.",
+    ),
     min_retrieval_case_group_target_coverage: list[str] = typer.Option(
         None,
         "--min-retrieval-case-group-target-coverage",
@@ -2622,6 +2628,11 @@ def ingestion_readiness_command(
         None,
         "--min-retrieval-ablation-source-family-target-coverage",
         help="Require selected retrieval ablation source-family coverage such as lexical=0.8.",
+    ),
+    min_retrieval_ablation_source_target_coverage: list[str] = typer.Option(
+        None,
+        "--min-retrieval-ablation-source-target-coverage",
+        help="Require selected retrieval ablation exact-source coverage such as bm25=0.8.",
     ),
     min_retrieval_ablation_case_group_target_coverage: list[str] = typer.Option(
         None,
@@ -2698,6 +2709,11 @@ def ingestion_readiness_command(
         "--min-qdrant-vector-source-family-target-coverage",
         help="Require selected Qdrant vector source-family coverage such as visual=0.8.",
     ),
+    min_qdrant_vector_source_target_coverage: list[str] = typer.Option(
+        None,
+        "--min-qdrant-vector-source-target-coverage",
+        help="Require selected Qdrant vector exact-source coverage such as qdrant:image_dense=0.5.",
+    ),
     min_qdrant_vector_case_group_target_coverage: list[str] = typer.Option(
         None,
         "--min-qdrant-vector-case-group-target-coverage",
@@ -2747,6 +2763,10 @@ def ingestion_readiness_command(
         min_qdrant_vector_source_family_target_coverage,
         "Qdrant vector source family target coverage",
     )
+    qdrant_vector_source_thresholds = parse_named_float_thresholds(
+        min_qdrant_vector_source_target_coverage,
+        "Qdrant vector source target coverage",
+    )
     qdrant_vector_target_type_thresholds = parse_named_float_thresholds(
         min_qdrant_vector_target_type_coverage,
         "Qdrant vector target type coverage",
@@ -2758,6 +2778,10 @@ def ingestion_readiness_command(
     retrieval_source_family_thresholds = parse_named_float_thresholds(
         min_retrieval_source_family_target_coverage,
         "retrieval source family target coverage",
+    )
+    retrieval_source_thresholds = parse_named_float_thresholds(
+        min_retrieval_source_target_coverage,
+        "retrieval source target coverage",
     )
     retrieval_target_type_thresholds = parse_named_float_thresholds(
         min_retrieval_target_type_coverage,
@@ -2790,6 +2814,10 @@ def ingestion_readiness_command(
     retrieval_ablation_source_family_thresholds = parse_named_float_thresholds(
         min_retrieval_ablation_source_family_target_coverage,
         "retrieval ablation source family target coverage",
+    )
+    retrieval_ablation_source_thresholds = parse_named_float_thresholds(
+        min_retrieval_ablation_source_target_coverage,
+        "retrieval ablation source target coverage",
     )
     retrieval_ablation_target_type_thresholds = parse_named_float_thresholds(
         min_retrieval_ablation_target_type_coverage,
@@ -2866,6 +2894,7 @@ def ingestion_readiness_command(
             "max_p95_target_rank": max_p95_target_rank,
             "max_p95_latency_ms": max_p95_latency_ms,
             "min_target_type_coverage": retrieval_target_type_thresholds,
+            "min_source_target_coverage": retrieval_source_thresholds,
             "min_source_family_target_coverage": retrieval_source_family_thresholds,
             "min_case_group_target_coverage": retrieval_case_group_thresholds,
         },
@@ -2923,6 +2952,7 @@ def ingestion_readiness_command(
             "max_mean_latency_ms": max_retrieval_ablation_mean_latency_ms,
             "max_p95_latency_ms": max_retrieval_ablation_p95_latency_ms,
             "min_target_type_coverage": retrieval_ablation_target_type_thresholds,
+            "min_source_target_coverage": retrieval_ablation_source_thresholds,
             "min_source_family_target_coverage": retrieval_ablation_source_family_thresholds,
             "min_case_group_target_coverage": retrieval_ablation_case_group_thresholds,
             "min_recall_lift": min_retrieval_ablation_recall_lift,
@@ -3031,6 +3061,7 @@ def ingestion_readiness_command(
             "max_mean_latency_ms": max_qdrant_vector_mean_latency_ms,
             "max_p95_latency_ms": max_qdrant_vector_p95_latency_ms,
             "min_target_type_coverage": qdrant_vector_target_type_thresholds,
+            "min_source_target_coverage": qdrant_vector_source_thresholds,
             "min_source_family_target_coverage": qdrant_vector_source_family_thresholds,
             "min_case_group_target_coverage": qdrant_vector_case_group_thresholds,
             "require_best_by_recall": require_qdrant_vector_best_by_recall,
@@ -3644,6 +3675,7 @@ def gate_retrieval_ablation_command(
             "metrics": gate_report.metrics,
             "baseline_metrics": gate_report.baseline_metrics,
             "target_metrics": gate_report.target_metrics,
+            "source_metrics": gate_report.source_metrics,
             "source_family_metrics": gate_report.source_family_metrics,
             "chunk_strategy_metrics": gate_report.chunk_strategy_metrics,
             "retrieval_role_metrics": gate_report.retrieval_role_metrics,

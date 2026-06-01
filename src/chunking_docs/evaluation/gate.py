@@ -684,6 +684,7 @@ def gate_summary_payload(report: RetrievalGateReport) -> dict[str, Any]:
         "failed_checks": report.failed_checks,
         "metrics": report.metrics,
         "target_metrics": report.target_metrics,
+        "source_metrics": report.source_metrics,
         "source_family_metrics": report.source_family_metrics,
         "chunk_strategy_metrics": report.chunk_strategy_metrics,
         "retrieval_role_metrics": report.retrieval_role_metrics,

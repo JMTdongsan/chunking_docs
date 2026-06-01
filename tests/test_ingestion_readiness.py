@@ -310,6 +310,7 @@ def test_ingestion_readiness_includes_qdrant_vector_ablation_gate(tmp_path):
             "min_target_coverage_at_k": 1.0,
             "max_failed_queries": 0,
             "min_target_type_coverage": {"asset": 1.0},
+            "min_source_target_coverage": {"qdrant:text_dense": 1.0},
             "min_source_family_target_coverage": {"dense_text": 1.0},
             "min_case_group_target_coverage": {"case_source:visual_object_probe": 1.0},
             "max_mean_target_rank": 1.0,
@@ -331,6 +332,12 @@ def test_ingestion_readiness_includes_qdrant_vector_ablation_gate(tmp_path):
         == -5.0
     )
     assert report.qdrant_vector_ablation_gate.target_metrics["asset"]["coverage_at_k"] == 1.0
+    assert (
+        report.qdrant_vector_ablation_gate.source_metrics["qdrant:text_dense"][
+            "target_coverage_at_k"
+        ]
+        == 1.0
+    )
     assert (
         report.qdrant_vector_ablation_gate.source_family_metrics["dense_text"][
             "target_coverage_at_k"
@@ -357,6 +364,7 @@ def test_ingestion_readiness_includes_retrieval_ablation_lift_gate(tmp_path):
             "min_recall_lift": 1.0,
             "min_target_coverage_lift": 1.0,
             "min_target_type_coverage": {"asset": 1.0},
+            "min_source_target_coverage": {"bm25": 1.0},
             "min_source_family_target_coverage": {"lexical": 1.0},
             "min_case_group_target_coverage": {"case_source:visual_lexical_probe": 1.0},
             "max_mean_target_rank": 1.0,
@@ -379,10 +387,12 @@ def test_ingestion_readiness_includes_retrieval_ablation_lift_gate(tmp_path):
         ]
         == -5.0
     )
+    assert report.retrieval_ablation_gate.source_metrics["bm25"]["target_coverage_at_k"] == 1.0
     component = next(
         component for component in report.components if component.name == "retrieval_ablation_gate"
     )
     assert component.metadata["metrics"]["target_type.asset.coverage_at_k"] == 1.0
+    assert component.metadata["source_metrics"]["bm25"]["target_coverage_at_k"] == 1.0
     assert (
         component.metadata["metrics"][
             "case_group.case_source.visual_lexical_probe.target_coverage_at_k"
@@ -419,7 +429,7 @@ def test_ingestion_readiness_requires_qdrant_vector_ablation(tmp_path):
     assert "qdrant_vector_ablation_gate" in report.failed_components
 
 
-def test_ingestion_readiness_can_gate_retrieval_source_family(tmp_path):
+def test_ingestion_readiness_can_gate_retrieval_source(tmp_path):
     package_dir, manifest = write_ready_package(tmp_path)
 
     report = build_ingestion_readiness_report(
@@ -428,14 +438,17 @@ def test_ingestion_readiness_can_gate_retrieval_source_family(tmp_path):
         retrieval_evaluation=qdrant_vector_ablation_report().rows[0].evaluation,
         retrieval_gate_options={
             "min_recall_at_k": 1.0,
+            "min_source_target_coverage": {"qdrant:text_dense": 1.0},
             "min_source_family_target_coverage": {"dense_text": 1.0},
         },
     )
 
     assert report.passed is True
     assert report.retrieval_gate is not None
+    assert report.retrieval_gate.source_metrics["qdrant:text_dense"]["target_coverage_at_k"] == 1.0
     assert report.retrieval_gate.source_family_metrics["dense_text"]["target_coverage_at_k"] == 1.0
     component = next(component for component in report.components if component.name == "retrieval_gate")
+    assert component.metadata["source_metrics"]["qdrant:text_dense"]["target_coverage_at_k"] == 1.0
     assert component.metadata["source_family_metrics"]["dense_text"]["target_coverage_at_k"] == 1.0
     assert report.failed_components == []
 
@@ -948,6 +961,47 @@ def test_ingestion_readiness_cli_can_gate_package_visual_text_part_coverage(tmp_
     assert component["metadata"]["visual_text_part_coverage_ratio"] == 0.5
 
 
+def test_ingestion_readiness_cli_can_gate_retrieval_exact_source(tmp_path):
+    package_dir, _ = write_ready_package(tmp_path)
+    retrieval_path = tmp_path / "retrieval_eval.json"
+    output = tmp_path / "readiness.json"
+    retrieval_path.write_text(
+        qdrant_vector_ablation_report().rows[0].evaluation.model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "ingestion-readiness",
+            "--package-dir",
+            str(package_dir),
+            "--retrieval-evaluation",
+            str(retrieval_path),
+            "--min-recall-at-k",
+            "1.0",
+            "--min-retrieval-source-target-coverage",
+            "qdrant:text_dense=1.0",
+            "--output",
+            str(output),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["passed"] is True
+    component = next(
+        component for component in payload["components"] if component["name"] == "retrieval_gate"
+    )
+    assert component["metadata"]["source_metrics"]["qdrant:text_dense"][
+        "target_coverage_at_k"
+    ] == 1.0
+    assert (
+        component["metadata"]["metrics"]["source.qdrant:text_dense.target_coverage_at_k"]
+        == 1.0
+    )
+
+
 def test_ingestion_readiness_cli_can_gate_visual_run_comparison(tmp_path):
     package_dir, _ = write_ready_package(tmp_path)
     comparison_path = tmp_path / "visual_run_comparison.json"
@@ -1046,6 +1100,8 @@ def test_ingestion_readiness_cli_can_gate_qdrant_vector_ablation(tmp_path):
             "0",
             "--min-qdrant-vector-target-type-coverage",
             "asset=1.0",
+            "--min-qdrant-vector-source-target-coverage",
+            "qdrant:text_dense=1.0",
             "--min-qdrant-vector-source-family-target-coverage",
             "dense_text=1.0",
             "--min-qdrant-vector-case-group-target-coverage",
@@ -1067,6 +1123,9 @@ def test_ingestion_readiness_cli_can_gate_qdrant_vector_ablation(tmp_path):
     assert component["metadata"]["mode"] == "text"
     assert component["metadata"]["metrics"]["recall_at_k"] == 1.0
     assert component["metadata"]["target_metrics"]["asset"]["coverage_at_k"] == 1.0
+    assert component["metadata"]["source_metrics"]["qdrant:text_dense"][
+        "target_coverage_at_k"
+    ] == 1.0
     assert component["metadata"]["source_family_metrics"]["dense_text"]["target_coverage_at_k"] == 1.0
     assert component["metadata"]["case_group_metrics"]["case_source"]["visual_object_probe"][
         "target_coverage_at_k"
@@ -1102,6 +1161,8 @@ def test_ingestion_readiness_cli_can_gate_retrieval_ablation_lift(tmp_path):
             "1.0",
             "--min-retrieval-ablation-target-type-coverage",
             "asset=1.0",
+            "--min-retrieval-ablation-source-target-coverage",
+            "bm25=1.0",
             "--min-retrieval-ablation-source-family-target-coverage",
             "lexical=1.0",
             "--min-retrieval-ablation-case-group-target-coverage",
@@ -1124,6 +1185,7 @@ def test_ingestion_readiness_cli_can_gate_retrieval_ablation_lift(tmp_path):
     assert component["metadata"]["baseline_mode"] == "bm25_text"
     assert component["metadata"]["metrics"]["recall_at_k"] == 1.0
     assert component["metadata"]["baseline_metrics"]["recall_at_k"] == 0.0
+    assert component["metadata"]["source_metrics"]["bm25"]["target_coverage_at_k"] == 1.0
     assert component["metadata"]["case_group_metrics"]["case_source"]["visual_lexical_probe"][
         "target_coverage_at_k"
     ] == 1.0

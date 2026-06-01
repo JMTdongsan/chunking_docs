@@ -257,6 +257,7 @@ def build_ingestion_readiness_report(
                     "failed_checks": retrieval_gate.failed_checks,
                     "metrics": retrieval_gate.metrics,
                     "target_metrics": retrieval_gate.target_metrics,
+                    "source_metrics": retrieval_gate.source_metrics,
                     "source_family_metrics": retrieval_gate.source_family_metrics,
                     "case_group_metrics": retrieval_gate.case_group_metrics,
                 },
@@ -335,6 +336,7 @@ def build_ingestion_readiness_report(
                             "metrics": retrieval_ablation_gate.metrics,
                             "baseline_metrics": retrieval_ablation_gate.baseline_metrics,
                             "target_metrics": retrieval_ablation_gate.target_metrics,
+                            "source_metrics": retrieval_ablation_gate.source_metrics,
                             "source_family_metrics": retrieval_ablation_gate.source_family_metrics,
                             "chunk_strategy_metrics": retrieval_ablation_gate.chunk_strategy_metrics,
                             "retrieval_role_metrics": retrieval_ablation_gate.retrieval_role_metrics,
@@ -406,6 +408,7 @@ def build_ingestion_readiness_report(
                             "metrics": qdrant_vector_ablation_gate.metrics,
                             "baseline_metrics": qdrant_vector_ablation_gate.baseline_metrics,
                             "target_metrics": qdrant_vector_ablation_gate.target_metrics,
+                            "source_metrics": qdrant_vector_ablation_gate.source_metrics,
                             "source_family_metrics": (
                                 qdrant_vector_ablation_gate.source_family_metrics
                             ),
