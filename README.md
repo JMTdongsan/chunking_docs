@@ -707,13 +707,15 @@ chunking-docs sweep-chunking \
   --retrieval-repeat 3 \
   --selection-min-retrieval-recall-at-k 0.8 \
   --selection-min-target-coverage-at-k 0.75 \
+  --selection-min-target-type-coverage asset=0.9 \
+  --selection-min-case-group-target-coverage case_source:visual_object_probe=0.7 \
   --selection-max-mean-target-rank 3 \
   --selection-max-mean-latency-ms 150 \
   --cases examples/retrieval_cases.jsonl \
   --output outputs/package/chunking_sweep.json
 ```
 
-The sweep writes candidate chunk files under `outputs/package/chunking_sweep/` and ranks them with the same quality, recall@k, MRR, target coverage@k, target nDCG@k, precision@k, target rank, target-type coverage, source-family target coverage, chunking-strategy coverage, retrieval-role coverage, linked visual text coverage, latency, and failed-query metrics used by `compare-chunking`. It also emits a `selection` block with weighted scores, eligibility failures, eligible counts, a recommendation, and a Pareto front so a strategy that improves retrieval can be checked against hard recall, target-rank, latency, visual-text, and chunk-count constraints before becoming the default.
+The sweep writes candidate chunk files under `outputs/package/chunking_sweep/` and ranks them with the same quality, recall@k, MRR, target coverage@k, target nDCG@k, precision@k, target rank, target-type coverage, source-family target coverage, chunking-strategy coverage, retrieval-role coverage, linked visual text coverage, latency, and failed-query metrics used by `compare-chunking`. It also emits a `selection` block with weighted scores, eligibility failures, eligible counts, a recommendation, and a Pareto front so a strategy that improves retrieval can be checked against hard recall, target-rank, latency, visual-text, target-type, source-family, case-group, and chunk-count constraints before becoming the default.
 
 Write a reproducible experiment report for a package:
 

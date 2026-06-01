@@ -4065,6 +4065,21 @@ def sweep_chunking_command(
         "--selection-min-visual-text-coverage-ratio",
         help="Only recommend sweep candidates at or above this linked visual text coverage.",
     ),
+    selection_min_target_type_coverage: list[str] = typer.Option(
+        None,
+        "--selection-min-target-type-coverage",
+        help="Only recommend sweep candidates with target-type coverage such as asset=0.9.",
+    ),
+    selection_min_source_family_target_coverage: list[str] = typer.Option(
+        None,
+        "--selection-min-source-family-target-coverage",
+        help="Only recommend sweep candidates with source-family coverage such as visual=0.8.",
+    ),
+    selection_min_case_group_target_coverage: list[str] = typer.Option(
+        None,
+        "--selection-min-case-group-target-coverage",
+        help="Only recommend sweep candidates with case-group coverage such as case_source:visual_object_probe=0.8.",
+    ),
     selection_max_mean_target_rank: float | None = typer.Option(
         None,
         "--selection-max-mean-target-rank",
@@ -4093,6 +4108,48 @@ def sweep_chunking_command(
     """Generate and evaluate a grid of chunking strategy candidates."""
     manifest = load_processing_package(package_dir)
     fusion_weights = parse_fusion_weights(fusion_weight)
+    selection_target_type_thresholds = parse_named_float_thresholds(
+        selection_min_target_type_coverage,
+        label="selection target-type coverage",
+    )
+    selection_source_family_thresholds = parse_named_float_thresholds(
+        selection_min_source_family_target_coverage,
+        label="selection source-family target coverage",
+    )
+    selection_case_group_thresholds = parse_named_float_thresholds(
+        selection_min_case_group_target_coverage,
+        label="selection case-group target coverage",
+    )
+    selection_constraints: dict[str, float | None] = {
+        "min_retrieval_recall_at_k": selection_min_retrieval_recall_at_k,
+        "min_target_coverage_at_k": selection_min_target_coverage_at_k,
+        "min_target_ndcg_at_k": selection_min_target_ndcg_at_k,
+        "min_precision_at_k": selection_min_precision_at_k,
+        "min_quality_score": selection_min_quality_score,
+        "min_visual_text_coverage_ratio": selection_min_visual_text_coverage_ratio,
+        "max_mean_target_rank": selection_max_mean_target_rank,
+        "max_p95_target_rank": selection_max_p95_target_rank,
+        "max_mean_latency_ms": selection_max_mean_latency_ms,
+        "max_chunk_count": selection_max_chunk_count,
+    }
+    selection_constraints.update(
+        {
+            f"min_target_type_coverage:{target_type}": threshold
+            for target_type, threshold in selection_target_type_thresholds.items()
+        }
+    )
+    selection_constraints.update(
+        {
+            f"min_source_family_target_coverage:{family}": threshold
+            for family, threshold in selection_source_family_thresholds.items()
+        }
+    )
+    selection_constraints.update(
+        {
+            f"min_case_group_target_coverage:{case_group}": threshold
+            for case_group, threshold in selection_case_group_thresholds.items()
+        }
+    )
     retrieval_cases = load_retrieval_cases(cases) if cases is not None else None
     tokenizer_config = build_tokenizer_config(
         lexical_tokenizer,
@@ -4116,18 +4173,7 @@ def sweep_chunking_command(
         top_k=top_k,
         retrieval_repeat=retrieval_repeat,
         fusion_weights=fusion_weights,
-        selection_constraints={
-            "min_retrieval_recall_at_k": selection_min_retrieval_recall_at_k,
-            "min_target_coverage_at_k": selection_min_target_coverage_at_k,
-            "min_target_ndcg_at_k": selection_min_target_ndcg_at_k,
-            "min_precision_at_k": selection_min_precision_at_k,
-            "min_quality_score": selection_min_quality_score,
-            "min_visual_text_coverage_ratio": selection_min_visual_text_coverage_ratio,
-            "max_mean_target_rank": selection_max_mean_target_rank,
-            "max_p95_target_rank": selection_max_p95_target_rank,
-            "max_mean_latency_ms": selection_max_mean_latency_ms,
-            "max_chunk_count": selection_max_chunk_count,
-        },
+        selection_constraints=selection_constraints,
         tokenizer_config=tokenizer_config,
         collapse_hierarchical=collapse_hierarchical,
         output_dir=candidate_output_dir,

@@ -128,6 +128,74 @@ def test_sweep_selection_reports_no_recommendation_when_constraints_all_fail(tmp
     )
 
 
+def test_sweep_selection_constraints_can_require_visual_case_coverage(tmp_path):
+    manifest = make_manifest(tmp_path)
+
+    report = run_chunking_sweep(
+        chunks=manifest.chunks,
+        assets=manifest.assets,
+        profiles=manifest.profiles,
+        triples=manifest.triples,
+        strategies=["semantic", "hierarchical"],
+        max_chars_values=[140],
+        overlap_chars_values=[20],
+        min_chars=40,
+        parent_max_chars_values=[90],
+        visual_context_chars_values=[120],
+        retrieval_cases=[
+            RetrievalCase(
+                query="capital investment table",
+                expected_asset_ids=["asset-1"],
+                metadata={"case_source": "visual_object_probe"},
+            )
+        ],
+        selection_constraints={
+            "min_target_type_coverage:asset": 1.0,
+            "min_case_group_target_coverage:case_source:visual_object_probe": 1.0,
+        },
+    )
+
+    assert report.selection.eligible_count == 2
+    assert report.selection.rejected_count == 0
+    assert report.selection.constraints == {
+        "min_target_type_coverage:asset": 1.0,
+        "min_case_group_target_coverage:case_source:visual_object_probe": 1.0,
+    }
+    top_metrics = report.selection.ranking[0].metrics
+    assert top_metrics["target_type.asset.coverage_at_k"] == 1.0
+    assert (
+        top_metrics["case_group.case_source.visual_object_probe.target_coverage_at_k"]
+        == 1.0
+    )
+
+
+def test_sweep_selection_rejects_missing_target_type_coverage(tmp_path):
+    manifest = make_manifest(tmp_path)
+
+    report = run_chunking_sweep(
+        chunks=manifest.chunks,
+        assets=manifest.assets,
+        profiles=manifest.profiles,
+        triples=manifest.triples,
+        strategies=["semantic", "hierarchical"],
+        max_chars_values=[140],
+        overlap_chars_values=[20],
+        min_chars=40,
+        parent_max_chars_values=[90],
+        visual_context_chars_values=[120],
+        retrieval_cases=[RetrievalCase(query="capital investment table", expected_pages=[1])],
+        selection_constraints={"min_target_type_coverage:asset": 0.1},
+    )
+
+    assert report.selection.recommended is None
+    assert report.selection.eligible_count == 0
+    assert report.selection.rejected_count == 2
+    assert all(
+        row.failed_constraints == ["min_target_type_coverage:asset"]
+        for row in report.selection.ranking
+    )
+
+
 def test_sweep_pareto_dominance_accounts_for_quality_and_cost():
     stronger = {
         "retrieval_recall_at_k": 0.9,
@@ -167,7 +235,16 @@ def test_sweep_chunking_cli_writes_report(tmp_path):
     cases_path = tmp_path / "cases.jsonl"
     output_path = tmp_path / "sweep_report.json"
     candidates_dir = tmp_path / "candidates"
-    write_jsonl(cases_path, [RetrievalCase(query="capital investment table", expected_pages=[1])])
+    write_jsonl(
+        cases_path,
+        [
+            RetrievalCase(
+                query="capital investment table",
+                expected_asset_ids=["asset-1"],
+                metadata={"case_source": "visual_object_probe"},
+            )
+        ],
+    )
 
     result = CliRunner().invoke(
         app,
@@ -195,6 +272,10 @@ def test_sweep_chunking_cli_writes_report(tmp_path):
             str(candidates_dir),
             "--selection-max-chunk-count",
             "2",
+            "--selection-min-target-type-coverage",
+            "asset=1.0",
+            "--selection-min-case-group-target-coverage",
+            "case_source:visual_object_probe=1.0",
         ],
     )
 
@@ -202,7 +283,11 @@ def test_sweep_chunking_cli_writes_report(tmp_path):
     payload = json.loads(output_path.read_text(encoding="utf-8"))
     assert payload["comparison"]["best_by_retrieval"] is not None
     assert payload["selection"]["recommended"] == "semantic-max140-ov20-min40"
-    assert payload["selection"]["constraints"] == {"max_chunk_count": 2.0}
+    assert payload["selection"]["constraints"] == {
+        "max_chunk_count": 2.0,
+        "min_target_type_coverage:asset": 1.0,
+        "min_case_group_target_coverage:case_source:visual_object_probe": 1.0,
+    }
     assert payload["selection"]["eligible_count"] == 1
     assert payload["selection"]["rejected_count"] == 1
     assert payload["selection"]["ranking"][0]["eligible"] is True

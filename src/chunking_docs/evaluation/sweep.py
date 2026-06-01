@@ -11,7 +11,16 @@ from chunking_docs.chunking.multimodal import ChunkStrategy, build_strategy_chun
 from chunking_docs.embeddings.tokenizers import LexicalTokenizerConfig
 from chunking_docs.evaluation.chunking_quality import ChunkingQualityReport, evaluate_chunking_quality
 from chunking_docs.evaluation.compare import ChunkingComparison, compare_chunking_reports
-from chunking_docs.evaluation.gate import retrieval_rank_metrics
+from chunking_docs.evaluation.gate import (
+    case_group_metric_key,
+    parse_case_group_spec,
+    retrieval_case_group_metrics,
+    retrieval_rank_metrics,
+    retrieval_source_family_metrics,
+    retrieval_target_metrics,
+    source_family_metric_key,
+    target_type_metric_key,
+)
 from chunking_docs.evaluation.retrieval import RetrievalCase
 from chunking_docs.io import write_jsonl
 from chunking_docs.models import DocumentChunk, GraphTriple, PageProfile, VisualAsset
@@ -80,6 +89,12 @@ MAX_SELECTION_CONSTRAINTS = {
     "max_p95_target_rank": "p95_target_rank",
     "max_mean_latency_ms": "mean_latency_ms",
     "max_chunk_count": "chunk_count",
+}
+
+DYNAMIC_MIN_SELECTION_PREFIXES = {
+    "min_target_type_coverage": "target_type",
+    "min_source_family_target_coverage": "source_family",
+    "min_case_group_target_coverage": "case_group",
 }
 
 
@@ -237,10 +252,40 @@ def normalize_selection_constraints(
     for name, value in values.items():
         if value is None:
             continue
-        if name not in supported:
+        normalized_name = normalize_selection_constraint_name(name)
+        if normalized_name not in supported and dynamic_constraint_metric_name(normalized_name) is None:
             raise ValueError(f"Unsupported sweep selection constraint: {name}")
-        constraints[name] = float(value)
+        constraints[normalized_name] = float(value)
     return constraints
+
+
+def normalize_selection_constraint_name(name: str) -> str:
+    normalized = name.strip()
+    if ":" not in normalized:
+        return normalized
+    prefix, value = normalized.split(":", 1)
+    prefix = prefix.strip()
+    value = value.strip()
+    if prefix == "min_case_group_target_coverage":
+        group_name, group_value = parse_case_group_spec(value)
+        return f"{prefix}:{group_name}:{group_value}"
+    if prefix in DYNAMIC_MIN_SELECTION_PREFIXES:
+        return f"{prefix}:{value.lower()}"
+    return normalized
+
+
+def dynamic_constraint_metric_name(name: str) -> str | None:
+    if ":" not in name:
+        return None
+    prefix, value = name.split(":", 1)
+    if prefix == "min_target_type_coverage" and value:
+        return target_type_metric_key(value, "coverage_at_k")
+    if prefix == "min_source_family_target_coverage" and value:
+        return source_family_metric_key(value, "target_coverage_at_k")
+    if prefix == "min_case_group_target_coverage" and value:
+        group_name, group_value = parse_case_group_spec(value)
+        return case_group_metric_key(group_name, group_value, "target_coverage_at_k")
+    return None
 
 
 def selection_constraint_failures(
@@ -260,6 +305,16 @@ def selection_constraint_failures(
         value = metrics.get(metric_name)
         if value is None or float(value) > constraints[constraint_name]:
             failures.append(constraint_name)
+    handled = set(MIN_SELECTION_CONSTRAINTS) | set(MAX_SELECTION_CONSTRAINTS)
+    for constraint_name, threshold in constraints.items():
+        if constraint_name in handled:
+            continue
+        metric_name = dynamic_constraint_metric_name(constraint_name)
+        if metric_name is None:
+            continue
+        value = metrics.get(metric_name)
+        if value is None or float(value) < threshold:
+            failures.append(constraint_name)
     return failures
 
 
@@ -269,7 +324,7 @@ def selection_metrics(candidate: ChunkingSweepCandidate) -> dict[str, float | No
     rank_metrics = retrieval_rank_metrics(retrieval) if retrieval else {}
     mean_target_rank = rank_metrics.get("mean_target_rank")
     p95_target_rank = rank_metrics.get("p95_target_rank")
-    return {
+    metrics = {
         "retrieval_recall_at_k": retrieval.recall_at_k if retrieval else None,
         "target_coverage_at_k": retrieval.target_coverage_at_k if retrieval else None,
         "target_ndcg_at_k": retrieval.mean_target_ndcg_at_k if retrieval else None,
@@ -286,6 +341,26 @@ def selection_metrics(candidate: ChunkingSweepCandidate) -> dict[str, float | No
         "chunk_count": float(candidate.chunk_count),
         "chunk_count_efficiency": 1.0 / candidate.chunk_count if candidate.chunk_count > 0 else 0.0,
     }
+    add_retrieval_breakdown_metrics(metrics, retrieval)
+    return metrics
+
+
+def add_retrieval_breakdown_metrics(
+    metrics: dict[str, float | None],
+    retrieval,
+) -> None:
+    if retrieval is None:
+        return
+    for target_type, values in retrieval_target_metrics(retrieval).items():
+        for metric_name, value in values.items():
+            metrics[target_type_metric_key(target_type, metric_name)] = value
+    for family, values in retrieval_source_family_metrics(retrieval).items():
+        for metric_name, value in values.items():
+            metrics[source_family_metric_key(family, metric_name)] = value
+    for group_name, group_values in retrieval_case_group_metrics(retrieval).items():
+        for group_value, values in group_values.items():
+            for metric_name, value in values.items():
+                metrics[case_group_metric_key(group_name, group_value, metric_name)] = value
 
 
 def selection_score(metrics: dict[str, float | None]) -> float:
