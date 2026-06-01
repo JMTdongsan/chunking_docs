@@ -56,6 +56,7 @@ def test_characterize_package_reports_strategy_observations(tmp_path):
     assert "--query-mode salient_terms" in object_probe_recommendation.commands[0]
     assert "--min-case-group-count case_source:visual_object_probe=2" in object_probe_audit_command
     assert "--min-distinct-asset-targets 1" in object_probe_audit_command
+    assert "--min-case-group-distinct-targets case_source:visual_object_probe:asset=1" in object_probe_audit_command
     assert "--max-asset-cases-per-target 3" in object_probe_audit_command
     assert "--min-query-terms-per-case 3" in object_probe_audit_command
     assert "--require-visual-only-object-probes" in object_probe_audit_command

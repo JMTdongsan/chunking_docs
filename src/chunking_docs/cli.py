@@ -32,6 +32,7 @@ from chunking_docs.evaluation.casegen import generate_retrieval_case_skeleton
 from chunking_docs.evaluation.case_audit import (
     audit_retrieval_cases,
     count_case_groups,
+    count_case_group_distinct_targets,
     count_retrieval_case_distinct_targets,
     count_retrieval_case_max_target_mentions,
     count_retrieval_case_targets,
@@ -2396,6 +2397,14 @@ def ingestion_readiness_command(
     max_retrieval_asset_cases_per_target: int | None = None,
     max_retrieval_triple_cases_per_target: int | None = None,
     min_retrieval_query_terms_per_case: int = 0,
+    min_retrieval_case_group_distinct_targets: list[str] = typer.Option(
+        None,
+        "--min-retrieval-case-group-distinct-targets",
+        help=(
+            "Require distinct targets inside a retrieval case group, such as "
+            "case_source:visual_object_probe:asset=4."
+        ),
+    ),
     min_retrieval_case_group_count: list[str] = typer.Option(
         None,
         "--min-retrieval-case-group-count",
@@ -2618,6 +2627,10 @@ def ingestion_readiness_command(
         min_retrieval_case_group_count,
         "retrieval case group count",
     )
+    retrieval_case_group_distinct_thresholds = parse_named_int_thresholds(
+        min_retrieval_case_group_distinct_targets,
+        "retrieval case group distinct target count",
+    )
     chunking_source_family_thresholds = parse_named_float_thresholds(
         min_chunking_source_family_target_coverage,
         "chunking source family target coverage",
@@ -2690,6 +2703,7 @@ def ingestion_readiness_command(
             "max_asset_cases_per_target": max_retrieval_asset_cases_per_target,
             "max_triple_cases_per_target": max_retrieval_triple_cases_per_target,
             "min_case_group_counts": retrieval_case_group_count_thresholds,
+            "min_case_group_distinct_targets": retrieval_case_group_distinct_thresholds,
             "require_visual_only_object_probes": require_visual_only_object_probes,
             "min_query_terms_per_case": min_retrieval_query_terms_per_case,
             "max_duplicate_queries": max_duplicate_queries,
@@ -3049,6 +3063,7 @@ def generate_retrieval_cases_command(
             "distinct_target_counts": count_retrieval_case_distinct_targets(cases),
             "max_cases_per_target": count_retrieval_case_max_target_mentions(cases),
             "case_group_counts": count_case_groups(cases),
+            "case_group_distinct_target_counts": count_case_group_distinct_targets(cases),
             "visual_object_probe_count": visual_object_probe_counts["total"],
             "visual_only_object_probe_count": visual_object_probe_counts["visual_only"],
             "non_visual_only_object_probe_count": visual_object_probe_counts["non_visual_only"],
@@ -3086,6 +3101,14 @@ def audit_retrieval_cases_command(
     max_asset_cases_per_target: int | None = None,
     max_triple_cases_per_target: int | None = None,
     min_query_terms_per_case: int = 0,
+    min_case_group_distinct_targets: list[str] = typer.Option(
+        None,
+        "--min-case-group-distinct-targets",
+        help=(
+            "Require distinct targets inside a case metadata group, such as "
+            "case_source:visual_object_probe:asset=4."
+        ),
+    ),
     min_case_group_count: list[str] = typer.Option(
         None,
         "--min-case-group-count",
@@ -3110,6 +3133,10 @@ def audit_retrieval_cases_command(
         min_case_group_count,
         "case group count",
     )
+    case_group_distinct_thresholds = parse_named_int_thresholds(
+        min_case_group_distinct_targets,
+        "case group distinct target count",
+    )
     report = audit_retrieval_cases(
         parsed_cases,
         profiles=manifest.profiles,
@@ -3130,6 +3157,7 @@ def audit_retrieval_cases_command(
         max_asset_cases_per_target=max_asset_cases_per_target,
         max_triple_cases_per_target=max_triple_cases_per_target,
         min_case_group_counts=case_group_thresholds,
+        min_case_group_distinct_targets=case_group_distinct_thresholds,
         require_visual_only_object_probes=require_visual_only_object_probes,
         min_query_terms_per_case=min_query_terms_per_case,
         max_duplicate_queries=max_duplicate_queries,
@@ -3146,6 +3174,7 @@ def audit_retrieval_cases_command(
             "distinct_target_counts": report.distinct_target_counts,
             "max_cases_per_target": report.max_cases_per_target,
             "case_group_counts": report.case_group_counts,
+            "case_group_distinct_target_counts": report.case_group_distinct_target_counts,
             "visual_object_probe_count": report.visual_object_probe_count,
             "visual_only_object_probe_count": report.visual_only_object_probe_count,
             "non_visual_only_object_probe_count": report.non_visual_only_object_probe_count,

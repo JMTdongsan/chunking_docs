@@ -365,6 +365,7 @@ def recommendations(
                         "--package-dir outputs/package "
                         f"--min-case-group-count case_source:visual_object_probe={object_probe_case_threshold} "
                         f"--min-distinct-asset-targets {object_probe_asset_threshold} "
+                        f"--min-case-group-distinct-targets case_source:visual_object_probe:asset={object_probe_asset_threshold} "
                         "--max-asset-cases-per-target 3 "
                         "--min-query-terms-per-case 3 "
                         "--require-visual-only-object-probes"

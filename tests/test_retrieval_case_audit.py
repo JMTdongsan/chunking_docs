@@ -63,6 +63,7 @@ def test_audit_retrieval_cases_passes_valid_target_distribution():
         max_asset_cases_per_target=1,
         max_triple_cases_per_target=1,
         min_case_group_counts={"case_source:visual_object_probe": 1, "modality:vision_object": 1},
+        min_case_group_distinct_targets={"case_source:visual_object_probe:asset": 1},
         require_visual_only_object_probes=True,
         min_query_terms_per_case=2,
     )
@@ -72,6 +73,7 @@ def test_audit_retrieval_cases_passes_valid_target_distribution():
     assert report.distinct_target_counts == {"page": 1, "chunk": 1, "asset": 1, "triple": 1}
     assert report.max_cases_per_target == {"page": 1, "chunk": 1, "asset": 1, "triple": 1}
     assert report.case_group_counts["case_source"]["visual_object_probe"] == 1
+    assert report.case_group_distinct_target_counts["case_source"]["visual_object_probe"]["asset"] == 1
     assert report.case_group_counts["modality"]["vision_object"] == 1
     assert report.case_group_counts["graph_expand"]["true"] == 1
     assert report.visual_object_probe_count == 1
@@ -141,6 +143,58 @@ def test_audit_retrieval_cases_checks_case_group_counts():
         if check.name == "min_case_group_count:case_source:visual_object_probe"
     )
     assert check.actual == 0
+
+
+def test_audit_retrieval_cases_checks_case_group_distinct_targets():
+    profiles, chunks, assets, triples = package_records()
+    assets.append(
+        VisualAsset(
+            asset_id="asset-2",
+            doc_id="doc",
+            page_no=1,
+            kind=AssetKind.MAP,
+            caption="other visual target",
+        )
+    )
+    cases = [
+        RetrievalCase(
+            query="object probe one",
+            expected_asset_ids=["asset-1"],
+            metadata={"case_source": "visual_object_probe"},
+        ),
+        RetrievalCase(
+            query="object probe two",
+            expected_asset_ids=["asset-1"],
+            metadata={"case_source": "visual_object_probe"},
+        ),
+        RetrievalCase(
+            query="regular asset target",
+            expected_asset_ids=["asset-2"],
+            metadata={"case_source": "asset"},
+        ),
+    ]
+
+    report = audit_retrieval_cases(
+        cases,
+        profiles=profiles,
+        chunks=chunks,
+        assets=assets,
+        triples=triples,
+        min_distinct_asset_targets=2,
+        min_case_group_distinct_targets={"case_source:visual_object_probe:asset": 2},
+    )
+
+    assert report.passed is False
+    assert report.distinct_target_counts["asset"] == 2
+    assert report.case_group_distinct_target_counts["case_source"]["visual_object_probe"]["asset"] == 1
+    assert "min_case_group_distinct_targets:case_source:visual_object_probe:asset" in report.failed_checks
+    check = next(
+        check
+        for check in report.checks
+        if check.name == "min_case_group_distinct_targets:case_source:visual_object_probe:asset"
+    )
+    assert check.actual == 1
+    assert check.threshold == 2
 
 
 def test_audit_retrieval_cases_checks_distinct_target_counts():
@@ -295,6 +349,8 @@ def test_audit_retrieval_cases_cli_writes_report(tmp_path):
             "1",
             "--min-case-group-count",
             "case_source:visual_object_probe=1",
+            "--min-case-group-distinct-targets",
+            "case_source:visual_object_probe:asset=1",
             "--require-visual-only-object-probes",
             "--min-query-terms-per-case",
             "2",
@@ -310,6 +366,7 @@ def test_audit_retrieval_cases_cli_writes_report(tmp_path):
     assert payload["distinct_target_counts"]["asset"] == 1
     assert payload["max_cases_per_target"]["asset"] == 1
     assert payload["case_group_counts"]["case_source"]["visual_object_probe"] == 1
+    assert payload["case_group_distinct_target_counts"]["case_source"]["visual_object_probe"]["asset"] == 1
     assert payload["visual_object_probe_count"] == 1
     assert payload["visual_only_object_probe_count"] == 1
     assert payload["non_visual_only_object_probe_count"] == 0
