@@ -82,6 +82,8 @@ DEFAULT_ARTIFACTS = [
     "qdrant_retrieval_eval.json",
     "qdrant_vector_ablation.json",
     "qdrant_fusion_sweep.json",
+    "qdrant_retrieval_config.json",
+    "qdrant_retrieval_config_eval.json",
     "qdrant_rag_context_config_eval.json",
     "qdrant_rag_context_gate.json",
     "retrieval_case_audit.json",
@@ -112,6 +114,7 @@ DEFAULT_ARTIFACT_GLOBS = [
     "qdrant_vector_ablation*.json",
     "qdrant_vector_ablation_gate*.json",
     "qdrant_fusion_sweep*.json",
+    "qdrant_retrieval_config*.json",
     "visual_asset_gate*.json",
     "visual_gate*.json",
     "visual_quality*.json",
@@ -331,6 +334,8 @@ def validation_artifact_summaries_for_path(
         return [visual_run_comparison_summary(path, payload, root=root)]
     if is_qdrant_fusion_sweep_payload(payload):
         return [qdrant_fusion_sweep_summary(path, payload, root=root)]
+    if is_qdrant_retrieval_config_payload(payload):
+        return [qdrant_retrieval_config_summary(path, payload, root=root)]
     if is_chunking_sweep_payload(payload):
         return [chunking_sweep_summary(path, payload, root=root)]
     if not is_validation_payload(payload):
@@ -405,6 +410,68 @@ def is_qdrant_fusion_sweep_payload(payload: dict[str, Any]) -> bool:
         and "recommended" in payload
         and "eligible_count" in payload
     )
+
+
+def is_qdrant_retrieval_config_payload(payload: dict[str, Any]) -> bool:
+    return (
+        payload.get("backend") == "qdrant_hybrid"
+        and isinstance(payload.get("selection"), dict)
+        and isinstance(payload.get("vector_names"), list)
+        and isinstance(payload.get("fusion_weights"), dict)
+    )
+
+
+def qdrant_retrieval_config_summary(
+    path: Path,
+    payload: dict[str, Any],
+    root: Path | None = None,
+) -> ValidationSummary:
+    selection = payload.get("selection")
+    selection = selection if isinstance(selection, dict) else {}
+    failed_checks = string_list(selection.get("eligibility_failures"))
+    candidate_eligible = selection.get("candidate_eligible") is not False
+    candidate = selection.get("candidate")
+    candidate = candidate if isinstance(candidate, str) else None
+    return ValidationSummary(
+        path=display_artifact_path(path, root),
+        kind="qdrant_retrieval_config",
+        passed=candidate_eligible and not failed_checks if selection else None,
+        failed_checks=failed_checks,
+        candidate=candidate,
+        metrics=qdrant_retrieval_config_metrics(payload, selection),
+    )
+
+
+def qdrant_retrieval_config_metrics(
+    payload: dict[str, Any],
+    selection: dict[str, Any],
+) -> dict[str, float]:
+    metrics = {
+        "vector_count": numeric_metric(list_count(payload.get("vector_names"))),
+        "fusion_weight_count": numeric_metric(dict_count(payload.get("fusion_weights"))),
+        "top_k": numeric_metric(payload.get("top_k")),
+        "graph_expand": 1.0 if payload.get("graph_expand") else 0.0,
+        "collapse_hierarchical": 1.0 if payload.get("collapse_hierarchical") else 0.0,
+        "candidate_rank": numeric_metric(selection.get("candidate_rank")),
+        "candidate_eligible": 1.0 if selection.get("candidate_eligible") is not False else 0.0,
+    }
+    selected_metrics = selection.get("metrics")
+    if isinstance(selected_metrics, dict):
+        for key, value in selected_metrics.items():
+            numeric_value = optional_numeric_metric(value)
+            if numeric_value is not None:
+                metrics[key] = numeric_value
+    case_group_metrics = selection.get("case_group_metrics")
+    if isinstance(case_group_metrics, dict):
+        for key, value in case_group_metrics.items():
+            numeric_value = optional_numeric_metric(value)
+            if numeric_value is not None:
+                metrics[f"case_group_selection.{key}"] = numeric_value
+    return metrics
+
+
+def dict_count(value: Any) -> int:
+    return len(value) if isinstance(value, dict) else 0
 
 
 def qdrant_fusion_sweep_summary(

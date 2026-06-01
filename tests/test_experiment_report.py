@@ -38,6 +38,7 @@ def test_build_experiment_report_summarizes_artifacts_and_candidates(tmp_path):
     assert artifacts["retrieval_gate.final.json"].exists is True
     assert artifacts["qdrant_eval.final.json"].exists is True
     assert artifacts["qdrant_fusion_sweep.final.json"].exists is True
+    assert artifacts["qdrant_retrieval_config.final.json"].exists is True
     assert artifacts["chunking_comparison_gate.final.json"].exists is True
     assert artifacts["chunking_sweep.final.json"].exists is True
     assert artifacts["graph_audit.final.json"].exists is True
@@ -72,6 +73,16 @@ def test_build_experiment_report_summarizes_artifacts_and_candidates(tmp_path):
     assert validations["qdrant_fusion_sweep.final.json"].metrics["selection_score"] == 4.2
     assert validations["qdrant_fusion_sweep.final.json"].metrics["target_coverage_at_k"] == 0.98
     assert validations["qdrant_fusion_sweep.final.json"].metrics["failed_query_count"] == 1.0
+    assert validations["qdrant_retrieval_config.final.json"].passed is True
+    assert validations["qdrant_retrieval_config.final.json"].candidate == "caption_weighted"
+    assert validations["qdrant_retrieval_config.final.json"].metrics["vector_count"] == 2.0
+    assert validations["qdrant_retrieval_config.final.json"].metrics["fusion_weight_count"] == 2.0
+    assert validations["qdrant_retrieval_config.final.json"].metrics["top_k"] == 5.0
+    assert validations["qdrant_retrieval_config.final.json"].metrics["candidate_rank"] == 1.0
+    assert validations["qdrant_retrieval_config.final.json"].metrics["target_coverage_at_k"] == 0.98
+    assert validations["qdrant_retrieval_config.final.json"].metrics[
+        "case_group_selection.target_coverage_at_k"
+    ] == 0.9
     assert validations["chunking_comparison_gate.final.json"].metrics[
         "case_group.case_source.visual_object_probe.target_coverage_at_k"
     ] == 0.9
@@ -387,6 +398,38 @@ def write_minimal_package(tmp_path):
                         },
                     },
                 ],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    (package_dir / "qdrant_retrieval_config.final.json").write_text(
+        json.dumps(
+            {
+                "backend": "qdrant_hybrid",
+                "collection_name": "document_chunks",
+                "vector_names": ["text_dense", "caption_dense"],
+                "top_k": 5,
+                "graph_expand": False,
+                "collapse_hierarchical": False,
+                "fusion_weights": {"bm25": 1.2, "qdrant:caption_dense": 1.1},
+                "selection": {
+                    "candidate": "caption_weighted",
+                    "source": "global_recommended",
+                    "candidate_rank": 1,
+                    "candidate_eligible": True,
+                    "eligibility_failures": [],
+                    "metrics": {
+                        "selection_score": 4.2,
+                        "target_coverage_at_k": 0.98,
+                        "mean_target_ndcg_at_k": 0.93,
+                        "failed_query_count": 1.0,
+                    },
+                    "case_group_metrics": {
+                        "target_coverage_at_k": 0.9,
+                        "ndcg_at_k": 0.85,
+                    },
+                },
             },
             indent=2,
         ),
