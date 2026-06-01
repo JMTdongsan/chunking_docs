@@ -30,10 +30,14 @@ class ProcessingRecommendation(BaseModel):
 class TextLayerCharacteristics(BaseModel):
     page_count: int
     quality_counts: dict[str, int]
+    quality_reason_counts: dict[str, int] = Field(default_factory=dict)
     degraded_or_empty_ratio: float
     char_total: int
     char_mean: float
     char_median: float
+    control_char_ratio_mean: float = 0.0
+    letter_or_number_ratio_mean: float = 0.0
+    cjk_char_ratio_mean: float = 0.0
     low_text_pages: list[int] = Field(default_factory=list)
 
 
@@ -110,7 +114,11 @@ def text_layer_characteristics(
     max_pages: int,
 ) -> TextLayerCharacteristics:
     counts = Counter(str(profile.text_quality) for profile in profiles)
+    reason_counts = Counter(reason for profile in profiles for reason in profile.text_quality_reasons)
     chars = [profile.char_count for profile in profiles]
+    control_ratios = [profile.control_char_ratio for profile in profiles]
+    letter_or_number_ratios = [profile.letter_or_number_ratio for profile in profiles]
+    cjk_ratios = [profile.cjk_char_ratio for profile in profiles]
     low_text_pages = [
         profile.page_no
         for profile in profiles
@@ -120,10 +128,16 @@ def text_layer_characteristics(
     return TextLayerCharacteristics(
         page_count=len(profiles),
         quality_counts=dict(sorted(counts.items())),
+        quality_reason_counts=dict(sorted(reason_counts.items())),
         degraded_or_empty_ratio=degraded_or_empty / len(profiles) if profiles else 0.0,
         char_total=sum(chars),
         char_mean=round(statistics.fmean(chars), 3) if chars else 0.0,
         char_median=float(statistics.median(chars)) if chars else 0.0,
+        control_char_ratio_mean=round(statistics.fmean(control_ratios), 6) if control_ratios else 0.0,
+        letter_or_number_ratio_mean=round(statistics.fmean(letter_or_number_ratios), 6)
+        if letter_or_number_ratios
+        else 0.0,
+        cjk_char_ratio_mean=round(statistics.fmean(cjk_ratios), 6) if cjk_ratios else 0.0,
         low_text_pages=low_text_pages,
     )
 
@@ -222,7 +236,12 @@ def observations(
                 code="text_layer_degraded",
                 severity="warning",
                 message="A large share of pages has degraded or empty text; OCR/VLM annotations should be prioritized.",
-                metadata={"ratio": text_layer.degraded_or_empty_ratio},
+                metadata={
+                    "ratio": text_layer.degraded_or_empty_ratio,
+                    "quality_reason_counts": text_layer.quality_reason_counts,
+                    "control_char_ratio_mean": text_layer.control_char_ratio_mean,
+                    "letter_or_number_ratio_mean": text_layer.letter_or_number_ratio_mean,
+                },
             )
         )
     if visual.visual_heavy_pages or visual.asset_kind_counts.get("map", 0) or visual.asset_kind_counts.get("table", 0):

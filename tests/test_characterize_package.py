@@ -33,6 +33,7 @@ def test_characterize_package_reports_strategy_observations(tmp_path):
     observation_codes = {observation.code for observation in report.observations}
     recommendation_codes = {recommendation.code for recommendation in report.recommendations}
     assert report.text_layer.degraded_or_empty_ratio == 0.5
+    assert report.text_layer.quality_reason_counts == {"empty_text": 1}
     assert report.visual.asset_kind_counts["map"] == 1
     assert report.visual.pages_requiring_ocr_count == 1
     assert report.visual.vlm_object_asset_count == 1
@@ -142,6 +143,7 @@ def make_characteristic_package(tmp_path: Path):
             embedded_image_count=1,
             drawing_count=30,
             text_quality=TextQuality.EMPTY,
+            text_quality_reasons=["empty_text"],
         ),
         PageProfile(
             doc_id="doc",

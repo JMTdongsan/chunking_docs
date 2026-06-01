@@ -51,6 +51,11 @@ class PageProfile(BaseModel):
     embedded_image_count: int
     drawing_count: int
     text_quality: TextQuality
+    control_char_count: int = 0
+    control_char_ratio: float = 0.0
+    letter_or_number_ratio: float = 0.0
+    cjk_char_ratio: float = 0.0
+    text_quality_reasons: list[str] = Field(default_factory=list)
     sample: str = ""
 
 

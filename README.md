@@ -61,7 +61,7 @@ chunking-docs package data/raw/document.pdf --output-dir outputs/package
 The package directory contains:
 
 - `manifest.json`: document and processing metadata
-- `pages.jsonl`: page profiles and text quality signals
+- `pages.jsonl`: page profiles and language-neutral text quality signals such as control-character ratio, readable-character ratio, and quality reasons
 - `chunks.jsonl`: chunk records
 - `assets.jsonl`: rendered visual asset records
 - `triples.jsonl`: graph triple candidates
