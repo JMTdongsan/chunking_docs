@@ -183,11 +183,13 @@ The summary groups completion counts, backend latency, output size, VLM prompt u
 chunking-docs compare-visual-runs \
   --run vlm_a=outputs/package/visual_job_results.vlm_a.jsonl \
   --run vlm_b=outputs/package/visual_job_results.vlm_b.jsonl \
+  --retrieval-eval vlm_a=outputs/package/retrieval_eval.vlm_a.json \
+  --retrieval-eval vlm_b=outputs/package/retrieval_eval.vlm_b.json \
   --output outputs/package/visual_run_comparison.json \
   --require-same-jobs
 ```
 
-The comparison ranks OCR/VLM runs by completion rate, annotation coverage, OCR text coverage, VLM summary coverage, JSON parse rate, object coverage, triple density, and total latency. It also reports shared and missing visual job IDs, and `--require-same-jobs` fails the command when runs were produced from different job sets.
+The comparison ranks OCR/VLM runs by completion rate, annotation coverage, OCR text coverage, VLM summary coverage, JSON parse rate, object coverage, triple density, and total latency. When matching `--retrieval-eval name=...` files are provided, it also records retrieval hit rate, recall, MRR, target coverage, nDCG, precision, visual-object-probe coverage, and `best_by_retrieval` so VLM choices can be judged by downstream search behavior. It also reports shared and missing visual job IDs, and `--require-same-jobs` fails the command when runs were produced from different job sets.
 
 Gate a visual run before applying annotations to retrieval artifacts:
 

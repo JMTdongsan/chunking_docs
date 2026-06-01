@@ -2,8 +2,12 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
+from chunking_docs.evaluation.retrieval import RetrievalEvaluation
 from chunking_docs.vision.jobs import VisualJobRunResult
 from chunking_docs.vision.quality import VisualQualityReport, evaluate_visual_results
+
+
+VISUAL_OBJECT_CASE_GROUP = ("case_source", "visual_object_probe")
 
 
 class VisualRunComparisonRow(BaseModel):
@@ -37,6 +41,18 @@ class VisualRunComparisonRow(BaseModel):
     parse_status_counts: dict[str, int] = Field(default_factory=dict)
     failed_checks: list[str] = Field(default_factory=list)
     quality_score: float
+    retrieval_case_count: int | None = None
+    retrieval_expected_case_count: int | None = None
+    retrieval_failed_count: int | None = None
+    retrieval_hit_rate: float | None = None
+    retrieval_recall_at_k: float | None = None
+    retrieval_mrr: float | None = None
+    retrieval_target_coverage_at_k: float | None = None
+    retrieval_mean_target_ndcg_at_k: float | None = None
+    retrieval_mean_precision_at_k: float | None = None
+    retrieval_mean_latency_ms: float | None = None
+    retrieval_visual_object_probe_target_coverage_at_k: float | None = None
+    retrieval_score: float | None = None
 
 
 class VisualRunComparison(BaseModel):
@@ -44,6 +60,9 @@ class VisualRunComparison(BaseModel):
     best_by_quality: str | None = None
     fastest_by_total_latency: str | None = None
     best_by_triple_density: str | None = None
+    best_by_retrieval: str | None = None
+    retrieval_evaluation_run_count: int = 0
+    missing_retrieval_evaluation_runs: list[str] = Field(default_factory=list)
     union_job_count: int = 0
     shared_job_count: int = 0
     job_set_mismatch: bool = False
@@ -54,8 +73,13 @@ class VisualRunComparison(BaseModel):
 
 def compare_visual_runs(
     runs: dict[str, list[VisualJobRunResult]],
+    retrieval_evaluations: dict[str, RetrievalEvaluation] | None = None,
 ) -> VisualRunComparison:
-    rows = [visual_run_row(name, results) for name, results in runs.items()]
+    retrieval_evaluations = retrieval_evaluations or {}
+    rows = [
+        visual_run_row(name, results, retrieval_evaluation=retrieval_evaluations.get(name))
+        for name, results in runs.items()
+    ]
     job_sets = visual_run_job_sets(runs)
     job_set_report = compare_visual_job_sets(job_sets)
     rows.sort(
@@ -72,6 +96,7 @@ def compare_visual_runs(
     )
     latency_rows = [row for row in rows if row.total_mean_latency_ms is not None]
     triple_rows = [row for row in rows if row.triples_per_vlm_job is not None]
+    retrieval_rows = [row for row in rows if row.retrieval_score is not None]
     return VisualRunComparison(
         rows=rows,
         best_by_quality=max(rows, key=lambda row: row.quality_score).name if rows else None,
@@ -81,16 +106,27 @@ def compare_visual_runs(
         best_by_triple_density=max(triple_rows, key=lambda row: row.triples_per_vlm_job or 0.0).name
         if triple_rows
         else None,
+        best_by_retrieval=max(retrieval_rows, key=lambda row: row.retrieval_score or 0.0).name
+        if retrieval_rows
+        else None,
+        retrieval_evaluation_run_count=len(retrieval_evaluations),
+        missing_retrieval_evaluation_runs=[
+            row.name for row in rows if row.name not in retrieval_evaluations
+        ],
         **job_set_report,
     )
 
 
-def visual_run_row(name: str, results: list[VisualJobRunResult]) -> VisualRunComparisonRow:
+def visual_run_row(
+    name: str,
+    results: list[VisualJobRunResult],
+    retrieval_evaluation: RetrievalEvaluation | None = None,
+) -> VisualRunComparisonRow:
     report = evaluate_visual_results(results)
     total_durations = durations(results, "total_duration_ms")
     ocr_durations = durations(results, "ocr_duration_ms")
     vlm_durations = durations(results, "vlm_duration_ms")
-    return VisualRunComparisonRow(
+    row = VisualRunComparisonRow(
         name=name,
         result_count=report.result_count,
         completed_count=report.completed_count,
@@ -121,6 +157,48 @@ def visual_run_row(name: str, results: list[VisualJobRunResult]) -> VisualRunCom
         parse_status_counts=report.parse_status_counts,
         failed_checks=report.failed_checks,
         quality_score=visual_run_quality_score(report),
+    )
+    if retrieval_evaluation is None:
+        return row
+    return row.model_copy(update=retrieval_row_metrics(retrieval_evaluation))
+
+
+def retrieval_row_metrics(evaluation: RetrievalEvaluation) -> dict[str, float | int | None]:
+    return {
+        "retrieval_case_count": evaluation.case_count,
+        "retrieval_expected_case_count": evaluation.expected_case_count,
+        "retrieval_failed_count": evaluation.failed_count,
+        "retrieval_hit_rate": evaluation.hit_rate,
+        "retrieval_recall_at_k": evaluation.recall_at_k,
+        "retrieval_mrr": evaluation.mrr,
+        "retrieval_target_coverage_at_k": evaluation.target_coverage_at_k,
+        "retrieval_mean_target_ndcg_at_k": evaluation.mean_target_ndcg_at_k,
+        "retrieval_mean_precision_at_k": evaluation.mean_precision_at_k,
+        "retrieval_mean_latency_ms": evaluation.mean_latency_ms,
+        "retrieval_visual_object_probe_target_coverage_at_k": case_group_target_coverage(
+            evaluation,
+            *VISUAL_OBJECT_CASE_GROUP,
+        ),
+        "retrieval_score": retrieval_quality_score(evaluation),
+    }
+
+
+def case_group_target_coverage(
+    evaluation: RetrievalEvaluation,
+    group_name: str,
+    group_value: str,
+) -> float | None:
+    group = evaluation.case_group_metrics.get(group_name, {}).get(group_value)
+    return group.target_coverage_at_k if group is not None else None
+
+
+def retrieval_quality_score(evaluation: RetrievalEvaluation) -> float:
+    return (
+        evaluation.target_coverage_at_k * 0.35
+        + evaluation.recall_at_k * 0.25
+        + evaluation.mean_target_ndcg_at_k * 0.20
+        + evaluation.mrr * 0.10
+        + evaluation.mean_precision_at_k * 0.10
     )
 
 

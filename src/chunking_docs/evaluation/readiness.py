@@ -668,6 +668,7 @@ def visual_run_comparison_component(
     min_shared_job_count: int = 0,
     expected_best_by_quality: str | None = None,
     expected_best_by_triple_density: str | None = None,
+    expected_best_by_retrieval: str | None = None,
 ) -> ReadinessComponent:
     failed_checks = []
     run_count = len(comparison.rows)
@@ -684,6 +685,8 @@ def visual_run_comparison_component(
         and comparison.best_by_triple_density != expected_best_by_triple_density
     ):
         failed_checks.append("expected_best_by_triple_density")
+    if expected_best_by_retrieval and comparison.best_by_retrieval != expected_best_by_retrieval:
+        failed_checks.append("expected_best_by_retrieval")
 
     return ReadinessComponent(
         name="visual_run_comparison",
@@ -698,6 +701,10 @@ def visual_run_comparison_component(
             "fastest_by_total_latency": comparison.fastest_by_total_latency,
             "best_by_triple_density": comparison.best_by_triple_density,
             "expected_best_by_triple_density": expected_best_by_triple_density,
+            "best_by_retrieval": comparison.best_by_retrieval,
+            "expected_best_by_retrieval": expected_best_by_retrieval,
+            "retrieval_evaluation_run_count": comparison.retrieval_evaluation_run_count,
+            "missing_retrieval_evaluation_runs": comparison.missing_retrieval_evaluation_runs,
             "job_set_mismatch": comparison.job_set_mismatch,
             "require_same_jobs": require_same_jobs,
             "union_job_count": comparison.union_job_count,

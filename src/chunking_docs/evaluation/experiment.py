@@ -366,6 +366,8 @@ def visual_run_comparison_summary(
     rows = [row for row in payload.get("rows", []) if isinstance(row, dict)]
     best_by_quality = payload.get("best_by_quality")
     best_row = next((row for row in rows if row.get("name") == best_by_quality), {})
+    best_by_retrieval = payload.get("best_by_retrieval")
+    retrieval_row = next((row for row in rows if row.get("name") == best_by_retrieval), {})
     fastest_name = payload.get("fastest_by_total_latency")
     fastest_row = next((row for row in rows if row.get("name") == fastest_name), {})
     mismatch = bool(payload.get("job_set_mismatch", False))
@@ -382,6 +384,13 @@ def visual_run_comparison_summary(
             "job_set_mismatch": 1.0 if mismatch else 0.0,
             "best_quality_score": numeric_metric(best_row.get("quality_score")),
             "best_triples_per_vlm_job": numeric_metric(best_row.get("triples_per_vlm_job")),
+            "best_retrieval_score": numeric_metric(retrieval_row.get("retrieval_score")),
+            "best_retrieval_target_coverage_at_k": numeric_metric(
+                retrieval_row.get("retrieval_target_coverage_at_k")
+            ),
+            "retrieval_evaluation_run_count": numeric_metric(
+                payload.get("retrieval_evaluation_run_count")
+            ),
             "fastest_total_mean_latency_ms": numeric_metric(
                 fastest_row.get("total_mean_latency_ms")
             ),

@@ -1691,6 +1691,14 @@ def compare_visual_runs_command(
         "--run",
         help="Visual run in name=results.jsonl form. Repeat for multiple OCR/VLM runs.",
     ),
+    retrieval_evals: list[str] = typer.Option(
+        None,
+        "--retrieval-eval",
+        help=(
+            "Optional retrieval evaluation in name=retrieval_eval.json form. "
+            "Names should match --run names."
+        ),
+    ),
     output: Path | None = None,
     require_same_jobs: bool = typer.Option(
         False,
@@ -1700,11 +1708,15 @@ def compare_visual_runs_command(
 ):
     """Compare multiple OCR/VLM result files by coverage, parse rate, triples, and latency."""
     parsed_runs = parse_visual_run_inputs(runs)
+    parsed_retrieval_evals = parse_retrieval_eval_inputs(retrieval_evals)
     comparison = compare_visual_runs(
         {
             name: read_jsonl(path, VisualJobRunResult)
             for name, path in parsed_runs.items()
-        }
+        },
+        retrieval_evaluations={
+            name: load_retrieval_evaluation(path) for name, path in parsed_retrieval_evals.items()
+        },
     )
     payload = comparison.model_dump()
     if output is not None:
@@ -1716,6 +1728,9 @@ def compare_visual_runs_command(
             "best_by_quality": comparison.best_by_quality,
             "fastest_by_total_latency": comparison.fastest_by_total_latency,
             "best_by_triple_density": comparison.best_by_triple_density,
+            "best_by_retrieval": comparison.best_by_retrieval,
+            "retrieval_evaluation_run_count": comparison.retrieval_evaluation_run_count,
+            "missing_retrieval_evaluation_runs": comparison.missing_retrieval_evaluation_runs,
             "job_set_mismatch": comparison.job_set_mismatch,
             "union_job_count": comparison.union_job_count,
             "shared_job_count": comparison.shared_job_count,
@@ -2550,6 +2565,7 @@ def ingestion_readiness_command(
     min_visual_run_shared_jobs: int = 0,
     visual_run_best_by_quality: str | None = None,
     visual_run_best_by_triple_density: str | None = None,
+    visual_run_best_by_retrieval: str | None = None,
     retrieval_cases: Path | None = None,
     require_retrieval_cases: bool = False,
     min_case_count: int = 1,
@@ -2916,6 +2932,7 @@ def ingestion_readiness_command(
             "min_shared_job_count": min_visual_run_shared_jobs,
             "expected_best_by_quality": visual_run_best_by_quality,
             "expected_best_by_triple_density": visual_run_best_by_triple_density,
+            "expected_best_by_retrieval": visual_run_best_by_retrieval,
         },
         retrieval_cases=parsed_retrieval_cases,
         require_retrieval_cases=require_retrieval_cases,
@@ -5380,14 +5397,32 @@ def parse_candidates(values: list[str] | None, package_dir: Path) -> dict[str, P
 def parse_visual_run_inputs(values: list[str] | None) -> dict[str, Path]:
     if not values:
         raise typer.BadParameter("At least one --run name=results.jsonl value is required")
+    return parse_named_path_inputs(values, option_name="--run", path_label="results.jsonl")
+
+
+def parse_retrieval_eval_inputs(values: list[str] | None) -> dict[str, Path]:
+    if not values:
+        return {}
+    return parse_named_path_inputs(
+        values,
+        option_name="--retrieval-eval",
+        path_label="retrieval_eval.json",
+    )
+
+
+def parse_named_path_inputs(
+    values: list[str],
+    option_name: str,
+    path_label: str,
+) -> dict[str, Path]:
     parsed = {}
     for value in values:
         if "=" not in value:
-            raise typer.BadParameter("--run must be in name=results.jsonl form")
+            raise typer.BadParameter(f"{option_name} must be in name={path_label} form")
         name, path = value.split("=", 1)
         name = name.strip()
         if not name:
-            raise typer.BadParameter("--run name must not be empty")
+            raise typer.BadParameter(f"{option_name} name must not be empty")
         parsed[name] = Path(path)
     return parsed
 

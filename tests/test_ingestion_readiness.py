@@ -21,7 +21,11 @@ from chunking_docs.evaluation.compare import (
     ChunkingPairwiseComparison,
 )
 from chunking_docs.evaluation.readiness import build_ingestion_readiness_report, chunks_with_linked_asset_text
-from chunking_docs.evaluation.retrieval import RetrievalCase, evaluate_search_results
+from chunking_docs.evaluation.retrieval import (
+    RetrievalCase,
+    RetrievalEvaluation,
+    evaluate_search_results,
+)
 from chunking_docs.io import read_jsonl, write_jsonl
 from chunking_docs.models import (
     AssetKind,
@@ -623,6 +627,34 @@ def test_ingestion_readiness_can_gate_visual_run_comparison(tmp_path):
     assert report.visual_run_comparison is not None
     assert component.metadata["job_set_mismatch"] is False
     assert component.metadata["best_by_quality"] == "structured"
+
+
+def test_ingestion_readiness_can_gate_visual_run_retrieval_winner(tmp_path):
+    package_dir, manifest = write_ready_package(tmp_path)
+    comparison = compare_visual_runs(
+        {
+            "raw": visual_run_results("raw_text", triple=False),
+            "structured": visual_run_results("json_object", triple=True),
+        },
+        retrieval_evaluations={
+            "raw": readiness_retrieval_evaluation(target_coverage=0.8),
+            "structured": readiness_retrieval_evaluation(target_coverage=0.95),
+        },
+    )
+
+    report = build_ingestion_readiness_report(
+        package_dir,
+        manifest,
+        visual_run_comparison=comparison,
+        visual_run_comparison_options={"expected_best_by_retrieval": "structured"},
+    )
+
+    component = next(
+        component for component in report.components if component.name == "visual_run_comparison"
+    )
+    assert report.passed is True
+    assert component.metadata["best_by_retrieval"] == "structured"
+    assert component.metadata["retrieval_evaluation_run_count"] == 2
 
 
 def test_ingestion_readiness_flags_visual_run_job_mismatch(tmp_path):
@@ -1675,3 +1707,21 @@ def visual_run_results(
             },
         )
     ]
+
+
+def readiness_retrieval_evaluation(target_coverage: float) -> RetrievalEvaluation:
+    return RetrievalEvaluation(
+        case_count=2,
+        expected_case_count=2,
+        passed_count=2,
+        failed_count=0,
+        hit_rate=1.0,
+        recall_at_k=0.8,
+        mrr=0.7,
+        target_coverage_at_k=target_coverage,
+        mean_target_ndcg_at_k=0.75,
+        mean_precision_at_k=0.6,
+        top_k=5,
+        failed_queries=[],
+        results=[],
+    )
