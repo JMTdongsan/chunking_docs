@@ -65,6 +65,7 @@ DEFAULT_ARTIFACTS = [
     "qdrant_collection_contract.json",
     "qdrant_text_records.jsonl",
     "qdrant_caption_records.jsonl",
+    "qdrant_object_records.jsonl",
     "qdrant_image_records.jsonl",
     "qdrant_triple_records.jsonl",
     "graph_nodes.jsonl",

@@ -7,7 +7,7 @@ import chunking_docs.cli as cli_module
 from chunking_docs.cli import app
 from chunking_docs.io import write_jsonl
 from chunking_docs.models import AssetKind, ChunkKind, DocumentChunk, GraphTriple, VisualAsset
-from chunking_docs.retrieval.context import build_context_bundle
+from chunking_docs.retrieval.context import build_context_bundle, context_source_family
 from chunking_docs.retrieval.local_hybrid import HybridSearchHit
 
 
@@ -69,6 +69,10 @@ def test_build_context_bundle_includes_evidence_assets_and_triples(tmp_path):
     assert bundle.metadata["has_dense_text_context"] is True
     assert bundle.metadata["has_visual_context"] is True
     assert bundle.metadata["has_graph_context"] is True
+
+
+def test_context_source_family_treats_object_vectors_as_visual():
+    assert context_source_family("qdrant:object_dense") == "visual"
 
 
 def test_build_context_bundle_adds_neighbor_chunks():

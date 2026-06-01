@@ -100,6 +100,10 @@ def test_required_payload_indexes_include_chunk_strategy_fields():
         "asset_scope",
         "parent_asset_id",
         "tile_index",
+        "object_id",
+        "label",
+        "bbox_region",
+        "source_key",
         "control_char_ratio",
         "section.chapter",
         "section.issue",
@@ -716,6 +720,68 @@ def test_audit_package_validates_qdrant_triple_records(tmp_path):
     assert not audit.passed
     assert "qdrant_missing_triple_records" in codes
     assert "qdrant_stale_triple_payload_text" in codes
+
+
+def test_audit_package_validates_qdrant_object_records(tmp_path):
+    asset = VisualAsset(
+        asset_id="asset-a",
+        doc_id="doc",
+        page_no=2,
+        kind=AssetKind.FIGURE,
+        caption="marker diagram",
+        metadata={
+            "objects": [
+                {
+                    "label": "transfer marker",
+                    "attributes": ["blue square"],
+                    "bbox": [0.6, 0.1, 0.8, 0.3],
+                },
+                {"label": "route line"},
+            ]
+        },
+    )
+    (tmp_path / "qdrant_collection.json").write_text(
+        json.dumps(
+            {
+                "collection": "documents",
+                "named_vectors": {"object_dense": {"size": 2}},
+                "payload_indexes": [{"field": "object_id", "schema": "keyword"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    write_jsonl(
+        tmp_path / "qdrant_object_records.jsonl",
+        [
+            EmbeddingRecord(
+                point_id="object-a",
+                chunk_id="asset-a",
+                doc_id="doc",
+                vector_name="object_dense",
+                vector=[1.0, 0.0],
+                payload={
+                    "record_kind": "visual_object",
+                    "object_id": "asset-a:object:0",
+                    "asset_id": "asset-a",
+                    "doc_id": "doc",
+                    "page_no": 2,
+                    "kind": "figure",
+                    "label": "transfer marker",
+                    "object_index": 0,
+                    "source_key": "objects",
+                    "bbox_region": "upper right",
+                    "text": "old object text",
+                },
+            )
+        ],
+    )
+
+    audit = audit_package([], [], [asset], [], package_dir=tmp_path, require_qdrant_records=True)
+    codes = {issue.code for issue in audit.issues}
+
+    assert not audit.passed
+    assert "qdrant_missing_visual_object_records" in codes
+    assert "qdrant_stale_visual_object_payload_text" in codes
 
 
 def test_audit_package_detects_stale_qdrant_payload_text(tmp_path):
@@ -1949,11 +2015,16 @@ def test_eval_qdrant_retrieval_cli_writes_report(monkeypatch, tmp_path):
 
 
 def test_parse_qdrant_vector_ablation_modes_returns_union():
-    modes = parse_qdrant_vector_ablation_modes("text,caption,text_caption_graph,triple")
+    modes = parse_qdrant_vector_ablation_modes("text,caption,text_object_graph,triple")
 
-    assert [mode.name for mode in modes] == ["text", "caption", "text_caption_graph", "triple"]
+    assert [mode.name for mode in modes] == ["text", "caption", "text_object_graph", "triple"]
     assert modes[-2].graph_expand is True
-    assert qdrant_vector_names_for_modes(modes) == ["text_dense", "caption_dense", "triple_dense"]
+    assert qdrant_vector_names_for_modes(modes) == [
+        "text_dense",
+        "caption_dense",
+        "object_dense",
+        "triple_dense",
+    ]
 
 
 def test_eval_qdrant_vector_ablation_cli_writes_report(monkeypatch, tmp_path):

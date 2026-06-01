@@ -886,7 +886,7 @@ def eval_qdrant_vector_ablation_command(
     ngram_cjk_only: bool = True,
     deduplicate_tokens: bool = False,
 ):
-    """Compare Qdrant text, visual caption, image, and graph retrieval signals."""
+    """Compare Qdrant text, visual caption, object, image, and graph retrieval signals."""
     try:
         parsed_modes = parse_qdrant_vector_ablation_modes(modes)
     except ValueError as exc:
@@ -1189,10 +1189,12 @@ def embed_package_command(
     collection: str = "document_chunks",
     text_backend: str = "sentence-transformers",
     caption_backend: str = "same-as-text",
+    object_backend: str = "same-as-caption",
     image_backend: str = "clip",
     triple_backend: str = "same-as-text",
     text_model: str = "BAAI/bge-m3",
     caption_model: str = "",
+    object_model: str = "",
     image_model: str = "openai/clip-vit-large-patch14",
     triple_model: str = "",
     device: str = "cuda",
@@ -1201,6 +1203,7 @@ def embed_package_command(
     hashing_dim: int = 384,
     text_batch_size: int = 16,
     caption_batch_size: int = 16,
+    object_batch_size: int = 16,
     image_batch_size: int = 8,
     triple_batch_size: int = 16,
 ):
@@ -1225,6 +1228,16 @@ def embed_package_command(
         text_embedder=text_embedder,
         text_note=text_note,
     )
+    object_embedder, object_note = build_object_embedder(
+        backend=object_backend,
+        model_name=object_model or caption_model or text_model,
+        device=text_device or device,
+        hashing_dim=hashing_dim,
+        text_embedder=text_embedder,
+        text_note=text_note,
+        caption_embedder=caption_embedder,
+        caption_note=caption_note,
+    )
     image_embedder, image_note = build_image_embedder(
         backend=image_backend,
         model_name=image_model,
@@ -1238,9 +1251,17 @@ def embed_package_command(
         hashing_dim=hashing_dim,
         text_embedder=text_embedder,
         text_note=text_note,
+        vector_name="triple_dense",
+        option_name="triple",
     )
 
-    if text_embedder is None and caption_embedder is None and image_embedder is None and triple_embedder is None:
+    if (
+        text_embedder is None
+        and caption_embedder is None
+        and object_embedder is None
+        and image_embedder is None
+        and triple_embedder is None
+    ):
         raise typer.BadParameter("At least one backend must be enabled")
 
     notes = {}
@@ -1248,6 +1269,8 @@ def embed_package_command(
         notes["text_dense"] = text_note
     if caption_note:
         notes["caption_dense"] = caption_note
+    if object_note:
+        notes["object_dense"] = object_note
     if image_note:
         notes["image_dense"] = image_note
     if triple_note:
@@ -1255,21 +1278,25 @@ def embed_package_command(
     vector_metadata = embedding_vector_metadata(
         text_backend=text_backend,
         caption_backend=caption_backend,
+        object_backend=object_backend,
         image_backend=image_backend,
         triple_backend=triple_backend,
         text_model=text_model,
         caption_model=caption_model or text_model,
+        object_model=object_model or caption_model or text_model,
         image_model=image_model,
         triple_model=triple_model or text_model,
         text_device=text_device or device,
         image_device=image_device or device,
         text_batch_size=text_batch_size,
         caption_batch_size=caption_batch_size,
+        object_batch_size=object_batch_size,
         image_batch_size=image_batch_size,
         triple_batch_size=triple_batch_size,
         hashing_dim=hashing_dim,
         include_text=text_embedder is not None,
         include_caption=caption_embedder is not None,
+        include_object=object_embedder is not None,
         include_image=image_embedder is not None,
         include_triple=triple_embedder is not None,
     )
@@ -1281,11 +1308,13 @@ def embed_package_command(
         triples=triples,
         text_embedder=text_embedder,
         caption_embedder=caption_embedder,
+        object_embedder=object_embedder,
         image_embedder=image_embedder,
         triple_embedder=triple_embedder,
         collection=collection,
         text_batch_size=text_batch_size,
         caption_batch_size=caption_batch_size,
+        object_batch_size=object_batch_size,
         image_batch_size=image_batch_size,
         triple_batch_size=triple_batch_size,
         vector_notes=notes,
@@ -1297,6 +1326,7 @@ def embed_package_command(
             "package_dir": str(package_dir),
             "text_backend": text_backend,
             "caption_backend": caption_backend,
+            "object_backend": object_backend,
             "image_backend": image_backend,
             "triple_backend": triple_backend,
         }
@@ -2527,7 +2557,7 @@ def ingestion_readiness_command(
     required_vectors: list[str] = typer.Option(
         None,
         "--required-vector",
-        help="Require an embedding vector family such as text_dense, caption_dense, or image_dense.",
+        help="Require an embedding vector family such as text_dense, caption_dense, object_dense, or image_dense.",
     ),
     require_postgres_rows: bool = True,
     require_visual_annotations: bool = False,
@@ -4770,18 +4800,49 @@ def build_caption_embedder(
     hashing_dim: int,
     text_embedder,
     text_note: str,
+    vector_name: str = "caption_dense",
+    option_name: str = "caption",
 ):
     normalized = normalize_backend(backend)
     if normalized in {"same-as-text", "same_as_text", "same"}:
         if text_embedder is None:
-            raise typer.BadParameter("--caption-backend same-as-text requires text backend")
+            raise typer.BadParameter(f"--{option_name}-backend same-as-text requires text backend")
         return text_embedder, f"Same model as text_dense. {text_note}"
     return build_text_embedder(
         backend=backend,
         model_name=model_name,
         device=device,
         hashing_dim=hashing_dim,
-        vector_name="caption_dense",
+        vector_name=vector_name,
+    )
+
+
+def build_object_embedder(
+    backend: str,
+    model_name: str,
+    device: str,
+    hashing_dim: int,
+    text_embedder,
+    text_note: str,
+    caption_embedder,
+    caption_note: str,
+):
+    normalized = normalize_backend(backend)
+    if normalized == "none":
+        return None, ""
+    if normalized in {"same-as-caption", "same_as_caption", "same"}:
+        if caption_embedder is None:
+            return None, ""
+        return caption_embedder, f"Same model as caption_dense. {caption_note}"
+    return build_caption_embedder(
+        backend=backend,
+        model_name=model_name,
+        device=device,
+        hashing_dim=hashing_dim,
+        text_embedder=text_embedder,
+        text_note=text_note,
+        vector_name="object_dense",
+        option_name="object",
     )
 
 
@@ -4814,27 +4875,32 @@ def build_image_embedder(
 def embedding_vector_metadata(
     text_backend: str,
     caption_backend: str,
+    object_backend: str,
     image_backend: str,
     triple_backend: str,
     text_model: str,
     caption_model: str,
+    object_model: str,
     image_model: str,
     triple_model: str,
     text_device: str,
     image_device: str,
     text_batch_size: int,
     caption_batch_size: int,
+    object_batch_size: int,
     image_batch_size: int,
     triple_batch_size: int,
     hashing_dim: int,
     include_text: bool,
     include_caption: bool,
+    include_object: bool,
     include_image: bool,
     include_triple: bool,
 ) -> dict[str, dict]:
     metadata: dict[str, dict] = {}
     normalized_text_backend = normalize_backend(text_backend)
     normalized_caption_backend = normalize_backend(caption_backend)
+    normalized_object_backend = normalize_backend(object_backend)
     normalized_image_backend = normalize_backend(image_backend)
     normalized_triple_backend = normalize_backend(triple_backend)
     if include_text:
@@ -4863,6 +4929,32 @@ def embedding_vector_metadata(
                 model_name=caption_model,
                 device=text_device,
                 batch_size=caption_batch_size,
+                hashing_dim=hashing_dim,
+            )
+    if include_object:
+        if normalized_object_backend in {"same-as-caption", "same_as_caption", "same"}:
+            metadata["object_dense"] = {
+                **dict(metadata.get("caption_dense") or {}),
+                "batch_size": object_batch_size,
+                "same_as": "caption_dense",
+            }
+        elif normalized_object_backend in {"same-as-text", "same_as_text"}:
+            metadata["object_dense"] = {
+                **embedding_backend_metadata(
+                    backend=normalized_text_backend,
+                    model_name=text_model,
+                    device=text_device,
+                    batch_size=object_batch_size,
+                    hashing_dim=hashing_dim,
+                ),
+                "same_as": "text_dense",
+            }
+        else:
+            metadata["object_dense"] = embedding_backend_metadata(
+                backend=normalized_object_backend,
+                model_name=object_model,
+                device=text_device,
+                batch_size=object_batch_size,
                 hashing_dim=hashing_dim,
             )
     if include_image:

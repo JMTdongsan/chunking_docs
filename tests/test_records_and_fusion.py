@@ -6,9 +6,11 @@ import uuid
 from chunking_docs.embeddings.records import (
     make_caption_embedding_records,
     make_image_embedding_records,
+    make_object_embedding_records,
     make_text_embedding_records,
     make_triple_embedding_records,
     triple_text,
+    visual_object_embedding_items,
 )
 from chunking_docs.models import AssetKind, ChunkKind, DocumentChunk, GraphTriple, VisualAsset
 from chunking_docs.retrieval import RankedHit, reciprocal_rank_fusion
@@ -133,6 +135,61 @@ def test_make_caption_embedding_records_derives_object_bbox_region():
     )
 
     assert records[0].payload["text"] == "Objects: station marker: red circle, upper left"
+
+
+def test_make_object_embedding_records_normalizes_visual_objects():
+    asset = VisualAsset(
+        asset_id="asset-1",
+        doc_id="doc",
+        page_no=1,
+        kind=AssetKind.MAP,
+        caption="north district development map",
+        vlm_summary="Shows station markers and route lines.",
+        metadata={
+            "page_type": "map",
+            "objects": [
+                {
+                    "label": "station marker",
+                    "attributes": ["red circle"],
+                    "bbox": [0.1, 0.2, 0.3, 0.4],
+                    "confidence": "80%",
+                }
+            ],
+            "detections": {"route line": [0.7, 0.5, 0.9, 0.7]},
+        },
+    )
+
+    items = visual_object_embedding_items([asset])
+    records = make_object_embedding_records([asset], HashingTextEmbedder(embedding_dim=8))
+
+    assert [item["object_id"] for item in items] == [
+        "asset-1:object:0",
+        "asset-1:object:1",
+    ]
+    assert len(records) == 2
+    assert records[0].vector_name == "object_dense"
+    assert records[0].chunk_id == "asset-1"
+    assert len(records[0].vector) == 8
+    assert records[0].payload["record_kind"] == "visual_object"
+    assert records[0].payload["object_id"] == "asset-1:object:0"
+    assert records[0].payload["asset_id"] == "asset-1"
+    assert records[0].payload["asset_ids"] == ["asset-1"]
+    assert records[0].payload["label"] == "station marker"
+    assert records[0].payload["bbox"] == [0.1, 0.2, 0.3, 0.4]
+    assert records[0].payload["bbox_region"] == "upper left"
+    assert records[0].payload["confidence"] == 0.8
+    assert records[0].payload["source_key"] == "objects"
+    assert records[0].payload["text"] == (
+        "Object: station marker\n"
+        "Attributes: red circle\n"
+        "Bbox region: upper left\n"
+        "Source field: objects\n"
+        "Page type: map\n"
+        "Caption: north district development map\n"
+        "VLM summary: Shows station markers and route lines."
+    )
+    assert records[1].payload["label"] == "route line"
+    assert records[1].payload["bbox_region"] == "middle right"
 
 
 def test_make_triple_embedding_records():

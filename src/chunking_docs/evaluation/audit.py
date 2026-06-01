@@ -9,7 +9,14 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from chunking_docs.embeddings.records import asset_text, resolved_triple_chunk, triple_record_payload, triple_text
+from chunking_docs.embeddings.records import (
+    asset_text,
+    resolved_triple_chunk,
+    triple_record_payload,
+    triple_text,
+    visual_object_embedding_items,
+    visual_object_payload,
+)
 from chunking_docs.graph.provenance import (
     chunk_asset_ids,
     chunk_id_alias_map,
@@ -920,6 +927,40 @@ def validate_qdrant_target_coverage(
             package_dir=package_dir,
             issues=issues,
         )
+    if "object_dense" in named_vectors:
+        object_items = visual_object_embedding_items(assets)
+        object_text_by_id = {
+            str(item["object_id"]): str(item["text"])
+            for item in object_items
+        }
+        object_payload_fields_by_id = {
+            str(item["object_id"]): object_payload_fields(item)
+            for item in object_items
+        }
+        validate_target_record_ids(
+            vector_name="object_dense",
+            target_label="visual_object",
+            payload_key="object_id",
+            expected_ids=set(object_text_by_id),
+            package_dir=package_dir,
+            issues=issues,
+        )
+        validate_target_payload_fields(
+            vector_name="object_dense",
+            target_label="visual_object",
+            payload_key="object_id",
+            expected_fields_by_id=object_payload_fields_by_id,
+            package_dir=package_dir,
+            issues=issues,
+        )
+        validate_target_payload_text(
+            vector_name="object_dense",
+            target_label="visual_object",
+            payload_key="object_id",
+            expected_text_by_id=object_text_by_id,
+            package_dir=package_dir,
+            issues=issues,
+        )
     if "triple_dense" in named_vectors:
         triple_text_by_id = {triple.triple_id: triple_text(triple) for triple in triples}
         triple_payload_fields_by_id = {
@@ -1126,6 +1167,12 @@ def triple_payload_fields(triple: GraphTriple, chunks: list[DocumentChunk]) -> d
     return non_empty_payload_fields(payload)
 
 
+def object_payload_fields(item: dict[str, Any]) -> dict[str, Any]:
+    payload = visual_object_payload(item)
+    payload.pop("text", None)
+    return non_empty_payload_fields(payload)
+
+
 def non_empty_payload_fields(fields: dict[str, Any]) -> dict[str, Any]:
     return {
         key: value
@@ -1186,6 +1233,19 @@ def required_payload_fields(vector_name: str) -> set[str]:
         return {"asset_id", "doc_id", "page_no", "kind", "text"}
     if vector_name == "image_dense":
         return {"asset_id", "doc_id", "page_no", "kind"}
+    if vector_name == "object_dense":
+        return {
+            "object_id",
+            "asset_id",
+            "doc_id",
+            "page_no",
+            "kind",
+            "record_kind",
+            "label",
+            "object_index",
+            "source_key",
+            "text",
+        }
     if vector_name == "triple_dense":
         return {
             "triple_id",

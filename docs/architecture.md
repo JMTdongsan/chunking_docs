@@ -82,6 +82,7 @@
 10. **Embedding Artifacts**
    - `text_dense`: chunk text, OCR text, VLM summaries, and any visual context included by the selected strategy.
    - `caption_dense`: asset caption, OCR, VLM summary text, and structured VLM metadata.
+   - `object_dense`: one detected visual object or region per record, including label, attributes, description, location, bbox region, confidence, source field, and parent asset provenance.
    - `image_dense`: rendered page or visual asset image.
    - `triple_dense`: graph triple text built from subject, predicate, object, and selected provenance hints, with resolved chunk payload fields for page, kind, section, and strategy filters.
    - Default hashing embedders make the pipeline testable without model downloads.
@@ -192,22 +193,23 @@ Named vectors:
 - `text_dense`
 - `image_dense`
 - `caption_dense`
+- `object_dense`
 - `triple_dense`
 
-Payload fields include document ID, chunk ID, asset ID, triple ID, page range, asset kind, graph predicate, chunking strategy, retrieval role, parent and source chunk links, section metadata, source references, standalone visual chunk flags, and text fields needed for answer citation.
+Payload fields include document ID, chunk ID, asset ID, object ID, triple ID, page range, asset kind, graph predicate, object label, bbox region, chunking strategy, retrieval role, parent and source chunk links, section metadata, source references, standalone visual chunk flags, and text fields needed for answer citation.
 
-The package writes payload index definitions with field schemas. Qdrant ingestion and package query commands apply those definitions so metadata filters such as document ID, asset ID, page, section, chunking strategy, hierarchy role, text quality, OCR/VLM work flags, visual asset scope, tile parent/grid fields, and standalone visual assets remain efficient on server-backed collections.
+The package writes payload index definitions with field schemas. Qdrant ingestion and package query commands apply those definitions so metadata filters such as document ID, asset ID, object ID, object label, bbox region, page, section, chunking strategy, hierarchy role, text quality, OCR/VLM work flags, visual asset scope, tile parent/grid fields, and standalone visual assets remain efficient on server-backed collections.
 
 `qdrant-check-collection` compares a live or local Qdrant collection against `qdrant_collection.json` before upsert. It detects missing named vectors, vector dimension mismatches, and missing payload indexes, which is especially important when embedding models or vector dimensions change between experiments.
 
 Qdrant search commands accept repeatable payload filters using exact and range forms such as `kind=map`, `page_no=12`, `page_start<=12`, and `page_end>=12`.
 
-The Qdrant adapter supports both ingestion and named-vector querying. `qdrant-search-package` can upsert a package into qdrant-client local mode and immediately query `text_dense` or `caption_dense`, which keeps retrieval checks reproducible without requiring a running server.
+The Qdrant adapter supports both ingestion and named-vector querying. `qdrant-search-package` can upsert a package into qdrant-client local mode and immediately query `text_dense`, `caption_dense`, or `object_dense`, which keeps retrieval checks reproducible without requiring a running server.
 
-`qdrant-hybrid-search` queries Qdrant named vectors, BM25, and optional graph expansion, then fuses results with Reciprocal Rank Fusion. Caption vector hits from visual assets and triple vector hits from graph records are mapped back to their parent chunks so text, visual evidence, and relationship evidence can be ranked together. Optional reranking can reorder fused candidates with lexical overlap or a sentence-transformers CrossEncoder.
+`qdrant-hybrid-search` queries Qdrant named vectors, BM25, and optional graph expansion, then fuses results with Reciprocal Rank Fusion. Caption and object vector hits from visual assets and triple vector hits from graph records are mapped back to their parent chunks so text, visual evidence, and relationship evidence can be ranked together. Optional reranking can reorder fused candidates with lexical overlap or a sentence-transformers CrossEncoder.
 Graph expansion resolves triples through chunk IDs, chunk aliases, and visual asset provenance so VLM-derived relationships can recover chunks linked to the source visual evidence.
 
-Image vectors may use a different embedding space from text vectors. When querying `image_dense`, the searcher can use a per-vector query encoder, such as CLIP text features for CLIP image embeddings, while continuing to use the document text embedder for `text_dense` and `caption_dense`.
+Image vectors may use a different embedding space from text vectors. When querying `image_dense`, the searcher can use a per-vector query encoder, such as CLIP text features for CLIP image embeddings, while continuing to use the document text embedder for `text_dense`, `caption_dense`, and `object_dense`.
 
 Qdrant query paths validate query encoder dimensions against the package collection contract before search. This catches mismatches between package-time embedding models and retrieval-time query encoders before Qdrant executes vector math, and it surfaces the package vector notes so operators can choose the matching model or rebuild the package. Search, evaluation, ablation, and RAG context outputs also record per-vector query encoder details for reproducibility.
 
@@ -239,7 +241,7 @@ Chunking changes should be judged by retrieval behavior, not only by successful 
 Recommended checks:
 
 - `audit-publication`: public repository scan for forbidden text, accidental binary/document artifacts, oversized files, and required generated-artifact ignore patterns.
-- `audit-package`: structural completeness, orphan checks, OCR/VLM gaps, optional VLM-derived visual triple coverage, Qdrant vector dimensions, required payload fields, payload index definitions, text/caption/image payload freshness, and embedding manifest count/checksum consistency.
+- `audit-package`: structural completeness, orphan checks, OCR/VLM gaps, optional VLM-derived visual triple coverage, Qdrant vector dimensions, required payload fields, payload index definitions, text/caption/object/image payload freshness, and embedding manifest count/checksum consistency.
 - `qdrant-check-collection`: live Qdrant collection contract validation for named-vector dimensions and payload indexes.
 - `postgres-schema`: offline PostgreSQL SQL contract export for review or migration tooling.
 - `postgres-check-schema`: live PostgreSQL schema contract validation for required extensions, tables, columns, column types, and indexes.
@@ -249,7 +251,7 @@ Recommended checks:
 - `generate-retrieval-cases`: benchmark draft generation from package pages, candidate chunk files, visual assets, graph triples, optional visual lexical probes, and VLM object-detection probes, with snippet or document-frequency-weighted salient-term query modes, visual-only object probe terms by default, and visual asset targets for asset-provenance triples.
 - `diagnose-retrieval`: failure, partial-coverage, low-ranking, and low-precision analysis for retrieval evaluation JSON outputs.
 - `eval-qdrant-retrieval`: the same benchmark cases against Qdrant named vectors plus BM25 and optional graph expansion.
-- `eval-qdrant-vector-ablation`: Qdrant text, visual caption, optional image, and graph-expanded vector comparison on the same cases, including case-group best-mode summaries, query-paired rank deltas, and candidate-vs-baseline comparisons for benchmark subsets such as visual object probes.
+- `eval-qdrant-vector-ablation`: Qdrant text, visual caption, visual object, optional image, and graph-expanded vector comparison on the same cases, including case-group best-mode summaries, query-paired rank deltas, and candidate-vs-baseline comparisons for benchmark subsets such as visual object probes.
 - `gate-qdrant-vector-ablation`: pass/fail checks for a selected Qdrant vector mode using recall, target coverage, target nDCG, target rank limits, precision, failed-query count, latency, target-type coverage, source-family and exact source target coverage, case metadata group coverage, optional best-mode requirements, pairwise rank-delta ceilings, and query-paired baseline thresholds when a baseline mode is supplied.
 - `ingestion-readiness`: final pre-ingestion gate that can combine package audit results, source checksum/package-config/tokenizer provenance checks, BM25 token manifest freshness for asset-enriched lexical text, linked visual text coverage at asset and text-part levels in package chunks, VLM-derived visual triple coverage, storage artifacts, required vector-family checks, PostgreSQL row conversion, retrieval case metadata group coverage, visual quality, VLM run comparison checks, retrieval gates, chunking comparison gates, retrieval ablation gates, and selected Qdrant vector ablation gates, including exact source coverage for selected retrieval, ablation, and Qdrant vector sources.
 - `compare-visual-runs`: OCR/VLM run comparison by coverage, structured parse rate, object detection coverage, graph triple density, latency, optional retrieval evaluation metrics, visual-object-probe target coverage, and shared job-set validation.

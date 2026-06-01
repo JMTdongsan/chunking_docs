@@ -20,6 +20,7 @@ from chunking_docs.embeddings.interfaces import (
 from chunking_docs.embeddings.records import (
     make_caption_embedding_records,
     make_image_embedding_records,
+    make_object_embedding_records,
     make_text_embedding_records,
     make_triple_embedding_records,
 )
@@ -135,6 +136,7 @@ def write_package(
             text_embedder=embedder,
             image_embedder=image_embedder,
             caption_embedder=embedder,
+            object_embedder=embedder,
             triple_embedder=embedder,
             vector_notes=hashing_vector_notes(include_visual=True, include_triples=True),
             vector_metadata=hashing_vector_metadata(
@@ -211,6 +213,7 @@ def rebuild_search_artifacts(
         if assets is not None
         else None,
         caption_embedder=embedder if assets is not None else None,
+        object_embedder=embedder if assets is not None else None,
         triple_embedder=embedder if triples is not None else None,
         collection=existing_collection_name(output_dir),
         vector_notes=hashing_vector_notes(
@@ -239,11 +242,13 @@ def write_embedding_artifacts(
     text_embedder: DenseTextEmbedder | None = None,
     image_embedder: DenseImageEmbedder | None = None,
     caption_embedder: DenseTextEmbedder | None = None,
+    object_embedder: DenseTextEmbedder | None = None,
     triple_embedder: DenseTextEmbedder | None = None,
     collection: str = "document_chunks",
     text_batch_size: int = 32,
     image_batch_size: int = 16,
     caption_batch_size: int = 32,
+    object_batch_size: int = 32,
     triple_batch_size: int = 32,
     vector_notes: dict[str, str] | None = None,
     vector_metadata: dict[str, dict[str, Any]] | None = None,
@@ -310,6 +315,20 @@ def write_embedding_artifacts(
         counts["caption_dense"] = len(caption_records)
         metadata.setdefault("caption_dense", {}).setdefault("batch_size", caption_batch_size)
 
+    if object_embedder is not None:
+        object_records = make_object_embedding_records(
+            assets,
+            object_embedder,
+            batch_size=object_batch_size,
+        )
+        write_jsonl(output_dir / QDRANT_RECORD_FILES["object_dense"], object_records)
+        named_vectors["object_dense"] = vector_config(
+            object_embedder.embedding_dim,
+            notes.get("object_dense"),
+        )
+        counts["object_dense"] = len(object_records)
+        metadata.setdefault("object_dense", {}).setdefault("batch_size", object_batch_size)
+
     if triple_embedder is not None:
         triple_records = make_triple_embedding_records(
             triples or [],
@@ -351,6 +370,7 @@ def hashing_vector_notes(include_visual: bool = True, include_triples: bool = Fa
             {
                 "image_dense": "HashingImageEmbedder dry-run dimension. Replace with real image model dimension.",
                 "caption_dense": "Caption text dry-run dimension. Replace with real dense model dimension.",
+                "object_dense": "VLM object text dry-run dimension. Replace with real dense model dimension.",
             }
         )
     if include_triples:
@@ -381,6 +401,13 @@ def hashing_vector_metadata(
                     "deterministic": True,
                 },
                 "caption_dense": {
+                    "backend": "hashing",
+                    "model": "HashingTextEmbedder",
+                    "dimension": embedding_dim,
+                    "deterministic": True,
+                    "same_as": "text_dense",
+                },
+                "object_dense": {
                     "backend": "hashing",
                     "model": "HashingTextEmbedder",
                     "dimension": embedding_dim,

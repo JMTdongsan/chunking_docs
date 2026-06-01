@@ -241,11 +241,20 @@ DEFAULT_ABLATION_MODES = {
 DEFAULT_QDRANT_VECTOR_ABLATION_MODES = {
     "text": QdrantVectorAblationMode(name="text", vector_names=["text_dense"]),
     "caption": QdrantVectorAblationMode(name="caption", vector_names=["caption_dense"]),
+    "object": QdrantVectorAblationMode(name="object", vector_names=["object_dense"]),
     "image": QdrantVectorAblationMode(name="image", vector_names=["image_dense"]),
     "triple": QdrantVectorAblationMode(name="triple", vector_names=["triple_dense"]),
     "text_caption": QdrantVectorAblationMode(
         name="text_caption",
         vector_names=["text_dense", "caption_dense"],
+    ),
+    "text_object": QdrantVectorAblationMode(
+        name="text_object",
+        vector_names=["text_dense", "object_dense"],
+    ),
+    "caption_object": QdrantVectorAblationMode(
+        name="caption_object",
+        vector_names=["caption_dense", "object_dense"],
     ),
     "text_triple": QdrantVectorAblationMode(
         name="text_triple",
@@ -263,13 +272,32 @@ DEFAULT_QDRANT_VECTOR_ABLATION_MODES = {
         name="all",
         vector_names=["text_dense", "caption_dense", "image_dense"],
     ),
+    "all_with_object": QdrantVectorAblationMode(
+        name="all_with_object",
+        vector_names=["text_dense", "caption_dense", "object_dense", "image_dense"],
+    ),
     "all_with_triple": QdrantVectorAblationMode(
         name="all_with_triple",
         vector_names=["text_dense", "caption_dense", "image_dense", "triple_dense"],
     ),
+    "all_with_object_triple": QdrantVectorAblationMode(
+        name="all_with_object_triple",
+        vector_names=[
+            "text_dense",
+            "caption_dense",
+            "object_dense",
+            "image_dense",
+            "triple_dense",
+        ],
+    ),
     "text_caption_graph": QdrantVectorAblationMode(
         name="text_caption_graph",
         vector_names=["text_dense", "caption_dense"],
+        graph_expand=True,
+    ),
+    "text_object_graph": QdrantVectorAblationMode(
+        name="text_object_graph",
+        vector_names=["text_dense", "object_dense"],
         graph_expand=True,
     ),
     "text_triple_graph": QdrantVectorAblationMode(
@@ -282,9 +310,25 @@ DEFAULT_QDRANT_VECTOR_ABLATION_MODES = {
         vector_names=["text_dense", "caption_dense", "image_dense"],
         graph_expand=True,
     ),
+    "all_with_object_graph": QdrantVectorAblationMode(
+        name="all_with_object_graph",
+        vector_names=["text_dense", "caption_dense", "object_dense", "image_dense"],
+        graph_expand=True,
+    ),
     "all_with_triple_graph": QdrantVectorAblationMode(
         name="all_with_triple_graph",
         vector_names=["text_dense", "caption_dense", "image_dense", "triple_dense"],
+        graph_expand=True,
+    ),
+    "all_with_object_triple_graph": QdrantVectorAblationMode(
+        name="all_with_object_triple_graph",
+        vector_names=[
+            "text_dense",
+            "caption_dense",
+            "object_dense",
+            "image_dense",
+            "triple_dense",
+        ],
         graph_expand=True,
     ),
 }

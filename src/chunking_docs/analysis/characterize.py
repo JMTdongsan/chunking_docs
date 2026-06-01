@@ -407,12 +407,12 @@ def recommendations(
                 area="embeddings",
                 priority="required",
                 message=(
-                    "Compare text, caption, image, and graph-expanded Qdrant modes so visual evidence can be "
-                    "measured instead of assumed."
+                    "Compare text, caption, object, image, and graph-expanded Qdrant modes so visual evidence "
+                    "can be measured instead of assumed."
                 ),
                 commands=[
                     "chunking-docs embed-package --package-dir outputs/package --image-backend clip",
-                    "chunking-docs eval-qdrant-vector-ablation examples/retrieval_cases.jsonl --package-dir outputs/package --modes text,caption,text_caption,all_graph",
+                    "chunking-docs eval-qdrant-vector-ablation examples/retrieval_cases.jsonl --package-dir outputs/package --modes text,caption,object,text_object,all_with_object_graph",
                 ],
                 metadata={"asset_kind_counts": visual.asset_kind_counts},
             )

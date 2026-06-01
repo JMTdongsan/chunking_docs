@@ -173,6 +173,62 @@ def test_caption_embedding_records_include_structured_visual_metadata(tmp_path):
     )
 
 
+def test_write_embedding_artifacts_supports_object_vectors(tmp_path):
+    asset = VisualAsset(
+        asset_id="asset-1",
+        doc_id="doc",
+        page_no=2,
+        kind=AssetKind.FIGURE,
+        caption="network diagram",
+        metadata={
+            "objects": [
+                {
+                    "label": "transfer marker",
+                    "attributes": ["blue square"],
+                    "bbox": [0.6, 0.1, 0.8, 0.3],
+                }
+            ]
+        },
+    )
+
+    result = write_embedding_artifacts(
+        output_dir=tmp_path,
+        chunks=[],
+        assets=[asset],
+        object_embedder=FakeTextEmbedder(7),
+        vector_notes={"object_dense": "object model"},
+        vector_metadata={
+            "object_dense": {
+                "backend": "fake-object",
+                "model": "fake-object-model",
+            }
+        },
+    )
+
+    assert result["records"] == {"object_dense": 1}
+    object_records = [
+        EmbeddingRecord.model_validate_json(line)
+        for line in (tmp_path / "qdrant_object_records.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert object_records[0].vector_name == "object_dense"
+    assert object_records[0].payload["record_kind"] == "visual_object"
+    assert object_records[0].payload["object_id"] == "asset-1:object:0"
+    assert object_records[0].payload["label"] == "transfer marker"
+    assert object_records[0].payload["bbox_region"] == "upper right"
+
+    config = json.loads((tmp_path / "qdrant_collection.json").read_text(encoding="utf-8"))
+    assert config["named_vectors"]["object_dense"]["size"] == 7
+    assert {"field": "object_id", "schema": "keyword"} in config["payload_indexes"]
+    assert {"field": "bbox_region", "schema": "keyword"} in config["payload_indexes"]
+    manifest = json.loads((tmp_path / "embedding_manifest.json").read_text(encoding="utf-8"))
+    assert manifest["vectors"]["object_dense"]["file"] == "qdrant_object_records.jsonl"
+    assert manifest["vectors"]["object_dense"]["record_count"] == 1
+    assert manifest["vectors"]["object_dense"]["dimension"] == 7
+    assert manifest["vectors"]["object_dense"]["note"] == "object model"
+    assert manifest["vectors"]["object_dense"]["embedding"]["backend"] == "fake-object"
+    assert manifest["vectors"]["object_dense"]["embedding"]["batch_size"] == 32
+
+
 def test_write_embedding_artifacts_supports_triple_vectors(tmp_path):
     chunk = DocumentChunk(
         chunk_id="chunk-1",

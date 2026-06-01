@@ -997,7 +997,7 @@ def source_family(source: str) -> str:
     normalized = source.strip().lower()
     if "triple_dense" in normalized:
         return "graph"
-    if "caption_dense" in normalized or "image_dense" in normalized:
+    if "caption_dense" in normalized or "object_dense" in normalized or "image_dense" in normalized:
         return "visual"
     if normalized == "dense" or "text_dense" in normalized:
         return "dense_text"

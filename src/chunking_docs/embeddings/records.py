@@ -15,6 +15,7 @@ from chunking_docs.graph.provenance import (
 from chunking_docs.models import DocumentChunk, GraphTriple, VisualAsset
 from chunking_docs.storage.records import EmbeddingRecord
 from chunking_docs.vision.spatial import bbox_region_from_bbox
+from chunking_docs.vision.spatial import normalize_bbox
 
 VISUAL_OBJECT_METADATA_KEYS = (
     "objects",
@@ -24,6 +25,8 @@ VISUAL_OBJECT_METADATA_KEYS = (
     "regions",
     "areas",
 )
+VISUAL_OBJECT_LABEL_KEYS = ["label", "name", "title", "object", "type", "category"]
+VISUAL_OBJECT_BBOX_KEYS = ["bbox", "box", "bounding_box", "boundingBox", "bounds"]
 
 
 def point_id(chunk_id: str, vector_name: str) -> str:
@@ -130,6 +133,34 @@ def make_caption_embedding_records(
                         "caption": asset.caption,
                         **asset.metadata,
                     },
+                )
+            )
+    return records
+
+
+def make_object_embedding_records(
+    assets: list[VisualAsset],
+    embedder: DenseTextEmbedder,
+    vector_name: str = "object_dense",
+    batch_size: int = 32,
+) -> list[EmbeddingRecord]:
+    object_items = visual_object_embedding_items(assets)
+    records: list[EmbeddingRecord] = []
+    for start in range(0, len(object_items), batch_size):
+        batch = object_items[start : start + batch_size]
+        texts = [str(item["text"]) for item in batch]
+        vectors = embedder.embed_texts(texts)
+        for item, vector in zip(batch, vectors):
+            object_id = str(item["object_id"])
+            payload = visual_object_payload(item)
+            records.append(
+                EmbeddingRecord(
+                    point_id=point_id(object_id, vector_name),
+                    chunk_id=str(item["asset_id"]),
+                    doc_id=str(item["doc_id"]),
+                    vector_name=vector_name,
+                    vector=vector,
+                    payload=payload,
                 )
             )
     return records
@@ -321,6 +352,212 @@ def asset_metadata_text_parts(metadata: dict[str, Any]) -> list[str]:
     return parts
 
 
+def visual_object_embedding_items(
+    assets: list[VisualAsset],
+    limit_per_asset: int = 32,
+) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    for asset in assets:
+        asset_objects: list[dict[str, Any]] = []
+        for source_key in VISUAL_OBJECT_METADATA_KEYS:
+            asset_objects.extend(
+                metadata_object_records(
+                    asset.metadata.get(source_key),
+                    source_key=source_key,
+                    limit=limit_per_asset,
+                )
+            )
+        for object_index, visual_object in enumerate(
+            dedupe_visual_object_records(asset_objects, limit=limit_per_asset)
+        ):
+            text = visual_object_text(asset, visual_object)
+            if not text:
+                continue
+            item = {
+                **asset_object_base_payload(asset),
+                **visual_object,
+                "object_id": f"{asset.asset_id}:object:{object_index}",
+                "object_index": object_index,
+                "text": text,
+            }
+            items.append(item)
+    return items
+
+
+def metadata_object_records(
+    value: Any,
+    source_key: str,
+    limit: int,
+) -> list[dict[str, Any]]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        candidates = [value]
+    elif isinstance(value, list):
+        candidates = value
+    elif isinstance(value, dict):
+        if metadata_first_string(value, VISUAL_OBJECT_LABEL_KEYS):
+            candidates = [value]
+        else:
+            candidates = metadata_object_mapping_items(value)
+    else:
+        candidates = [value]
+
+    objects: list[dict[str, Any]] = []
+    for item in candidates:
+        normalized = normalize_metadata_object_record(item, source_key=source_key)
+        if normalized:
+            objects.append(normalized)
+        if len(objects) >= limit:
+            break
+    return objects
+
+
+def normalize_metadata_object_record(item: Any, source_key: str) -> dict[str, Any]:
+    if isinstance(item, dict):
+        label = metadata_first_string(item, VISUAL_OBJECT_LABEL_KEYS)
+        if not label:
+            return {}
+        normalized: dict[str, Any] = {
+            "label": label,
+            "source_key": metadata_text_value(item.get("source_key")) or source_key,
+        }
+        attributes = metadata_text_items(
+            item.get("attributes") or item.get("features") or item.get("descriptors"),
+            limit=6,
+        )
+        description = metadata_first_string(item, ["description", "summary", "text"])
+        if description:
+            normalized["description"] = description
+            if description not in attributes:
+                attributes.append(description)
+        if attributes:
+            normalized["attributes"] = attributes[:6]
+        location = metadata_first_string(item, ["location", "position", "region"])
+        if location:
+            normalized["location"] = location
+        bbox = normalize_bbox(first_present(item, VISUAL_OBJECT_BBOX_KEYS))
+        if bbox is not None:
+            normalized["bbox"] = bbox
+            bbox_region = bbox_region_from_bbox(bbox)
+            if bbox_region:
+                normalized["bbox_region"] = bbox_region
+        else:
+            bbox_region = metadata_first_string(item, ["bbox_region", "spatial_region"])
+            if bbox_region:
+                normalized["bbox_region"] = bbox_region
+        confidence = metadata_confidence(item.get("confidence", item.get("score")))
+        if confidence is not None:
+            normalized["confidence"] = confidence
+        return normalized
+
+    label = metadata_text_value(item)
+    if not label:
+        return {}
+    return {"label": label, "source_key": source_key}
+
+
+def first_present(payload: dict[str, Any], keys: list[str]) -> Any:
+    for key in keys:
+        if key in payload and payload[key] is not None:
+            return payload[key]
+    return None
+
+
+def metadata_confidence(value: Any) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        text = value.strip().removesuffix("%").strip()
+    else:
+        text = value
+    try:
+        confidence = float(text)
+    except (TypeError, ValueError):
+        return None
+    if confidence > 1.0 and confidence <= 100.0:
+        confidence = confidence / 100.0
+    if 0.0 <= confidence <= 1.0:
+        return round(confidence, 6)
+    return None
+
+
+def dedupe_visual_object_records(objects: list[dict[str, Any]], limit: int) -> list[dict[str, Any]]:
+    deduped: list[dict[str, Any]] = []
+    seen = set()
+    for item in objects:
+        key = (
+            metadata_text_value(item.get("label")).casefold(),
+            tuple(
+                metadata_text_value(value).casefold()
+                for value in item.get("attributes", [])
+            ),
+            metadata_text_value(item.get("description")).casefold(),
+            metadata_text_value(item.get("location")).casefold(),
+            metadata_text_value(item.get("bbox_region")).casefold(),
+            tuple(item.get("bbox", [])),
+        )
+        if not key[0] or key in seen:
+            continue
+        seen.add(key)
+        deduped.append(item)
+        if len(deduped) >= limit:
+            break
+    return deduped
+
+
+def visual_object_text(asset: VisualAsset, visual_object: dict[str, Any]) -> str:
+    attributes = metadata_text_items(visual_object.get("attributes"), limit=6)
+    parts = [
+        f"Object: {metadata_text_value(visual_object.get('label'))}",
+    ]
+    if attributes:
+        parts.append(f"Attributes: {'; '.join(attributes)}")
+    description = metadata_text_value(visual_object.get("description"))
+    if description and description not in attributes:
+        parts.append(f"Description: {description}")
+    location = metadata_text_value(visual_object.get("location"))
+    if location:
+        parts.append(f"Location: {location}")
+    bbox_region = metadata_text_value(visual_object.get("bbox_region"))
+    if bbox_region and bbox_region != location:
+        parts.append(f"Bbox region: {bbox_region}")
+    source_key = metadata_text_value(visual_object.get("source_key"))
+    if source_key:
+        parts.append(f"Source field: {source_key}")
+    page_type = metadata_text_value(asset.metadata.get("page_type"))
+    if page_type:
+        parts.append(f"Page type: {page_type}")
+    if asset.caption:
+        parts.append(f"Caption: {asset.caption}")
+    if asset.vlm_summary:
+        parts.append(f"VLM summary: {asset.vlm_summary}")
+    return "\n".join(deduplicate_text_parts(parts))
+
+
+def asset_object_base_payload(asset: VisualAsset) -> dict[str, Any]:
+    return {
+        "asset_id": asset.asset_id,
+        "doc_id": asset.doc_id,
+        "page_no": asset.page_no,
+        "kind": asset.kind,
+        "caption": asset.caption,
+        "vlm_summary": asset.vlm_summary,
+        **asset.metadata,
+    }
+
+
+def visual_object_payload(item: dict[str, Any]) -> dict[str, Any]:
+    payload = {
+        key: value
+        for key, value in item.items()
+        if key not in {"attributes"} or value
+    }
+    payload["record_kind"] = "visual_object"
+    payload["asset_ids"] = [payload["asset_id"]]
+    return payload
+
+
 def metadata_text_items(value: Any, limit: int) -> list[str]:
     if value is None:
         return []
@@ -403,6 +640,8 @@ def metadata_object_mapping_items(value: dict[str, Any]) -> list[dict[str, Any]]
         if isinstance(details, dict):
             item = {**details}
             item.setdefault("label", label_text)
+        elif isinstance(details, list) and len(details) == 4:
+            item = {"label": label_text, "bbox": details}
         elif isinstance(details, str):
             item = {"label": label_text, "description": details}
         else:

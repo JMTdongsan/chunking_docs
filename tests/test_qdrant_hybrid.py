@@ -65,6 +65,26 @@ class FakeQdrantStore:
                     },
                 )
             ]
+        if vector_name == "object_dense":
+            return [
+                VectorSearchHit(
+                    point_id="object-point",
+                    score=0.85,
+                    vector_name=vector_name,
+                    chunk_id="asset-1",
+                    doc_id="doc",
+                    payload={
+                        "record_kind": "visual_object",
+                        "object_id": "asset-1:object:0",
+                        "asset_id": "asset-1",
+                        "doc_id": "doc",
+                        "page_no": 5,
+                        "kind": "figure",
+                        "label": "route marker",
+                        "text": "Object: route marker",
+                    },
+                )
+            ]
         return []
 
 
@@ -237,6 +257,38 @@ def test_qdrant_hybrid_maps_asset_hits_to_source_ref_chunk():
 
     assert hits[0].item_id == "chunk-1"
     assert hits[0].payloads[0]["asset_id"] == "asset-1"
+
+
+def test_qdrant_hybrid_maps_object_hits_to_parent_chunk():
+    chunk = DocumentChunk(
+        chunk_id="chunk-1",
+        doc_id="doc",
+        page_start=5,
+        page_end=5,
+        kind=ChunkKind.TEXT,
+        text="base text",
+        asset_ids=["asset-1"],
+    )
+    asset = VisualAsset(
+        asset_id="asset-1",
+        doc_id="doc",
+        page_no=5,
+        kind=AssetKind.FIGURE,
+        metadata={"objects": [{"label": "route marker"}]},
+    )
+
+    searcher = QdrantHybridSearcher(
+        store=FakeQdrantStore(),
+        chunks=[chunk],
+        assets=[asset],
+        embedder=HashingTextEmbedder(embedding_dim=8),
+    )
+    hits = searcher.search("route marker", vector_names=["object_dense"], top_k=1)
+
+    assert hits[0].item_id == "chunk-1"
+    assert hits[0].chunk == chunk
+    assert "qdrant:object_dense" in hits[0].sources
+    assert hits[0].payloads[0]["object_id"] == "asset-1:object:0"
 
 
 def test_qdrant_hybrid_bm25_can_match_linked_visual_asset_text():
