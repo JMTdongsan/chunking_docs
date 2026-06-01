@@ -438,6 +438,14 @@ def count_visual_object_probes(cases: list[RetrievalCase]) -> dict[str, int]:
     }
 
 
+def count_visual_image_probes(cases: list[RetrievalCase]) -> int:
+    return sum(1 for case in cases if is_visual_image_probe(case))
+
+
+def is_visual_image_probe(case: RetrievalCase) -> bool:
+    return ("case_source", "visual_image_probe") in case_group_labels(case)
+
+
 def is_visual_object_probe(case: RetrievalCase) -> bool:
     return ("case_source", "visual_object_probe") in case_group_labels(case)
 

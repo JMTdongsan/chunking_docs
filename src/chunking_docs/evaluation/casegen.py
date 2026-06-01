@@ -103,6 +103,7 @@ def generate_retrieval_case_skeleton(
     max_query_terms: int = 8,
     dedupe_queries: bool = True,
     visual_probe_limit: int = 0,
+    image_probe_limit: int = 0,
     object_probe_limit: int = 0,
     object_probe_visual_only: bool = True,
 ) -> list[RetrievalCase]:
@@ -146,6 +147,21 @@ def generate_retrieval_case_skeleton(
                 chunks,
                 assets,
                 limit=visual_probe_limit,
+                query_max_chars=query_max_chars,
+                query_mode=query_mode,
+                selection_strategy=selection_strategy,
+                term_df=term_df,
+                document_count=len(corpus_texts),
+                min_query_terms=min_query_terms,
+                max_query_terms=max_query_terms,
+            )
+        )
+    if image_probe_limit > 0:
+        cases.extend(
+            visual_image_probe_cases(
+                chunks,
+                assets,
+                limit=image_probe_limit,
                 query_max_chars=query_max_chars,
                 query_mode=query_mode,
                 selection_strategy=selection_strategy,
@@ -385,6 +401,68 @@ def visual_probe_query_from_asset(
         score=sum(score for score, _, _, _ in selected),
         terms=tuple(query_terms),
     )
+
+
+def visual_image_probe_cases(
+    chunks: list[DocumentChunk],
+    assets: list[VisualAsset],
+    limit: int,
+    query_max_chars: int,
+    query_mode: QueryMode = "snippet",
+    selection_strategy: SelectionStrategy = "document_order",
+    term_df: dict[str, int] | None = None,
+    document_count: int = 0,
+    min_query_terms: int = 3,
+    max_query_terms: int = 8,
+) -> list[RetrievalCase]:
+    candidates: list[CaseCandidate] = []
+    chunks_by_asset = chunks_by_asset_id(chunks)
+    for asset in sorted(assets, key=lambda item: (asset_priority(item), item.page_no, item.asset_id)):
+        if asset.path is None:
+            continue
+        draft = query_from_text(
+            asset_text(asset),
+            max_chars=query_max_chars,
+            mode=query_mode,
+            term_df=term_df,
+            document_count=document_count,
+            min_query_terms=min_query_terms,
+            max_query_terms=max_query_terms,
+        )
+        if not draft.query:
+            continue
+        linked_chunks = chunks_by_asset.get(asset.asset_id, [])
+        case = with_case_metadata(
+            RetrievalCase(
+                query=draft.query,
+                expected_pages=[asset.page_no],
+                expected_asset_ids=[asset.asset_id],
+            ),
+            case_source="visual_image_probe",
+            query_mode=query_mode,
+            draft=draft,
+        )
+        case = case.model_copy(
+            update={
+                "metadata": {
+                    **case.metadata,
+                    "case_family": "visual",
+                    "evidence_family": "visual_image",
+                    "modality": "image",
+                    "target_vector": "image_dense",
+                    "asset_kind": str(asset.kind),
+                    "linked_chunk_ids": [chunk.chunk_id for chunk in linked_chunks],
+                }
+            }
+        )
+        candidates.append(
+            CaseCandidate(
+                case=case,
+                score=draft.score,
+                order=(asset_priority(asset), asset.page_no, asset.asset_id),
+            )
+        )
+    return select_candidates(merge_case_candidates_by_query(candidates), limit, selection_strategy)
 
 
 def visual_object_probe_cases(

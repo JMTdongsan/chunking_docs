@@ -406,6 +406,48 @@ def test_generate_retrieval_case_skeleton_can_create_visual_probe_from_source_re
     assert cases[0].metadata["linked_chunk_ids"] == ["chunk-1"]
 
 
+def test_generate_retrieval_case_skeleton_can_create_visual_image_probes(tmp_path):
+    chunk = DocumentChunk(
+        chunk_id="chunk-1",
+        doc_id="doc",
+        page_start=1,
+        page_end=1,
+        kind=ChunkKind.TEXT,
+        text="Transit corridor station access evidence.",
+        asset_ids=["asset-1"],
+    )
+    asset = VisualAsset(
+        asset_id="asset-1",
+        doc_id="doc",
+        page_no=1,
+        kind=AssetKind.MAP,
+        path=tmp_path / "asset.png",
+        caption="Station access map legend signal",
+    )
+
+    cases = generate_retrieval_case_skeleton(
+        [chunk],
+        [asset],
+        [],
+        include_pages=False,
+        include_assets=False,
+        include_triples=False,
+        image_probe_limit=1,
+    )
+
+    assert len(cases) == 1
+    assert cases[0].query == "Station access map legend signal"
+    assert cases[0].expected_pages == [1]
+    assert cases[0].expected_asset_ids == ["asset-1"]
+    assert cases[0].metadata["case_source"] == "visual_image_probe"
+    assert cases[0].metadata["case_family"] == "visual"
+    assert cases[0].metadata["evidence_family"] == "visual_image"
+    assert cases[0].metadata["modality"] == "image"
+    assert cases[0].metadata["target_vector"] == "image_dense"
+    assert cases[0].metadata["asset_kind"] == "map"
+    assert cases[0].metadata["linked_chunk_ids"] == ["chunk-1"]
+
+
 def test_generate_retrieval_case_skeleton_can_create_visual_object_probes():
     chunk = DocumentChunk(
         chunk_id="chunk-1",
@@ -735,6 +777,35 @@ def test_generate_retrieval_cases_cli_writes_object_probe_cases(tmp_path):
     assert "'non_visual_only_object_probe_count': 1" in result.output
 
 
+def test_generate_retrieval_cases_cli_writes_image_probe_cases(tmp_path):
+    package_dir = write_case_package(tmp_path)
+    output = tmp_path / "cases.jsonl"
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "generate-retrieval-cases",
+            "--package-dir",
+            str(package_dir),
+            "--output",
+            str(output),
+            "--no-include-pages",
+            "--no-include-assets",
+            "--no-include-triples",
+            "--image-probe-limit",
+            "1",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    rows = [json.loads(line) for line in output.read_text(encoding="utf-8").splitlines()]
+    assert len(rows) == 1
+    assert rows[0]["metadata"]["case_source"] == "visual_image_probe"
+    assert rows[0]["metadata"]["target_vector"] == "image_dense"
+    assert "'visual_image_probe_count': 1" in result.output
+    assert "'image_probe_limit': 1" in result.output
+
+
 def test_generate_retrieval_cases_cli_accepts_candidate_chunks(tmp_path):
     package_dir = write_case_package(tmp_path)
     candidate_chunks = tmp_path / "candidate_chunks.jsonl"
@@ -810,6 +881,7 @@ def write_case_package(tmp_path: Path) -> Path:
         doc_id="doc",
         page_no=1,
         kind=AssetKind.MAP,
+        path=package_dir / "assets/page.png",
         caption="Station access map legend signal",
         metadata={
             "objects": [

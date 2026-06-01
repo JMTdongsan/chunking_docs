@@ -36,6 +36,7 @@ from chunking_docs.evaluation.case_audit import (
     count_retrieval_case_distinct_targets,
     count_retrieval_case_max_target_mentions,
     count_retrieval_case_targets,
+    count_visual_image_probes,
     count_visual_object_probes,
 )
 from chunking_docs.evaluation.chunking_gate import (
@@ -3415,6 +3416,7 @@ def generate_retrieval_cases_command(
     max_query_terms: int = 8,
     dedupe_queries: bool = True,
     visual_probe_limit: int = 0,
+    image_probe_limit: int = 0,
     object_probe_limit: int = 0,
     object_probe_visual_only: bool = typer.Option(
         True,
@@ -3444,6 +3446,7 @@ def generate_retrieval_cases_command(
             max_query_terms=max_query_terms,
             dedupe_queries=dedupe_queries,
             visual_probe_limit=visual_probe_limit,
+            image_probe_limit=image_probe_limit,
             object_probe_limit=object_probe_limit,
             object_probe_visual_only=object_probe_visual_only,
         )
@@ -3461,6 +3464,7 @@ def generate_retrieval_cases_command(
             "max_cases_per_target": count_retrieval_case_max_target_mentions(cases),
             "case_group_counts": count_case_groups(cases),
             "case_group_distinct_target_counts": count_case_group_distinct_targets(cases),
+            "visual_image_probe_count": count_visual_image_probes(cases),
             "visual_object_probe_count": visual_object_probe_counts["total"],
             "visual_only_object_probe_count": visual_object_probe_counts["visual_only"],
             "non_visual_only_object_probe_count": visual_object_probe_counts["non_visual_only"],
@@ -3468,6 +3472,7 @@ def generate_retrieval_cases_command(
             "asset_limit": asset_limit,
             "triple_limit": triple_limit,
             "visual_probe_limit": visual_probe_limit,
+            "image_probe_limit": image_probe_limit,
             "object_probe_limit": object_probe_limit,
             "object_probe_visual_only": object_probe_visual_only,
             "include_todo": include_todo,
