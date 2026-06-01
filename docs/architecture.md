@@ -177,6 +177,7 @@ Additional processing commands may create:
 - `graph_edges.jsonl`
 - `graph_summary.json`
 - `experiment_report.json`
+- `vlm_experiment_plan.json`
 - `document_characteristics.json`
 - `runtime_doctor.json`
 - `ingestion_readiness.json`

@@ -74,6 +74,7 @@ DEFAULT_ARTIFACTS = [
     "visual_job_summary.json",
     "visual_run_comparison.json",
     "visual_quality.json",
+    "vlm_experiment_plan.json",
     "document_characteristics.json",
     "runtime_doctor.json",
     "ingestion_readiness.json",
@@ -124,6 +125,7 @@ DEFAULT_ARTIFACT_GLOBS = [
     "visual_gate*.json",
     "visual_quality*.json",
     "visual_run_comparison*.json",
+    "vlm_experiment_plan*.json",
 ]
 
 SUMMARY_METRIC_KEYS = {
@@ -335,6 +337,8 @@ def validation_artifact_summaries_for_path(
         return []
     payload = read_json(path)
     summaries = []
+    if is_vlm_experiment_plan_payload(payload):
+        return [vlm_experiment_plan_summary(path, payload, root=root)]
     if is_visual_run_comparison_payload(payload):
         return [visual_run_comparison_summary(path, payload, root=root)]
     if is_qdrant_fusion_sweep_payload(payload):
@@ -400,6 +404,15 @@ def is_visual_run_comparison_payload(payload: dict[str, Any]) -> bool:
         "best_by_quality" in payload
         or "best_by_triple_density" in payload
         or "job_set_mismatch" in payload
+    )
+
+
+def is_vlm_experiment_plan_payload(payload: dict[str, Any]) -> bool:
+    return (
+        isinstance(payload.get("profiles"), list)
+        and isinstance(payload.get("recipes"), list)
+        and isinstance(payload.get("job_summary"), dict)
+        and isinstance(payload.get("compare_command"), str)
     )
 
 
@@ -740,6 +753,128 @@ def visual_run_comparison_summary(
             ),
         },
     )
+
+
+def vlm_experiment_plan_summary(
+    path: Path,
+    payload: dict[str, Any],
+    root: Path | None = None,
+) -> ValidationSummary:
+    profiles = [profile for profile in payload.get("profiles", []) if isinstance(profile, str)]
+    recipes = [recipe for recipe in payload.get("recipes", []) if isinstance(recipe, dict)]
+    job_summary = payload.get("job_summary")
+    job_summary = job_summary if isinstance(job_summary, dict) else {}
+    batches = [batch for batch in payload.get("batches", []) if isinstance(batch, dict)]
+    failed_checks = vlm_experiment_plan_failed_checks(profiles, recipes, job_summary)
+    return ValidationSummary(
+        path=display_artifact_path(path, root),
+        kind="vlm_experiment_plan",
+        passed=not failed_checks,
+        failed_checks=failed_checks,
+        metrics=vlm_experiment_plan_metrics(payload, recipes, job_summary, batches),
+    )
+
+
+def vlm_experiment_plan_failed_checks(
+    profiles: list[str],
+    recipes: list[dict[str, Any]],
+    job_summary: dict[str, Any],
+) -> list[str]:
+    failed = []
+    if not profiles:
+        failed.append("no_profiles")
+    if not recipes:
+        failed.append("no_recipes")
+    if len(recipes) != len(profiles):
+        failed.append("recipe_profile_count_mismatch")
+    if job_summary.get("exists") is False:
+        failed.append("jobs_file_missing")
+    if any(not nonempty_string(recipe.get("doctor_output")) for recipe in recipes):
+        failed.append("missing_doctor_output")
+    if any(not nonempty_string(recipe.get("doctor_command")) for recipe in recipes):
+        failed.append("missing_doctor_command")
+    if any(not nonempty_string(recipe.get("results_output")) for recipe in recipes):
+        failed.append("missing_results_output")
+    if any(not nonempty_string(recipe.get("annotations_output")) for recipe in recipes):
+        failed.append("missing_annotations_output")
+    return failed
+
+
+def vlm_experiment_plan_metrics(
+    payload: dict[str, Any],
+    recipes: list[dict[str, Any]],
+    job_summary: dict[str, Any],
+    batches: list[dict[str, Any]],
+) -> dict[str, float]:
+    metrics = {
+        "profile_count": numeric_metric(list_count(payload.get("profiles"))),
+        "recipe_count": float(len(recipes)),
+        "batch_count": float(len(batches)),
+        "batch_compare_command_count": numeric_metric(
+            list_count(payload.get("batch_compare_commands"))
+        ),
+        "doctor_output_count": float(
+            sum(1 for recipe in recipes if nonempty_string(recipe.get("doctor_output")))
+        ),
+        "doctor_command_count": float(
+            sum(1 for recipe in recipes if nonempty_string(recipe.get("doctor_command")))
+        ),
+        "results_output_count": float(
+            sum(1 for recipe in recipes if nonempty_string(recipe.get("results_output")))
+        ),
+        "annotations_output_count": float(
+            sum(1 for recipe in recipes if nonempty_string(recipe.get("annotations_output")))
+        ),
+        "jobs_file_exists": 1.0 if job_summary.get("exists") is not False else 0.0,
+        "total_job_count": numeric_metric(job_summary.get("total_job_count")),
+        "selected_job_count": numeric_metric(job_summary.get("selected_job_count")),
+        "selected_pending_job_count": numeric_metric(
+            job_summary.get("selected_pending_job_count")
+        ),
+        "skipped_by_limit_count": numeric_metric(job_summary.get("skipped_by_limit_count")),
+    }
+    metrics.update(vlm_experiment_operation_metrics(job_summary))
+    metrics.update(vlm_experiment_recipe_metrics(recipes))
+    return metrics
+
+
+def vlm_experiment_operation_metrics(job_summary: dict[str, Any]) -> dict[str, float]:
+    operation_counts = job_summary.get("operation_counts")
+    if not isinstance(operation_counts, dict):
+        return {}
+    return {
+        f"operation.{name}.count": numeric_value
+        for name, value in operation_counts.items()
+        if isinstance(name, str)
+        and (numeric_value := optional_numeric_metric(value)) is not None
+    }
+
+
+def vlm_experiment_recipe_metrics(recipes: list[dict[str, Any]]) -> dict[str, float]:
+    metrics = {}
+    for key in (
+        "selected_vlm_job_count",
+        "selected_ocr_job_count",
+        "max_generation_tokens_upper_bound",
+        "min_gpu_memory_mib",
+        "batch_count",
+    ):
+        values = []
+        for recipe in recipes:
+            metadata = recipe.get("metadata")
+            if not isinstance(metadata, dict):
+                continue
+            value = optional_numeric_metric(metadata.get(key))
+            if value is not None:
+                values.append(value)
+        if values:
+            metrics[f"recipe.{key}.max"] = max(values)
+            metrics[f"recipe.{key}.min"] = min(values)
+    return metrics
+
+
+def nonempty_string(value: Any) -> bool:
+    return isinstance(value, str) and bool(value.strip())
 
 
 def is_validation_payload(payload: dict[str, Any]) -> bool:

@@ -44,6 +44,7 @@ def test_build_experiment_report_summarizes_artifacts_and_candidates(tmp_path):
     assert artifacts["graph_audit.final.json"].exists is True
     assert artifacts["visual_gate.final.json"].exists is True
     assert artifacts["visual_run_comparison.json"].exists is True
+    assert artifacts["vlm_experiment_plan.json"].exists is True
     validations = {validation.path: validation for validation in report.validation_summaries}
     assert validations["ingestion_readiness.final.json"].passed is True
     assert validations["ingestion_readiness.final.json#retrieval_gate"].metrics["recall_at_k"] == 1.0
@@ -164,6 +165,15 @@ def test_build_experiment_report_summarizes_artifacts_and_candidates(tmp_path):
     assert validations["visual_run_comparison.json"].metrics["shared_job_count"] == 1.0
     assert validations["visual_run_comparison.json"].metrics["job_set_mismatch"] == 0.0
     assert validations["visual_run_comparison.json"].metrics["best_quality_score"] == 0.92
+    assert validations["vlm_experiment_plan.json"].passed is True
+    assert validations["vlm_experiment_plan.json"].metrics["profile_count"] == 2.0
+    assert validations["vlm_experiment_plan.json"].metrics["recipe_count"] == 2.0
+    assert validations["vlm_experiment_plan.json"].metrics["doctor_output_count"] == 2.0
+    assert validations["vlm_experiment_plan.json"].metrics["selected_job_count"] == 3.0
+    assert validations["vlm_experiment_plan.json"].metrics["operation.vlm.count"] == 3.0
+    assert validations["vlm_experiment_plan.json"].metrics[
+        "recipe.max_generation_tokens_upper_bound.max"
+    ] == 1536.0
     assert report.qdrant_collection["collection"] == "document_chunks"
     assert report.bm25_tokenizer["strategy"] == "mixed"
     assert report.source_file == {"name": "reference.pdf", "bytes": 1234, "sha256": "abc"}
@@ -646,6 +656,80 @@ def write_minimal_package(tmp_path):
                         "triples_per_vlm_job": 0.0,
                         "total_mean_latency_ms": 18.0,
                     },
+                ],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    (package_dir / "vlm_experiment_plan.json").write_text(
+        json.dumps(
+            {
+                "package_dir": str(package_dir),
+                "jobs_file": str(package_dir / "visual_jobs.priority.jsonl"),
+                "profiles": ["qwen2_5_vl_7b", "phi3_5_vision"],
+                "limit": 3,
+                "batch_size": 2,
+                "job_summary": {
+                    "jobs_file": str(package_dir / "visual_jobs.priority.jsonl"),
+                    "exists": True,
+                    "total_job_count": 30,
+                    "selected_job_count": 3,
+                    "selected_pending_job_count": 3,
+                    "skipped_by_limit_count": 27,
+                    "operation_counts": {"ocr": 3, "vlm": 3},
+                    "asset_kind_counts": {"map": 3},
+                },
+                "batches": [
+                    {"batch_id": "batch_001", "offset": 0, "limit": 2},
+                    {"batch_id": "batch_002", "offset": 2, "limit": 1},
+                ],
+                "recipes": [
+                    {
+                        "name": "qwen2_5_vl_7b",
+                        "profile": "qwen2_5_vl_7b",
+                        "doctor_output": str(package_dir / "runtime_doctor.qwen2_5_vl_7b.json"),
+                        "results_output": str(
+                            package_dir / "visual_job_results.qwen2_5_vl_7b.jsonl"
+                        ),
+                        "annotations_output": str(
+                            package_dir / "visual_annotations.qwen2_5_vl_7b.jsonl"
+                        ),
+                        "doctor_command": "chunking-docs doctor --output runtime_doctor.qwen2_5_vl_7b.json",
+                        "command": "chunking-docs run-visual-jobs",
+                        "metadata": {
+                            "selected_vlm_job_count": 3,
+                            "selected_ocr_job_count": 3,
+                            "max_generation_tokens_upper_bound": 1536,
+                            "min_gpu_memory_mib": 24576,
+                            "batch_count": 2,
+                        },
+                    },
+                    {
+                        "name": "phi3_5_vision",
+                        "profile": "phi3_5_vision",
+                        "doctor_output": str(package_dir / "runtime_doctor.phi3_5_vision.json"),
+                        "results_output": str(
+                            package_dir / "visual_job_results.phi3_5_vision.jsonl"
+                        ),
+                        "annotations_output": str(
+                            package_dir / "visual_annotations.phi3_5_vision.jsonl"
+                        ),
+                        "doctor_command": "chunking-docs doctor --output runtime_doctor.phi3_5_vision.json",
+                        "command": "chunking-docs run-visual-jobs",
+                        "metadata": {
+                            "selected_vlm_job_count": 3,
+                            "selected_ocr_job_count": 3,
+                            "max_generation_tokens_upper_bound": 768,
+                            "min_gpu_memory_mib": 12288,
+                            "batch_count": 2,
+                        },
+                    },
+                ],
+                "compare_command": "chunking-docs compare-visual-runs --require-same-jobs",
+                "batch_compare_commands": [
+                    "chunking-docs compare-visual-runs --output visual_run_comparison.batch_001.json",
+                    "chunking-docs compare-visual-runs --output visual_run_comparison.batch_002.json",
                 ],
             },
             indent=2,
