@@ -70,7 +70,12 @@ def test_qdrant_ensure_collection_creates_payload_indexes():
     store.client = FakeQdrantClient()
     store._vector_params = lambda size, distance: {"size": size, "distance": distance}
     store._distance = SimpleNamespace(COSINE="cosine")
-    store._payload_schema_type = SimpleNamespace(KEYWORD="keyword", INTEGER="integer", BOOL="bool")
+    store._payload_schema_type = SimpleNamespace(
+        KEYWORD="keyword",
+        INTEGER="integer",
+        BOOL="bool",
+        FLOAT="float",
+    )
 
     store.ensure_collection(
         {"text_dense": 3},
@@ -79,6 +84,7 @@ def test_qdrant_ensure_collection_creates_payload_indexes():
             {"field": "page_no", "schema": "integer"},
             "asset_id",
             "visual_asset_unlinked",
+            "control_char_ratio",
         ],
     )
 
@@ -94,6 +100,7 @@ def test_qdrant_ensure_collection_creates_payload_indexes():
         ("page_no", "integer"),
         ("asset_id", "keyword"),
         ("visual_asset_unlinked", "bool"),
+        ("control_char_ratio", "float"),
     ]
 
 
@@ -105,7 +112,12 @@ def test_qdrant_ensure_collection_skips_existing_payload_index():
     store.client.payload_schema = {"doc_id": "keyword"}
     store._vector_params = lambda size, distance: {"size": size, "distance": distance}
     store._distance = SimpleNamespace(COSINE="cosine")
-    store._payload_schema_type = SimpleNamespace(KEYWORD="keyword", INTEGER="integer", BOOL="bool")
+    store._payload_schema_type = SimpleNamespace(
+        KEYWORD="keyword",
+        INTEGER="integer",
+        BOOL="bool",
+        FLOAT="float",
+    )
 
     store.ensure_collection(
         {"text_dense": 3},

@@ -104,13 +104,19 @@ EXPECTED_POSTGRES_SCHEMA = {
 
 EXPECTED_POSTGRES_INDEXES = {
     "assets_doc_page_idx": "assets",
+    "assets_parent_asset_idx": "assets",
+    "assets_scope_idx": "assets",
+    "assets_text_quality_idx": "assets",
+    "assets_tile_idx": "assets",
     "chunk_lexical_tokens_doc_idx": "chunk_lexical_tokens",
     "chunk_lexical_tokens_tokens_idx": "chunk_lexical_tokens",
     "chunk_asset_links_asset_idx": "chunk_asset_links",
     "chunk_asset_links_doc_idx": "chunk_asset_links",
     "chunks_doc_page_idx": "chunks",
+    "chunks_text_quality_idx": "chunks",
     "chunks_text_bm25_idx": "chunks",
     "embedding_artifacts_collection_idx": "embedding_artifacts",
+    "pages_text_quality_idx": "pages",
     "triples_spo_idx": "triples",
 }
 

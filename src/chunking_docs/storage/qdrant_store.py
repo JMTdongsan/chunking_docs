@@ -294,9 +294,32 @@ class QdrantChunkStore:
 
 
 def default_payload_schema(field_name: str) -> str:
-    if field_name in {"page_no", "page_start", "page_end"}:
+    integer_fields = {
+        "page_no",
+        "page_start",
+        "page_end",
+        "tile_index",
+        "tile_row",
+        "tile_col",
+        "tile_rows",
+        "tile_cols",
+        "control_char_count",
+        "image_block_count",
+        "embedded_image_count",
+        "drawing_count",
+    }
+    float_fields = {
+        "control_char_ratio",
+        "letter_or_number_ratio",
+        "cjk_char_ratio",
+        "tile_overlap_ratio",
+    }
+    bool_fields = {"visual_asset_unlinked", "requires_ocr", "requires_vlm"}
+    if field_name in integer_fields:
         return "integer"
-    if field_name == "visual_asset_unlinked":
+    if field_name in float_fields:
+        return "float"
+    if field_name in bool_fields:
         return "bool"
     return "keyword"
 

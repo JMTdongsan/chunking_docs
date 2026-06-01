@@ -89,9 +89,15 @@ create table if not exists embedding_artifacts (
 );
 
 create index if not exists chunks_doc_page_idx on chunks(doc_id, page_start, page_end);
+create index if not exists pages_text_quality_idx on pages(doc_id, text_quality);
+create index if not exists chunks_text_quality_idx on chunks ((metadata->>'text_quality'));
 create index if not exists chunk_lexical_tokens_doc_idx on chunk_lexical_tokens(doc_id, chunk_id);
 create index if not exists chunk_lexical_tokens_tokens_idx on chunk_lexical_tokens using gin (tokens);
 create index if not exists assets_doc_page_idx on assets(doc_id, page_no);
+create index if not exists assets_scope_idx on assets ((metadata->>'asset_scope'));
+create index if not exists assets_text_quality_idx on assets ((metadata->>'text_quality'));
+create index if not exists assets_parent_asset_idx on assets ((metadata->>'parent_asset_id'));
+create index if not exists assets_tile_idx on assets(doc_id, page_no, (metadata->>'tile_index'));
 create index if not exists chunk_asset_links_asset_idx on chunk_asset_links(asset_id, chunk_id);
 create index if not exists chunk_asset_links_doc_idx on chunk_asset_links(doc_id, asset_id);
 create index if not exists triples_spo_idx on triples(subject, predicate, object);

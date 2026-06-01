@@ -88,6 +88,11 @@ def test_write_embedding_artifacts_writes_selected_vectors_and_config(tmp_path):
     assert {"field": "retrieval_role", "schema": "keyword"} in config["payload_indexes"]
     assert {"field": "hierarchical_parent_chunk_id", "schema": "keyword"} in config["payload_indexes"]
     assert {"field": "visual_asset_unlinked", "schema": "bool"} in config["payload_indexes"]
+    assert {"field": "text_quality", "schema": "keyword"} in config["payload_indexes"]
+    assert {"field": "asset_scope", "schema": "keyword"} in config["payload_indexes"]
+    assert {"field": "tile_index", "schema": "integer"} in config["payload_indexes"]
+    assert {"field": "control_char_ratio", "schema": "float"} in config["payload_indexes"]
+    assert {"field": "requires_vlm", "schema": "bool"} in config["payload_indexes"]
     assert "image_dense" not in config["named_vectors"]
     manifest = json.loads((tmp_path / "embedding_manifest.json").read_text(encoding="utf-8"))
     assert manifest["collection"] == "document_chunks"

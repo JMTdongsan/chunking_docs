@@ -28,7 +28,15 @@ def make_chunk(text: str, page_no: int = 1):
 def test_make_text_embedding_records():
     chunks = [
         make_chunk("technical policy transit corridor").model_copy(
-            update={"asset_ids": ["asset-1"], "source_refs": ["asset:asset-2"]}
+            update={
+                "asset_ids": ["asset-1"],
+                "source_refs": ["asset:asset-2"],
+                "metadata": {
+                    "text_quality": "degraded",
+                    "text_quality_reasons": ["high_control_char_ratio"],
+                    "control_char_ratio": 0.21,
+                },
+            }
         )
     ]
     records = make_text_embedding_records(chunks, HashingTextEmbedder(embedding_dim=16))
@@ -40,6 +48,9 @@ def test_make_text_embedding_records():
     assert records[0].payload["asset_id"] == ["asset-1", "asset-2"]
     assert records[0].payload["asset_ids"] == ["asset-1", "asset-2"]
     assert records[0].payload["source_refs"] == ["asset:asset-2"]
+    assert records[0].payload["text_quality"] == "degraded"
+    assert records[0].payload["text_quality_reasons"] == ["high_control_char_ratio"]
+    assert records[0].payload["control_char_ratio"] == 0.21
     assert str(uuid.UUID(records[0].point_id)) == records[0].point_id
 
 
@@ -58,6 +69,13 @@ def test_make_image_embedding_records():
                 page_no=1,
                 kind=AssetKind.MAP,
                 path=Path("page.png"),
+                metadata={
+                    "asset_scope": "tile",
+                    "parent_asset_id": "page-asset",
+                    "tile_index": 2,
+                    "text_quality": "empty",
+                    "requires_vlm": True,
+                },
             )
         ],
         FakeImageEmbedder(),
@@ -66,6 +84,11 @@ def test_make_image_embedding_records():
     assert len(records) == 1
     assert records[0].vector_name == "image_dense"
     assert records[0].payload["asset_id"] == "asset-1"
+    assert records[0].payload["asset_scope"] == "tile"
+    assert records[0].payload["parent_asset_id"] == "page-asset"
+    assert records[0].payload["tile_index"] == 2
+    assert records[0].payload["text_quality"] == "empty"
+    assert records[0].payload["requires_vlm"] is True
 
 
 def test_make_caption_embedding_records():
@@ -96,7 +119,7 @@ def test_make_triple_embedding_records():
         kind=ChunkKind.TEXT,
         text="chunk text",
         asset_ids=["asset-2"],
-        metadata={"chunking_strategy": "semantic"},
+        metadata={"chunking_strategy": "semantic", "text_quality": "degraded"},
     )
     triple = GraphTriple(
         triple_id="triple-1",
@@ -125,6 +148,7 @@ def test_make_triple_embedding_records():
     assert records[0].payload["page_end"] == 4
     assert records[0].payload["asset_id"] == ["asset-1", "asset-2"]
     assert records[0].payload["chunking_strategy"] == "semantic"
+    assert records[0].payload["text_quality"] == "degraded"
     assert records[0].payload["text"] == "map panel contains object station marker source field objects"
     assert triple_text(triple) == records[0].payload["text"]
 
