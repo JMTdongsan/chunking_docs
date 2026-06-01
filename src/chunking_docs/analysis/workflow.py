@@ -93,6 +93,7 @@ def build_ingestion_workflow_plan(
         steps.append(recommendation_step(recommendation, package_dir, retrieval_cases))
         handled_codes.add(recommendation.code)
 
+    steps.append(metadata_refresh_step(package_dir))
     steps.append(readiness_step(package_dir, retrieval_cases))
     return IngestionWorkflowPlan(
         package_dir=path_text(package_dir),
@@ -209,6 +210,19 @@ def readiness_step(package_dir: Path, retrieval_cases: Path) -> WorkflowStep:
                 "--min-retrieval-query-terms-per-case 3 "
                 f"--output {path_arg(package_dir / 'ingestion_readiness.json')}"
             )
+        ],
+    )
+
+
+def metadata_refresh_step(package_dir: Path) -> WorkflowStep:
+    return WorkflowStep(
+        step_id="refresh_package_metadata",
+        title="Refresh package metadata",
+        area="readiness",
+        priority="required",
+        reason="Record current source checksum, tokenizer config, and chunking selection before final ingestion gates.",
+        commands=[
+            f"chunking-docs refresh-package-metadata --package-dir {path_arg(package_dir)}"
         ],
     )
 

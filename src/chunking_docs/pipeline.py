@@ -175,6 +175,77 @@ def package_metadata(
     }
 
 
+def refresh_package_metadata(
+    output_dir: Path,
+    manifest: ProcessingManifest | None = None,
+    pdf_path: Path | None = None,
+    render_zoom: float | None = None,
+    dry_run_embeddings: bool | None = None,
+    section_map_count: int | None = None,
+    extract_tables: bool | None = None,
+    tokenizer_config: LexicalTokenizerConfig | None = None,
+    base_chunking_strategy: str | None = None,
+) -> ProcessingManifest:
+    """Refresh reproducibility metadata for an existing package."""
+    manifest = manifest or load_processing_package(output_dir)
+    existing_metadata = dict(manifest.metadata)
+    existing_config = existing_metadata.get("package_config")
+    existing_config = existing_config if isinstance(existing_config, dict) else {}
+    source_path = pdf_path or manifest.doc.local_path
+    table_count = current_table_count(manifest)
+    refreshed_metadata = {
+        **existing_metadata,
+        "profile_summary": summarize_profiles(manifest.profiles),
+        "source_file": source_file_metadata(source_path),
+        "package_config": {
+            "base_chunking_strategy": (
+                base_chunking_strategy
+                or existing_config.get("base_chunking_strategy")
+                or "page"
+            ),
+            "render_zoom": render_zoom
+            if render_zoom is not None
+            else float(existing_config.get("render_zoom") or 1.5),
+            "dry_run_embeddings": infer_dry_run_embeddings(
+                output_dir,
+                existing_config=existing_config,
+                override=dry_run_embeddings,
+            ),
+            "section_map_count": section_map_count
+            if section_map_count is not None
+            else int(existing_config.get("section_map_count") or 0),
+            "extract_tables": extract_tables
+            if extract_tables is not None
+            else bool(existing_config.get("extract_tables", table_count > 0)),
+            "lexical_tokenizer": (
+                tokenizer_config
+                or package_tokenizer_config(output_dir)
+                or existing_tokenizer_config(existing_config)
+                or LexicalTokenizerConfig()
+            ).model_dump(),
+        },
+        "embedding_mode": (
+            "hashing_dry_run"
+            if infer_dry_run_embeddings(
+                output_dir,
+                existing_config=existing_config,
+                override=dry_run_embeddings,
+            )
+            else "external"
+        ),
+        "section_map_count": section_map_count
+        if section_map_count is not None
+        else int(existing_config.get("section_map_count") or 0),
+        "table_count": table_count,
+    }
+    updated = manifest.model_copy(update={"metadata": refreshed_metadata})
+    (output_dir / "manifest.json").write_text(
+        updated.model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+    return updated
+
+
 def source_file_metadata(path: Path) -> dict[str, Any]:
     summary = file_summary(path)
     return {
@@ -182,6 +253,60 @@ def source_file_metadata(path: Path) -> dict[str, Any]:
         "bytes": summary["bytes"],
         "sha256": summary["sha256"],
     }
+
+
+def current_table_count(manifest: ProcessingManifest) -> int:
+    table_chunks = sum(1 for chunk in manifest.chunks if str(chunk.kind) == "table")
+    if table_chunks:
+        return table_chunks
+    return sum(1 for asset in manifest.assets if str(asset.kind) == "table")
+
+
+def package_tokenizer_config(output_dir: Path) -> LexicalTokenizerConfig | None:
+    path = output_dir / "bm25_tokens.json"
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        tokenizer_payload = payload.get("tokenizer")
+        if isinstance(tokenizer_payload, dict):
+            return LexicalTokenizerConfig.model_validate(tokenizer_payload)
+    except (OSError, ValueError):
+        return None
+    return None
+
+
+def existing_tokenizer_config(existing_config: dict[str, Any]) -> LexicalTokenizerConfig | None:
+    tokenizer_payload = existing_config.get("lexical_tokenizer")
+    if not isinstance(tokenizer_payload, dict):
+        return None
+    try:
+        return LexicalTokenizerConfig.model_validate(tokenizer_payload)
+    except ValueError:
+        return None
+
+
+def infer_dry_run_embeddings(
+    output_dir: Path,
+    existing_config: dict[str, Any],
+    override: bool | None = None,
+) -> bool:
+    if override is not None:
+        return override
+    existing_value = existing_config.get("dry_run_embeddings")
+    if isinstance(existing_value, bool):
+        return existing_value
+    manifest_path = output_dir / "embedding_manifest.json"
+    if not manifest_path.exists():
+        return True
+    try:
+        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    manifest_text = json.dumps(payload, ensure_ascii=False).lower()
+    if "hashingtextembedder" in manifest_text or '"backend": "hashing"' in manifest_text:
+        return True
+    return False
 
 
 def rebuild_search_artifacts(

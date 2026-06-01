@@ -45,6 +45,7 @@ def test_build_ingestion_workflow_plan_orders_runtime_visual_embedding_and_readi
         "visual_annotations",
     ]
     assert "build_embedding_artifacts" in step_ids
+    assert step_ids[-2] == "refresh_package_metadata"
     assert step_ids[-1] == "ingestion_readiness"
     assert plan.metadata["required_step_count"] >= 5
     runtime_command = plan.steps[0].commands[0]

@@ -133,6 +133,47 @@ def test_build_processing_package_records_reproducible_package_metadata(tmp_path
     }
 
 
+def test_refresh_package_metadata_cli_repairs_legacy_manifest(tmp_path):
+    pdf_path = make_table_pdf(tmp_path / "tables.pdf")
+    package_dir = tmp_path / "package"
+    build_processing_package(pdf_path, package_dir, extract_tables=False)
+    payload = json.loads((package_dir / "manifest.json").read_text(encoding="utf-8"))
+    payload["metadata"] = {"profile_summary": payload["metadata"]["profile_summary"]}
+    (package_dir / "manifest.json").write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "refresh-package-metadata",
+            "--package-dir",
+            str(package_dir),
+            "--pdf",
+            str(pdf_path),
+            "--render-zoom",
+            "2.0",
+            "--embedding-mode",
+            "external",
+            "--extract-tables",
+            "false",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    refreshed = json.loads((package_dir / "manifest.json").read_text(encoding="utf-8"))
+    metadata = refreshed["metadata"]
+    assert metadata["source_file"]["name"] == "tables.pdf"
+    assert metadata["source_file"]["sha256"] == hashlib.sha256(pdf_path.read_bytes()).hexdigest()
+    assert metadata["embedding_mode"] == "external"
+    assert metadata["package_config"]["base_chunking_strategy"] == "page"
+    assert metadata["package_config"]["render_zoom"] == 2.0
+    assert metadata["package_config"]["dry_run_embeddings"] is False
+    assert metadata["package_config"]["extract_tables"] is False
+    assert metadata["package_config"]["lexical_tokenizer"] == LexicalTokenizerConfig().model_dump()
+
+
 def make_table_pdf(path: Path) -> Path:
     doc = fitz.open()
     page = doc.new_page(width=300, height=200)

@@ -77,6 +77,7 @@ from chunking_docs.pipeline import (
     build_processing_package,
     clear_embedding_artifacts,
     load_processing_package,
+    refresh_package_metadata,
     rebuild_search_artifacts,
     write_embedding_artifacts,
     write_split_chunks,
@@ -252,6 +253,55 @@ def package_pdf(
             "triples": len(manifest.triples),
             "tables": manifest.metadata.get("table_count", 0),
             "output_dir": str(output_dir),
+        }
+    )
+
+
+@app.command(name="refresh-package-metadata")
+def refresh_package_metadata_command(
+    package_dir: Path = Path("outputs/package"),
+    pdf: Path | None = None,
+    render_zoom: float | None = None,
+    section_map_count: int | None = None,
+    base_chunking_strategy: str = "",
+    embedding_mode: str = "auto",
+    extract_tables: str = "auto",
+    lexical_tokenizer: str = "auto",
+    ngram_min: int = 2,
+    ngram_max: int = 4,
+    ngram_cjk_only: bool = True,
+    deduplicate_tokens: bool = False,
+):
+    """Refresh source checksum and package config metadata for an existing package."""
+    tokenizer_config = None
+    if lexical_tokenizer != "auto":
+        try:
+            tokenizer_config = LexicalTokenizerConfig(
+                strategy=lexical_tokenizer,
+                min_n=ngram_min,
+                max_n=ngram_max,
+                ngram_cjk_only=ngram_cjk_only,
+                deduplicate=deduplicate_tokens,
+            )
+        except ValueError as exc:
+            raise typer.BadParameter(str(exc)) from exc
+    manifest = refresh_package_metadata(
+        output_dir=package_dir,
+        pdf_path=pdf,
+        render_zoom=render_zoom,
+        dry_run_embeddings=parse_embedding_mode(embedding_mode),
+        section_map_count=section_map_count,
+        extract_tables=parse_auto_bool(extract_tables, option_name="--extract-tables"),
+        tokenizer_config=tokenizer_config,
+        base_chunking_strategy=base_chunking_strategy or None,
+    )
+    print(
+        {
+            "package_dir": str(package_dir),
+            "source_file": manifest.metadata.get("source_file", {}),
+            "package_config": manifest.metadata.get("package_config", {}),
+            "embedding_mode": manifest.metadata.get("embedding_mode"),
+            "profile_page_count": manifest.metadata.get("profile_summary", {}).get("page_count"),
         }
     )
 
@@ -6022,6 +6072,28 @@ def upsert_package_records(store, package_dir: Path) -> int:
         result = store.upsert(records)
         total += result.count
     return total
+
+
+def parse_embedding_mode(value: str) -> bool | None:
+    normalized = value.strip().lower().replace("-", "_")
+    if normalized in {"", "auto"}:
+        return None
+    if normalized in {"dry_run", "dryrun", "hashing", "hashing_dry_run"}:
+        return True
+    if normalized in {"external", "model", "model_backed", "real"}:
+        return False
+    raise typer.BadParameter("--embedding-mode must be one of: auto, dry_run, external")
+
+
+def parse_auto_bool(value: str, option_name: str) -> bool | None:
+    normalized = value.strip().lower().replace("-", "_")
+    if normalized in {"", "auto"}:
+        return None
+    if normalized in {"1", "true", "yes", "y", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "n", "off"}:
+        return False
+    raise typer.BadParameter(f"{option_name} must be one of: auto, true, false")
 
 
 def build_tokenizer_config(

@@ -70,6 +70,14 @@ The package directory contains:
 - `qdrant_*_records.jsonl`: Qdrant upsert records
 - `qdrant_collection.json`: named-vector collection configuration
 
+For an existing package, refresh reproducibility metadata before readiness checks:
+
+```bash
+chunking-docs refresh-package-metadata --package-dir outputs/package
+```
+
+This updates `manifest.json` with the current source checksum, profile summary, package config, tokenizer config, table count, and inferred embedding mode without rebuilding chunks or vectors.
+
 Summarize the package characteristics that should drive chunking, OCR/VLM, graph, and retrieval choices:
 
 ```bash
@@ -83,7 +91,7 @@ chunking-docs plan-ingestion-workflow \
   --output outputs/package/ingestion_workflow_plan.json
 ```
 
-The report includes observations and processing recommendations for visual annotation, multimodal embeddings, graph signals, and retrieval benchmark coverage. `plan-ingestion-workflow` turns those recommendations into an ordered command plan: runtime checks, characterization, page tiling, OCR/VLM jobs, VLM profile experiments, embedding rebuilds, retrieval case generation, chunking comparison, and final ingestion readiness. Dense visual pages are reported as tile candidates with a ready `build-tile-assets` command so maps, tables, and diagrams can be processed as overlapping crops before OCR/VLM evaluation. When rendered assets, VLM object metadata, or graph triples are present without matching `image_dense`, `object_dense`, or `triple_dense` records, the report recommends rebuilding those vector families before ablation. When rendered visual assets are present, it recommends generating and gating `visual_image_probe` cases so `qdrant:image_dense` contribution is measured separately from caption and object vectors. When VLM object metadata is present, it reports object and bbox counts and recommends generating and auditing `visual_object_probe` retrieval cases with visual-only, target-diversity, concentration, and query-strength gates so object detections are evaluated separately from aggregate retrieval scores.
+The report includes observations and processing recommendations for visual annotation, multimodal embeddings, graph signals, and retrieval benchmark coverage. `plan-ingestion-workflow` turns those recommendations into an ordered command plan: runtime checks, characterization, page tiling, OCR/VLM jobs, VLM profile experiments, embedding rebuilds, retrieval case generation, chunking comparison, metadata refresh, and final ingestion readiness. Dense visual pages are reported as tile candidates with a ready `build-tile-assets` command so maps, tables, and diagrams can be processed as overlapping crops before OCR/VLM evaluation. When rendered assets, VLM object metadata, or graph triples are present without matching `image_dense`, `object_dense`, or `triple_dense` records, the report recommends rebuilding those vector families before ablation. When rendered visual assets are present, it recommends generating and gating `visual_image_probe` cases so `qdrant:image_dense` contribution is measured separately from caption and object vectors. When VLM object metadata is present, it reports object and bbox counts and recommends generating and auditing `visual_object_probe` retrieval cases with visual-only, target-diversity, concentration, and query-strength gates so object detections are evaluated separately from aggregate retrieval scores.
 
 ## Document Structure
 
