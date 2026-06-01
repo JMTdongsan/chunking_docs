@@ -1248,6 +1248,10 @@ def test_gate_retrieval_ablation_can_require_visual_lift():
         min_case_group_target_coverage={"case_source:visual_lexical_probe": 1.0},
         min_recall_lift=1.0,
         min_target_coverage_lift=1.0,
+        min_pairwise_shared_queries=1,
+        min_pairwise_win_rate=1.0,
+        min_pairwise_target_coverage_lift=1.0,
+        min_pairwise_target_coverage_ci_low=1.0,
         require_best_by_recall=True,
     )
 
@@ -1271,6 +1275,12 @@ def test_gate_retrieval_ablation_can_require_visual_lift():
     ].mode == "bm25_visual"
     assert gate.pairwise_metrics["pairwise_candidate_win_rate"] == 1.0
     assert gate.pairwise_metrics["pairwise_mean_target_coverage_delta"] == 1.0
+    assert {check.name for check in gate.checks if check.name.startswith("min_pairwise")} == {
+        "min_pairwise_shared_queries",
+        "min_pairwise_win_rate",
+        "min_pairwise_target_coverage_lift",
+        "min_pairwise_target_coverage_ci_low",
+    }
     assert gate.failed_checks == []
 
 
@@ -1286,6 +1296,32 @@ def test_gate_retrieval_ablation_reports_failed_lift():
 
     assert gate.passed is False
     assert "min_recall_at_k_lift" in gate.failed_checks
+
+
+def test_gate_retrieval_ablation_reports_failed_pairwise_check():
+    report = visual_lexical_ablation_report()
+
+    gate = gate_retrieval_ablation(
+        report,
+        mode="bm25_visual",
+        baseline_mode="bm25_text",
+        min_pairwise_win_rate=1.1,
+    )
+
+    assert gate.passed is False
+    assert gate.pairwise_metrics["pairwise_candidate_win_rate"] == 1.0
+    assert "min_pairwise_win_rate" in gate.failed_checks
+
+
+def test_gate_retrieval_ablation_requires_baseline_for_pairwise_checks():
+    report = visual_lexical_ablation_report()
+
+    with pytest.raises(ValueError, match="baseline mode"):
+        gate_retrieval_ablation(
+            report,
+            mode="bm25_visual",
+            min_pairwise_win_rate=0.5,
+        )
 
 
 def visual_lexical_ablation_report():
@@ -1665,6 +1701,10 @@ def test_gate_qdrant_vector_ablation_passes_required_mode():
         min_target_type_coverage={"asset": 1.0},
         min_source_family_target_coverage={"visual": 1.0},
         min_case_group_target_coverage={"case_source:visual_object_probe": 1.0},
+        min_pairwise_shared_queries=1,
+        min_pairwise_win_rate=1.0,
+        min_pairwise_target_coverage_lift=1.0,
+        min_pairwise_target_coverage_ci_low=1.0,
         require_best_by_recall=True,
         require_best_by_target_coverage=True,
     )
@@ -1677,6 +1717,12 @@ def test_gate_qdrant_vector_ablation_passes_required_mode():
     assert gate.baseline_metrics["failed_query_count"] == 1.0
     assert gate.pairwise_metrics["pairwise_candidate_win_rate"] == 1.0
     assert gate.pairwise_metrics["pairwise_mean_target_coverage_delta"] == 1.0
+    assert {check.name for check in gate.checks if check.name.startswith("min_pairwise")} == {
+        "min_pairwise_shared_queries",
+        "min_pairwise_win_rate",
+        "min_pairwise_target_coverage_lift",
+        "min_pairwise_target_coverage_ci_low",
+    }
     assert gate.metrics["target_type.asset.coverage_at_k"] == 1.0
     assert gate.target_metrics["asset"]["coverage_at_k"] == 1.0
     assert gate.metrics["source_family.visual.target_coverage_at_k"] == 1.0
@@ -1722,6 +1768,17 @@ def test_gate_qdrant_vector_ablation_reports_failed_checks():
     }
 
 
+def test_gate_qdrant_vector_ablation_requires_baseline_for_pairwise_checks():
+    report = qdrant_vector_ablation_report_for_gate()
+
+    with pytest.raises(ValueError, match="baseline mode"):
+        gate_qdrant_vector_ablation(
+            report,
+            mode="caption_image",
+            min_pairwise_win_rate=0.5,
+        )
+
+
 def test_gate_qdrant_vector_ablation_cli_writes_report(tmp_path):
     report_path = tmp_path / "qdrant_vector_ablation.json"
     output = tmp_path / "qdrant_vector_ablation_gate.json"
@@ -1751,6 +1808,12 @@ def test_gate_qdrant_vector_ablation_cli_writes_report(tmp_path):
             "visual=1.0",
             "--min-case-group-target-coverage",
             "case_source:visual_object_probe=1.0",
+            "--min-pairwise-shared-queries",
+            "1",
+            "--min-pairwise-win-rate",
+            "1.0",
+            "--min-pairwise-target-coverage-lift",
+            "1.0",
             "--require-best-by-recall",
             "--output",
             str(output),
@@ -1951,6 +2014,12 @@ def test_gate_retrieval_ablation_cli_writes_lift_report(tmp_path):
             "lexical=1.0",
             "--min-case-group-target-coverage",
             "case_source:visual_lexical_probe=1.0",
+            "--min-pairwise-shared-queries",
+            "1",
+            "--min-pairwise-win-rate",
+            "1.0",
+            "--min-pairwise-target-coverage-lift",
+            "1.0",
             "--require-best-by-recall",
             "--output",
             str(output),

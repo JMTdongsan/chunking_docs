@@ -381,6 +381,17 @@ def gate_retrieval_ablation(
     min_precision_lift: float | None = None,
     max_mean_latency_ratio: float | None = None,
     max_p95_latency_ratio: float | None = None,
+    min_pairwise_shared_queries: int | None = None,
+    min_pairwise_win_rate: float | None = None,
+    min_pairwise_target_coverage_lift: float | None = None,
+    min_pairwise_target_ndcg_lift: float | None = None,
+    min_pairwise_mrr_lift: float | None = None,
+    min_pairwise_precision_lift: float | None = None,
+    min_pairwise_target_coverage_ci_low: float | None = None,
+    min_pairwise_target_ndcg_ci_low: float | None = None,
+    min_pairwise_mrr_ci_low: float | None = None,
+    min_pairwise_precision_ci_low: float | None = None,
+    max_pairwise_mean_latency_delta_ms: float | None = None,
     require_best_by_recall: bool = False,
     require_best_by_target_coverage: bool = False,
     require_best_by_target_ndcg: bool = False,
@@ -403,8 +414,19 @@ def gate_retrieval_ablation(
         min_precision_lift,
         max_mean_latency_ratio,
         max_p95_latency_ratio,
+        min_pairwise_shared_queries,
+        min_pairwise_win_rate,
+        min_pairwise_target_coverage_lift,
+        min_pairwise_target_ndcg_lift,
+        min_pairwise_mrr_lift,
+        min_pairwise_precision_lift,
+        min_pairwise_target_coverage_ci_low,
+        min_pairwise_target_ndcg_ci_low,
+        min_pairwise_mrr_ci_low,
+        min_pairwise_precision_ci_low,
+        max_pairwise_mean_latency_delta_ms,
     ):
-        raise ValueError("A baseline mode is required for lift or latency-ratio checks.")
+        raise ValueError("A baseline mode is required for lift, latency-ratio, or pairwise checks.")
 
     target_metrics = retrieval_target_metrics(row.evaluation)
     source_family_metrics = retrieval_source_family_metrics(row.evaluation)
@@ -510,6 +532,22 @@ def gate_retrieval_ablation(
                     "mean_latency_ms": max_mean_latency_ratio,
                     "p95_latency_ms": max_p95_latency_ratio,
                 },
+            )
+        )
+        checks.extend(
+            pairwise_threshold_checks(
+                pairwise_metrics,
+                min_pairwise_shared_queries=min_pairwise_shared_queries,
+                min_pairwise_win_rate=min_pairwise_win_rate,
+                min_pairwise_target_coverage_lift=min_pairwise_target_coverage_lift,
+                min_pairwise_target_ndcg_lift=min_pairwise_target_ndcg_lift,
+                min_pairwise_mrr_lift=min_pairwise_mrr_lift,
+                min_pairwise_precision_lift=min_pairwise_precision_lift,
+                min_pairwise_target_coverage_ci_low=min_pairwise_target_coverage_ci_low,
+                min_pairwise_target_ndcg_ci_low=min_pairwise_target_ndcg_ci_low,
+                min_pairwise_mrr_ci_low=min_pairwise_mrr_ci_low,
+                min_pairwise_precision_ci_low=min_pairwise_precision_ci_low,
+                max_pairwise_mean_latency_delta_ms=max_pairwise_mean_latency_delta_ms,
             )
         )
     if require_best_by_recall:
@@ -635,6 +673,133 @@ def latency_ratio_checks(
             )
         )
     return checks
+
+
+def pairwise_threshold_checks(
+    pairwise_metrics: dict[str, float | None],
+    min_pairwise_shared_queries: int | None = None,
+    min_pairwise_win_rate: float | None = None,
+    min_pairwise_target_coverage_lift: float | None = None,
+    min_pairwise_target_ndcg_lift: float | None = None,
+    min_pairwise_mrr_lift: float | None = None,
+    min_pairwise_precision_lift: float | None = None,
+    min_pairwise_target_coverage_ci_low: float | None = None,
+    min_pairwise_target_ndcg_ci_low: float | None = None,
+    min_pairwise_mrr_ci_low: float | None = None,
+    min_pairwise_precision_ci_low: float | None = None,
+    max_pairwise_mean_latency_delta_ms: float | None = None,
+) -> list[RetrievalGateCheck]:
+    checks = [
+        pairwise_minimum_check(
+            "min_pairwise_shared_queries",
+            "pairwise_shared_query_count",
+            pairwise_metrics,
+            float(min_pairwise_shared_queries)
+            if min_pairwise_shared_queries is not None
+            else None,
+        ),
+        pairwise_minimum_check(
+            "min_pairwise_win_rate",
+            "pairwise_candidate_win_rate",
+            pairwise_metrics,
+            min_pairwise_win_rate,
+        ),
+        pairwise_minimum_check(
+            "min_pairwise_target_coverage_lift",
+            "pairwise_mean_target_coverage_delta",
+            pairwise_metrics,
+            min_pairwise_target_coverage_lift,
+        ),
+        pairwise_minimum_check(
+            "min_pairwise_target_ndcg_lift",
+            "pairwise_mean_target_ndcg_delta",
+            pairwise_metrics,
+            min_pairwise_target_ndcg_lift,
+        ),
+        pairwise_minimum_check(
+            "min_pairwise_mrr_lift",
+            "pairwise_mean_reciprocal_rank_delta",
+            pairwise_metrics,
+            min_pairwise_mrr_lift,
+        ),
+        pairwise_minimum_check(
+            "min_pairwise_precision_lift",
+            "pairwise_mean_precision_delta",
+            pairwise_metrics,
+            min_pairwise_precision_lift,
+        ),
+        pairwise_minimum_check(
+            "min_pairwise_target_coverage_ci_low",
+            "pairwise_target_coverage_delta_ci_low",
+            pairwise_metrics,
+            min_pairwise_target_coverage_ci_low,
+        ),
+        pairwise_minimum_check(
+            "min_pairwise_target_ndcg_ci_low",
+            "pairwise_target_ndcg_delta_ci_low",
+            pairwise_metrics,
+            min_pairwise_target_ndcg_ci_low,
+        ),
+        pairwise_minimum_check(
+            "min_pairwise_mrr_ci_low",
+            "pairwise_reciprocal_rank_delta_ci_low",
+            pairwise_metrics,
+            min_pairwise_mrr_ci_low,
+        ),
+        pairwise_minimum_check(
+            "min_pairwise_precision_ci_low",
+            "pairwise_precision_delta_ci_low",
+            pairwise_metrics,
+            min_pairwise_precision_ci_low,
+        ),
+        pairwise_maximum_check(
+            "max_pairwise_mean_latency_delta_ms",
+            "pairwise_mean_latency_delta_ms",
+            pairwise_metrics,
+            max_pairwise_mean_latency_delta_ms,
+        ),
+    ]
+    return [check for check in checks if check is not None]
+
+
+def pairwise_minimum_check(
+    name: str,
+    metric: str,
+    metrics: dict[str, float | None],
+    threshold: float | None,
+) -> RetrievalGateCheck | None:
+    if threshold is None:
+        return None
+    actual = metrics.get(metric)
+    actual_value = float(actual) if actual is not None else 0.0
+    return RetrievalGateCheck(
+        name=name,
+        metric=metric,
+        operator=">=",
+        actual=actual_value,
+        threshold=threshold,
+        passed=actual is not None and actual_value >= threshold,
+    )
+
+
+def pairwise_maximum_check(
+    name: str,
+    metric: str,
+    metrics: dict[str, float | None],
+    threshold: float | None,
+) -> RetrievalGateCheck | None:
+    if threshold is None:
+        return None
+    actual = metrics.get(metric)
+    actual_value = float(actual) if actual is not None else 0.0
+    return RetrievalGateCheck(
+        name=name,
+        metric=metric,
+        operator="<=",
+        actual=actual_value,
+        threshold=threshold,
+        passed=actual is not None and actual_value <= threshold,
+    )
 
 
 def safe_ratio(actual: float, baseline: float) -> float | None:
@@ -984,6 +1149,17 @@ def gate_qdrant_vector_ablation(
     min_target_type_coverage: dict[str, float] | None = None,
     min_source_family_target_coverage: dict[str, float] | None = None,
     min_case_group_target_coverage: dict[str, float] | None = None,
+    min_pairwise_shared_queries: int | None = None,
+    min_pairwise_win_rate: float | None = None,
+    min_pairwise_target_coverage_lift: float | None = None,
+    min_pairwise_target_ndcg_lift: float | None = None,
+    min_pairwise_mrr_lift: float | None = None,
+    min_pairwise_precision_lift: float | None = None,
+    min_pairwise_target_coverage_ci_low: float | None = None,
+    min_pairwise_target_ndcg_ci_low: float | None = None,
+    min_pairwise_mrr_ci_low: float | None = None,
+    min_pairwise_precision_ci_low: float | None = None,
+    max_pairwise_mean_latency_delta_ms: float | None = None,
     require_best_by_recall: bool = False,
     require_best_by_target_coverage: bool = False,
     require_best_by_target_ndcg: bool = False,
@@ -998,6 +1174,20 @@ def gate_qdrant_vector_ablation(
         baseline_row = qdrant_vector_ablation_row(report, baseline_mode)
         if baseline_row is None:
             raise ValueError(f"Baseline Qdrant vector ablation mode not found: {baseline_mode}")
+    elif requires_baseline(
+        min_pairwise_shared_queries,
+        min_pairwise_win_rate,
+        min_pairwise_target_coverage_lift,
+        min_pairwise_target_ndcg_lift,
+        min_pairwise_mrr_lift,
+        min_pairwise_precision_lift,
+        min_pairwise_target_coverage_ci_low,
+        min_pairwise_target_ndcg_ci_low,
+        min_pairwise_mrr_ci_low,
+        min_pairwise_precision_ci_low,
+        max_pairwise_mean_latency_delta_ms,
+    ):
+        raise ValueError("A baseline mode is required for pairwise checks.")
 
     target_metrics = retrieval_target_metrics(row.evaluation)
     source_family_metrics = retrieval_source_family_metrics(row.evaluation)
@@ -1082,6 +1272,23 @@ def gate_qdrant_vector_ablation(
         )
     )
     checks.extend(case_group_target_coverage_checks(metrics, min_case_group_target_coverage or {}))
+    if baseline_row is not None:
+        checks.extend(
+            pairwise_threshold_checks(
+                pairwise_metrics,
+                min_pairwise_shared_queries=min_pairwise_shared_queries,
+                min_pairwise_win_rate=min_pairwise_win_rate,
+                min_pairwise_target_coverage_lift=min_pairwise_target_coverage_lift,
+                min_pairwise_target_ndcg_lift=min_pairwise_target_ndcg_lift,
+                min_pairwise_mrr_lift=min_pairwise_mrr_lift,
+                min_pairwise_precision_lift=min_pairwise_precision_lift,
+                min_pairwise_target_coverage_ci_low=min_pairwise_target_coverage_ci_low,
+                min_pairwise_target_ndcg_ci_low=min_pairwise_target_ndcg_ci_low,
+                min_pairwise_mrr_ci_low=min_pairwise_mrr_ci_low,
+                min_pairwise_precision_ci_low=min_pairwise_precision_ci_low,
+                max_pairwise_mean_latency_delta_ms=max_pairwise_mean_latency_delta_ms,
+            )
+        )
     if require_best_by_recall:
         checks.append(best_mode_check("require_best_by_recall", mode, report.best_by_recall))
     if require_best_by_target_coverage:

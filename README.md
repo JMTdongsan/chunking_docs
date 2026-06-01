@@ -428,10 +428,15 @@ chunking-docs ingestion-readiness \
   --retrieval-ablation-mode bm25_visual \
   --retrieval-ablation-baseline-mode bm25_text \
   --min-retrieval-ablation-recall-lift 0.2 \
+  --min-retrieval-ablation-pairwise-win-rate 0.55 \
+  --min-retrieval-ablation-pairwise-target-coverage-lift 0.02 \
   --min-retrieval-ablation-target-type-coverage asset=0.9 \
   --min-retrieval-ablation-case-group-target-coverage case_source:visual_lexical_probe=0.7 \
   --qdrant-vector-ablation outputs/package/qdrant_vector_ablation.json \
   --qdrant-vector-mode text_caption \
+  --qdrant-vector-baseline-mode text \
+  --min-qdrant-vector-pairwise-win-rate 0.55 \
+  --min-qdrant-vector-pairwise-target-coverage-lift 0.02 \
   --min-qdrant-vector-recall-at-k 0.8 \
   --min-qdrant-vector-target-coverage-at-k 0.75 \
   --min-qdrant-vector-target-type-coverage asset=0.9 \
@@ -494,9 +499,12 @@ chunking-docs eval-qdrant-vector-ablation examples/retrieval_cases.jsonl \
   --output outputs/package/qdrant_vector_ablation.json
 chunking-docs gate-qdrant-vector-ablation outputs/package/qdrant_vector_ablation.json \
   --mode text_caption \
+  --baseline-mode text \
   --min-recall-at-k 0.8 \
   --min-target-coverage-at-k 0.75 \
   --min-target-ndcg-at-k 0.7 \
+  --min-pairwise-win-rate 0.55 \
+  --min-pairwise-target-coverage-lift 0.02 \
   --min-target-type-coverage asset=0.9 \
   --min-source-family-target-coverage visual=0.75 \
   --min-case-group-target-coverage case_source:visual_object_probe=0.7 \
@@ -512,6 +520,8 @@ chunking-docs gate-retrieval-ablation outputs/package/retrieval_ablation.json \
   --mode bm25_visual \
   --baseline-mode bm25_text \
   --min-recall-lift 0.2 \
+  --min-pairwise-win-rate 0.55 \
+  --min-pairwise-target-coverage-lift 0.02 \
   --min-target-type-coverage asset=0.9 \
   --min-source-family-target-coverage lexical=0.75 \
   --min-case-group-target-coverage case_source:visual_lexical_probe=0.7 \

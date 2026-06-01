@@ -1020,6 +1020,17 @@ def gate_qdrant_vector_ablation_command(
             "case_source:visual_object_probe=0.7."
         ),
     ),
+    min_pairwise_shared_queries: int | None = None,
+    min_pairwise_win_rate: float | None = None,
+    min_pairwise_target_coverage_lift: float | None = None,
+    min_pairwise_target_ndcg_lift: float | None = None,
+    min_pairwise_mrr_lift: float | None = None,
+    min_pairwise_precision_lift: float | None = None,
+    min_pairwise_target_coverage_ci_low: float | None = None,
+    min_pairwise_target_ndcg_ci_low: float | None = None,
+    min_pairwise_mrr_ci_low: float | None = None,
+    min_pairwise_precision_ci_low: float | None = None,
+    max_pairwise_mean_latency_delta_ms: float | None = None,
     require_best_by_recall: bool = False,
     require_best_by_target_coverage: bool = False,
     require_best_by_target_ndcg: bool = False,
@@ -1062,6 +1073,17 @@ def gate_qdrant_vector_ablation_command(
             min_target_type_coverage=target_type_thresholds,
             min_source_family_target_coverage=source_family_thresholds,
             min_case_group_target_coverage=case_group_thresholds,
+            min_pairwise_shared_queries=min_pairwise_shared_queries,
+            min_pairwise_win_rate=min_pairwise_win_rate,
+            min_pairwise_target_coverage_lift=min_pairwise_target_coverage_lift,
+            min_pairwise_target_ndcg_lift=min_pairwise_target_ndcg_lift,
+            min_pairwise_mrr_lift=min_pairwise_mrr_lift,
+            min_pairwise_precision_lift=min_pairwise_precision_lift,
+            min_pairwise_target_coverage_ci_low=min_pairwise_target_coverage_ci_low,
+            min_pairwise_target_ndcg_ci_low=min_pairwise_target_ndcg_ci_low,
+            min_pairwise_mrr_ci_low=min_pairwise_mrr_ci_low,
+            min_pairwise_precision_ci_low=min_pairwise_precision_ci_low,
+            max_pairwise_mean_latency_delta_ms=max_pairwise_mean_latency_delta_ms,
             require_best_by_recall=require_best_by_recall,
             require_best_by_target_coverage=require_best_by_target_coverage,
             require_best_by_target_ndcg=require_best_by_target_ndcg,
@@ -2454,6 +2476,17 @@ def ingestion_readiness_command(
     min_retrieval_ablation_precision_lift: float | None = None,
     max_retrieval_ablation_mean_latency_ratio: float | None = None,
     max_retrieval_ablation_p95_latency_ratio: float | None = None,
+    min_retrieval_ablation_pairwise_shared_queries: int | None = None,
+    min_retrieval_ablation_pairwise_win_rate: float | None = None,
+    min_retrieval_ablation_pairwise_target_coverage_lift: float | None = None,
+    min_retrieval_ablation_pairwise_target_ndcg_lift: float | None = None,
+    min_retrieval_ablation_pairwise_mrr_lift: float | None = None,
+    min_retrieval_ablation_pairwise_precision_lift: float | None = None,
+    min_retrieval_ablation_pairwise_target_coverage_ci_low: float | None = None,
+    min_retrieval_ablation_pairwise_target_ndcg_ci_low: float | None = None,
+    min_retrieval_ablation_pairwise_mrr_ci_low: float | None = None,
+    min_retrieval_ablation_pairwise_precision_ci_low: float | None = None,
+    max_retrieval_ablation_pairwise_mean_latency_delta_ms: float | None = None,
     require_retrieval_ablation_best_by_recall: bool = False,
     require_retrieval_ablation_best_by_target_coverage: bool = False,
     require_retrieval_ablation_best_by_target_ndcg: bool = False,
@@ -2462,6 +2495,17 @@ def ingestion_readiness_command(
     require_qdrant_vector_ablation: bool = False,
     qdrant_vector_mode: str | None = None,
     qdrant_vector_baseline_mode: str | None = None,
+    min_qdrant_vector_pairwise_shared_queries: int | None = None,
+    min_qdrant_vector_pairwise_win_rate: float | None = None,
+    min_qdrant_vector_pairwise_target_coverage_lift: float | None = None,
+    min_qdrant_vector_pairwise_target_ndcg_lift: float | None = None,
+    min_qdrant_vector_pairwise_mrr_lift: float | None = None,
+    min_qdrant_vector_pairwise_precision_lift: float | None = None,
+    min_qdrant_vector_pairwise_target_coverage_ci_low: float | None = None,
+    min_qdrant_vector_pairwise_target_ndcg_ci_low: float | None = None,
+    min_qdrant_vector_pairwise_mrr_ci_low: float | None = None,
+    min_qdrant_vector_pairwise_precision_ci_low: float | None = None,
+    max_qdrant_vector_pairwise_mean_latency_delta_ms: float | None = None,
     min_qdrant_vector_recall_at_k: float = 0.0,
     min_qdrant_vector_target_coverage_at_k: float = 0.0,
     min_qdrant_vector_target_ndcg_at_k: float = 0.0,
@@ -2671,6 +2715,33 @@ def ingestion_readiness_command(
             "min_precision_lift": min_retrieval_ablation_precision_lift,
             "max_mean_latency_ratio": max_retrieval_ablation_mean_latency_ratio,
             "max_p95_latency_ratio": max_retrieval_ablation_p95_latency_ratio,
+            "min_pairwise_shared_queries": (
+                min_retrieval_ablation_pairwise_shared_queries
+            ),
+            "min_pairwise_win_rate": min_retrieval_ablation_pairwise_win_rate,
+            "min_pairwise_target_coverage_lift": (
+                min_retrieval_ablation_pairwise_target_coverage_lift
+            ),
+            "min_pairwise_target_ndcg_lift": (
+                min_retrieval_ablation_pairwise_target_ndcg_lift
+            ),
+            "min_pairwise_mrr_lift": min_retrieval_ablation_pairwise_mrr_lift,
+            "min_pairwise_precision_lift": (
+                min_retrieval_ablation_pairwise_precision_lift
+            ),
+            "min_pairwise_target_coverage_ci_low": (
+                min_retrieval_ablation_pairwise_target_coverage_ci_low
+            ),
+            "min_pairwise_target_ndcg_ci_low": (
+                min_retrieval_ablation_pairwise_target_ndcg_ci_low
+            ),
+            "min_pairwise_mrr_ci_low": min_retrieval_ablation_pairwise_mrr_ci_low,
+            "min_pairwise_precision_ci_low": (
+                min_retrieval_ablation_pairwise_precision_ci_low
+            ),
+            "max_pairwise_mean_latency_delta_ms": (
+                max_retrieval_ablation_pairwise_mean_latency_delta_ms
+            ),
             "require_best_by_recall": require_retrieval_ablation_best_by_recall,
             "require_best_by_target_coverage": (
                 require_retrieval_ablation_best_by_target_coverage
@@ -2685,6 +2756,27 @@ def ingestion_readiness_command(
         qdrant_vector_ablation_mode=qdrant_vector_mode,
         qdrant_vector_ablation_gate_options={
             "baseline_mode": qdrant_vector_baseline_mode,
+            "min_pairwise_shared_queries": min_qdrant_vector_pairwise_shared_queries,
+            "min_pairwise_win_rate": min_qdrant_vector_pairwise_win_rate,
+            "min_pairwise_target_coverage_lift": (
+                min_qdrant_vector_pairwise_target_coverage_lift
+            ),
+            "min_pairwise_target_ndcg_lift": (
+                min_qdrant_vector_pairwise_target_ndcg_lift
+            ),
+            "min_pairwise_mrr_lift": min_qdrant_vector_pairwise_mrr_lift,
+            "min_pairwise_precision_lift": min_qdrant_vector_pairwise_precision_lift,
+            "min_pairwise_target_coverage_ci_low": (
+                min_qdrant_vector_pairwise_target_coverage_ci_low
+            ),
+            "min_pairwise_target_ndcg_ci_low": (
+                min_qdrant_vector_pairwise_target_ndcg_ci_low
+            ),
+            "min_pairwise_mrr_ci_low": min_qdrant_vector_pairwise_mrr_ci_low,
+            "min_pairwise_precision_ci_low": min_qdrant_vector_pairwise_precision_ci_low,
+            "max_pairwise_mean_latency_delta_ms": (
+                max_qdrant_vector_pairwise_mean_latency_delta_ms
+            ),
             "min_recall_at_k": min_qdrant_vector_recall_at_k,
             "min_target_coverage_at_k": min_qdrant_vector_target_coverage_at_k,
             "min_target_ndcg_at_k": min_qdrant_vector_target_ndcg_at_k,
@@ -3125,6 +3217,17 @@ def gate_retrieval_ablation_command(
     min_precision_lift: float | None = None,
     max_mean_latency_ratio: float | None = None,
     max_p95_latency_ratio: float | None = None,
+    min_pairwise_shared_queries: int | None = None,
+    min_pairwise_win_rate: float | None = None,
+    min_pairwise_target_coverage_lift: float | None = None,
+    min_pairwise_target_ndcg_lift: float | None = None,
+    min_pairwise_mrr_lift: float | None = None,
+    min_pairwise_precision_lift: float | None = None,
+    min_pairwise_target_coverage_ci_low: float | None = None,
+    min_pairwise_target_ndcg_ci_low: float | None = None,
+    min_pairwise_mrr_ci_low: float | None = None,
+    min_pairwise_precision_ci_low: float | None = None,
+    max_pairwise_mean_latency_delta_ms: float | None = None,
     require_best_by_recall: bool = False,
     require_best_by_target_coverage: bool = False,
     require_best_by_target_ndcg: bool = False,
@@ -3172,6 +3275,17 @@ def gate_retrieval_ablation_command(
             min_precision_lift=min_precision_lift,
             max_mean_latency_ratio=max_mean_latency_ratio,
             max_p95_latency_ratio=max_p95_latency_ratio,
+            min_pairwise_shared_queries=min_pairwise_shared_queries,
+            min_pairwise_win_rate=min_pairwise_win_rate,
+            min_pairwise_target_coverage_lift=min_pairwise_target_coverage_lift,
+            min_pairwise_target_ndcg_lift=min_pairwise_target_ndcg_lift,
+            min_pairwise_mrr_lift=min_pairwise_mrr_lift,
+            min_pairwise_precision_lift=min_pairwise_precision_lift,
+            min_pairwise_target_coverage_ci_low=min_pairwise_target_coverage_ci_low,
+            min_pairwise_target_ndcg_ci_low=min_pairwise_target_ndcg_ci_low,
+            min_pairwise_mrr_ci_low=min_pairwise_mrr_ci_low,
+            min_pairwise_precision_ci_low=min_pairwise_precision_ci_low,
+            max_pairwise_mean_latency_delta_ms=max_pairwise_mean_latency_delta_ms,
             require_best_by_recall=require_best_by_recall,
             require_best_by_target_coverage=require_best_by_target_coverage,
             require_best_by_target_ndcg=require_best_by_target_ndcg,
