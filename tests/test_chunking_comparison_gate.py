@@ -28,6 +28,7 @@ def test_gate_chunking_comparison_passes_selected_candidate_against_baseline():
         min_target_ndcg_at_k=0.75,
         min_precision_at_k=0.5,
         min_visual_text_coverage_ratio=0.8,
+        min_visual_text_part_coverage_ratio=0.8,
         min_target_type_coverage={"asset": 0.8},
         min_source_family_target_coverage={"lexical": 0.8},
         min_chunk_strategy_target_coverage={"visual_asset_text": 0.8},
@@ -44,6 +45,7 @@ def test_gate_chunking_comparison_passes_selected_candidate_against_baseline():
     assert report.failed_checks == []
     assert report.metrics["retrieval_recall_at_k"] == 0.9
     assert report.metrics["visual_text_coverage_ratio"] == 0.9
+    assert report.metrics["visual_text_part_coverage_ratio"] == 0.9
     assert report.metrics["target_type.asset.coverage_at_k"] == 0.85
     assert report.metrics["source_family.lexical.target_coverage_at_k"] == 0.9
     assert report.metrics["chunk_strategy.visual_asset_text.target_coverage_at_k"] == 0.9
@@ -69,6 +71,7 @@ def test_gate_chunking_comparison_flags_retrieval_regressions():
         min_recall_at_k=0.8,
         min_target_coverage_at_k=0.75,
         min_visual_text_coverage_ratio=0.8,
+        min_visual_text_part_coverage_ratio=0.8,
         min_target_type_coverage={"asset": 0.8},
         min_source_family_target_coverage={"lexical": 0.8},
         min_chunk_strategy_target_coverage={"visual_asset_text": 0.8},
@@ -83,6 +86,7 @@ def test_gate_chunking_comparison_flags_retrieval_regressions():
     assert "min_recall_at_k" in report.failed_checks
     assert "min_target_coverage_at_k" in report.failed_checks
     assert "min_visual_text_coverage_ratio" in report.failed_checks
+    assert "min_visual_text_part_coverage_ratio" in report.failed_checks
     assert "min_target_type_coverage:asset" in report.failed_checks
     assert "min_source_family_target_coverage:lexical" in report.failed_checks
     assert "min_chunk_strategy_target_coverage:visual_asset_text" in report.failed_checks
@@ -180,6 +184,8 @@ def test_gate_chunking_comparison_cli_writes_json_and_fails(tmp_path):
             "asset=0.8",
             "--min-visual-text-coverage-ratio",
             "0.8",
+            "--min-visual-text-part-coverage-ratio",
+            "0.8",
             "--min-source-family-target-coverage",
             "lexical=0.8",
             "--min-chunk-strategy-target-coverage",
@@ -204,6 +210,7 @@ def test_gate_chunking_comparison_cli_writes_json_and_fails(tmp_path):
     assert payload["candidate"] == "weak"
     assert "min_recall_at_k" in payload["failed_checks"]
     assert "min_visual_text_coverage_ratio" in payload["failed_checks"]
+    assert "min_visual_text_part_coverage_ratio" in payload["failed_checks"]
     assert "min_target_type_coverage:asset" in payload["failed_checks"]
     assert "min_source_family_target_coverage:lexical" in payload["failed_checks"]
     assert "min_chunk_strategy_target_coverage:visual_asset_text" in payload["failed_checks"]
@@ -345,7 +352,11 @@ def row(
     retrieval_role_metrics: dict[str, dict[str, float]] | None = None,
     case_group_metrics: dict[str, dict[str, dict[str, float]]] | None = None,
     visual_text_coverage: float = 1.0,
+    visual_text_part_coverage: float | None = None,
 ) -> ChunkingComparisonRow:
+    visual_text_part_coverage = (
+        visual_text_coverage if visual_text_part_coverage is None else visual_text_part_coverage
+    )
     return ChunkingComparisonRow(
         name=name,
         chunk_count=12,
@@ -369,6 +380,9 @@ def row(
         visual_text_asset_count=10,
         visual_text_covered_asset_count=round(10 * visual_text_coverage),
         visual_text_coverage_ratio=visual_text_coverage,
+        visual_text_part_count=20,
+        visual_text_covered_part_count=round(20 * visual_text_part_coverage),
+        visual_text_part_coverage_ratio=visual_text_part_coverage,
         chunks_under_min_chars=0,
         chunks_over_max_chars=0,
         issue_codes=[],

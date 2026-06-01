@@ -77,6 +77,7 @@ def build_ingestion_readiness_report(
     require_postgres_rows: bool = True,
     require_visual_annotations: bool = False,
     min_visual_text_coverage_ratio: float | None = None,
+    min_visual_text_part_coverage_ratio: float | None = None,
     visual_results: list[VisualJobRunResult] | None = None,
     require_visual_quality: bool = False,
     visual_quality_options: dict[str, Any] | None = None,
@@ -139,11 +140,12 @@ def build_ingestion_readiness_report(
         postgres_component, postgres_row_counts = postgres_rows_component(manifest, package_dir)
         components.append(postgres_component)
 
-    if min_visual_text_coverage_ratio is not None:
+    if min_visual_text_coverage_ratio is not None or min_visual_text_part_coverage_ratio is not None:
         components.append(
             visual_text_coverage_component(
                 manifest,
                 min_coverage_ratio=min_visual_text_coverage_ratio,
+                min_part_coverage_ratio=min_visual_text_part_coverage_ratio,
             )
         )
 
@@ -703,27 +705,39 @@ def visual_run_comparison_component(
 
 def visual_text_coverage_component(
     manifest: ProcessingManifest,
-    min_coverage_ratio: float,
+    min_coverage_ratio: float | None = None,
+    min_part_coverage_ratio: float | None = None,
 ) -> ReadinessComponent:
     stats = visual_text_coverage_stats(manifest.chunks, manifest.assets)
     standalone_stats = standalone_visual_text_stats(manifest.chunks, manifest.assets)
     coverage_ratio = float(stats["coverage_ratio"])
+    part_coverage_ratio = float(stats["part_coverage_ratio"])
     asset_count = int(stats["asset_count"])
-    passed = coverage_ratio >= min_coverage_ratio
+    failed_checks = []
+    if min_coverage_ratio is not None and coverage_ratio < min_coverage_ratio:
+        failed_checks.append("min_visual_text_coverage_ratio")
+    if min_part_coverage_ratio is not None and part_coverage_ratio < min_part_coverage_ratio:
+        failed_checks.append("min_visual_text_part_coverage_ratio")
     return ReadinessComponent(
         name="visual_text_coverage",
-        passed=passed,
+        passed=not failed_checks,
         message=(
-            "Linked visual asset text is represented in package chunks."
-            if passed
-            else "Some linked visual asset text is not represented in package chunks."
+            "Linked visual asset text parts are represented in package chunks."
+            if not failed_checks
+            else "Some linked visual asset text parts are not represented in package chunks."
         ),
         metadata={
+            "failed_checks": failed_checks,
             "min_coverage_ratio": min_coverage_ratio,
+            "min_part_coverage_ratio": min_part_coverage_ratio,
             "visual_text_asset_count": asset_count,
             "visual_text_covered_asset_count": int(stats["covered_asset_count"]),
             "visual_text_coverage_ratio": coverage_ratio,
+            "visual_text_part_count": int(stats["part_count"]),
+            "visual_text_covered_part_count": int(stats["covered_part_count"]),
+            "visual_text_part_coverage_ratio": part_coverage_ratio,
             "missing_asset_ids": list(stats["missing_asset_ids"])[:50],
+            "missing_parts": list(stats["missing_parts"])[:50],
             "standalone_visual_chunk_count": int(standalone_stats["chunk_count"]),
             "standalone_visual_text_asset_count": int(standalone_stats["asset_count"]),
             "standalone_visual_text_asset_ids": list(standalone_stats["asset_ids"])[:50],

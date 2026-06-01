@@ -2364,6 +2364,14 @@ def ingestion_readiness_command(
         "--min-visual-text-coverage-ratio",
         help="Require this fraction of linked visual assets to have text represented in package chunks.",
     ),
+    min_visual_text_part_coverage_ratio: float | None = typer.Option(
+        None,
+        "--min-visual-text-part-coverage-ratio",
+        help=(
+            "Require this fraction of linked visual text parts, including OCR, VLM, "
+            "and object metadata text, to be represented in package chunks."
+        ),
+    ),
     visual_results: Path | None = None,
     require_visual_quality: bool = False,
     min_visual_completion_rate: float = 0.0,
@@ -2450,6 +2458,11 @@ def ingestion_readiness_command(
         None,
         "--min-chunking-visual-text-coverage-ratio",
         help="Require selected chunking comparison candidate linked visual text coverage.",
+    ),
+    min_chunking_visual_text_part_coverage_ratio: float | None = typer.Option(
+        None,
+        "--min-chunking-visual-text-part-coverage-ratio",
+        help="Require selected chunking comparison candidate linked visual text part coverage.",
     ),
     max_chunking_failed_queries: int | None = 0,
     max_chunking_recall_drop: float | None = None,
@@ -2665,6 +2678,7 @@ def ingestion_readiness_command(
         require_postgres_rows=require_postgres_rows,
         require_visual_annotations=require_visual_annotations,
         min_visual_text_coverage_ratio=min_visual_text_coverage_ratio,
+        min_visual_text_part_coverage_ratio=min_visual_text_part_coverage_ratio,
         visual_results=parsed_visual_results,
         require_visual_quality=require_visual_quality,
         visual_quality_options={
@@ -2730,6 +2744,7 @@ def ingestion_readiness_command(
             "min_target_coverage_at_k": min_chunking_target_coverage_at_k,
             "min_target_ndcg_at_k": min_chunking_target_ndcg_at_k,
             "min_visual_text_coverage_ratio": min_chunking_visual_text_coverage_ratio,
+            "min_visual_text_part_coverage_ratio": min_chunking_visual_text_part_coverage_ratio,
             "max_failed_queries": max_chunking_failed_queries,
             "max_recall_drop": max_chunking_recall_drop,
             "max_mean_latency_ratio": max_chunking_mean_latency_ratio,
@@ -3699,6 +3714,7 @@ def gate_chunking_comparison_command(
     min_page_coverage_ratio: float = 1.0,
     min_visual_annotation_ratio: float | None = None,
     min_visual_text_coverage_ratio: float | None = None,
+    min_visual_text_part_coverage_ratio: float | None = None,
     min_recall_at_k: float | None = None,
     min_target_coverage_at_k: float | None = None,
     min_target_ndcg_at_k: float | None = None,
@@ -3789,6 +3805,7 @@ def gate_chunking_comparison_command(
         min_page_coverage_ratio=min_page_coverage_ratio,
         min_visual_annotation_ratio=min_visual_annotation_ratio,
         min_visual_text_coverage_ratio=min_visual_text_coverage_ratio,
+        min_visual_text_part_coverage_ratio=min_visual_text_part_coverage_ratio,
         min_recall_at_k=min_recall_at_k,
         min_target_coverage_at_k=min_target_coverage_at_k,
         min_target_ndcg_at_k=min_target_ndcg_at_k,

@@ -47,7 +47,11 @@ class ChunkingQualityReport(BaseModel):
     visual_text_asset_count: int = 0
     visual_text_covered_asset_count: int = 0
     visual_text_coverage_ratio: float = 1.0
+    visual_text_part_count: int = 0
+    visual_text_covered_part_count: int = 0
+    visual_text_part_coverage_ratio: float = 1.0
     visual_text_missing_asset_ids: list[str] = Field(default_factory=list)
+    visual_text_missing_parts: list[dict[str, Any]] = Field(default_factory=list)
     standalone_visual_chunk_count: int = 0
     standalone_visual_text_asset_count: int = 0
     standalone_visual_text_asset_ids: list[str] = Field(default_factory=list)
@@ -108,7 +112,10 @@ def evaluate_chunking_quality(
         chunk_count=len(chunks),
         visual_text_asset_count=visual_text_coverage["asset_count"],
         visual_text_coverage_ratio=visual_text_coverage["coverage_ratio"],
+        visual_text_part_count=visual_text_coverage["part_count"],
+        visual_text_part_coverage_ratio=visual_text_coverage["part_coverage_ratio"],
         visual_text_missing_asset_ids=visual_text_coverage["missing_asset_ids"],
+        visual_text_missing_parts=visual_text_coverage["missing_parts"],
         retrieval=retrieval,
     )
     quality_score = compute_quality_score(
@@ -137,7 +144,11 @@ def evaluate_chunking_quality(
         visual_text_asset_count=visual_text_coverage["asset_count"],
         visual_text_covered_asset_count=visual_text_coverage["covered_asset_count"],
         visual_text_coverage_ratio=visual_text_coverage["coverage_ratio"],
+        visual_text_part_count=visual_text_coverage["part_count"],
+        visual_text_covered_part_count=visual_text_coverage["covered_part_count"],
+        visual_text_part_coverage_ratio=visual_text_coverage["part_coverage_ratio"],
         visual_text_missing_asset_ids=visual_text_coverage["missing_asset_ids"],
+        visual_text_missing_parts=visual_text_coverage["missing_parts"],
         standalone_visual_chunk_count=standalone_visual_text["chunk_count"],
         standalone_visual_text_asset_count=standalone_visual_text["asset_count"],
         standalone_visual_text_asset_ids=standalone_visual_text["asset_ids"],
@@ -181,7 +192,10 @@ def quality_issues(
     chunk_count: int,
     visual_text_asset_count: int,
     visual_text_coverage_ratio: float,
+    visual_text_part_count: int,
+    visual_text_part_coverage_ratio: float,
     visual_text_missing_asset_ids: list[str],
+    visual_text_missing_parts: list[dict[str, Any]],
     retrieval: RetrievalEvaluation | None,
 ) -> list[QualityIssue]:
     issues: list[QualityIssue] = []
@@ -222,6 +236,19 @@ def quality_issues(
                     "visual_text_asset_count": visual_text_asset_count,
                     "visual_text_coverage_ratio": visual_text_coverage_ratio,
                     "missing_asset_ids": visual_text_missing_asset_ids[:50],
+                },
+            )
+        )
+    if visual_text_part_count and visual_text_part_coverage_ratio < 0.8:
+        issues.append(
+            QualityIssue(
+                severity="warning",
+                code="visual_text_part_coverage",
+                message="Some linked visual text parts are not present in candidate chunks.",
+                metadata={
+                    "visual_text_part_count": visual_text_part_count,
+                    "visual_text_part_coverage_ratio": visual_text_part_coverage_ratio,
+                    "missing_parts": visual_text_missing_parts[:50],
                 },
             )
         )
@@ -307,7 +334,7 @@ def retrieval_quality_score(retrieval: RetrievalEvaluation) -> float:
 def visual_text_coverage_stats(
     chunks: list[DocumentChunk],
     assets: list[VisualAsset],
-) -> dict[str, float | int | list[str]]:
+) -> dict[str, Any]:
     assets_with_text = {}
     for asset in assets:
         parts = asset_text_parts(asset)
@@ -321,20 +348,43 @@ def visual_text_coverage_stats(
 
     covered_asset_ids = []
     missing_asset_ids = []
+    covered_part_count = 0
+    missing_parts: list[dict[str, Any]] = []
     for asset_id, parts in assets_with_text.items():
         chunk_texts = chunk_texts_by_asset.get(asset_id, [])
-        if any(visual_text_part_in_chunks(part, chunk_texts) for part in parts):
+        asset_covered_part_count = 0
+        for part_index, part in enumerate(parts):
+            if visual_text_part_in_chunks(part, chunk_texts):
+                asset_covered_part_count += 1
+                covered_part_count += 1
+            else:
+                missing_parts.append(
+                    {
+                        "asset_id": asset_id,
+                        "part_index": part_index,
+                        "preview": text_preview(part),
+                    }
+                )
+        if asset_covered_part_count:
             covered_asset_ids.append(asset_id)
         else:
             missing_asset_ids.append(asset_id)
 
     asset_count = len(assets_with_text)
     covered_count = len(covered_asset_ids)
+    part_count = sum(len(parts) for parts in assets_with_text.values())
     return {
         "asset_count": asset_count,
         "covered_asset_count": covered_count,
         "coverage_ratio": ratio(covered_count, asset_count) if asset_count else 1.0,
+        "part_count": part_count,
+        "covered_part_count": covered_part_count,
+        "part_coverage_ratio": ratio(covered_part_count, part_count) if part_count else 1.0,
         "missing_asset_ids": sorted(missing_asset_ids),
+        "missing_parts": sorted(
+            missing_parts,
+            key=lambda item: (str(item["asset_id"]), int(item["part_index"])),
+        ),
     }
 
 
@@ -377,6 +427,13 @@ def visual_text_part_in_chunks(part: str, chunk_texts: list[str]) -> bool:
 
 def normalize_for_coverage(value: str) -> str:
     return " ".join(value.split()).casefold()
+
+
+def text_preview(value: str, max_chars: int = 120) -> str:
+    normalized = " ".join(value.split())
+    if len(normalized) <= max_chars:
+        return normalized
+    return normalized[: max_chars - 1].rstrip() + "..."
 
 
 def ratio(numerator: int, denominator: int) -> float:

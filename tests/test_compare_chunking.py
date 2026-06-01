@@ -74,6 +74,9 @@ def test_compare_chunking_reports_ranks_by_retrieval_then_quality():
     assert comparison.rows[0].visual_text_asset_count == 1
     assert comparison.rows[0].visual_text_covered_asset_count == 1
     assert comparison.rows[0].visual_text_coverage_ratio == 1.0
+    assert comparison.rows[0].visual_text_part_count == 1
+    assert comparison.rows[0].visual_text_covered_part_count == 1
+    assert comparison.rows[0].visual_text_part_coverage_ratio == 1.0
     assert comparison.rows[0].standalone_visual_chunk_count == 0
     pairwise = next(
         item
@@ -89,3 +92,4 @@ def test_compare_chunking_reports_ranks_by_retrieval_then_quality():
     assert pairwise.target_ndcg_delta_ci_high == pairwise.mean_target_ndcg_delta
     assert comparison.rows[-1].failed_queries == ["river corridor"]
     assert comparison.rows[-1].visual_text_coverage_ratio == 0.0
+    assert comparison.rows[-1].visual_text_part_coverage_ratio == 0.0

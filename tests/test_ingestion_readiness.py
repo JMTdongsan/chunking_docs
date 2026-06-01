@@ -141,6 +141,36 @@ def test_ingestion_readiness_can_gate_package_visual_text_coverage(tmp_path):
     assert component.metadata["missing_asset_ids"] == ["asset-1"]
 
 
+def test_ingestion_readiness_can_gate_package_visual_text_part_coverage(tmp_path):
+    package_dir, manifest = write_ready_package(tmp_path)
+    manifest.chunks[0] = manifest.chunks[0].model_copy(
+        update={"text": "reference retrieval evidence reference visual evidence"}
+    )
+    manifest.assets[0] = manifest.assets[0].model_copy(
+        update={"ocr_text": "uncovered visual label"}
+    )
+    write_jsonl(package_dir / "chunks.jsonl", manifest.chunks)
+    write_jsonl(package_dir / "assets.jsonl", manifest.assets)
+    write_bm25_manifest(package_dir, manifest.chunks, manifest.assets)
+
+    report = build_ingestion_readiness_report(
+        package_dir,
+        manifest,
+        min_visual_text_coverage_ratio=0.8,
+        min_visual_text_part_coverage_ratio=0.8,
+    )
+
+    assert report.passed is False
+    assert "visual_text_coverage" in report.failed_components
+    component = next(component for component in report.components if component.name == "visual_text_coverage")
+    assert component.metadata["failed_checks"] == ["min_visual_text_part_coverage_ratio"]
+    assert component.metadata["visual_text_coverage_ratio"] == 1.0
+    assert component.metadata["visual_text_part_count"] == 2
+    assert component.metadata["visual_text_covered_part_count"] == 1
+    assert component.metadata["visual_text_part_coverage_ratio"] == 0.5
+    assert component.metadata["missing_parts"][0]["asset_id"] == "asset-1"
+
+
 def test_ingestion_readiness_reports_standalone_visual_text_chunks(tmp_path):
     package_dir, manifest = write_ready_package(tmp_path)
     standalone_chunk = DocumentChunk(
@@ -825,6 +855,44 @@ def test_ingestion_readiness_cli_can_gate_package_visual_text_coverage(tmp_path)
     assert component["metadata"]["missing_asset_ids"] == ["asset-1"]
 
 
+def test_ingestion_readiness_cli_can_gate_package_visual_text_part_coverage(tmp_path):
+    package_dir, manifest = write_ready_package(tmp_path)
+    manifest.chunks[0] = manifest.chunks[0].model_copy(
+        update={"text": "reference retrieval evidence reference visual evidence"}
+    )
+    manifest.assets[0] = manifest.assets[0].model_copy(
+        update={"ocr_text": "uncovered visual label"}
+    )
+    write_jsonl(package_dir / "chunks.jsonl", manifest.chunks)
+    write_jsonl(package_dir / "assets.jsonl", manifest.assets)
+    write_bm25_manifest(package_dir, manifest.chunks, manifest.assets)
+    output = tmp_path / "readiness.json"
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "ingestion-readiness",
+            "--package-dir",
+            str(package_dir),
+            "--min-visual-text-part-coverage-ratio",
+            "0.8",
+            "--output",
+            str(output),
+            "--no-fail",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["passed"] is False
+    component = next(
+        component for component in payload["components"] if component["name"] == "visual_text_coverage"
+    )
+    assert component["metadata"]["failed_checks"] == ["min_visual_text_part_coverage_ratio"]
+    assert component["metadata"]["visual_text_coverage_ratio"] == 1.0
+    assert component["metadata"]["visual_text_part_coverage_ratio"] == 0.5
+
+
 def test_ingestion_readiness_cli_can_gate_visual_run_comparison(tmp_path):
     package_dir, _ = write_ready_package(tmp_path)
     comparison_path = tmp_path / "visual_run_comparison.json"
@@ -1221,6 +1289,9 @@ def chunking_row(name: str, quality_score: float, recall: float):
         visual_text_asset_count=10,
         visual_text_covered_asset_count=round(10 * recall),
         visual_text_coverage_ratio=recall,
+        visual_text_part_count=20,
+        visual_text_covered_part_count=round(20 * recall),
+        visual_text_part_coverage_ratio=recall,
         chunks_under_min_chars=0,
         chunks_over_max_chars=0,
         issue_codes=[],

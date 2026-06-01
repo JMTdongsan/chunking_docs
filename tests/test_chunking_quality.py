@@ -62,6 +62,9 @@ def test_evaluate_chunking_quality_reports_retrieval_and_multimodal_metrics():
     assert report.visual_text_asset_count == 1
     assert report.visual_text_covered_asset_count == 1
     assert report.visual_text_coverage_ratio == 1.0
+    assert report.visual_text_part_count == 1
+    assert report.visual_text_covered_part_count == 1
+    assert report.visual_text_part_coverage_ratio == 1.0
     assert report.retrieval is not None
     assert report.retrieval.hit_rate == 1.0
     assert report.retrieval.mrr == 1.0
@@ -136,9 +139,61 @@ def test_evaluate_chunking_quality_flags_missing_visual_text_coverage():
     assert report.visual_text_asset_count == 1
     assert report.visual_text_covered_asset_count == 0
     assert report.visual_text_coverage_ratio == 0.0
+    assert report.visual_text_part_count == 1
+    assert report.visual_text_covered_part_count == 0
+    assert report.visual_text_part_coverage_ratio == 0.0
     assert report.visual_text_missing_asset_ids == ["asset-1"]
     issue = next(item for item in report.issues if item.code == "visual_text_coverage")
     assert issue.metadata["missing_asset_ids"] == ["asset-1"]
+
+
+def test_evaluate_chunking_quality_flags_partial_visual_text_part_coverage():
+    chunks = [
+        DocumentChunk(
+            chunk_id="chunk-1",
+            doc_id="doc",
+            page_start=1,
+            page_end=1,
+            kind=ChunkKind.TEXT,
+            text="station marker route legend",
+            asset_ids=["asset-1"],
+        )
+    ]
+    assets = [
+        VisualAsset(
+            asset_id="asset-1",
+            doc_id="doc",
+            page_no=1,
+            kind=AssetKind.MAP,
+            caption="station marker route legend",
+            ocr_text="uncovered district label",
+            metadata={
+                "objects": [
+                    {
+                        "label": "transfer node",
+                        "attributes": ["platform edge", "entrance marker"],
+                    }
+                ]
+            },
+        )
+    ]
+
+    report = evaluate_chunking_quality(
+        chunks=chunks,
+        profiles=[],
+        assets=assets,
+        triples=[],
+    )
+
+    assert report.visual_text_covered_asset_count == 1
+    assert report.visual_text_coverage_ratio == 1.0
+    assert report.visual_text_part_count == 3
+    assert report.visual_text_covered_part_count == 1
+    assert report.visual_text_part_coverage_ratio == 1 / 3
+    assert {item["part_index"] for item in report.visual_text_missing_parts} == {1, 2}
+    issue = next(item for item in report.issues if item.code == "visual_text_part_coverage")
+    assert issue.metadata["visual_text_part_coverage_ratio"] == 1 / 3
+    assert issue.metadata["missing_parts"][0]["asset_id"] == "asset-1"
 
 
 def test_evaluate_chunking_quality_counts_source_ref_visual_links():
@@ -173,6 +228,7 @@ def test_evaluate_chunking_quality_counts_source_ref_visual_links():
     assert report.visual_asset_linkage_ratio == 1.0
     assert report.visual_text_covered_asset_count == 1
     assert report.visual_text_coverage_ratio == 1.0
+    assert report.visual_text_part_coverage_ratio == 1.0
 
 
 def test_evaluate_chunking_quality_reports_standalone_visual_chunks():
