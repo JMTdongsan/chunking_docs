@@ -6,6 +6,10 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from chunking_docs.vision.spatial import bbox_region_from_bbox
+from chunking_docs.vision.spatial import normalize_bbox
+from chunking_docs.vision.spatial import normalize_location
+
 
 class ParsedVLMOutput(BaseModel):
     caption: str | None = None
@@ -284,6 +288,9 @@ def normalize_visual_objects(value: Any, limit: int, source_key: str | None = No
             bbox = normalize_bbox(first_present(item, ["bbox", "box", "bounding_box", "boundingBox", "bounds"]))
             if bbox is not None:
                 normalized["bbox"] = bbox
+                bbox_region = bbox_region_from_bbox(bbox)
+                if bbox_region:
+                    normalized["bbox_region"] = bbox_region
             location = normalize_location(first_present(item, ["location", "position", "region"]))
             if location:
                 normalized["location"] = location
@@ -331,6 +338,7 @@ def dedupe_visual_objects(objects: list[dict[str, Any]], limit: int) -> list[dic
             tuple(str(value).casefold() for value in item.get("attributes", [])),
             str(item.get("description", "")).casefold(),
             str(item.get("location", "")).casefold(),
+            str(item.get("bbox_region", "")).casefold(),
             tuple(item.get("bbox", [])),
         )
         if not key[0] or key in seen:
@@ -340,58 +348,6 @@ def dedupe_visual_objects(objects: list[dict[str, Any]], limit: int) -> list[dic
         if len(deduped) >= limit:
             break
     return deduped
-
-
-def normalize_bbox(value: Any) -> list[float] | None:
-    if isinstance(value, dict):
-        value = bbox_values_from_mapping(value)
-    if isinstance(value, tuple):
-        value = list(value)
-    if isinstance(value, str):
-        value = [part.strip() for part in re.split(r"[, ]+", value) if part.strip()]
-    if not isinstance(value, list) or len(value) != 4:
-        return None
-    try:
-        return [round(float(item), 6) for item in value]
-    except (TypeError, ValueError):
-        return None
-
-
-def bbox_values_from_mapping(value: dict[str, Any]) -> list[Any] | None:
-    for keys in [
-        ("x_min", "y_min", "x_max", "y_max"),
-        ("xmin", "ymin", "xmax", "ymax"),
-        ("left", "top", "right", "bottom"),
-    ]:
-        if all(key in value for key in keys):
-            return [value[key] for key in keys]
-    if all(key in value for key in ["x", "y", "width", "height"]):
-        try:
-            x = float(value["x"])
-            y = float(value["y"])
-            width = float(value["width"])
-            height = float(value["height"])
-        except (TypeError, ValueError):
-            return None
-        return [x, y, x + width, y + height]
-    return None
-
-
-def normalize_location(value: Any) -> str | None:
-    if value is None:
-        return None
-    if isinstance(value, str):
-        text = value.strip()
-        return text or None
-    if isinstance(value, dict):
-        parts = []
-        for key, item in value.items():
-            item_text = str(item).strip()
-            if item_text:
-                parts.append(f"{key}: {item_text}")
-        return "; ".join(parts) or None
-    text = str(value).strip()
-    return text or None
 
 
 def normalize_confidence(value: Any) -> float | None:
@@ -475,7 +431,7 @@ def derived_visual_triples(payload: dict[str, Any], existing: list[dict[str, Any
             extra={
                 key: value
                 for key, value in visual_object.items()
-                if key in {"attributes", "bbox", "description", "location", "source_key"}
+                if key in {"attributes", "bbox", "bbox_region", "description", "location", "source_key"}
             },
         )
     return triples
@@ -552,8 +508,11 @@ def object_summary_lines(objects: list[dict[str, Any]]) -> list[str]:
             continue
         attributes = [str(value).strip() for value in item.get("attributes", []) if str(value).strip()]
         location = str(item.get("location", "")).strip()
+        bbox_region = str(item.get("bbox_region", "")).strip()
         if location and location not in attributes:
             attributes.append(location)
+        if bbox_region and not location and bbox_region not in attributes:
+            attributes.append(bbox_region)
         if attributes:
             lines.append(f"{label}: {', '.join(attributes)}")
         else:

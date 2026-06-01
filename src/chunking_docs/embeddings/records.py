@@ -14,6 +14,7 @@ from chunking_docs.graph.provenance import (
 )
 from chunking_docs.models import DocumentChunk, GraphTriple, VisualAsset
 from chunking_docs.storage.records import EmbeddingRecord
+from chunking_docs.vision.spatial import bbox_region_from_bbox
 
 VISUAL_OBJECT_METADATA_KEYS = (
     "objects",
@@ -231,10 +232,41 @@ def triple_record_payload(
 def triple_text(triple: GraphTriple) -> str:
     predicate = str(triple.predicate).replace("_", " ")
     parts = [triple.subject, predicate, triple.object]
-    source_field = triple.qualifiers.get("source_field")
+    parts.extend(triple_qualifier_text_parts(triple.qualifiers))
+    return " ".join(str(part).strip() for part in parts if str(part).strip())
+
+
+def triple_qualifier_text_parts(qualifiers: dict[str, Any]) -> list[str]:
+    parts: list[str] = []
+    evidence = metadata_text_value(qualifiers.get("evidence"))
+    if evidence:
+        parts.append(f"evidence {evidence}")
+    attributes = metadata_text_items(qualifiers.get("attributes"), limit=6)
+    if attributes:
+        parts.append(f"attributes {' '.join(attributes)}")
+    description = metadata_text_value(qualifiers.get("description"))
+    if description and description not in attributes:
+        parts.append(f"description {description}")
+    location = metadata_first_string(qualifiers, ["location", "position", "region"])
+    if location:
+        parts.append(f"location {location}")
+    bbox_region = metadata_first_string(qualifiers, ["bbox_region", "spatial_region"])
+    if not bbox_region:
+        bbox_region = bbox_region_from_bbox(
+            qualifiers.get("bbox")
+            or qualifiers.get("box")
+            or qualifiers.get("bounding_box")
+            or qualifiers.get("boundingBox")
+        ) or ""
+    if bbox_region and not location:
+        parts.append(f"bbox region {bbox_region}")
+    source_field = metadata_text_value(qualifiers.get("source_field"))
     if source_field:
         parts.append(f"source field {source_field}")
-    return " ".join(str(part).strip() for part in parts if str(part).strip())
+    source_key = metadata_text_value(qualifiers.get("source_key"))
+    if source_key and source_key != source_field:
+        parts.append(f"source key {source_key}")
+    return parts
 
 
 def ordered_unique(values: list[str]) -> list[str]:
@@ -344,6 +376,13 @@ def metadata_object_items(value: Any, limit: int) -> list[str]:
             location = metadata_first_string(item, ["location", "position", "region"])
             if location and location not in attributes:
                 attributes.append(location)
+            bbox_region = metadata_first_string(item, ["bbox_region", "spatial_region"])
+            if not bbox_region:
+                bbox_region = bbox_region_from_bbox(
+                    item.get("bbox") or item.get("box") or item.get("bounding_box") or item.get("boundingBox")
+                ) or ""
+            if bbox_region and not location and bbox_region not in attributes:
+                attributes.append(bbox_region)
             if attributes:
                 objects.append(f"{label}: {', '.join(attributes[:6])}")
             else:

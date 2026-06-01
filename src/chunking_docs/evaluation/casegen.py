@@ -16,6 +16,7 @@ from chunking_docs.graph.provenance import (
     triple_resolved_chunk_ids,
 )
 from chunking_docs.models import DocumentChunk, GraphTriple, VisualAsset
+from chunking_docs.vision.spatial import bbox_region_from_bbox
 
 _WHITESPACE_RE = re.compile(r"\s+")
 _MARKDOWN_RE = re.compile(r"[|#*_`>\[\]()]")
@@ -555,8 +556,14 @@ def normalize_visual_object(value: object, source_key: str) -> dict[str, object]
         normalized["location"] = location
     if attributes:
         normalized["attributes"] = attributes[:6]
-    if value.get("bbox") or value.get("box") or value.get("bounding_box"):
-        normalized["bbox"] = value.get("bbox") or value.get("box") or value.get("bounding_box")
+    bbox = value.get("bbox") or value.get("box") or value.get("bounding_box") or value.get("boundingBox")
+    if bbox:
+        normalized["bbox"] = bbox
+    bbox_region = first_object_string(value, ["bbox_region", "spatial_region"])
+    if not bbox_region and bbox:
+        bbox_region = bbox_region_from_bbox(bbox) or ""
+    if bbox_region:
+        normalized["bbox_region"] = bbox_region
     return normalized
 
 
@@ -582,6 +589,7 @@ def dedupe_visual_objects(objects: list[dict[str, object]]) -> list[dict[str, ob
         key = (
             str(item.get("label") or "").casefold(),
             str(item.get("location") or "").casefold(),
+            str(item.get("bbox_region") or "").casefold(),
             " ".join(object_text_items(item.get("attributes"))).casefold(),
         )
         if not key[0] or key in seen:
@@ -600,6 +608,9 @@ def visual_object_query_text(visual_object: dict[str, object]) -> str:
     location = object_text_value(visual_object.get("location"))
     if location:
         parts.append(location)
+    bbox_region = object_text_value(visual_object.get("bbox_region"))
+    if bbox_region and not location:
+        parts.append(bbox_region)
     return " ".join(part for part in parts if part)
 
 

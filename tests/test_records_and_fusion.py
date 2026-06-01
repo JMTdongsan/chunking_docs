@@ -110,6 +110,31 @@ def test_make_caption_embedding_records():
     assert records[0].payload["text"] == "north district development map"
 
 
+def test_make_caption_embedding_records_derives_object_bbox_region():
+    records = make_caption_embedding_records(
+        [
+            VisualAsset(
+                asset_id="asset-1",
+                doc_id="doc",
+                page_no=1,
+                kind=AssetKind.MAP,
+                metadata={
+                    "objects": [
+                        {
+                            "label": "station marker",
+                            "attributes": ["red circle"],
+                            "bbox": [0.1, 0.2, 0.3, 0.4],
+                        }
+                    ]
+                },
+            )
+        ],
+        HashingTextEmbedder(embedding_dim=8),
+    )
+
+    assert records[0].payload["text"] == "Objects: station marker: red circle, upper left"
+
+
 def test_make_triple_embedding_records():
     chunk = DocumentChunk(
         chunk_id="chunk-1",
@@ -151,6 +176,29 @@ def test_make_triple_embedding_records():
     assert records[0].payload["text_quality"] == "degraded"
     assert records[0].payload["text"] == "map panel contains object station marker source field objects"
     assert triple_text(triple) == records[0].payload["text"]
+
+
+def test_triple_text_includes_visual_object_qualifiers():
+    triple = GraphTriple(
+        triple_id="triple-1",
+        doc_id="doc",
+        chunk_id="chunk-1",
+        subject="diagram",
+        predicate="contains_object",
+        object="transfer marker",
+        qualifiers={
+            "source_field": "objects",
+            "source_key": "detections",
+            "attributes": ["red circle", "north gate"],
+            "evidence": "marker near entrance",
+            "bbox": [0.1, 0.2, 0.3, 0.4],
+        },
+    )
+
+    assert triple_text(triple) == (
+        "diagram contains object transfer marker evidence marker near entrance "
+        "attributes red circle north gate bbox region upper left source field objects source key detections"
+    )
 
 
 def test_make_triple_embedding_records_resolves_asset_backed_chunk():

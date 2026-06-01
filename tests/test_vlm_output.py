@@ -56,6 +56,7 @@ def test_parse_vlm_output_derives_visual_field_triples_and_objects():
             "source_key": "objects",
             "attributes": ["red circle", "north side"],
             "bbox": [0.1, 0.2, 0.3, 0.4],
+            "bbox_region": "upper left",
             "confidence": 0.91,
         }
     ]
@@ -78,6 +79,7 @@ def test_parse_vlm_output_derives_visual_field_triples_and_objects():
     object_triple = next(triple for triple in parsed.triples if triple["predicate"] == "contains_object")
     assert object_triple["attributes"] == ["red circle", "north side"]
     assert object_triple["bbox"] == [0.1, 0.2, 0.3, 0.4]
+    assert object_triple["bbox_region"] == "upper left"
     assert object_triple["confidence"] == 0.91
     assert object_triple["source_key"] == "objects"
 
@@ -109,6 +111,7 @@ def test_parse_vlm_output_accepts_detection_regions_and_percent_confidence():
         "description": "front interface",
         "attributes": ["front interface"],
         "bbox": [0.1, 0.2, 0.4, 0.6],
+        "bbox_region": "middle left",
         "location": "upper left",
         "confidence": 0.92,
     }
@@ -116,6 +119,7 @@ def test_parse_vlm_output_accepts_detection_regions_and_percent_confidence():
     object_triples = [triple for triple in parsed.triples if triple["predicate"] == "contains_object"]
     assert {triple["object"] for triple in object_triples} == {"control panel", "status light"}
     assert object_triples[0]["source_key"] == "detections"
+    assert {triple.get("bbox_region") for triple in object_triples} == {"middle left", "upper right"}
 
 
 def test_parse_vlm_output_falls_back_to_raw_text():

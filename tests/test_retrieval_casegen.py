@@ -457,6 +457,47 @@ def test_generate_retrieval_case_skeleton_can_create_visual_object_probes():
     assert cases[0].metadata["linked_chunk_ids"] == ["chunk-1"]
 
 
+def test_generate_retrieval_case_skeleton_uses_bbox_region_for_object_probes():
+    chunk = DocumentChunk(
+        chunk_id="chunk-1",
+        doc_id="doc",
+        page_start=1,
+        page_end=1,
+        kind=ChunkKind.TEXT,
+        text="Transit corridor evidence.",
+        asset_ids=["asset-1"],
+    )
+    asset = VisualAsset(
+        asset_id="asset-1",
+        doc_id="doc",
+        page_no=1,
+        kind=AssetKind.MAP,
+        metadata={
+            "objects": [
+                {
+                    "label": "route icon",
+                    "attributes": ["green square"],
+                    "bbox": [0.05, 0.1, 0.2, 0.3],
+                }
+            ]
+        },
+    )
+
+    cases = generate_retrieval_case_skeleton(
+        [chunk],
+        [asset],
+        [],
+        include_pages=False,
+        include_assets=False,
+        include_triples=False,
+        object_probe_limit=1,
+    )
+
+    assert len(cases) == 1
+    assert cases[0].query == "route icon green square upper left"
+    assert cases[0].metadata["object_has_bbox"] is True
+
+
 def test_generate_retrieval_case_skeleton_object_probes_prefer_visual_only_terms():
     chunk = DocumentChunk(
         chunk_id="chunk-1",
