@@ -16,6 +16,8 @@ from chunking_docs.evaluation.retrieval import (
 from chunking_docs.evaluation.retrieval_config import (
     build_qdrant_retrieval_config_from_fusion_sweep,
 )
+from chunking_docs.models import ChunkKind, DocumentChunk
+from chunking_docs.retrieval.qdrant_hybrid import QdrantHybridSearchHit
 
 
 def test_qdrant_retrieval_config_exports_global_recommended_candidate():
@@ -87,6 +89,111 @@ def test_export_qdrant_retrieval_config_cli_writes_json(tmp_path):
     assert payload["selection"]["candidate"] == "object_weighted"
     assert payload["selection"]["pairwise_comparisons"][0]["baseline"] == "balanced"
     assert payload["fusion_weights"] == {"bm25": 1.0, "qdrant:object_dense": 1.4}
+
+
+def test_eval_qdrant_retrieval_config_cli_uses_exported_settings(tmp_path, monkeypatch):
+    config = build_qdrant_retrieval_config_from_fusion_sweep(fusion_sweep_report())
+    config = config.model_copy(
+        update={
+            "package_dir": str(tmp_path / "package"),
+            "collection_name": "config_collection",
+            "vector_names": ["text_dense"],
+            "graph_expand": True,
+            "fusion_weights": {"bm25": 1.2},
+            "top_k": 3,
+            "collapse_hierarchical": True,
+            "lexical_tokenizer": {
+                "strategy": "mixed",
+                "min_n": 2,
+                "max_n": 3,
+                "ngram_cjk_only": False,
+                "deduplicate": True,
+            },
+        }
+    )
+    config_path = tmp_path / "qdrant_retrieval_config.json"
+    cases_path = tmp_path / "cases.jsonl"
+    output_path = tmp_path / "eval.json"
+    config_path.write_text(config.model_dump_json(indent=2), encoding="utf-8")
+    cases_path.write_text(
+        json.dumps({"query": "redevelopment policy", "expected_pages": [1]}) + "\n",
+        encoding="utf-8",
+    )
+    chunk = DocumentChunk(
+        chunk_id="chunk-1",
+        doc_id="doc",
+        page_start=1,
+        page_end=1,
+        kind=ChunkKind.TEXT,
+        text="redevelopment policy",
+        metadata={"chunking_strategy": "semantic", "retrieval_role": "child"},
+    )
+    calls = {}
+
+    class FakeStore:
+        def count(self):
+            return 1
+
+    class FakeSearcher:
+        def search(self, **kwargs):
+            calls["search"] = kwargs
+            return [
+                QdrantHybridSearchHit(
+                    item_id="chunk-1",
+                    score=1.0,
+                    sources=["bm25"],
+                    chunk=chunk,
+                )
+            ]
+
+    def fake_prepare_qdrant_hybrid_search(**kwargs):
+        calls["prepare"] = kwargs
+        return {
+            "searcher": FakeSearcher(),
+            "store": FakeStore(),
+            "collection_name": kwargs["collection"],
+            "selected_vectors": ["text_dense"],
+            "query_encoders": {"text_dense": "default_text"},
+            "query_encoder_details": {"text_dense": {"backend": "hashing"}},
+            "upserted": {"count": 1},
+            "chunks": [chunk],
+            "assets": [],
+            "triples": [],
+        }
+
+    monkeypatch.setattr(
+        "chunking_docs.cli.prepare_qdrant_hybrid_search",
+        fake_prepare_qdrant_hybrid_search,
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "eval-qdrant-retrieval-config",
+            str(config_path),
+            str(cases_path),
+            "--output",
+            str(output_path),
+            "--repeat",
+            "1",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert calls["prepare"]["package_dir"] == tmp_path / "package"
+    assert calls["prepare"]["collection"] == "config_collection"
+    assert calls["prepare"]["vector_names"] == "text_dense"
+    assert calls["prepare"]["ngram_max"] == 3
+    assert calls["prepare"]["ngram_cjk_only"] is False
+    assert calls["prepare"]["deduplicate_tokens"] is True
+    assert calls["search"]["top_k"] == 3
+    assert calls["search"]["graph_expand"] is True
+    assert calls["search"]["collapse_hierarchical"] is True
+    assert calls["search"]["fusion_weights"] == {"bm25": 1.2}
+    payload = json.loads(output_path.read_text(encoding="utf-8"))
+    assert payload["recall_at_k"] == 1.0
+    assert payload["metadata"]["backend"] == "qdrant_hybrid_config"
+    assert payload["metadata"]["config_selection"]["candidate"] == "balanced"
 
 
 def fusion_sweep_report():

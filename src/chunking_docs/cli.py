@@ -71,6 +71,7 @@ from chunking_docs.evaluation.retrieval import (
     load_retrieval_cases,
 )
 from chunking_docs.evaluation.retrieval_config import (
+    QdrantRetrievalConfig,
     build_qdrant_retrieval_config_from_fusion_sweep,
 )
 from chunking_docs.evaluation.sweep import (
@@ -965,6 +966,144 @@ def eval_qdrant_retrieval_command(
         )
         return
     print(evaluation.model_dump())
+
+
+@app.command(name="eval-qdrant-retrieval-config")
+def eval_qdrant_retrieval_config_command(
+    config: Path,
+    cases: Path,
+    output: Path | None = None,
+    package_dir: Path | None = typer.Option(
+        None,
+        "--package-dir",
+        help="Override package_dir from the retrieval config.",
+    ),
+    url: str = "http://localhost:6333",
+    collection: str = "",
+    location: str = "",
+    path: str = "",
+    repeat: int = typer.Option(
+        0,
+        "--repeat",
+        help="Repeat count for latency/stability sampling. Defaults to the config metadata value.",
+    ),
+    text_backend: str = "hashing",
+    text_model: str = "BAAI/bge-m3",
+    image_query_backend: str = "none",
+    image_query_model: str = "openai/clip-vit-large-patch14",
+    device: str = "cuda",
+    hashing_dim: int = 384,
+    doc_id: str = "",
+    payload_filter: list[str] = typer.Option(
+        None,
+        "--filter",
+        help="Payload filter such as kind=map, page_no=12, page_start<=12. Repeat for multiple filters.",
+    ),
+):
+    """Evaluate benchmark cases using an exported Qdrant retrieval config."""
+    try:
+        retrieval_config = QdrantRetrievalConfig.model_validate_json(
+            config.read_text(encoding="utf-8")
+        )
+    except OSError as exc:
+        raise typer.BadParameter(f"Could not read retrieval config: {exc}") from exc
+    except ValueError as exc:
+        raise typer.BadParameter(f"Invalid retrieval config: {exc}") from exc
+
+    tokenizer_options = retrieval_config_tokenizer_options(retrieval_config)
+    effective_package_dir = package_dir or Path(
+        retrieval_config.package_dir or "outputs/package"
+    )
+    effective_repeat = repeat or int(retrieval_config.metadata.get("repeat") or 1)
+    effective_collection = collection or retrieval_config.collection_name or ""
+    vector_names = ",".join(retrieval_config.vector_names)
+    filters = build_payload_filter(filter_specs=payload_filter)
+    metadata_filters = build_payload_filter(doc_id=doc_id, filter_specs=payload_filter)
+
+    prepare_start = perf_counter()
+    prepared = prepare_qdrant_hybrid_search(
+        package_dir=effective_package_dir,
+        url=url,
+        collection=effective_collection,
+        location=location,
+        path=path,
+        vector_names=vector_names,
+        text_backend=text_backend,
+        text_model=text_model,
+        image_query_backend=image_query_backend,
+        image_query_model=image_query_model,
+        device=device,
+        hashing_dim=hashing_dim,
+        lexical_tokenizer=tokenizer_options["strategy"],
+        ngram_min=tokenizer_options["min_n"],
+        ngram_max=tokenizer_options["max_n"],
+        ngram_cjk_only=tokenizer_options["ngram_cjk_only"],
+        deduplicate_tokens=tokenizer_options["deduplicate"],
+    )
+    index_build_ms = (perf_counter() - prepare_start) * 1000
+    evaluation = evaluate_search_results(
+        cases=load_retrieval_cases(cases),
+        search_fn=lambda case, graph_expand: prepared["searcher"].search(
+            query=case.query,
+            vector_names=prepared["selected_vectors"],
+            top_k=retrieval_config.top_k,
+            graph_expand=graph_expand,
+            doc_id=doc_id or None,
+            payload_filter=filters,
+            collapse_hierarchical=retrieval_config.collapse_hierarchical,
+            fusion_weights=retrieval_config.fusion_weights,
+        ),
+        top_k=retrieval_config.top_k,
+        repeat=effective_repeat,
+        index_build_ms=index_build_ms,
+        graph_expand_override=retrieval_config.graph_expand,
+        triples=prepared["triples"],
+    )
+    evaluation.metadata.update(
+        {
+            "backend": "qdrant_hybrid_config",
+            "config": str(config),
+            "config_selection": retrieval_config.selection.model_dump(),
+            "collection": prepared["collection_name"],
+            "vector_names": prepared["selected_vectors"],
+            "graph_expand": retrieval_config.graph_expand,
+            "query_encoders": prepared["query_encoders"],
+            "query_encoder_details": prepared.get("query_encoder_details", {}),
+            "upserted": prepared["upserted"],
+            "stored_count": prepared["store"].count(),
+            "filters": metadata_filters,
+            "fusion_weights": retrieval_config.fusion_weights,
+            "collapse_hierarchical": retrieval_config.collapse_hierarchical,
+            "lexical_tokenizer": tokenizer_options,
+        }
+    )
+    if output is not None:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(evaluation.model_dump_json(indent=2), encoding="utf-8")
+    print(
+        {
+            "output": str(output) if output is not None else None,
+            "config": str(config),
+            "case_count": evaluation.case_count,
+            "recall_at_k": evaluation.recall_at_k,
+            "mrr": evaluation.mrr,
+            "target_coverage_at_k": evaluation.target_coverage_at_k,
+            "mean_target_ndcg_at_k": evaluation.mean_target_ndcg_at_k,
+            "mean_precision_at_k": evaluation.mean_precision_at_k,
+            "excluded_query_count": evaluation.excluded_query_count,
+            "excluded_hit_query_count": evaluation.excluded_hit_query_count,
+            "excluded_query_hit_rate": evaluation.excluded_query_hit_rate,
+            "excluded_target_hit_rate": evaluation.excluded_target_hit_rate,
+            "mean_latency_ms": evaluation.mean_latency_ms,
+            "p95_latency_ms": evaluation.p95_latency_ms,
+            "unstable_result_count": evaluation.unstable_result_count,
+            "result_stability_rate": evaluation.result_stability_rate,
+            "collection": prepared["collection_name"],
+            "vector_names": prepared["selected_vectors"],
+            "fusion_weights": retrieval_config.fusion_weights,
+            "config_selection": retrieval_config.selection.model_dump(),
+        }
+    )
 
 
 @app.command(name="eval-qdrant-vector-ablation")
@@ -6139,6 +6278,32 @@ def retrieval_case_group_metrics_payload(evaluation) -> dict:
         }
         for group_name, group_values in getattr(evaluation, "case_group_metrics", {}).items()
     }
+
+
+def retrieval_config_tokenizer_options(
+    config: QdrantRetrievalConfig,
+) -> dict[str, object]:
+    payload = config.lexical_tokenizer if isinstance(config.lexical_tokenizer, dict) else {}
+    strategy = str(payload.get("strategy") or "mixed")
+    if strategy not in {"word", "char_ngram", "mixed"}:
+        raise typer.BadParameter(f"Unsupported config lexical tokenizer strategy: {strategy}")
+    return {
+        "strategy": strategy,
+        "min_n": int(payload.get("min_n") or 2),
+        "max_n": int(payload.get("max_n") or 4),
+        "ngram_cjk_only": config_bool(payload.get("ngram_cjk_only"), default=True),
+        "deduplicate": config_bool(payload.get("deduplicate"), default=False),
+    }
+
+
+def config_bool(value, default: bool = False) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return bool(value)
 
 
 def build_text_embedder(
