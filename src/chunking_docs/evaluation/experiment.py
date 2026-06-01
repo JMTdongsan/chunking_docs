@@ -75,6 +75,7 @@ DEFAULT_ARTIFACTS = [
     "visual_run_comparison.json",
     "visual_quality.json",
     "vlm_experiment_plan.json",
+    "vlm_experiment_plan_gate.json",
     "document_characteristics.json",
     "runtime_doctor.json",
     "ingestion_readiness.json",
@@ -126,6 +127,7 @@ DEFAULT_ARTIFACT_GLOBS = [
     "visual_quality*.json",
     "visual_run_comparison*.json",
     "vlm_experiment_plan*.json",
+    "vlm_experiment_plan_gate*.json",
 ]
 
 SUMMARY_METRIC_KEYS = {
@@ -182,6 +184,16 @@ SUMMARY_METRIC_KEYS = {
     "union_job_count",
     "shared_job_count",
     "job_set_mismatch",
+    "profile_count",
+    "recipe_count",
+    "doctor_output_count",
+    "existing_doctor_output_count",
+    "passed_doctor_output_count",
+    "results_output_count",
+    "existing_results_output_count",
+    "completed_result_profile_count",
+    "annotations_output_count",
+    "existing_annotations_output_count",
     "best_quality_score",
     "best_triples_per_vlm_job",
     "fastest_total_mean_latency_ms",
@@ -911,6 +923,7 @@ def validation_kind(path: Path) -> str:
         "visual_asset_gate",
         "visual_gate",
         "visual_quality",
+        "vlm_experiment_plan_gate",
     ):
         if name.startswith(prefix):
             return prefix

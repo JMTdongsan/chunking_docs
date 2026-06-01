@@ -178,6 +178,7 @@ Additional processing commands may create:
 - `graph_summary.json`
 - `experiment_report.json`
 - `vlm_experiment_plan.json`
+- `vlm_experiment_plan_gate.json`
 - `document_characteristics.json`
 - `runtime_doctor.json`
 - `ingestion_readiness.json`
@@ -284,6 +285,7 @@ Recommended checks:
 - `ingestion-readiness`: final pre-ingestion gate that can combine package audit results, runtime doctor validation for GPU/VLM/embedding dependencies, source checksum/package-config/tokenizer provenance checks, BM25 token manifest freshness for asset-enriched lexical text, linked visual text coverage at asset and text-part levels in package chunks, VLM-derived visual triple coverage, storage artifacts, required vector-family checks, source-derived vector coverage for text, visual text, rendered images, VLM objects or visual elements, and graph triples, derived-vector rebuild guidance, PostgreSQL row conversion, retrieval case metadata group coverage, visual quality, VLM run comparison checks, retrieval gates, chunking comparison gates, retrieval ablation gates, selected Qdrant vector/reranker ablation gates, exported Qdrant retrieval config validation, and final RAG context gates, including exact source coverage for selected retrieval, ablation, and Qdrant vector sources plus service-config alignment with benchmark/context evaluation metadata, final-context target coverage, hard-negative leakage, and context-size limits.
 - `compare-visual-runs`: OCR/VLM run comparison by coverage, structured parse rate, object detection coverage, graph triple density, latency, optional retrieval evaluation metrics, visual-object-probe target coverage, and shared job-set validation.
 - `plan-vlm-experiments`: reproducible profile-by-profile command recipes for running the same visual job set through multiple VLMs, including per-profile runtime doctor report paths that can be reused by experiment reports and readiness gates.
+- `gate-vlm-experiment-plan`: pass/fail checks that a VLM experiment plan has the expected profile recipes, declared and passing runtime doctor outputs, visual result outputs, optional annotation outputs, completed result profiles, and matching job IDs across profile runs.
 - `refresh-package-indexes`: rebuilds BM25 token manifests from current chunk text plus linked visual text and invalidates stale Qdrant/vector artifacts unless deterministic dry-run embeddings are rebuilt.
 - `refresh-package-metadata`: updates manifest source checksum, profile summary, package config, tokenizer config, table count, and inferred embedding mode for an existing package.
 - `plan-ingestion-workflow`: ordered package-specific command plan from characterization through OCR/VLM, profile-specific visual result files, visual run comparison gates, annotation application, retrieval cases, retrieval-quality/cost/latency-gated chunking comparison, index refresh, embedding rebuilds, Qdrant retrieval config export, final RAG context gates, metadata refresh, and ingestion readiness.

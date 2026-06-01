@@ -1,11 +1,14 @@
 import json
+from pathlib import Path
 
 from typer.testing import CliRunner
 
 from chunking_docs.models import AssetKind
 from chunking_docs.cli import app
+from chunking_docs.runtime import GPUDevice, RuntimeCheck, RuntimeReport
+from chunking_docs.vision.experiment_gate import gate_vlm_experiment_plan
 from chunking_docs.vision.experiments import build_vlm_experiment_plan, parse_profile_list
-from chunking_docs.vision.jobs import VisualAnnotationJob
+from chunking_docs.vision.jobs import VisualAnnotationJob, VisualJobRunResult
 
 
 def test_build_vlm_experiment_plan_writes_profile_commands(tmp_path):
@@ -219,3 +222,124 @@ def test_plan_vlm_experiments_cli_writes_json(tmp_path):
     assert "runtime_doctor.phi3_5_vision.json" in payload["recipes"][1]["doctor_command"]
     assert "compare-visual-runs" in payload["compare_command"]
     assert "--require-same-jobs" in payload["compare_command"]
+
+
+def test_gate_vlm_experiment_plan_requires_declared_outputs(tmp_path):
+    package_dir, plan_path = write_two_profile_plan(tmp_path)
+    plan = json.loads(plan_path.read_text(encoding="utf-8"))
+    for recipe in plan["recipes"]:
+        Path(recipe["doctor_output"]).write_text(
+            ready_runtime_report().model_dump_json(indent=2),
+            encoding="utf-8",
+        )
+        Path(recipe["results_output"]).write_text(
+            VisualJobRunResult(
+                job_id="job-a",
+                asset_id="asset-a",
+                page_no=2,
+                status="completed",
+            ).model_dump_json()
+            + "\n",
+            encoding="utf-8",
+        )
+        Path(recipe["annotations_output"]).write_text("", encoding="utf-8")
+
+    report = gate_vlm_experiment_plan(
+        plan_path,
+        require_doctor_outputs=True,
+        require_results=True,
+        require_annotations=True,
+        min_completed_result_profiles=2,
+        require_same_result_jobs=True,
+    )
+
+    assert report.passed is True
+    assert report.existing_doctor_output_count == 2
+    assert report.passed_doctor_output_count == 2
+    assert report.existing_results_output_count == 2
+    assert report.completed_result_profile_count == 2
+    assert report.shared_job_count == 1
+    assert report.job_set_mismatch is False
+
+
+def test_gate_vlm_experiment_plan_flags_missing_results(tmp_path):
+    _, plan_path = write_two_profile_plan(tmp_path)
+
+    report = gate_vlm_experiment_plan(plan_path, require_results=True)
+
+    assert report.passed is False
+    assert "results_outputs_exist" in report.failed_checks
+
+
+def test_gate_vlm_experiment_plan_cli_writes_json(tmp_path):
+    _, plan_path = write_two_profile_plan(tmp_path)
+    output = tmp_path / "gate.json"
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "gate-vlm-experiment-plan",
+            "--plan",
+            str(plan_path),
+            "--require-results",
+            "--output",
+            str(output),
+            "--no-fail",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["passed"] is False
+    assert "results_outputs_exist" in payload["failed_checks"]
+
+
+def write_two_profile_plan(tmp_path):
+    package_dir = tmp_path / "package"
+    package_dir.mkdir()
+    jobs = package_dir / "visual_jobs.priority.jsonl"
+    jobs.write_text(
+        VisualAnnotationJob(
+            job_id="job-a",
+            asset_id="asset-a",
+            doc_id="doc",
+            page_no=2,
+            kind=AssetKind.MAP,
+            asset_path=tmp_path / "a.png",
+            operations=["ocr", "vlm"],
+            priority=1200,
+            reason="missing annotations",
+        ).model_dump_json()
+        + "\n",
+        encoding="utf-8",
+    )
+    plan = build_vlm_experiment_plan(
+        package_dir=package_dir,
+        jobs_file=jobs,
+        profiles=["qwen2_5_vl_7b", "phi3_5_vision"],
+        limit=1,
+    )
+    plan_path = package_dir / "vlm_experiment_plan.json"
+    plan_path.write_text(plan.model_dump_json(indent=2), encoding="utf-8")
+    return package_dir, plan_path
+
+
+def ready_runtime_report():
+    return RuntimeReport(
+        passed=True,
+        gpus=[GPUDevice(name="NVIDIA GeForce RTX 5090", memory_total_mib=32607)],
+        torch_cuda_available=True,
+        torch_cuda_device_count=1,
+        torch_cuda_device_names=["NVIDIA GeForce RTX 5090"],
+        torch_cuda_compute_capabilities=["12.0"],
+        torch_cuda_version="13.0",
+        torch_cuda_compiled_arches=["sm_120"],
+        torch_bfloat16_supported=True,
+        checks=[
+            RuntimeCheck(
+                name="gpu_available",
+                passed=True,
+                message="At least one NVIDIA GPU is visible through nvidia-smi.",
+            )
+        ],
+    )

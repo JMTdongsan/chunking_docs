@@ -174,6 +174,14 @@ def test_build_experiment_report_summarizes_artifacts_and_candidates(tmp_path):
     assert validations["vlm_experiment_plan.json"].metrics[
         "recipe.max_generation_tokens_upper_bound.max"
     ] == 1536.0
+    assert validations["vlm_experiment_plan_gate.json"].passed is True
+    assert validations["vlm_experiment_plan_gate.json"].metrics["profile_count"] == 2.0
+    assert validations["vlm_experiment_plan_gate.json"].metrics[
+        "existing_doctor_output_count"
+    ] == 2.0
+    assert validations["vlm_experiment_plan_gate.json"].metrics[
+        "completed_result_profile_count"
+    ] == 2.0
     assert report.qdrant_collection["collection"] == "document_chunks"
     assert report.bm25_tokenizer["strategy"] == "mixed"
     assert report.source_file == {"name": "reference.pdf", "bytes": 1234, "sha256": "abc"}
@@ -731,6 +739,31 @@ def write_minimal_package(tmp_path):
                     "chunking-docs compare-visual-runs --output visual_run_comparison.batch_001.json",
                     "chunking-docs compare-visual-runs --output visual_run_comparison.batch_002.json",
                 ],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    (package_dir / "vlm_experiment_plan_gate.json").write_text(
+        json.dumps(
+            {
+                "plan_path": str(package_dir / "vlm_experiment_plan.json"),
+                "passed": True,
+                "failed_checks": [],
+                "profile_count": 2,
+                "recipe_count": 2,
+                "doctor_output_count": 2,
+                "existing_doctor_output_count": 2,
+                "passed_doctor_output_count": 2,
+                "results_output_count": 2,
+                "existing_results_output_count": 2,
+                "completed_result_profile_count": 2,
+                "annotations_output_count": 2,
+                "existing_annotations_output_count": 2,
+                "union_job_count": 1,
+                "shared_job_count": 1,
+                "job_set_mismatch": False,
+                "checks": [],
             },
             indent=2,
         ),

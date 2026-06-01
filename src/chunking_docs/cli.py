@@ -129,6 +129,7 @@ from chunking_docs.vision.assets import (
     merge_visual_assets,
 )
 from chunking_docs.vision.compare import VisualRunComparison, compare_visual_runs
+from chunking_docs.vision.experiment_gate import gate_vlm_experiment_plan
 from chunking_docs.vision.experiments import build_vlm_experiment_plan, parse_profile_list
 from chunking_docs.vision.interfaces import OCRBackend, VLMBackend
 from chunking_docs.vision.jobs import (
@@ -3705,6 +3706,57 @@ def gate_visual_results_command(
             "objects_per_vlm_job": report.objects_per_vlm_job,
             "object_bbox_coverage": report.object_bbox_coverage,
             "triples_per_vlm_job": report.triples_per_vlm_job,
+        }
+    print(payload)
+    if fail and not report.passed:
+        raise typer.Exit(1)
+
+
+@app.command(name="gate-vlm-experiment-plan")
+def gate_vlm_experiment_plan_command(
+    plan: Path = Path("outputs/package/vlm_experiment_plan.json"),
+    output: Path | None = None,
+    min_profile_count: int = 1,
+    require_doctor_outputs: bool = False,
+    require_results: bool = False,
+    require_annotations: bool = False,
+    min_completed_result_profiles: int = 0,
+    require_same_result_jobs: bool = typer.Option(
+        False,
+        "--require-same-result-jobs/--no-require-same-result-jobs",
+        help="Require existing profile result files to contain the same visual job IDs.",
+    ),
+    fail: bool = typer.Option(
+        True,
+        "--fail/--no-fail",
+        help="Exit with status 1 when VLM experiment plan checks fail.",
+    ),
+):
+    """Gate VLM experiment plans against runtime and visual-result output coverage."""
+    report = gate_vlm_experiment_plan(
+        plan,
+        min_profile_count=min_profile_count,
+        require_doctor_outputs=require_doctor_outputs,
+        require_results=require_results,
+        require_annotations=require_annotations,
+        min_completed_result_profiles=min_completed_result_profiles,
+        require_same_result_jobs=require_same_result_jobs,
+    )
+    payload = report.model_dump()
+    if output is not None:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(report.model_dump_json(indent=2), encoding="utf-8")
+        payload = {
+            "output": str(output),
+            "passed": report.passed,
+            "failed_checks": report.failed_checks,
+            "profile_count": report.profile_count,
+            "recipe_count": report.recipe_count,
+            "existing_doctor_output_count": report.existing_doctor_output_count,
+            "existing_results_output_count": report.existing_results_output_count,
+            "completed_result_profile_count": report.completed_result_profile_count,
+            "existing_annotations_output_count": report.existing_annotations_output_count,
+            "job_set_mismatch": report.job_set_mismatch,
         }
     print(payload)
     if fail and not report.passed:
