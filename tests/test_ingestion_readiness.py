@@ -297,6 +297,7 @@ def test_ingestion_readiness_includes_qdrant_vector_ablation_gate(tmp_path):
             "min_target_type_coverage": {"asset": 1.0},
             "min_source_family_target_coverage": {"dense_text": 1.0},
             "min_case_group_target_coverage": {"case_source:visual_object_probe": 1.0},
+            "max_mean_target_rank": 1.0,
             "require_best_by_recall": True,
         },
     )
@@ -305,6 +306,7 @@ def test_ingestion_readiness_includes_qdrant_vector_ablation_gate(tmp_path):
     assert report.qdrant_vector_ablation_gate is not None
     assert report.qdrant_vector_ablation_gate.mode == "text"
     assert report.qdrant_vector_ablation_gate.metrics["failed_query_count"] == 0.0
+    assert report.qdrant_vector_ablation_gate.metrics["mean_target_rank"] == 1.0
     assert report.qdrant_vector_ablation_gate.target_metrics["asset"]["coverage_at_k"] == 1.0
     assert (
         report.qdrant_vector_ablation_gate.source_family_metrics["dense_text"][
@@ -334,6 +336,7 @@ def test_ingestion_readiness_includes_retrieval_ablation_lift_gate(tmp_path):
             "min_target_type_coverage": {"asset": 1.0},
             "min_source_family_target_coverage": {"lexical": 1.0},
             "min_case_group_target_coverage": {"case_source:visual_lexical_probe": 1.0},
+            "max_mean_target_rank": 1.0,
             "require_best_by_recall": True,
         },
     )
@@ -343,7 +346,9 @@ def test_ingestion_readiness_includes_retrieval_ablation_lift_gate(tmp_path):
     assert report.retrieval_ablation_gate.mode == "bm25_visual"
     assert report.retrieval_ablation_gate.baseline_mode == "bm25_text"
     assert report.retrieval_ablation_gate.metrics["recall_at_k"] == 1.0
+    assert report.retrieval_ablation_gate.metrics["mean_target_rank"] == 1.0
     assert report.retrieval_ablation_gate.baseline_metrics["recall_at_k"] == 0.0
+    assert report.retrieval_ablation_gate.baseline_metrics["mean_target_rank"] == 6.0
     component = next(
         component for component in report.components if component.name == "retrieval_ablation_gate"
     )

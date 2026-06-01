@@ -21,6 +21,7 @@ from chunking_docs.evaluation.gate import (
     minimum_check,
     retrieval_case_group_metrics,
     retrieval_chunk_strategy_metrics,
+    retrieval_rank_metrics,
     retrieval_role_metric_key,
     retrieval_role_metrics_payload,
     retrieval_source_family_metrics,
@@ -369,6 +370,10 @@ def gate_retrieval_ablation(
     min_mrr: float = 0.0,
     min_precision_at_k: float = 0.0,
     max_failed_queries: int | None = None,
+    max_mean_first_relevant_rank: float | None = None,
+    max_p95_first_relevant_rank: float | None = None,
+    max_mean_target_rank: float | None = None,
+    max_p95_target_rank: float | None = None,
     max_mean_latency_ms: float | None = None,
     max_p95_latency_ms: float | None = None,
     min_target_type_coverage: dict[str, float] | None = None,
@@ -505,6 +510,15 @@ def gate_retrieval_ablation(
         checks.append(maximum_check("max_mean_latency_ms", "mean_latency_ms", metrics, max_mean_latency_ms))
     if max_p95_latency_ms is not None:
         checks.append(maximum_check("max_p95_latency_ms", "p95_latency_ms", metrics, max_p95_latency_ms))
+    checks.extend(
+        rank_limit_checks(
+            metrics,
+            max_mean_first_relevant_rank=max_mean_first_relevant_rank,
+            max_p95_first_relevant_rank=max_p95_first_relevant_rank,
+            max_mean_target_rank=max_mean_target_rank,
+            max_p95_target_rank=max_p95_target_rank,
+        )
+    )
     checks.extend(target_type_coverage_checks(metrics, min_target_type_coverage or {}))
     checks.extend(
         source_family_target_coverage_checks(metrics, min_source_family_target_coverage or {})
@@ -1144,6 +1158,10 @@ def gate_qdrant_vector_ablation(
     min_mrr: float = 0.0,
     min_precision_at_k: float = 0.0,
     max_failed_queries: int | None = None,
+    max_mean_first_relevant_rank: float | None = None,
+    max_p95_first_relevant_rank: float | None = None,
+    max_mean_target_rank: float | None = None,
+    max_p95_target_rank: float | None = None,
     max_mean_latency_ms: float | None = None,
     max_p95_latency_ms: float | None = None,
     min_target_type_coverage: dict[str, float] | None = None,
@@ -1260,6 +1278,15 @@ def gate_qdrant_vector_ablation(
             )
         )
     checks.extend(
+        rank_limit_checks(
+            metrics,
+            max_mean_first_relevant_rank=max_mean_first_relevant_rank,
+            max_p95_first_relevant_rank=max_p95_first_relevant_rank,
+            max_mean_target_rank=max_mean_target_rank,
+            max_p95_target_rank=max_p95_target_rank,
+        )
+    )
+    checks.extend(
         target_type_coverage_checks(
             metrics,
             min_target_type_coverage or {},
@@ -1371,6 +1398,7 @@ def qdrant_vector_ablation_metrics(
         "p95_latency_ms": evaluation.p95_latency_ms,
         "failed_query_count": float(evaluation.failed_count),
     }
+    metrics.update(retrieval_rank_metrics(evaluation))
     for target_type, target_type_metrics in (target_metrics or {}).items():
         for key, value in target_type_metrics.items():
             metrics[target_type_metric_key(target_type, key)] = value
@@ -1388,6 +1416,39 @@ def qdrant_vector_ablation_metrics(
             for key, value in group_metrics.items():
                 metrics[case_group_metric_key(group_name, group_value, key)] = value
     return metrics
+
+
+def rank_limit_checks(
+    metrics: dict[str, float],
+    max_mean_first_relevant_rank: float | None = None,
+    max_p95_first_relevant_rank: float | None = None,
+    max_mean_target_rank: float | None = None,
+    max_p95_target_rank: float | None = None,
+) -> list[RetrievalGateCheck]:
+    checks = []
+    if max_mean_first_relevant_rank is not None:
+        checks.append(
+            maximum_check(
+                "max_mean_first_relevant_rank",
+                "mean_first_relevant_rank",
+                metrics,
+                max_mean_first_relevant_rank,
+            )
+        )
+    if max_p95_first_relevant_rank is not None:
+        checks.append(
+            maximum_check(
+                "max_p95_first_relevant_rank",
+                "p95_first_relevant_rank",
+                metrics,
+                max_p95_first_relevant_rank,
+            )
+        )
+    if max_mean_target_rank is not None:
+        checks.append(maximum_check("max_mean_target_rank", "mean_target_rank", metrics, max_mean_target_rank))
+    if max_p95_target_rank is not None:
+        checks.append(maximum_check("max_p95_target_rank", "p95_target_rank", metrics, max_p95_target_rank))
+    return checks
 
 
 def best_mode_check(name: str, mode: str, actual_best: str | None) -> RetrievalGateCheck:
