@@ -25,11 +25,38 @@ class ChunkingSweepCandidate(BaseModel):
     report: ChunkingQualityReport
 
 
+class ChunkingSweepSelectionRow(BaseModel):
+    name: str
+    score: float
+    pareto_efficient: bool = False
+    metrics: dict[str, float | None] = Field(default_factory=dict)
+
+
+class ChunkingSweepSelection(BaseModel):
+    recommended: str | None = None
+    pareto_front: list[str] = Field(default_factory=list)
+    weights: dict[str, float] = Field(default_factory=dict)
+    ranking: list[ChunkingSweepSelectionRow] = Field(default_factory=list)
+
+
 class ChunkingSweepReport(BaseModel):
     generated_at: str
     config: dict[str, Any] = Field(default_factory=dict)
     candidates: list[ChunkingSweepCandidate]
     comparison: ChunkingComparison
+    selection: ChunkingSweepSelection = Field(default_factory=ChunkingSweepSelection)
+
+
+SWEEP_SELECTION_WEIGHTS = {
+    "retrieval_recall_at_k": 0.24,
+    "target_coverage_at_k": 0.24,
+    "target_ndcg_at_k": 0.18,
+    "precision_at_k": 0.10,
+    "quality_score": 0.10,
+    "visual_text_coverage_ratio": 0.06,
+    "latency_efficiency": 0.05,
+    "chunk_count_efficiency": 0.03,
+}
 
 
 def run_chunking_sweep(
@@ -98,14 +125,9 @@ def run_chunking_sweep(
         )
 
     comparison = compare_chunking_reports(reports)
-    candidates.sort(
-        key=lambda candidate: (
-            candidate.report.retrieval.recall_at_k if candidate.report.retrieval else -1.0,
-            candidate.report.retrieval.mrr if candidate.report.retrieval else -1.0,
-            candidate.report.quality_score,
-        ),
-        reverse=True,
-    )
+    selection = build_sweep_selection(candidates)
+    score_by_candidate = {row.name: row.score for row in selection.ranking}
+    candidates.sort(key=lambda candidate: score_by_candidate.get(candidate.name, 0.0), reverse=True)
     return ChunkingSweepReport(
         generated_at=datetime.now(UTC).isoformat(),
         config={
@@ -118,7 +140,135 @@ def run_chunking_sweep(
         },
         candidates=candidates,
         comparison=comparison,
+        selection=selection,
     )
+
+
+def build_sweep_selection(candidates: list[ChunkingSweepCandidate]) -> ChunkingSweepSelection:
+    if not candidates:
+        return ChunkingSweepSelection(weights=SWEEP_SELECTION_WEIGHTS)
+    metrics_by_name = {candidate.name: selection_metrics(candidate) for candidate in candidates}
+    pareto_front = [
+        candidate.name
+        for candidate in candidates
+        if is_pareto_efficient(candidate.name, metrics_by_name)
+    ]
+    ranking = [
+        ChunkingSweepSelectionRow(
+            name=name,
+            score=selection_score(metrics),
+            pareto_efficient=name in pareto_front,
+            metrics=metrics,
+        )
+        for name, metrics in metrics_by_name.items()
+    ]
+    ranking.sort(
+        key=lambda row: (
+            row.pareto_efficient,
+            row.score,
+            row.metrics.get("retrieval_recall_at_k") or 0.0,
+            row.metrics.get("target_coverage_at_k") or 0.0,
+            row.metrics.get("target_ndcg_at_k") or 0.0,
+        ),
+        reverse=True,
+    )
+    return ChunkingSweepSelection(
+        recommended=ranking[0].name if ranking else None,
+        pareto_front=[row.name for row in ranking if row.pareto_efficient],
+        weights=SWEEP_SELECTION_WEIGHTS,
+        ranking=ranking,
+    )
+
+
+def selection_metrics(candidate: ChunkingSweepCandidate) -> dict[str, float | None]:
+    retrieval = candidate.report.retrieval
+    mean_latency_ms = retrieval.mean_latency_ms if retrieval else None
+    return {
+        "retrieval_recall_at_k": retrieval.recall_at_k if retrieval else None,
+        "target_coverage_at_k": retrieval.target_coverage_at_k if retrieval else None,
+        "target_ndcg_at_k": retrieval.mean_target_ndcg_at_k if retrieval else None,
+        "precision_at_k": retrieval.mean_precision_at_k if retrieval else None,
+        "mean_latency_ms": mean_latency_ms,
+        "latency_efficiency": latency_efficiency(mean_latency_ms),
+        "quality_score": candidate.report.quality_score,
+        "visual_text_coverage_ratio": candidate.report.visual_text_coverage_ratio,
+        "chunk_count": float(candidate.chunk_count),
+        "chunk_count_efficiency": 1.0 / candidate.chunk_count if candidate.chunk_count > 0 else 0.0,
+    }
+
+
+def selection_score(metrics: dict[str, float | None]) -> float:
+    return sum(
+        clamp01(metrics.get(metric_name)) * weight
+        for metric_name, weight in SWEEP_SELECTION_WEIGHTS.items()
+    )
+
+
+def is_pareto_efficient(
+    candidate_name: str,
+    metrics_by_name: dict[str, dict[str, float | None]],
+) -> bool:
+    candidate = metrics_by_name[candidate_name]
+    for other_name, other in metrics_by_name.items():
+        if other_name == candidate_name:
+            continue
+        if dominates(other, candidate):
+            return False
+    return True
+
+
+def dominates(
+    candidate: dict[str, float | None],
+    baseline: dict[str, float | None],
+) -> bool:
+    higher_is_better = [
+        "retrieval_recall_at_k",
+        "target_coverage_at_k",
+        "target_ndcg_at_k",
+        "precision_at_k",
+        "quality_score",
+        "visual_text_coverage_ratio",
+    ]
+    lower_is_better = ["mean_latency_ms", "chunk_count"]
+    no_worse = all(
+        metric_value(candidate, metric) >= metric_value(baseline, metric)
+        for metric in higher_is_better
+    ) and all(
+        cost_value(candidate, metric) <= cost_value(baseline, metric)
+        for metric in lower_is_better
+    )
+    strictly_better = any(
+        metric_value(candidate, metric) > metric_value(baseline, metric)
+        for metric in higher_is_better
+    ) or any(
+        cost_value(candidate, metric) < cost_value(baseline, metric)
+        for metric in lower_is_better
+    )
+    return no_worse and strictly_better
+
+
+def metric_value(metrics: dict[str, float | None], name: str) -> float:
+    value = metrics.get(name)
+    return float(value) if value is not None else 0.0
+
+
+def cost_value(metrics: dict[str, float | None], name: str) -> float:
+    value = metrics.get(name)
+    return float(value) if value is not None else float("inf")
+
+
+def latency_efficiency(latency_ms: float | None) -> float:
+    if latency_ms is None:
+        return 0.0
+    if latency_ms <= 0:
+        return 1.0
+    return 1.0 / latency_ms
+
+
+def clamp01(value: float | None) -> float:
+    if value is None:
+        return 0.0
+    return min(max(float(value), 0.0), 1.0)
 
 
 def sweep_configs(

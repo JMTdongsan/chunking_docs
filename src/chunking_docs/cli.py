@@ -3584,9 +3584,19 @@ def sweep_chunking_command(
             "best_by_quality": report.comparison.best_by_quality,
             "best_by_retrieval": report.comparison.best_by_retrieval,
             "fastest_by_mean_latency": report.comparison.fastest_by_mean_latency,
+            "recommended": report.selection.recommended,
+            "pareto_front": report.selection.pareto_front,
             "top_candidates": [
                 {
                     "name": candidate.name,
+                    "selection_score": next(
+                        (
+                            round(row.score, 6)
+                            for row in report.selection.ranking
+                            if row.name == candidate.name
+                        ),
+                        None,
+                    ),
                     "quality_score": round(candidate.report.quality_score, 6),
                     "recall_at_k": candidate.report.retrieval.recall_at_k
                     if candidate.report.retrieval

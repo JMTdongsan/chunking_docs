@@ -4,7 +4,7 @@ from typer.testing import CliRunner
 
 from chunking_docs.cli import app
 from chunking_docs.evaluation.retrieval import RetrievalCase
-from chunking_docs.evaluation.sweep import run_chunking_sweep
+from chunking_docs.evaluation.sweep import dominates, run_chunking_sweep
 from chunking_docs.io import write_jsonl
 from chunking_docs.models import (
     AssetKind,
@@ -39,6 +39,9 @@ def test_run_chunking_sweep_writes_candidates_and_comparison(tmp_path):
 
     assert len(report.candidates) == 2
     assert report.comparison.best_by_retrieval is not None
+    assert report.selection.recommended is not None
+    assert report.selection.ranking[0].score >= report.selection.ranking[-1].score
+    assert set(report.selection.pareto_front)
     assert all(candidate.chunks_file for candidate in report.candidates)
     assert any(candidate.strategy == "hierarchical" for candidate in report.candidates)
     assert any(output_dir.glob("chunks.hierarchical-*.jsonl"))
@@ -62,6 +65,34 @@ def test_multimodal_sweep_varies_visual_context_chars(tmp_path):
     assert len(report.candidates) == 2
     assert {candidate.config["visual_context_chars"] for candidate in report.candidates} == {0, 120}
     assert any("visual120" in candidate.name for candidate in report.candidates)
+
+
+def test_sweep_pareto_dominance_accounts_for_quality_and_cost():
+    stronger = {
+        "retrieval_recall_at_k": 0.9,
+        "target_coverage_at_k": 0.8,
+        "target_ndcg_at_k": 0.7,
+        "precision_at_k": 0.6,
+        "quality_score": 0.85,
+        "visual_text_coverage_ratio": 1.0,
+        "mean_latency_ms": 10.0,
+        "chunk_count": 20.0,
+    }
+    weaker = {
+        "retrieval_recall_at_k": 0.8,
+        "target_coverage_at_k": 0.7,
+        "target_ndcg_at_k": 0.6,
+        "precision_at_k": 0.5,
+        "quality_score": 0.8,
+        "visual_text_coverage_ratio": 1.0,
+        "mean_latency_ms": 12.0,
+        "chunk_count": 25.0,
+    }
+    tradeoff = {**stronger, "target_coverage_at_k": 0.82, "mean_latency_ms": 14.0}
+
+    assert dominates(stronger, weaker)
+    assert not dominates(weaker, stronger)
+    assert not dominates(stronger, tradeoff)
 
 
 def test_sweep_chunking_cli_writes_report(tmp_path):
@@ -99,6 +130,8 @@ def test_sweep_chunking_cli_writes_report(tmp_path):
     assert result.exit_code == 0, result.output
     payload = json.loads(output_path.read_text(encoding="utf-8"))
     assert payload["comparison"]["best_by_retrieval"] is not None
+    assert payload["selection"]["recommended"] is not None
+    assert payload["selection"]["ranking"][0]["score"] >= payload["selection"]["ranking"][-1]["score"]
     assert len(payload["candidates"]) == 2
     assert any(candidates_dir.glob("chunks.semantic-*.jsonl"))
 

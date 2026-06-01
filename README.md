@@ -653,7 +653,7 @@ chunking-docs sweep-chunking \
   --output outputs/package/chunking_sweep.json
 ```
 
-The sweep writes candidate chunk files under `outputs/package/chunking_sweep/` and ranks them with the same quality, recall@k, MRR, target coverage@k, target nDCG@k, precision@k, target-type coverage, source-family target coverage, chunking-strategy coverage, retrieval-role coverage, linked visual text coverage, latency, and failed-query metrics used by `compare-chunking`.
+The sweep writes candidate chunk files under `outputs/package/chunking_sweep/` and ranks them with the same quality, recall@k, MRR, target coverage@k, target nDCG@k, precision@k, target-type coverage, source-family target coverage, chunking-strategy coverage, retrieval-role coverage, linked visual text coverage, latency, and failed-query metrics used by `compare-chunking`. It also emits a `selection` block with a weighted recommendation and Pareto front so a strategy that improves retrieval can be compared against latency and chunk-count cost before becoming the default.
 
 Write a reproducible experiment report for a package:
 
