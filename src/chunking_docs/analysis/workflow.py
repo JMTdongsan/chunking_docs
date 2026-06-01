@@ -157,6 +157,7 @@ def build_ingestion_workflow_plan(
     qdrant_vector_names = qdrant_retrieval_vector_names(
         recommendations_by_code.get("validate_qdrant_rag_context")
     )
+    visual_probe_gate_args = visual_probe_readiness_gate_args(recommendations_by_code)
     steps.append(
         readiness_step(
             package_dir,
@@ -177,6 +178,7 @@ def build_ingestion_workflow_plan(
             include_qdrant_rag_context=needs_qdrant_rag_context,
             qdrant_route_preset=qdrant_route_preset,
             qdrant_vector_names=qdrant_vector_names,
+            visual_probe_gate_args=visual_probe_gate_args,
         )
     )
     return IngestionWorkflowPlan(
@@ -352,6 +354,75 @@ def qdrant_retrieval_vector_names(
     return [str(item).strip() for item in value if str(item).strip()]
 
 
+def visual_probe_readiness_gate_args(
+    recommendations_by_code: dict[str, ProcessingRecommendation],
+) -> list[str]:
+    args: list[str] = []
+    distinct_asset_thresholds: list[int] = []
+    image_probe = recommendations_by_code.get("generate_visual_image_probe_cases")
+    if image_probe is not None:
+        case_threshold = positive_metadata_int(
+            image_probe,
+            "recommended_image_probe_case_threshold",
+        )
+        asset_threshold = positive_metadata_int(
+            image_probe,
+            "recommended_distinct_asset_threshold",
+        )
+        if case_threshold:
+            args.append(
+                f"--min-retrieval-case-group-count case_source:visual_image_probe={case_threshold}"
+            )
+        if asset_threshold:
+            distinct_asset_thresholds.append(asset_threshold)
+            args.append(
+                "--min-retrieval-case-group-distinct-targets "
+                f"case_source:visual_image_probe:asset={asset_threshold}"
+            )
+
+    object_probe = recommendations_by_code.get("generate_visual_object_probe_cases")
+    if object_probe is not None:
+        case_threshold = positive_metadata_int(
+            object_probe,
+            "recommended_object_probe_case_threshold",
+        )
+        asset_threshold = positive_metadata_int(
+            object_probe,
+            "recommended_distinct_asset_threshold",
+        )
+        if case_threshold:
+            args.append(
+                f"--min-retrieval-case-group-count case_source:visual_object_probe={case_threshold}"
+            )
+        if asset_threshold:
+            distinct_asset_thresholds.append(asset_threshold)
+            args.append(
+                "--min-retrieval-case-group-distinct-targets "
+                f"case_source:visual_object_probe:asset={asset_threshold}"
+            )
+        args.extend(
+            [
+                "--max-retrieval-asset-cases-per-target 3",
+                "--require-visual-only-object-probes",
+            ]
+        )
+
+    if distinct_asset_thresholds:
+        args.append(
+            f"--min-retrieval-distinct-asset-targets {max(distinct_asset_thresholds)}"
+        )
+    return args
+
+
+def positive_metadata_int(recommendation: ProcessingRecommendation, key: str) -> int:
+    value = recommendation.metadata.get(key)
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return 0
+    return max(0, number)
+
+
 def plan_visual_jobs_command(
     package_dir: Path,
     jobs_path: Path,
@@ -523,6 +594,7 @@ def readiness_step(
     include_qdrant_rag_context: bool = False,
     qdrant_route_preset: str = "",
     qdrant_vector_names: list[str] | None = None,
+    visual_probe_gate_args: list[str] | None = None,
 ) -> WorkflowStep:
     command_parts = [
         "chunking-docs ingestion-readiness",
@@ -540,6 +612,8 @@ def readiness_step(
         "--max-retrieval-expected-targets-per-case",
         "5",
     ]
+    if visual_probe_gate_args:
+        command_parts.extend(visual_probe_gate_args)
     if include_visual_quality:
         command_parts.extend(BASE_VISUAL_READINESS_GATE_ARGS)
     if include_vlm_quality:
@@ -588,6 +662,7 @@ def readiness_step(
             "include_chunking_comparison": include_chunking_comparison,
             "include_qdrant_rag_context": include_qdrant_rag_context,
             "qdrant_route_preset": qdrant_route_preset or None,
+            "visual_probe_gate_args": visual_probe_gate_args or [],
         },
     )
 

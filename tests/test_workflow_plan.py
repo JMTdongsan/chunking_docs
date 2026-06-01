@@ -135,6 +135,17 @@ def test_build_ingestion_workflow_plan_orders_runtime_visual_embedding_and_readi
     assert "--require-visual-run-same-jobs" in readiness_command
     assert "--min-visual-run-count 2" in readiness_command
     assert "--max-retrieval-expected-targets-per-case 5" in readiness_command
+    assert (
+        "--min-retrieval-case-group-count case_source:visual_image_probe=1"
+        in readiness_command
+    )
+    assert (
+        "--min-retrieval-case-group-distinct-targets "
+        "case_source:visual_image_probe:asset=1"
+        in readiness_command
+    )
+    assert "--min-retrieval-distinct-asset-targets 1" in readiness_command
+    assert "--require-visual-only-object-probes" not in readiness_command
     assert "--chunking-comparison" in readiness_command
     assert "--min-chunking-retrieval-score-per-embedding-kchar 0.0008" in readiness_command
     assert "--min-chunking-retrieval-score-per-mean-latency-ms 0.0005" in readiness_command
@@ -226,6 +237,8 @@ def test_workflow_plan_rebuilds_embeddings_after_index_refresh_for_indexed_text_
     assert "--require-retrieval-evaluation" in readiness_command
     assert "--require-rag-context-evaluation" in readiness_command
     assert "--require-visual-run-comparison" not in readiness_command
+    assert "--min-retrieval-case-group-count case_source:visual_image_probe" not in readiness_command
+    assert "--min-retrieval-case-group-count case_source:visual_object_probe" not in readiness_command
 
 
 def test_workflow_plan_exports_adaptive_qdrant_route_for_visual_object_graph_package(tmp_path):
@@ -337,6 +350,26 @@ def test_workflow_plan_exports_adaptive_qdrant_route_for_visual_object_graph_pac
         "--min-rag-context-case-group-target-coverage retrieval_route:visual_object=0.7"
         in readiness_command
     )
+    assert (
+        "--min-retrieval-case-group-count case_source:visual_image_probe=1"
+        in readiness_command
+    )
+    assert (
+        "--min-retrieval-case-group-count case_source:visual_object_probe=1"
+        in readiness_command
+    )
+    assert (
+        "--min-retrieval-case-group-distinct-targets "
+        "case_source:visual_image_probe:asset=1"
+        in readiness_command
+    )
+    assert (
+        "--min-retrieval-case-group-distinct-targets "
+        "case_source:visual_object_probe:asset=1"
+        in readiness_command
+    )
+    assert "--max-retrieval-asset-cases-per-target 3" in readiness_command
+    assert "--require-visual-only-object-probes" in readiness_command
 
 
 def test_workflow_plan_uses_ocr_only_visual_step_when_no_vlm_jobs_pending(tmp_path):
