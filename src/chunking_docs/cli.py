@@ -4228,6 +4228,31 @@ def gate_chunking_comparison_command(
         help="Limit selected candidate cases with changing repeated top-k results.",
     ),
     max_failed_queries: int | None = 0,
+    max_total_chunk_chars: float | None = typer.Option(
+        None,
+        "--max-total-chunk-chars",
+        help="Limit total chunk text characters so retrieval gains do not hide embedding/index cost.",
+    ),
+    max_embedding_text_kchars: float | None = typer.Option(
+        None,
+        "--max-embedding-text-kchars",
+        help="Limit total chunk text measured in thousands of embedding characters.",
+    ),
+    min_retrieval_score_per_embedding_kchar: float | None = typer.Option(
+        None,
+        "--min-retrieval-score-per-embedding-kchar",
+        help="Require aggregate retrieval score per thousand embedding characters.",
+    ),
+    min_target_coverage_per_embedding_kchar: float | None = typer.Option(
+        None,
+        "--min-target-coverage-per-embedding-kchar",
+        help="Require target coverage per thousand embedding characters.",
+    ),
+    min_target_ndcg_per_embedding_kchar: float | None = typer.Option(
+        None,
+        "--min-target-ndcg-per-embedding-kchar",
+        help="Require target nDCG per thousand embedding characters.",
+    ),
     max_chunks_under_min_chars: int | None = None,
     max_chunks_over_max_chars: int | None = None,
     min_target_type_coverage: list[str] = typer.Option(
@@ -4329,6 +4354,11 @@ def gate_chunking_comparison_command(
         min_result_stability_rate=min_result_stability_rate,
         max_unstable_result_count=max_unstable_result_count,
         max_failed_queries=max_failed_queries,
+        max_total_chunk_chars=max_total_chunk_chars,
+        max_embedding_text_kchars=max_embedding_text_kchars,
+        min_retrieval_score_per_embedding_kchar=min_retrieval_score_per_embedding_kchar,
+        min_target_coverage_per_embedding_kchar=min_target_coverage_per_embedding_kchar,
+        min_target_ndcg_per_embedding_kchar=min_target_ndcg_per_embedding_kchar,
         max_chunks_under_min_chars=max_chunks_under_min_chars,
         max_chunks_over_max_chars=max_chunks_over_max_chars,
         min_target_type_coverage=target_type_thresholds,

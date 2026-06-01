@@ -38,6 +38,11 @@ def test_gate_chunking_comparison_passes_selected_candidate_against_baseline():
         min_retrieval_role_target_coverage={"child": 0.8},
         min_case_group_target_coverage={"case_source:visual_lexical_probe": 0.8},
         max_failed_queries=0,
+        max_total_chunk_chars=2000,
+        max_embedding_text_kchars=2.0,
+        min_retrieval_score_per_embedding_kchar=0.5,
+        min_target_coverage_per_embedding_kchar=0.5,
+        min_target_ndcg_per_embedding_kchar=0.5,
         max_recall_drop=0.05,
         max_mean_latency_ratio=2.0,
     )
@@ -50,6 +55,9 @@ def test_gate_chunking_comparison_passes_selected_candidate_against_baseline():
     assert report.metrics["retrieval_mean_target_rank"] == 1.0
     assert report.metrics["retrieval_result_stability_rate"] == 1.0
     assert report.metrics["retrieval_unstable_result_count"] == 0.0
+    assert report.metrics["total_chunk_chars"] == 1200.0
+    assert report.metrics["embedding_text_kchars"] == 1.2
+    assert report.metrics["retrieval_score_per_embedding_kchar"] > 0.5
     assert report.metrics["visual_text_coverage_ratio"] == 0.9
     assert report.metrics["visual_text_part_coverage_ratio"] == 0.9
     assert report.metrics["target_type.asset.coverage_at_k"] == 0.85
@@ -87,6 +95,11 @@ def test_gate_chunking_comparison_flags_retrieval_regressions():
         min_retrieval_role_target_coverage={"child": 0.8},
         min_case_group_target_coverage={"case_source:visual_lexical_probe": 0.8},
         max_failed_queries=0,
+        max_total_chunk_chars=2000,
+        max_embedding_text_kchars=2.0,
+        min_retrieval_score_per_embedding_kchar=0.5,
+        min_target_coverage_per_embedding_kchar=0.5,
+        min_target_ndcg_per_embedding_kchar=0.5,
         max_recall_drop=0.1,
         max_mean_latency_ratio=1.5,
     )
@@ -108,6 +121,11 @@ def test_gate_chunking_comparison_flags_retrieval_regressions():
         in report.failed_checks
     )
     assert "max_failed_queries" in report.failed_checks
+    assert "max_total_chunk_chars" in report.failed_checks
+    assert "max_embedding_text_kchars" in report.failed_checks
+    assert "min_retrieval_score_per_embedding_kchar" in report.failed_checks
+    assert "min_target_coverage_per_embedding_kchar" in report.failed_checks
+    assert "min_target_ndcg_per_embedding_kchar" in report.failed_checks
     assert "max_recall_at_k_drop" in report.failed_checks
     assert "max_mean_latency_ms_ratio" in report.failed_checks
 
@@ -208,6 +226,10 @@ def test_gate_chunking_comparison_cli_writes_json_and_fails(tmp_path):
             "1.0",
             "--max-unstable-result-count",
             "0",
+            "--max-total-chunk-chars",
+            "2000",
+            "--min-retrieval-score-per-embedding-kchar",
+            "0.5",
             "--min-target-type-coverage",
             "asset=0.8",
             "--min-visual-text-coverage-ratio",
@@ -242,6 +264,8 @@ def test_gate_chunking_comparison_cli_writes_json_and_fails(tmp_path):
     assert "max_mean_target_rank" in payload["failed_checks"]
     assert "min_result_stability_rate" in payload["failed_checks"]
     assert "max_unstable_result_count" in payload["failed_checks"]
+    assert "max_total_chunk_chars" in payload["failed_checks"]
+    assert "min_retrieval_score_per_embedding_kchar" in payload["failed_checks"]
     assert "min_visual_text_coverage_ratio" in payload["failed_checks"]
     assert "min_visual_text_part_coverage_ratio" in payload["failed_checks"]
     assert "min_target_type_coverage:asset" in payload["failed_checks"]
@@ -289,6 +313,7 @@ def comparison_report() -> ChunkingComparison:
                     "case_source": {"visual_lexical_probe": {"target_coverage_at_k": 0.9}}
                 },
                 visual_text_coverage=0.9,
+                total_chunk_chars=1200.0,
             ),
             row(
                 name="weak",
@@ -311,6 +336,7 @@ def comparison_report() -> ChunkingComparison:
                 visual_text_coverage=0.2,
                 result_stability=0.5,
                 unstable_results=1.0,
+                total_chunk_chars=9000.0,
             ),
         ],
         best_by_quality="strong",
@@ -407,14 +433,25 @@ def row(
     visual_text_part_coverage: float | None = None,
     result_stability: float = 1.0,
     unstable_results: float = 0.0,
+    total_chunk_chars: float = 1200.0,
 ) -> ChunkingComparisonRow:
     visual_text_part_coverage = (
         visual_text_coverage if visual_text_part_coverage is None else visual_text_part_coverage
     )
+    retrieval_score = (recall + target_coverage + target_ndcg + precision) / 4
+    embedding_text_kchars = total_chunk_chars / 1000.0
     return ChunkingComparisonRow(
         name=name,
         chunk_count=12,
+        total_chunk_chars=total_chunk_chars,
+        mean_chunk_chars=total_chunk_chars / 12,
+        p95_chunk_chars=total_chunk_chars / 12,
+        embedding_text_kchars=embedding_text_kchars,
         quality_score=quality_score,
+        retrieval_score=retrieval_score,
+        retrieval_score_per_embedding_kchar=retrieval_score / embedding_text_kchars,
+        target_coverage_per_embedding_kchar=target_coverage / embedding_text_kchars,
+        target_ndcg_per_embedding_kchar=target_ndcg / embedding_text_kchars,
         retrieval_hit_rate=recall,
         retrieval_recall_at_k=recall,
         retrieval_mrr=0.75,

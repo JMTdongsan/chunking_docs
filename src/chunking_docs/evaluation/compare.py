@@ -20,7 +20,15 @@ from chunking_docs.evaluation.retrieval import RetrievalCaseResult
 class ChunkingComparisonRow(BaseModel):
     name: str
     chunk_count: int
+    total_chunk_chars: float = 0.0
+    mean_chunk_chars: float = 0.0
+    p95_chunk_chars: float = 0.0
+    embedding_text_kchars: float = 0.0
     quality_score: float
+    retrieval_score: float | None = None
+    retrieval_score_per_embedding_kchar: float | None = None
+    target_coverage_per_embedding_kchar: float | None = None
+    target_ndcg_per_embedding_kchar: float | None = None
     retrieval_hit_rate: float | None
     retrieval_recall_at_k: float | None
     retrieval_mrr: float | None
@@ -120,7 +128,15 @@ def compare_chunking_reports(
             ChunkingComparisonRow(
                 name=name,
                 chunk_count=report.chunk_count,
+                total_chunk_chars=float(report.total_chunk_chars),
+                mean_chunk_chars=report.char_count.mean,
+                p95_chunk_chars=report.char_count.p95,
+                embedding_text_kchars=report.embedding_text_kchars,
                 quality_score=report.quality_score,
+                retrieval_score=report.retrieval_score,
+                retrieval_score_per_embedding_kchar=report.retrieval_score_per_embedding_kchar,
+                target_coverage_per_embedding_kchar=report.target_coverage_per_embedding_kchar,
+                target_ndcg_per_embedding_kchar=report.target_ndcg_per_embedding_kchar,
                 retrieval_hit_rate=report.retrieval.hit_rate if report.retrieval else None,
                 retrieval_recall_at_k=report.retrieval.recall_at_k if report.retrieval else None,
                 retrieval_mrr=report.retrieval.mrr if report.retrieval else None,

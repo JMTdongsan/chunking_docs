@@ -38,6 +38,8 @@ class ChunkingQualityReport(BaseModel):
     covered_page_count: int
     page_coverage_ratio: float
     char_count: NumericSummary
+    total_chunk_chars: int = 0
+    embedding_text_kchars: float = 0.0
     empty_chunk_count: int
     chunks_under_min_chars: int
     chunks_over_max_chars: int
@@ -57,6 +59,10 @@ class ChunkingQualityReport(BaseModel):
     standalone_visual_text_asset_ids: list[str] = Field(default_factory=list)
     visual_object_chunk_count: int = 0
     retrieval: RetrievalEvaluation | None = None
+    retrieval_score: float | None = None
+    retrieval_score_per_embedding_kchar: float | None = None
+    target_coverage_per_embedding_kchar: float | None = None
+    target_ndcg_per_embedding_kchar: float | None = None
     quality_score: float
     issues: list[QualityIssue] = Field(default_factory=list)
 
@@ -80,6 +86,8 @@ def evaluate_chunking_quality(
         page_numbers = {page for chunk in chunks for page in range(chunk.page_start, chunk.page_end + 1)}
     covered_pages = {page for chunk in chunks for page in range(chunk.page_start, chunk.page_end + 1)}
     char_counts = [len(chunk.text.strip()) for chunk in chunks]
+    total_chunk_chars = sum(char_counts)
+    embedding_text_kchars = total_chunk_chars / 1000.0
     empty_count = sum(1 for count in char_counts if count == 0)
     under_min = sum(1 for count in char_counts if 0 < count < min_chars)
     over_max = sum(1 for count in char_counts if count > max_chars)
@@ -109,6 +117,7 @@ def evaluate_chunking_quality(
             repeat=retrieval_repeat,
             fusion_weights=fusion_weights,
         )
+    retrieval_score = retrieval_quality_score(retrieval) if retrieval else None
 
     issues = quality_issues(
         page_coverage_ratio=ratio(len(covered_pages & page_numbers), len(page_numbers)),
@@ -135,7 +144,7 @@ def evaluate_chunking_quality(
         visual_text_part_coverage_ratio=visual_text_coverage["part_coverage_ratio"]
         if visual_text_coverage["part_count"]
         else None,
-        retrieval_score=retrieval_quality_score(retrieval) if retrieval else None,
+        retrieval_score=retrieval_score,
     )
 
     return ChunkingQualityReport(
@@ -144,6 +153,8 @@ def evaluate_chunking_quality(
         covered_page_count=len(covered_pages & page_numbers),
         page_coverage_ratio=ratio(len(covered_pages & page_numbers), len(page_numbers)),
         char_count=summarize_numbers(char_counts),
+        total_chunk_chars=total_chunk_chars,
+        embedding_text_kchars=embedding_text_kchars,
         empty_chunk_count=empty_count,
         chunks_under_min_chars=under_min,
         chunks_over_max_chars=over_max,
@@ -163,6 +174,19 @@ def evaluate_chunking_quality(
         standalone_visual_text_asset_ids=standalone_visual_text["asset_ids"],
         visual_object_chunk_count=visual_object_chunk_count,
         retrieval=retrieval,
+        retrieval_score=retrieval_score,
+        retrieval_score_per_embedding_kchar=per_embedding_kchar(
+            retrieval_score,
+            embedding_text_kchars,
+        ),
+        target_coverage_per_embedding_kchar=per_embedding_kchar(
+            retrieval.target_coverage_at_k if retrieval else None,
+            embedding_text_kchars,
+        ),
+        target_ndcg_per_embedding_kchar=per_embedding_kchar(
+            retrieval.mean_target_ndcg_at_k if retrieval else None,
+            embedding_text_kchars,
+        ),
         quality_score=quality_score,
         issues=issues,
     )
@@ -342,6 +366,14 @@ def retrieval_quality_score(retrieval: RetrievalEvaluation) -> float:
         + retrieval.mean_target_ndcg_at_k * 0.25
         + retrieval.mean_precision_at_k * 0.15
     )
+
+
+def per_embedding_kchar(value: float | None, embedding_text_kchars: float) -> float | None:
+    if value is None:
+        return None
+    if embedding_text_kchars <= 0:
+        return float(value)
+    return float(value) / embedding_text_kchars
 
 
 def visual_text_coverage_stats(

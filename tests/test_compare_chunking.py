@@ -1,3 +1,5 @@
+import pytest
+
 from chunking_docs.evaluation.chunking_quality import evaluate_chunking_quality
 from chunking_docs.evaluation.compare import compare_chunking_reports
 from chunking_docs.evaluation.retrieval import RetrievalCase
@@ -66,6 +68,17 @@ def test_compare_chunking_reports_ranks_by_retrieval_then_quality():
     assert comparison.rows[0].retrieval_mean_latency_ms is not None
     assert comparison.rows[0].retrieval_unstable_result_count == 0.0
     assert comparison.rows[0].retrieval_result_stability_rate == 1.0
+    assert comparison.rows[0].total_chunk_chars == len(strong_chunks[0].text)
+    assert comparison.rows[0].embedding_text_kchars == len(strong_chunks[0].text) / 1000.0
+    assert comparison.rows[0].retrieval_score == pytest.approx(
+        comparison.rows[0].retrieval_recall_at_k * 0.35
+        + comparison.rows[0].retrieval_target_coverage_at_k * 0.25
+        + comparison.rows[0].retrieval_mean_target_ndcg_at_k * 0.25
+        + comparison.rows[0].retrieval_mean_precision_at_k * 0.15
+    )
+    assert comparison.rows[0].retrieval_score_per_embedding_kchar == pytest.approx(
+        comparison.rows[0].retrieval_score / comparison.rows[0].embedding_text_kchars
+    )
     assert comparison.rows[0].target_metrics["asset"]["coverage_at_k"] == 1.0
     assert comparison.rows[0].source_family_metrics["lexical"]["target_coverage_at_k"] == 1.0
     assert comparison.rows[0].chunk_strategy_metrics["visual_asset_text"][

@@ -1,3 +1,5 @@
+import pytest
+
 from chunking_docs.evaluation.chunking_quality import evaluate_chunking_quality
 from chunking_docs.evaluation.retrieval import RetrievalCase
 from chunking_docs.models import (
@@ -55,8 +57,11 @@ def test_evaluate_chunking_quality_reports_retrieval_and_multimodal_metrics():
         triples=[],
         retrieval_cases=[RetrievalCase(query="transit corridor", expected_pages=[1])],
     )
+    expected_chars = len(chunks[0].text.strip())
 
     assert report.page_coverage_ratio == 1.0
+    assert report.total_chunk_chars == expected_chars
+    assert report.embedding_text_kchars == expected_chars / 1000.0
     assert report.visual_asset_linkage_ratio == 1.0
     assert report.visual_annotation_ratio == 1.0
     assert report.visual_text_asset_count == 1
@@ -69,6 +74,17 @@ def test_evaluate_chunking_quality_reports_retrieval_and_multimodal_metrics():
     assert report.retrieval is not None
     assert report.retrieval.hit_rate == 1.0
     assert report.retrieval.mrr == 1.0
+    assert report.retrieval_score == (
+        report.retrieval.recall_at_k * 0.35
+        + report.retrieval.target_coverage_at_k * 0.25
+        + report.retrieval.mean_target_ndcg_at_k * 0.25
+        + report.retrieval.mean_precision_at_k * 0.15
+    )
+    assert report.retrieval_score_per_embedding_kchar == (
+        report.retrieval_score / report.embedding_text_kchars
+    )
+    assert report.target_coverage_per_embedding_kchar == pytest.approx(1000.0 / expected_chars)
+    assert report.target_ndcg_per_embedding_kchar == pytest.approx(1000.0 / expected_chars)
     assert report.quality_score > 0.5
 
 
