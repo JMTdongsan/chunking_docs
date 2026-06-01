@@ -189,6 +189,67 @@ def test_workflow_plan_rebuilds_embeddings_after_index_refresh_for_indexed_text_
     assert "--require-visual-run-comparison" not in readiness_command
 
 
+def test_workflow_plan_uses_ocr_only_visual_step_when_no_vlm_jobs_pending(tmp_path):
+    package_dir, manifest = make_ocr_only_visual_package(tmp_path)
+    cases = tmp_path / "cases.jsonl"
+    characteristics = characterize_package(
+        profiles=manifest.profiles,
+        chunks=manifest.chunks,
+        assets=manifest.assets,
+        triples=manifest.triples,
+        package_dir=package_dir,
+    )
+
+    plan = build_ingestion_workflow_plan(
+        characteristics,
+        package_dir=package_dir,
+        retrieval_cases=cases,
+        vlm_profiles=["qwen2_5_vl_7b", "llava_next_7b"],
+    )
+
+    visual_commands = next(step.commands for step in plan.steps if step.step_id == "visual_annotations")
+    assert visual_commands[0].endswith("--no-include-vlm")
+    assert not any("plan-vlm-experiments" in command for command in visual_commands)
+    assert not any("compare-visual-runs" in command for command in visual_commands)
+    assert any("--vlm none" in command for command in visual_commands)
+    assert any("visual_job_results.ocr.jsonl" in command for command in visual_commands)
+    assert any("visual_annotations.ocr.jsonl" in command for command in visual_commands)
+    assert any("apply-annotations" in command for command in visual_commands)
+    readiness_command = plan.steps[-1].commands[0]
+    assert "--require-visual-quality" in readiness_command
+    assert "--min-vlm-summary-coverage" not in readiness_command
+    assert "--require-visual-run-comparison" not in readiness_command
+
+
+def test_workflow_plan_skips_visual_jobs_when_annotations_are_not_pending(tmp_path):
+    package_dir, manifest = make_completed_visual_package(tmp_path)
+    cases = tmp_path / "cases.jsonl"
+    characteristics = characterize_package(
+        profiles=manifest.profiles,
+        chunks=manifest.chunks,
+        assets=manifest.assets,
+        triples=manifest.triples,
+        package_dir=package_dir,
+    )
+
+    assert "prioritize_visual_annotations" not in {
+        item.code for item in characteristics.recommendations
+    }
+    plan = build_ingestion_workflow_plan(
+        characteristics,
+        package_dir=package_dir,
+        retrieval_cases=cases,
+        vlm_profiles=["qwen2_5_vl_7b", "llava_next_7b"],
+    )
+
+    step_ids = [step.step_id for step in plan.steps]
+    assert "visual_annotations" not in step_ids
+    readiness_command = plan.steps[-1].commands[0]
+    assert "--require-visual-quality" in readiness_command
+    assert "--min-vlm-summary-coverage" in readiness_command
+    assert "--require-visual-run-comparison" not in readiness_command
+
+
 def make_workflow_package(tmp_path: Path):
     package_dir = tmp_path / "package"
     package_dir.mkdir()
@@ -234,6 +295,77 @@ def make_workflow_package(tmp_path: Path):
             kind=AssetKind.MAP,
             path=image_path,
             metadata={"requires_ocr": True, "requires_vlm": True},
+        )
+    ]
+    manifest = ProcessingManifest(doc=doc, profiles=profiles, chunks=chunks, assets=assets, triples=[])
+    (package_dir / "manifest.json").write_text(
+        json.dumps({"doc": doc.model_dump(mode="json")}),
+        encoding="utf-8",
+    )
+    write_jsonl(package_dir / "pages.jsonl", profiles)
+    write_jsonl(package_dir / "chunks.jsonl", chunks)
+    write_jsonl(package_dir / "assets.jsonl", assets)
+    write_jsonl(package_dir / "triples.jsonl", [])
+    return package_dir, manifest
+
+
+def make_completed_visual_package(tmp_path: Path):
+    package_dir, manifest = make_ocr_only_visual_package(tmp_path)
+    manifest.assets[0].ocr_text = ""
+    manifest.assets[0].metadata["ocr_backend"] = "paddleocr"
+    manifest.assets[0].metadata["ocr_text_chars"] = 0
+    manifest.assets[0].metadata["vlm_parse_status"] = "json_object"
+    manifest.assets[0].metadata["objects"] = [{"label": "station area"}]
+    write_jsonl(package_dir / "assets.jsonl", manifest.assets)
+    return package_dir, manifest
+
+
+def make_ocr_only_visual_package(tmp_path: Path):
+    package_dir = tmp_path / "ocr_only_package"
+    package_dir.mkdir()
+    image_path = tmp_path / "page.png"
+    image_path.write_bytes(b"image")
+    doc = SourceDocument(
+        doc_id="doc",
+        title="Reference Document",
+        local_path=tmp_path / "reference.pdf",
+    )
+    profiles = [
+        PageProfile(
+            doc_id="doc",
+            page_no=1,
+            width=100,
+            height=100,
+            char_count=0,
+            line_count=0,
+            text_block_count=0,
+            image_block_count=1,
+            embedded_image_count=1,
+            drawing_count=30,
+            text_quality=TextQuality.EMPTY,
+            text_quality_reasons=["empty_text"],
+        )
+    ]
+    chunks = [
+        DocumentChunk(
+            chunk_id="chunk-1",
+            doc_id="doc",
+            page_start=1,
+            page_end=1,
+            kind=ChunkKind.TEXT,
+            text="visual planning area",
+            asset_ids=["asset-1"],
+        )
+    ]
+    assets = [
+        VisualAsset(
+            asset_id="asset-1",
+            doc_id="doc",
+            page_no=1,
+            kind=AssetKind.MAP,
+            path=image_path,
+            vlm_summary="already summarized map",
+            metadata={"requires_ocr": True, "requires_vlm": True, "vlm_parse_status": "json_object"},
         )
     ]
     manifest = ProcessingManifest(doc=doc, profiles=profiles, chunks=chunks, assets=assets, triples=[])

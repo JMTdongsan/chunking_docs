@@ -24,6 +24,7 @@
    - Identify dense visual pages that should be rendered as overlapping tiles before OCR/VLM processing.
    - Summarize package characteristics and recommended next processing steps for chunking, OCR/VLM, VLM object and visual-element probes, graph, embeddings, and retrieval benchmarks, including missing object or triple vector families when the source metadata exists.
    - Convert those recommendations into an ordered ingestion workflow plan that records runtime checks, profile-specific visual processing outputs, annotation application, embedding rebuilds, retrieval cases, chunking comparison, and final readiness commands.
+   - Skip OCR/VLM job commands when the package has no pending visual jobs, while preserving final visual-quality gates for already applied annotations.
 
 3. **Section Mapping**
    - Accept optional section ranges as JSON or JSONL.

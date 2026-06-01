@@ -20,6 +20,7 @@ from chunking_docs.embeddings.records import (
 )
 from chunking_docs.graph.provenance import chunk_asset_ids
 from chunking_docs.models import DocumentChunk, GraphTriple, PageProfile, TextQuality, VisualAsset
+from chunking_docs.vision.jobs import asset_needs_ocr, asset_needs_vlm
 
 
 class CharacteristicObservation(BaseModel):
@@ -164,8 +165,16 @@ def visual_characteristics(
     max_pages: int,
 ) -> VisualCharacteristics:
     kind_counts = Counter(str(asset.kind) for asset in assets)
-    pages_requiring_ocr = {asset.page_no for asset in assets if asset.metadata.get("requires_ocr") and not asset.ocr_text}
-    pages_requiring_vlm = {asset.page_no for asset in assets if asset.metadata.get("requires_vlm") and not asset.vlm_summary}
+    pages_requiring_ocr = {
+        asset.page_no
+        for asset in assets
+        if asset.metadata.get("requires_ocr") and asset_needs_ocr(asset)
+    }
+    pages_requiring_vlm = {
+        asset.page_no
+        for asset in assets
+        if asset.metadata.get("requires_vlm") and asset_needs_vlm(asset)
+    }
     annotated_asset_count = sum(1 for asset in assets if asset.ocr_text or asset.vlm_summary)
     asset_objects = [asset_visual_objects(asset) for asset in assets]
     object_count = sum(len(objects) for objects in asset_objects)
@@ -412,11 +421,7 @@ def recommendations(
     artifacts: ArtifactCharacteristics,
 ) -> list[ProcessingRecommendation]:
     result = []
-    if (
-        text_layer.degraded_or_empty_ratio > 0
-        or visual.pages_requiring_ocr_count
-        or visual.pages_requiring_vlm_count
-    ):
+    if visual.pages_requiring_ocr_count or visual.pages_requiring_vlm_count:
         result.append(
             ProcessingRecommendation(
                 code="prioritize_visual_annotations",

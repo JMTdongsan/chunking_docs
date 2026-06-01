@@ -60,20 +60,25 @@ EMBEDDING_REBUILD_RECOMMENDATIONS = {
     "build_triple_vector_artifacts",
 }
 
-VISUAL_READINESS_GATE_ARGS = [
+BASE_VISUAL_READINESS_GATE_ARGS = [
     "--require-visual-annotations",
     "--require-visual-quality",
+    "--max-visual-failed-count 0",
+]
+
+VLM_VISUAL_READINESS_GATE_ARGS = [
     "--min-vlm-summary-coverage 0.9",
     "--min-vlm-json-parse-rate 0.9",
     "--min-vlm-object-coverage 0.5",
     "--min-object-bbox-coverage 0.5",
-    "--max-visual-failed-count 0",
+]
+
+VISUAL_RUN_COMPARISON_READINESS_GATE_ARGS = [
     "--visual-run-comparison {visual_run_comparison}",
     "--require-visual-run-comparison",
     "--require-visual-run-same-jobs",
     "--min-visual-run-count 2",
 ]
-
 
 def build_ingestion_workflow_plan(
     characteristics: PackageCharacteristics,
@@ -146,7 +151,17 @@ def build_ingestion_workflow_plan(
         readiness_step(
             package_dir,
             retrieval_cases,
-            include_visual_quality="prioritize_visual_annotations" in recommendations_by_code,
+            include_visual_quality=requires_visual_quality_gate(
+                characteristics,
+                recommendations_by_code.get("prioritize_visual_annotations"),
+            ),
+            include_vlm_quality=requires_vlm_quality_gate(
+                characteristics,
+                recommendations_by_code.get("prioritize_visual_annotations"),
+            ),
+            include_visual_run_comparison=requires_visual_run_comparison(
+                recommendations_by_code.get("prioritize_visual_annotations")
+            ),
             include_chunking_comparison="compare_multimodal_hierarchical_chunking"
             in recommendations_by_code,
             include_qdrant_rag_context=needs_qdrant_rag_context,
@@ -205,31 +220,44 @@ def visual_annotation_step(
     recommendation: ProcessingRecommendation,
 ) -> WorkflowStep:
     jobs_path = package_dir / "visual_jobs.jsonl"
-    ocr_backend = "paddleocr" if int(recommendation.metadata.get("pages_requiring_ocr_count") or 0) else "none"
-    commands = [
-        f"chunking-docs plan-visual-jobs --package-dir {path_arg(package_dir)} --output {path_arg(jobs_path)}",
-        (
-            f"chunking-docs plan-vlm-experiments --package-dir {path_arg(package_dir)} "
-            f"--jobs {path_arg(jobs_path)} --profiles {','.join(vlm_profiles)} --ocr {ocr_backend} "
-            f"--batch-size 25 --output {path_arg(package_dir / 'vlm_experiment_plan.json')}"
-        ),
-    ]
+    pending_ocr = pending_visual_ocr_count(recommendation) > 0
+    pending_vlm = pending_visual_vlm_count(recommendation) > 0
+    ocr_backend = "paddleocr" if pending_ocr else "none"
+    commands = [plan_visual_jobs_command(package_dir, jobs_path, pending_ocr, pending_vlm)]
     profiles = vlm_profiles or ["qwen2_5_vl_7b"]
-    commands.extend(
-        visual_profile_run_command(package_dir, jobs_path, ocr_backend, profile)
-        for profile in profiles
-    )
-    commands.extend(
-        [
-            f"chunking-docs gate-visual-results --results {path_arg(visual_profile_results_path(package_dir, profiles[0]))}",
-            visual_run_comparison_command(package_dir, profiles),
-            (
-                f"chunking-docs apply-annotations "
-                f"{path_arg(visual_profile_annotations_path(package_dir, profiles[0]))} "
-                f"--package-dir {path_arg(package_dir)}"
-            ),
-        ]
-    )
+    if pending_vlm:
+        commands.append(
+            f"chunking-docs plan-vlm-experiments --package-dir {path_arg(package_dir)} "
+            f"--jobs {path_arg(jobs_path)} --profiles {','.join(profiles)} --ocr {ocr_backend} "
+            f"--batch-size 25 --output {path_arg(package_dir / 'vlm_experiment_plan.json')}"
+        )
+        commands.extend(
+            visual_profile_run_command(package_dir, jobs_path, ocr_backend, profile)
+            for profile in profiles
+        )
+        commands.extend(
+            [
+                f"chunking-docs gate-visual-results --results {path_arg(visual_profile_results_path(package_dir, profiles[0]))}",
+                visual_run_comparison_command(package_dir, profiles),
+                (
+                    f"chunking-docs apply-annotations "
+                    f"{path_arg(visual_profile_annotations_path(package_dir, profiles[0]))} "
+                    f"--package-dir {path_arg(package_dir)}"
+                ),
+            ]
+        )
+    else:
+        commands.extend(
+            [
+                visual_ocr_run_command(package_dir, jobs_path, ocr_backend),
+                f"chunking-docs gate-visual-results --results {path_arg(visual_ocr_results_path(package_dir))}",
+                (
+                    f"chunking-docs apply-annotations "
+                    f"{path_arg(visual_ocr_annotations_path(package_dir))} "
+                    f"--package-dir {path_arg(package_dir)}"
+                ),
+            ]
+        )
     return WorkflowStep(
         step_id="visual_annotations",
         title="Run OCR/VLM visual annotations",
@@ -240,6 +268,57 @@ def visual_annotation_step(
         recommendation_codes=[recommendation.code],
         metadata=recommendation.metadata,
     )
+
+
+def pending_visual_ocr_count(recommendation: ProcessingRecommendation | None) -> int:
+    if recommendation is None:
+        return 0
+    return int(recommendation.metadata.get("pages_requiring_ocr_count") or 0)
+
+
+def pending_visual_vlm_count(recommendation: ProcessingRecommendation | None) -> int:
+    if recommendation is None:
+        return 0
+    return int(recommendation.metadata.get("pages_requiring_vlm_count") or 0)
+
+
+def requires_visual_run_comparison(recommendation: ProcessingRecommendation | None) -> bool:
+    return pending_visual_vlm_count(recommendation) > 0
+
+
+def requires_visual_quality_gate(
+    characteristics: PackageCharacteristics,
+    recommendation: ProcessingRecommendation | None,
+) -> bool:
+    return recommendation is not None or bool(characteristics.visual.asset_kind_counts)
+
+
+def requires_vlm_quality_gate(
+    characteristics: PackageCharacteristics,
+    recommendation: ProcessingRecommendation | None,
+) -> bool:
+    return pending_visual_vlm_count(recommendation) > 0 or characteristics.visual.vlm_object_count > 0
+
+
+def plan_visual_jobs_command(
+    package_dir: Path,
+    jobs_path: Path,
+    include_ocr: bool,
+    include_vlm: bool,
+) -> str:
+    command_parts = [
+        "chunking-docs",
+        "plan-visual-jobs",
+        "--package-dir",
+        path_arg(package_dir),
+        "--output",
+        path_arg(jobs_path),
+    ]
+    if not include_ocr:
+        command_parts.append("--no-include-ocr")
+    if not include_vlm:
+        command_parts.append("--no-include-vlm")
+    return " ".join(command_parts)
 
 
 def visual_profile_run_command(
@@ -257,12 +336,34 @@ def visual_profile_run_command(
     )
 
 
+def visual_ocr_run_command(
+    package_dir: Path,
+    jobs_path: Path,
+    ocr_backend: str,
+) -> str:
+    return (
+        f"chunking-docs run-visual-jobs --package-dir {path_arg(package_dir)} "
+        f"--jobs {path_arg(jobs_path)} "
+        f"--results-output {path_arg(visual_ocr_results_path(package_dir))} "
+        f"--annotations-output {path_arg(visual_ocr_annotations_path(package_dir))} "
+        f"--ocr {shlex.quote(ocr_backend)} --vlm none"
+    )
+
+
 def visual_profile_results_path(package_dir: Path, profile: str) -> Path:
     return package_dir / f"visual_job_results.{profile}.jsonl"
 
 
 def visual_profile_annotations_path(package_dir: Path, profile: str) -> Path:
     return package_dir / f"visual_annotations.{profile}.jsonl"
+
+
+def visual_ocr_results_path(package_dir: Path) -> Path:
+    return package_dir / "visual_job_results.ocr.jsonl"
+
+
+def visual_ocr_annotations_path(package_dir: Path) -> Path:
+    return package_dir / "visual_annotations.ocr.jsonl"
 
 
 def visual_run_comparison_command(package_dir: Path, vlm_profiles: list[str]) -> str:
@@ -305,6 +406,8 @@ def readiness_step(
     package_dir: Path,
     retrieval_cases: Path,
     include_visual_quality: bool = False,
+    include_vlm_quality: bool = False,
+    include_visual_run_comparison: bool = False,
     include_chunking_comparison: bool = False,
     include_qdrant_rag_context: bool = False,
 ) -> WorkflowStep:
@@ -320,11 +423,15 @@ def readiness_step(
         "3",
     ]
     if include_visual_quality:
+        command_parts.extend(BASE_VISUAL_READINESS_GATE_ARGS)
+    if include_vlm_quality:
+        command_parts.extend(VLM_VISUAL_READINESS_GATE_ARGS)
+    if include_visual_run_comparison:
         command_parts.extend(
             option.format(
                 visual_run_comparison=path_arg(package_dir / "visual_run_comparison.json")
             )
-            for option in VISUAL_READINESS_GATE_ARGS
+            for option in VISUAL_RUN_COMPARISON_READINESS_GATE_ARGS
         )
     if include_chunking_comparison:
         command_parts.extend(

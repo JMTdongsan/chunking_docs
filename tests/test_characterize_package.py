@@ -149,6 +149,29 @@ def test_characterize_package_reports_strategy_observations(tmp_path):
     assert tile_recommendation.metadata["tile_candidate_page_ranges"] == "1"
 
 
+def test_characterize_package_does_not_count_attempted_ocr_as_pending(tmp_path):
+    package_dir, manifest = make_characteristic_package(tmp_path)
+    manifest.assets[0].vlm_summary = "already summarized"
+    manifest.assets[0].metadata["vlm_parse_status"] = "json_object"
+    manifest.assets[0].metadata["ocr_backend"] = "paddleocr"
+    manifest.assets[0].metadata["ocr_text_chars"] = 0
+
+    report = characterize_package(
+        manifest.profiles,
+        manifest.chunks,
+        manifest.assets,
+        manifest.triples,
+        package_dir=package_dir,
+    )
+
+    assert report.visual.pages_requiring_ocr_count == 0
+    assert report.visual.pages_requiring_vlm_count == 0
+    assert "visual_annotation_pending" not in {item.code for item in report.observations}
+    assert "prioritize_visual_annotations" not in {
+        item.code for item in report.recommendations
+    }
+
+
 def test_characterize_package_cli_writes_json(tmp_path):
     package_dir, _ = make_characteristic_package(tmp_path)
     output = tmp_path / "characteristics.json"
