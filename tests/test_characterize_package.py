@@ -35,6 +35,7 @@ def test_characterize_package_reports_strategy_observations(tmp_path):
     assert report.text_layer.degraded_or_empty_ratio == 0.5
     assert report.text_layer.quality_reason_counts == {"empty_text": 1}
     assert report.visual.asset_kind_counts["map"] == 1
+    assert report.visual.rendered_asset_count == 1
     assert report.visual.tile_candidate_pages == [1]
     assert report.visual.tile_candidate_count == 1
     assert report.visual.top_visual_pages[0]["tile_reasons"] == [
@@ -52,11 +53,13 @@ def test_characterize_package_reports_strategy_observations(tmp_path):
     assert "dense_visual_pages_need_tiling" in observation_codes
     assert "vlm_objects_available" in observation_codes
     assert "object_vector_records_missing" in observation_codes
+    assert "image_vector_records_missing" not in observation_codes
     assert "triple_vector_records_missing" in observation_codes
     assert "graph_triples_missing" not in observation_codes
     assert "prioritize_visual_annotations" in recommendation_codes
     assert "build_page_tiles" in recommendation_codes
     assert "evaluate_visual_vectors" in recommendation_codes
+    assert "generate_visual_image_probe_cases" in recommendation_codes
     assert "generate_visual_object_probe_cases" in recommendation_codes
     assert "compare_multimodal_hierarchical_chunking" in recommendation_codes
     assert "build_triple_vector_artifacts" in recommendation_codes
@@ -66,6 +69,17 @@ def test_characterize_package_reports_strategy_observations(tmp_path):
     )
     assert "--object-backend same-as-caption" in visual_vector_recommendation.commands[0]
     assert "--triple-backend same-as-text" in visual_vector_recommendation.commands[0]
+    assert "--image-query-backend clip" in visual_vector_recommendation.commands[1]
+    image_probe_recommendation = next(
+        item for item in report.recommendations if item.code == "generate_visual_image_probe_cases"
+    )
+    image_probe_audit_command = image_probe_recommendation.commands[1]
+    assert "--image-probe-limit 20" in image_probe_recommendation.commands[0]
+    assert "--min-case-group-count case_source:visual_image_probe=1" in image_probe_audit_command
+    assert "--min-case-group-distinct-targets case_source:visual_image_probe:asset=1" in image_probe_audit_command
+    assert "--min-source-target-coverage qdrant:image_dense=0.5" in image_probe_recommendation.commands[2]
+    assert "case_source:visual_image_probe=0.7" in image_probe_recommendation.commands[2]
+    assert image_probe_recommendation.metadata["recommended_image_probe_case_threshold"] == 1
     triple_vector_recommendation = next(
         item for item in report.recommendations if item.code == "build_triple_vector_artifacts"
     )
@@ -118,10 +132,15 @@ def test_characterize_package_cli_writes_json(tmp_path):
     assert result.exit_code == 0, result.output
     payload = json.loads(output.read_text(encoding="utf-8"))
     assert payload["visual"]["asset_kind_counts"]["map"] == 1
+    assert payload["visual"]["rendered_asset_count"] == 1
     assert payload["visual"]["tile_candidate_pages"] == [1]
     assert payload["visual"]["vlm_object_count"] == 2
     assert any(item["code"] == "visual_retrieval_required" for item in payload["observations"])
     assert any(item["code"] == "evaluate_visual_vectors" for item in payload["recommendations"])
+    assert any(
+        item["code"] == "generate_visual_image_probe_cases"
+        for item in payload["recommendations"]
+    )
     assert any(
         item["code"] == "generate_visual_object_probe_cases"
         for item in payload["recommendations"]
@@ -132,6 +151,25 @@ def test_characterize_package_cli_writes_json(tmp_path):
     )
     assert "--require-visual-only-object-probes" in object_probe_recommendation["commands"][1]
     assert object_probe_recommendation["metadata"]["recommended_object_probe_case_threshold"] == 2
+
+
+def test_characterize_package_warns_when_rendered_image_vectors_are_missing(tmp_path):
+    package_dir, manifest = make_characteristic_package(tmp_path)
+    (package_dir / "qdrant_image_records.jsonl").unlink()
+
+    report = characterize_package(
+        manifest.profiles,
+        manifest.chunks,
+        manifest.assets,
+        manifest.triples,
+        package_dir=package_dir,
+    )
+
+    observation = next(
+        item for item in report.observations if item.code == "image_vector_records_missing"
+    )
+    assert observation.metadata["rendered_asset_count"] == 1
+    assert "qdrant_image_records.jsonl" not in observation.metadata["qdrant_record_files"]
 
 
 def test_chunk_characteristics_counts_source_ref_visual_links():
@@ -206,6 +244,7 @@ def make_characteristic_package(tmp_path: Path):
             doc_id="doc",
             page_no=1,
             kind=AssetKind.MAP,
+            path=package_dir / "assets/page.png",
             caption="map",
             metadata={
                 "requires_ocr": True,

@@ -43,6 +43,7 @@ class TextLayerCharacteristics(BaseModel):
 
 class VisualCharacteristics(BaseModel):
     asset_kind_counts: dict[str, int]
+    rendered_asset_count: int = 0
     visual_heavy_pages: list[int] = Field(default_factory=list)
     tile_candidate_pages: list[int] = Field(default_factory=list)
     tile_candidate_count: int = 0
@@ -187,6 +188,7 @@ def visual_characteristics(
     ][:max_pages]
     return VisualCharacteristics(
         asset_kind_counts=dict(sorted(kind_counts.items())),
+        rendered_asset_count=sum(1 for asset in assets if asset.path is not None),
         visual_heavy_pages=visual_heavy_pages,
         tile_candidate_pages=tile_candidates[:max_pages],
         tile_candidate_count=len(tile_candidates),
@@ -334,6 +336,18 @@ def observations(
                 },
             )
         )
+    if visual.rendered_asset_count and not qdrant_record_present(artifacts, "image_dense"):
+        result.append(
+            CharacteristicObservation(
+                code="image_vector_records_missing",
+                severity="warning",
+                message="Rendered visual assets are present but image_dense Qdrant records are missing.",
+                metadata={
+                    "rendered_asset_count": visual.rendered_asset_count,
+                    "qdrant_record_files": artifacts.qdrant_record_files,
+                },
+            )
+        )
     if not artifacts.bm25_tokens:
         result.append(
             CharacteristicObservation(
@@ -442,9 +456,56 @@ def recommendations(
                 ),
                 commands=[
                     embed_command,
-                    "chunking-docs eval-qdrant-vector-ablation examples/retrieval_cases.jsonl --package-dir outputs/package --modes text,caption,object,text_object,all_with_object_graph",
+                    (
+                        "chunking-docs eval-qdrant-vector-ablation examples/retrieval_cases.jsonl "
+                        "--package-dir outputs/package "
+                        "--modes text,caption,image,text_image,caption_image,all "
+                        "--image-query-backend clip --image-query-model openai/clip-vit-large-patch14"
+                    ),
                 ],
-                metadata={"asset_kind_counts": visual.asset_kind_counts},
+                metadata={
+                    "asset_kind_counts": visual.asset_kind_counts,
+                    "rendered_asset_count": visual.rendered_asset_count,
+                },
+            )
+        )
+    if visual.rendered_asset_count:
+        image_probe_threshold = bounded_threshold(visual.rendered_asset_count)
+        result.append(
+            ProcessingRecommendation(
+                code="generate_visual_image_probe_cases",
+                area="evaluation",
+                priority="required",
+                message=(
+                    "Generate and gate rendered-image retrieval probes so image_dense contribution is measured "
+                    "separately from caption, object, and text vectors."
+                ),
+                commands=[
+                    (
+                        "chunking-docs generate-retrieval-cases --package-dir outputs/package "
+                        "--query-mode salient_terms --selection-strategy salience "
+                        "--image-probe-limit 20 --output examples/retrieval_cases.jsonl"
+                    ),
+                    (
+                        "chunking-docs audit-retrieval-cases examples/retrieval_cases.jsonl "
+                        "--package-dir outputs/package "
+                        f"--min-case-group-count case_source:visual_image_probe={image_probe_threshold} "
+                        f"--min-distinct-asset-targets {image_probe_threshold} "
+                        f"--min-case-group-distinct-targets case_source:visual_image_probe:asset={image_probe_threshold} "
+                        "--min-query-terms-per-case 3"
+                    ),
+                    (
+                        "chunking-docs gate-qdrant-vector-ablation outputs/package/qdrant_vector_ablation.json "
+                        "--mode caption_image --baseline-mode caption "
+                        "--min-source-target-coverage qdrant:image_dense=0.5 "
+                        "--min-case-group-target-coverage case_source:visual_image_probe=0.7"
+                    ),
+                ],
+                metadata={
+                    "rendered_asset_count": visual.rendered_asset_count,
+                    "recommended_image_probe_case_threshold": image_probe_threshold,
+                    "recommended_distinct_asset_threshold": image_probe_threshold,
+                },
             )
         )
     if visual.vlm_object_count:
