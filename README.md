@@ -76,9 +76,14 @@ Summarize the package characteristics that should drive chunking, OCR/VLM, graph
 chunking-docs characterize-package \
   --package-dir outputs/package \
   --output outputs/package/document_characteristics.json
+chunking-docs plan-ingestion-workflow \
+  --package-dir outputs/package \
+  --retrieval-cases examples/retrieval_cases.jsonl \
+  --vlm-profiles qwen2_5_vl_7b,qwen2_vl_7b,llava_next_7b \
+  --output outputs/package/ingestion_workflow_plan.json
 ```
 
-The report includes observations and processing recommendations for visual annotation, multimodal embeddings, graph signals, and retrieval benchmark coverage. Dense visual pages are reported as tile candidates with a ready `build-tile-assets` command so maps, tables, and diagrams can be processed as overlapping crops before OCR/VLM evaluation. When rendered assets, VLM object metadata, or graph triples are present without matching `image_dense`, `object_dense`, or `triple_dense` records, the report recommends rebuilding those vector families before ablation. When rendered visual assets are present, it recommends generating and gating `visual_image_probe` cases so `qdrant:image_dense` contribution is measured separately from caption and object vectors. When VLM object metadata is present, it reports object and bbox counts and recommends generating and auditing `visual_object_probe` retrieval cases with visual-only, target-diversity, concentration, and query-strength gates so object detections are evaluated separately from aggregate retrieval scores.
+The report includes observations and processing recommendations for visual annotation, multimodal embeddings, graph signals, and retrieval benchmark coverage. `plan-ingestion-workflow` turns those recommendations into an ordered command plan: runtime checks, characterization, page tiling, OCR/VLM jobs, VLM profile experiments, embedding rebuilds, retrieval case generation, chunking comparison, and final ingestion readiness. Dense visual pages are reported as tile candidates with a ready `build-tile-assets` command so maps, tables, and diagrams can be processed as overlapping crops before OCR/VLM evaluation. When rendered assets, VLM object metadata, or graph triples are present without matching `image_dense`, `object_dense`, or `triple_dense` records, the report recommends rebuilding those vector families before ablation. When rendered visual assets are present, it recommends generating and gating `visual_image_probe` cases so `qdrant:image_dense` contribution is measured separately from caption and object vectors. When VLM object metadata is present, it reports object and bbox counts and recommends generating and auditing `visual_object_probe` retrieval cases with visual-only, target-diversity, concentration, and query-strength gates so object detections are evaluated separately from aggregate retrieval scores.
 
 ## Document Structure
 

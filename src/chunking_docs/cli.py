@@ -10,6 +10,7 @@ import typer
 from rich import print
 
 from chunking_docs.analysis.characterize import characterize_package
+from chunking_docs.analysis.workflow import build_ingestion_workflow_plan
 from chunking_docs.analysis.pdf_profile import profile_pdf, summarize_profiles, write_profile_outputs
 from chunking_docs.chunking.multimodal import ChunkStrategy, build_strategy_chunks
 from chunking_docs.chunking.page_chunker import page_level_chunks
@@ -3277,6 +3278,45 @@ def characterize_package_command(
             "asset_kind_counts": report.visual.asset_kind_counts,
             "observations": [observation.code for observation in report.observations],
             "recommendations": [recommendation.code for recommendation in report.recommendations],
+        }
+    print(payload)
+
+
+@app.command(name="plan-ingestion-workflow")
+def plan_ingestion_workflow_command(
+    package_dir: Path = Path("outputs/package"),
+    output: Path | None = None,
+    retrieval_cases: Path = Path("examples/retrieval_cases.jsonl"),
+    vlm_profiles: str = "qwen2_5_vl_7b,qwen2_vl_7b,llava_next_7b",
+    max_pages: int = 25,
+):
+    """Write an ordered command plan from package characterization to final ingestion readiness."""
+    manifest = load_processing_package(package_dir)
+    characteristics = characterize_package(
+        profiles=manifest.profiles,
+        chunks=manifest.chunks,
+        assets=manifest.assets,
+        triples=manifest.triples,
+        package_dir=package_dir,
+        max_pages=max_pages,
+    )
+    plan = build_ingestion_workflow_plan(
+        characteristics,
+        package_dir=package_dir,
+        retrieval_cases=retrieval_cases,
+        vlm_profiles=parse_profile_list(vlm_profiles),
+    )
+    payload = plan.model_dump()
+    if output is not None:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(plan.model_dump_json(indent=2), encoding="utf-8")
+        payload = {
+            "output": str(output),
+            "step_count": len(plan.steps),
+            "required_step_count": plan.metadata.get("required_step_count", 0),
+            "observation_codes": plan.observation_codes,
+            "recommendation_codes": plan.recommendation_codes,
+            "step_ids": [step.step_id for step in plan.steps],
         }
     print(payload)
 
