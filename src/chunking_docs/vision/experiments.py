@@ -138,18 +138,25 @@ def vlm_experiment_recipe(
     annotations_output = output_dir / f"visual_annotations.{profile.name}.jsonl"
     selected_vlm_job_count = job_summary.operation_counts.get("vlm", 0)
     selected_ocr_job_count = job_summary.operation_counts.get("ocr", 0)
-    doctor_command = quote_command(
+    effective_ocr = ocr if selected_ocr_job_count > 0 else "none"
+    normalized_effective_ocr = normalize_ocr_name(effective_ocr)
+    doctor_args = [
+        "chunking-docs",
+        "doctor",
+        "--require-gpu",
+        "--require-vision",
+    ]
+    if normalized_effective_ocr in {"paddle", "paddleocr"}:
+        doctor_args.append("--require-ocr")
+    doctor_args.extend(
         [
-            "chunking-docs",
-            "doctor",
-            "--require-gpu",
-            "--require-vision",
             "--vlm-profile",
             profile.name,
             "--vlm-memory-margin-ratio",
             str(vlm_memory_margin_ratio),
         ]
     )
+    doctor_command = quote_command(doctor_args)
     command_args = [
         "chunking-docs",
         "run-visual-jobs",
@@ -162,7 +169,7 @@ def vlm_experiment_recipe(
         "--annotations-output",
         str(annotations_output),
         "--ocr",
-        ocr,
+        effective_ocr,
         "--ocr-model-lang",
         ocr_model_lang,
         "--ocr-device",
@@ -208,6 +215,8 @@ def vlm_experiment_recipe(
             "selected_job_count": job_summary.selected_job_count,
             "selected_vlm_job_count": selected_vlm_job_count,
             "selected_ocr_job_count": selected_ocr_job_count,
+            "requested_ocr_backend": ocr,
+            "effective_ocr_backend": effective_ocr,
             "max_generation_tokens_upper_bound": selected_vlm_job_count * max_new_tokens,
             "vlm_memory_margin_ratio": vlm_memory_margin_ratio,
         },
@@ -277,6 +286,10 @@ def parse_profile_list(value: str) -> list[str]:
 
 
 def normalize_profile_name(value: str) -> str:
+    return value.strip().lower().replace("-", "_")
+
+
+def normalize_ocr_name(value: str) -> str:
     return value.strip().lower().replace("-", "_")
 
 

@@ -32,6 +32,8 @@ def test_build_vlm_experiment_plan_writes_profile_commands(tmp_path):
     assert plan.recipes[0].doctor_command.endswith(
         "--vlm-profile qwen2_5_vl_7b --vlm-memory-margin-ratio 0.1"
     )
+    assert "--require-ocr" not in plan.recipes[0].doctor_command
+    assert "--ocr none" in plan.recipes[0].command
     assert "--vlm-profile qwen2_5_vl_7b" in plan.recipes[0].command
     assert "--limit 2" in plan.recipes[0].command
     assert "--apply" not in plan.recipes[0].command
@@ -105,10 +107,15 @@ def test_build_vlm_experiment_plan_summarizes_selected_jobs(tmp_path):
     assert plan.job_summary.page_min == 2
     assert plan.job_summary.page_max == 3
     assert plan.recipes[0].metadata["selected_vlm_job_count"] == 2
+    assert plan.recipes[0].metadata["selected_ocr_job_count"] == 1
+    assert plan.recipes[0].metadata["requested_ocr_backend"] == "paddleocr"
+    assert plan.recipes[0].metadata["effective_ocr_backend"] == "paddleocr"
     assert plan.recipes[0].metadata["max_generation_tokens_upper_bound"] == 1024
+    assert "--require-ocr" in plan.recipes[0].doctor_command
     assert plan.recipes[0].doctor_command.endswith(
         "--vlm-profile phi3_5_vision --vlm-memory-margin-ratio 0.2"
     )
+    assert "--ocr paddleocr" in plan.recipes[0].command
 
 
 def test_parse_profile_list_normalizes_names():
