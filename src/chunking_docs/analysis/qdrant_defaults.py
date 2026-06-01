@@ -86,17 +86,27 @@ def qdrant_rag_validation_commands(vector_names: list[str]) -> list[str]:
             "--output outputs/package/qdrant_retrieval_config.json"
         ),
         (
-            "chunking-docs eval-qdrant-retrieval-config "
-            "outputs/package/qdrant_retrieval_config.json examples/retrieval_cases.jsonl "
-            "--package-dir outputs/package --location ':memory:' --repeat 3 "
-            "--output outputs/package/qdrant_retrieval_config_eval.json"
+            " ".join(
+                [
+                    "chunking-docs eval-qdrant-retrieval-config",
+                    "outputs/package/qdrant_retrieval_config.json examples/retrieval_cases.jsonl",
+                    "--package-dir outputs/package --location ':memory:' --repeat 3",
+                    "--output outputs/package/qdrant_retrieval_config_eval.json",
+                    *image_query_args,
+                ]
+            )
         ),
         (
-            "chunking-docs eval-qdrant-rag-context-config "
-            "outputs/package/qdrant_retrieval_config.json examples/retrieval_cases.jsonl "
-            "--package-dir outputs/package --location ':memory:' "
-            "--contexts-output outputs/package/rag_context.config.cases.jsonl "
-            "--output outputs/package/qdrant_rag_context_config_eval.json"
+            " ".join(
+                [
+                    "chunking-docs eval-qdrant-rag-context-config",
+                    "outputs/package/qdrant_retrieval_config.json examples/retrieval_cases.jsonl",
+                    "--package-dir outputs/package --location ':memory:'",
+                    "--contexts-output outputs/package/rag_context.config.cases.jsonl",
+                    "--output outputs/package/qdrant_rag_context_config_eval.json",
+                    *image_query_args,
+                ]
+            )
         ),
         " ".join(
             [
@@ -112,6 +122,12 @@ def qdrant_rag_validation_commands(vector_names: list[str]) -> list[str]:
 QDRANT_RAG_READINESS_GATE_ARGS = [
     "--qdrant-retrieval-config {qdrant_retrieval_config}",
     "--require-qdrant-retrieval-config",
+    "--retrieval-evaluation {qdrant_retrieval_config_evaluation}",
+    "--require-retrieval-evaluation",
+    "--min-target-coverage-at-k 0.8",
+    "--min-target-ndcg-at-k 0.7",
+    "--max-retrieval-failed-queries 3",
+    "--max-p95-latency-ms 250",
     "--rag-context-evaluation {rag_context_evaluation}",
     "--require-rag-context-evaluation",
     "--min-rag-context-target-coverage 0.8",

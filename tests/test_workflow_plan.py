@@ -98,7 +98,9 @@ def test_build_ingestion_workflow_plan_orders_runtime_visual_embedding_and_readi
     assert "--vector-names text_dense,caption_dense,image_dense" in qdrant_commands[1]
     assert "export-qdrant-retrieval-config" in qdrant_commands[2]
     assert "eval-qdrant-retrieval-config" in qdrant_commands[3]
+    assert "--image-query-backend clip" in qdrant_commands[3]
     assert "eval-qdrant-rag-context-config" in qdrant_commands[4]
+    assert "--image-query-backend clip" in qdrant_commands[4]
     assert "gate-rag-context" in qdrant_commands[5]
     readiness_command = plan.steps[-1].commands[0]
     assert "--require-visual-annotations" in readiness_command
@@ -114,6 +116,12 @@ def test_build_ingestion_workflow_plan_orders_runtime_visual_embedding_and_readi
     assert "--min-chunking-target-coverage-per-p95-latency-ms 0.0005" in readiness_command
     assert "--qdrant-retrieval-config" in readiness_command
     assert "--require-qdrant-retrieval-config" in readiness_command
+    assert "--retrieval-evaluation" in readiness_command
+    assert "qdrant_retrieval_config_eval.json" in readiness_command
+    assert "--require-retrieval-evaluation" in readiness_command
+    assert "--min-target-coverage-at-k 0.8" in readiness_command
+    assert "--min-target-ndcg-at-k 0.7" in readiness_command
+    assert "--max-retrieval-failed-queries 3" in readiness_command
     assert "--rag-context-evaluation" in readiness_command
     assert "--require-rag-context-evaluation" in readiness_command
     assert "--max-rag-context-mean-context-char-count 12000" in readiness_command
@@ -185,6 +193,7 @@ def test_workflow_plan_rebuilds_embeddings_after_index_refresh_for_indexed_text_
     assert "--caption-backend same-as-text" in rebuild_command
     readiness_command = plan.steps[-1].commands[0]
     assert "--require-qdrant-retrieval-config" in readiness_command
+    assert "--require-retrieval-evaluation" in readiness_command
     assert "--require-rag-context-evaluation" in readiness_command
     assert "--require-visual-run-comparison" not in readiness_command
 

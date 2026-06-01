@@ -444,6 +444,9 @@ def readiness_step(
         command_parts.extend(
             option.format(
                 qdrant_retrieval_config=path_arg(package_dir / "qdrant_retrieval_config.json"),
+                qdrant_retrieval_config_evaluation=path_arg(
+                    package_dir / "qdrant_retrieval_config_eval.json"
+                ),
                 rag_context_evaluation=path_arg(
                     package_dir / "qdrant_rag_context_config_eval.json"
                 ),

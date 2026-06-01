@@ -1700,9 +1700,23 @@ def test_ingestion_readiness_cli_can_validate_qdrant_retrieval_config(tmp_path):
     package_dir, _ = write_ready_package(tmp_path)
     config = readiness_qdrant_retrieval_config(package_dir)
     config_path = tmp_path / "qdrant_retrieval_config.json"
+    retrieval_eval_path = tmp_path / "qdrant_retrieval_config_eval.json"
     context_eval_path = tmp_path / "rag_context_eval.json"
     output = tmp_path / "readiness.json"
     config_path.write_text(config.model_dump_json(indent=2), encoding="utf-8")
+    retrieval_eval_path.write_text(
+        readiness_retrieval_evaluation(target_coverage=1.0)
+        .model_copy(
+            update={
+                "metadata": qdrant_config_metadata(
+                    config,
+                    "qdrant_hybrid_config",
+                )
+            }
+        )
+        .model_dump_json(indent=2),
+        encoding="utf-8",
+    )
     context_eval_path.write_text(
         readiness_rag_context_evaluation()
         .model_copy(
@@ -1725,6 +1739,13 @@ def test_ingestion_readiness_cli_can_validate_qdrant_retrieval_config(tmp_path):
             str(package_dir),
             "--qdrant-retrieval-config",
             str(config_path),
+            "--retrieval-evaluation",
+            str(retrieval_eval_path),
+            "--require-retrieval-evaluation",
+            "--min-target-coverage-at-k",
+            "1.0",
+            "--max-retrieval-failed-queries",
+            "0",
             "--rag-context-evaluation",
             str(context_eval_path),
             "--min-rag-context-target-coverage",
@@ -1743,7 +1764,14 @@ def test_ingestion_readiness_cli_can_validate_qdrant_retrieval_config(tmp_path):
     )
     assert payload["passed"] is True
     assert component["metadata"]["failed_checks"] == []
+    assert component["metadata"]["retrieval_evaluation_alignment"]["matches"] is True
     assert component["metadata"]["rag_context_evaluation_alignment"]["matches"] is True
+    retrieval_component = next(
+        component
+        for component in payload["components"]
+        if component["name"] == "retrieval_gate"
+    )
+    assert retrieval_component["metadata"]["metrics"]["target_coverage_at_k"] == 1.0
 
 
 def test_ingestion_readiness_cli_can_gate_retrieval_ablation_lift(tmp_path):
