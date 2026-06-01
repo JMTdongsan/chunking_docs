@@ -212,6 +212,7 @@ def build_ingestion_readiness_report(
                     "failed_checks": retrieval_case_audit.failed_checks,
                     "target_counts": retrieval_case_audit.target_counts,
                     "distinct_target_counts": retrieval_case_audit.distinct_target_counts,
+                    "max_cases_per_target": retrieval_case_audit.max_cases_per_target,
                     "case_group_counts": retrieval_case_audit.case_group_counts,
                     "visual_object_probe_count": retrieval_case_audit.visual_object_probe_count,
                     "visual_only_object_probe_count": (

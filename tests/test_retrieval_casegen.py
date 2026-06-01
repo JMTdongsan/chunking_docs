@@ -629,6 +629,7 @@ def test_generate_retrieval_cases_cli_writes_object_probe_cases(tmp_path):
     assert rows[0]["metadata"]["object_probe_visual_only"] is False
     assert "'target_counts':" in result.output
     assert "'distinct_target_counts':" in result.output
+    assert "'max_cases_per_target':" in result.output
     assert "'asset': 1" in result.output
     assert "'case_group_counts':" in result.output
     assert "'visual_object_probe': 1" in result.output

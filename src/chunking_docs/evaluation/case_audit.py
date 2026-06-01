@@ -35,6 +35,7 @@ class RetrievalCaseAuditReport(BaseModel):
     expected_case_count: int
     target_counts: dict[str, int] = Field(default_factory=dict)
     distinct_target_counts: dict[str, int] = Field(default_factory=dict)
+    max_cases_per_target: dict[str, int] = Field(default_factory=dict)
     case_group_counts: dict[str, dict[str, int]] = Field(default_factory=dict)
     visual_object_probe_count: int = 0
     visual_only_object_probe_count: int = 0
@@ -64,6 +65,10 @@ def audit_retrieval_cases(
     min_distinct_chunk_targets: int = 0,
     min_distinct_asset_targets: int = 0,
     min_distinct_triple_targets: int = 0,
+    max_page_cases_per_target: int | None = None,
+    max_chunk_cases_per_target: int | None = None,
+    max_asset_cases_per_target: int | None = None,
+    max_triple_cases_per_target: int | None = None,
     min_case_group_counts: dict[str, int] | None = None,
     require_visual_only_object_probes: bool = False,
     max_duplicate_queries: int = 0,
@@ -76,6 +81,7 @@ def audit_retrieval_cases(
     issues: list[RetrievalCaseAuditIssue] = []
     target_counts = count_retrieval_case_targets(cases)
     distinct_target_counts = count_retrieval_case_distinct_targets(cases)
+    max_cases_per_target = count_retrieval_case_max_target_mentions(cases)
     group_counts = count_case_groups(cases)
     visual_object_probe_counts = count_visual_object_probes(cases)
     missing_target_counts = {"page": 0, "chunk": 0, "asset": 0, "triple": 0}
@@ -196,6 +202,10 @@ def audit_retrieval_cases(
         "distinct_chunk_targets": distinct_target_counts["chunk"],
         "distinct_asset_targets": distinct_target_counts["asset"],
         "distinct_triple_targets": distinct_target_counts["triple"],
+        "max_page_cases_per_target": max_cases_per_target["page"],
+        "max_chunk_cases_per_target": max_cases_per_target["chunk"],
+        "max_asset_cases_per_target": max_cases_per_target["asset"],
+        "max_triple_cases_per_target": max_cases_per_target["triple"],
         "non_visual_only_object_probe_count": visual_object_probe_counts["non_visual_only"],
         "duplicate_query_count": duplicate_query_count,
     }
@@ -231,6 +241,17 @@ def audit_retrieval_cases(
         ),
         max_check("max_duplicate_queries", "duplicate_query_count", metrics, max_duplicate_queries),
     ]
+    checks.extend(
+        max_cases_per_target_checks(
+            metrics,
+            {
+                "page": max_page_cases_per_target,
+                "chunk": max_chunk_cases_per_target,
+                "asset": max_asset_cases_per_target,
+                "triple": max_triple_cases_per_target,
+            },
+        )
+    )
     if require_visual_only_object_probes:
         checks.append(
             max_check(
@@ -248,6 +269,7 @@ def audit_retrieval_cases(
         expected_case_count=sum(1 for case in cases if has_expected_target(case)),
         target_counts=target_counts,
         distinct_target_counts=distinct_target_counts,
+        max_cases_per_target=max_cases_per_target,
         case_group_counts=group_counts,
         visual_object_probe_count=visual_object_probe_counts["total"],
         visual_only_object_probe_count=visual_object_probe_counts["visual_only"],
@@ -279,6 +301,23 @@ def count_retrieval_case_distinct_targets(cases: list[RetrievalCase]) -> dict[st
         "asset": len({asset_id for case in cases for asset_id in case.expected_asset_ids}),
         "triple": len({triple_id for case in cases for triple_id in case.expected_triple_ids}),
     }
+
+
+def count_retrieval_case_max_target_mentions(cases: list[RetrievalCase]) -> dict[str, int]:
+    return {
+        "page": max_target_mentions(case.expected_pages for case in cases),
+        "chunk": max_target_mentions(case.expected_chunk_ids for case in cases),
+        "asset": max_target_mentions(case.expected_asset_ids for case in cases),
+        "triple": max_target_mentions(case.expected_triple_ids for case in cases),
+    }
+
+
+def max_target_mentions(target_values: Any) -> int:
+    counts: dict[Any, int] = {}
+    for values in target_values:
+        for value in values:
+            counts[value] = counts.get(value, 0) + 1
+    return max(counts.values(), default=0)
 
 
 def count_case_groups(cases: list[RetrievalCase]) -> dict[str, dict[str, int]]:
@@ -334,6 +373,19 @@ def case_group_count_checks(
                 passed=actual >= threshold,
             )
         )
+    return checks
+
+
+def max_cases_per_target_checks(
+    metrics: dict[str, int],
+    thresholds: dict[str, int | None],
+) -> list[RetrievalCaseAuditCheck]:
+    checks = []
+    for target_name, threshold in thresholds.items():
+        if threshold is None:
+            continue
+        metric = f"max_{target_name}_cases_per_target"
+        checks.append(max_check(metric, metric, metrics, threshold))
     return checks
 
 
