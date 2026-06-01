@@ -71,7 +71,7 @@
    - `multimodal`: semantic chunks with bounded linked visual context plus visual asset text chunks from captions, OCR, VLM summaries, and structured VLM metadata. Visual links can come from `asset_ids` or `asset:` source refs; text-bearing assets without a linked parent become standalone visual chunks.
    - `hierarchical`: coarse parent chunks plus fine child chunks that share page, section, and visual context resolved from the same asset provenance, with standalone visual chunks for unlinked asset text.
    - `compare-chunking` evaluates candidate files with the same benchmark cases.
-   - `sweep-chunking` generates a strategy and parameter grid, writes candidate chunk files, ranks the results, and reports Pareto-efficient candidates across retrieval quality, target rank, latency, and chunk-count cost.
+   - `sweep-chunking` generates a strategy and parameter grid, writes candidate chunk files, ranks the results, and reports eligibility-filtered recommendations plus Pareto-efficient candidates across retrieval quality, target rank, latency, and chunk-count cost.
 
 10. **Embedding Artifacts**
    - `text_dense`: chunk text, OCR text, VLM summaries, and any visual context included by the selected strategy.
@@ -245,7 +245,7 @@ Recommended checks:
 - `compare-packages`: before/after package comparison for count deltas, changed chunk/asset/triple IDs, Qdrant record count deltas, and annotation-related observations.
 - `compare-chunking`: side-by-side strategy comparison by quality score, recall@k, MRR, target coverage@k, target nDCG@k, target rank, precision@k, target-type coverage, source-family target coverage, chunking-strategy coverage, retrieval-role coverage, case group coverage, linked visual text asset and part coverage, latency, failed queries, query-paired baseline deltas, and paired bootstrap confidence intervals.
 - `gate-chunking-comparison`: pass/fail checks for selected chunking candidates using quality, page coverage, visual text asset/part coverage, retrieval floors, target rank limits, target-type coverage, source-family target coverage, chunking-strategy coverage, retrieval-role coverage, case group coverage, failed-query limits, baseline regression limits, pairwise lift requirements, pairwise rank-delta ceilings, and paired confidence bounds.
-- `sweep-chunking`: parameter grid generation for max size, overlap, parent size, and multimodal or hierarchical visual context size, with weighted selection scores that include target rank efficiency and a Pareto front for retrieval quality-versus-cost review.
+- `sweep-chunking`: parameter grid generation for max size, overlap, parent size, and multimodal or hierarchical visual context size, with weighted selection scores, optional hard selection constraints, eligibility failures, and a Pareto front for retrieval quality-versus-cost review.
 - `write-experiment-report`: reproducible package report with artifact checksums, record counts, tokenizer settings, Qdrant configuration, readiness, evaluation, audit, gate artifact variants, visual run comparison summaries, top-level and component-level validation pass/fail summaries, linked visual text asset/part coverage, target rank metrics, case metadata group metrics, paired confidence metrics, and candidate comparison metrics.
 - Qdrant local mode upsert: validates named vector records and payloads.
 

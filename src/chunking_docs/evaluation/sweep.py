@@ -30,13 +30,19 @@ class ChunkingSweepSelectionRow(BaseModel):
     name: str
     score: float
     pareto_efficient: bool = False
+    eligible: bool = True
+    failed_constraints: list[str] = Field(default_factory=list)
     metrics: dict[str, float | None] = Field(default_factory=dict)
 
 
 class ChunkingSweepSelection(BaseModel):
     recommended: str | None = None
     pareto_front: list[str] = Field(default_factory=list)
+    eligible_pareto_front: list[str] = Field(default_factory=list)
     weights: dict[str, float] = Field(default_factory=dict)
+    constraints: dict[str, float] = Field(default_factory=dict)
+    eligible_count: int = 0
+    rejected_count: int = 0
     ranking: list[ChunkingSweepSelectionRow] = Field(default_factory=list)
 
 
@@ -60,6 +66,22 @@ SWEEP_SELECTION_WEIGHTS = {
     "chunk_count_efficiency": 0.02,
 }
 
+MIN_SELECTION_CONSTRAINTS = {
+    "min_retrieval_recall_at_k": "retrieval_recall_at_k",
+    "min_target_coverage_at_k": "target_coverage_at_k",
+    "min_target_ndcg_at_k": "target_ndcg_at_k",
+    "min_precision_at_k": "precision_at_k",
+    "min_quality_score": "quality_score",
+    "min_visual_text_coverage_ratio": "visual_text_coverage_ratio",
+}
+
+MAX_SELECTION_CONSTRAINTS = {
+    "max_mean_target_rank": "mean_target_rank",
+    "max_p95_target_rank": "p95_target_rank",
+    "max_mean_latency_ms": "mean_latency_ms",
+    "max_chunk_count": "chunk_count",
+}
+
 
 def run_chunking_sweep(
     chunks: list[DocumentChunk],
@@ -78,6 +100,7 @@ def run_chunking_sweep(
     collapse_hierarchical: bool = True,
     retrieval_repeat: int = 1,
     fusion_weights: dict[str, float] | None = None,
+    selection_constraints: dict[str, float | None] | None = None,
     output_dir: Path | None = None,
     write_candidates: bool = True,
 ) -> ChunkingSweepReport:
@@ -127,9 +150,9 @@ def run_chunking_sweep(
         )
 
     comparison = compare_chunking_reports(reports)
-    selection = build_sweep_selection(candidates)
-    score_by_candidate = {row.name: row.score for row in selection.ranking}
-    candidates.sort(key=lambda candidate: score_by_candidate.get(candidate.name, 0.0), reverse=True)
+    selection = build_sweep_selection(candidates, selection_constraints=selection_constraints)
+    rank_by_candidate = {row.name: index for index, row in enumerate(selection.ranking)}
+    candidates.sort(key=lambda candidate: rank_by_candidate.get(candidate.name, len(candidates)))
     return ChunkingSweepReport(
         generated_at=datetime.now(UTC).isoformat(),
         config={
@@ -139,6 +162,7 @@ def run_chunking_sweep(
             "retrieval_repeat": retrieval_repeat,
             "tokenizer": tokenizer_config.model_dump() if tokenizer_config else None,
             "fusion_weights": fusion_weights or {},
+            "selection_constraints": selection.constraints,
         },
         candidates=candidates,
         comparison=comparison,
@@ -146,9 +170,16 @@ def run_chunking_sweep(
     )
 
 
-def build_sweep_selection(candidates: list[ChunkingSweepCandidate]) -> ChunkingSweepSelection:
+def build_sweep_selection(
+    candidates: list[ChunkingSweepCandidate],
+    selection_constraints: dict[str, float | None] | None = None,
+) -> ChunkingSweepSelection:
+    constraints = normalize_selection_constraints(selection_constraints or {})
     if not candidates:
-        return ChunkingSweepSelection(weights=SWEEP_SELECTION_WEIGHTS)
+        return ChunkingSweepSelection(
+            weights=SWEEP_SELECTION_WEIGHTS,
+            constraints=constraints,
+        )
     metrics_by_name = {candidate.name: selection_metrics(candidate) for candidate in candidates}
     pareto_front = [
         candidate.name
@@ -160,12 +191,16 @@ def build_sweep_selection(candidates: list[ChunkingSweepCandidate]) -> ChunkingS
             name=name,
             score=selection_score(metrics),
             pareto_efficient=name in pareto_front,
+            failed_constraints=selection_constraint_failures(metrics, constraints),
             metrics=metrics,
         )
         for name, metrics in metrics_by_name.items()
     ]
+    for row in ranking:
+        row.eligible = not row.failed_constraints
     ranking.sort(
         key=lambda row: (
+            row.eligible,
             row.pareto_efficient,
             row.score,
             row.metrics.get("retrieval_recall_at_k") or 0.0,
@@ -175,12 +210,57 @@ def build_sweep_selection(candidates: list[ChunkingSweepCandidate]) -> ChunkingS
         ),
         reverse=True,
     )
+    recommended = None
+    for row in ranking:
+        if row.eligible:
+            recommended = row.name
+            break
     return ChunkingSweepSelection(
-        recommended=ranking[0].name if ranking else None,
+        recommended=recommended,
         pareto_front=[row.name for row in ranking if row.pareto_efficient],
+        eligible_pareto_front=[
+            row.name for row in ranking if row.pareto_efficient and row.eligible
+        ],
         weights=SWEEP_SELECTION_WEIGHTS,
+        constraints=constraints,
+        eligible_count=sum(1 for row in ranking if row.eligible),
+        rejected_count=sum(1 for row in ranking if not row.eligible),
         ranking=ranking,
     )
+
+
+def normalize_selection_constraints(
+    values: dict[str, float | None],
+) -> dict[str, float]:
+    supported = set(MIN_SELECTION_CONSTRAINTS) | set(MAX_SELECTION_CONSTRAINTS)
+    constraints = {}
+    for name, value in values.items():
+        if value is None:
+            continue
+        if name not in supported:
+            raise ValueError(f"Unsupported sweep selection constraint: {name}")
+        constraints[name] = float(value)
+    return constraints
+
+
+def selection_constraint_failures(
+    metrics: dict[str, float | None],
+    constraints: dict[str, float],
+) -> list[str]:
+    failures = []
+    for constraint_name, metric_name in MIN_SELECTION_CONSTRAINTS.items():
+        if constraint_name not in constraints:
+            continue
+        value = metrics.get(metric_name)
+        if value is None or float(value) < constraints[constraint_name]:
+            failures.append(constraint_name)
+    for constraint_name, metric_name in MAX_SELECTION_CONSTRAINTS.items():
+        if constraint_name not in constraints:
+            continue
+        value = metrics.get(metric_name)
+        if value is None or float(value) > constraints[constraint_name]:
+            failures.append(constraint_name)
+    return failures
 
 
 def selection_metrics(candidate: ChunkingSweepCandidate) -> dict[str, float | None]:

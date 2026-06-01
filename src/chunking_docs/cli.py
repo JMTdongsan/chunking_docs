@@ -4035,6 +4035,56 @@ def sweep_chunking_command(
         "--fusion-weight",
         help="RRF source weight such as dense=1.0, bm25=1.3, graph=0.8.",
     ),
+    selection_min_retrieval_recall_at_k: float | None = typer.Option(
+        None,
+        "--selection-min-retrieval-recall-at-k",
+        help="Only recommend sweep candidates at or above this retrieval recall@k.",
+    ),
+    selection_min_target_coverage_at_k: float | None = typer.Option(
+        None,
+        "--selection-min-target-coverage-at-k",
+        help="Only recommend sweep candidates at or above this target coverage@k.",
+    ),
+    selection_min_target_ndcg_at_k: float | None = typer.Option(
+        None,
+        "--selection-min-target-ndcg-at-k",
+        help="Only recommend sweep candidates at or above this mean target nDCG@k.",
+    ),
+    selection_min_precision_at_k: float | None = typer.Option(
+        None,
+        "--selection-min-precision-at-k",
+        help="Only recommend sweep candidates at or above this precision@k.",
+    ),
+    selection_min_quality_score: float | None = typer.Option(
+        None,
+        "--selection-min-quality-score",
+        help="Only recommend sweep candidates at or above this chunking quality score.",
+    ),
+    selection_min_visual_text_coverage_ratio: float | None = typer.Option(
+        None,
+        "--selection-min-visual-text-coverage-ratio",
+        help="Only recommend sweep candidates at or above this linked visual text coverage.",
+    ),
+    selection_max_mean_target_rank: float | None = typer.Option(
+        None,
+        "--selection-max-mean-target-rank",
+        help="Only recommend sweep candidates at or below this mean target rank.",
+    ),
+    selection_max_p95_target_rank: float | None = typer.Option(
+        None,
+        "--selection-max-p95-target-rank",
+        help="Only recommend sweep candidates at or below this p95 target rank.",
+    ),
+    selection_max_mean_latency_ms: float | None = typer.Option(
+        None,
+        "--selection-max-mean-latency-ms",
+        help="Only recommend sweep candidates at or below this mean retrieval latency.",
+    ),
+    selection_max_chunk_count: float | None = typer.Option(
+        None,
+        "--selection-max-chunk-count",
+        help="Only recommend sweep candidates at or below this chunk count.",
+    ),
     lexical_tokenizer: TokenizerStrategy = "mixed",
     ngram_min: int = 2,
     ngram_max: int = 4,
@@ -4066,6 +4116,18 @@ def sweep_chunking_command(
         top_k=top_k,
         retrieval_repeat=retrieval_repeat,
         fusion_weights=fusion_weights,
+        selection_constraints={
+            "min_retrieval_recall_at_k": selection_min_retrieval_recall_at_k,
+            "min_target_coverage_at_k": selection_min_target_coverage_at_k,
+            "min_target_ndcg_at_k": selection_min_target_ndcg_at_k,
+            "min_precision_at_k": selection_min_precision_at_k,
+            "min_quality_score": selection_min_quality_score,
+            "min_visual_text_coverage_ratio": selection_min_visual_text_coverage_ratio,
+            "max_mean_target_rank": selection_max_mean_target_rank,
+            "max_p95_target_rank": selection_max_p95_target_rank,
+            "max_mean_latency_ms": selection_max_mean_latency_ms,
+            "max_chunk_count": selection_max_chunk_count,
+        },
         tokenizer_config=tokenizer_config,
         collapse_hierarchical=collapse_hierarchical,
         output_dir=candidate_output_dir,
@@ -4084,6 +4146,9 @@ def sweep_chunking_command(
             "fastest_by_mean_latency": report.comparison.fastest_by_mean_latency,
             "recommended": report.selection.recommended,
             "pareto_front": report.selection.pareto_front,
+            "eligible_pareto_front": report.selection.eligible_pareto_front,
+            "eligible_count": report.selection.eligible_count,
+            "rejected_count": report.selection.rejected_count,
             "top_candidates": [
                 {
                     "name": candidate.name,
@@ -4094,6 +4159,22 @@ def sweep_chunking_command(
                             if row.name == candidate.name
                         ),
                         None,
+                    ),
+                    "eligible": next(
+                        (
+                            row.eligible
+                            for row in report.selection.ranking
+                            if row.name == candidate.name
+                        ),
+                        None,
+                    ),
+                    "failed_constraints": next(
+                        (
+                            row.failed_constraints
+                            for row in report.selection.ranking
+                            if row.name == candidate.name
+                        ),
+                        [],
                     ),
                     "quality_score": round(candidate.report.quality_score, 6),
                     "recall_at_k": candidate.report.retrieval.recall_at_k
