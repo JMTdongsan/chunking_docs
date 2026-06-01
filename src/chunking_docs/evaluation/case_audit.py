@@ -30,8 +30,8 @@ class RetrievalCaseAuditCheck(BaseModel):
     name: str
     metric: str
     operator: str
-    actual: int
-    threshold: int
+    actual: int | float
+    threshold: int | float
     passed: bool
 
 
@@ -54,6 +54,9 @@ class RetrievalCaseAuditReport(BaseModel):
     short_query_count: int = 0
     min_query_term_count: int = 0
     max_query_term_count: int = 0
+    target_query_overlap_count: int = 0
+    max_target_query_overlap_ratio: float = 0.0
+    mean_target_query_overlap_ratio: float = 0.0
     missing_target_counts: dict[str, int] = Field(default_factory=dict)
     failed_checks: list[str] = Field(default_factory=list)
     checks: list[RetrievalCaseAuditCheck] = Field(default_factory=list)
@@ -83,6 +86,8 @@ def audit_retrieval_cases(
     min_case_group_distinct_targets: dict[str, int] | None = None,
     require_visual_only_object_probes: bool = False,
     min_query_terms_per_case: int = 0,
+    max_target_query_overlap_ratio: float | None = None,
+    min_terms_for_target_overlap: int = 4,
     max_duplicate_queries: int = 0,
     max_issues: int = 200,
 ) -> RetrievalCaseAuditReport:
@@ -90,6 +95,7 @@ def audit_retrieval_cases(
     chunk_ids = {chunk.chunk_id for chunk in chunks}
     asset_ids = {asset.asset_id for asset in assets}
     triple_ids = {triple.triple_id for triple in triples}
+    target_text_index = build_target_text_index(chunks, assets, triples)
     issues: list[RetrievalCaseAuditIssue] = []
     target_counts = count_retrieval_case_targets(cases)
     distinct_target_counts = count_retrieval_case_distinct_targets(cases)
@@ -100,11 +106,39 @@ def audit_retrieval_cases(
     missing_target_counts = {"page": 0, "chunk": 0, "asset": 0, "triple": 0}
     normalized_queries: dict[str, list[int]] = {}
     query_term_counts: list[int] = []
+    target_query_overlap_ratios: list[float] = []
+    target_query_overlap_check_ratios: list[float] = []
+    target_query_overlap_count = 0
 
     for index, case in enumerate(cases):
         query = case.query.strip()
         query_terms = distinct_query_terms(query)
         query_term_counts.append(len(query_terms))
+        target_overlap = target_query_overlap_ratio(case, query_terms, target_text_index)
+        target_query_overlap_ratios.append(target_overlap)
+        if len(query_terms) >= min_terms_for_target_overlap:
+            target_query_overlap_check_ratios.append(target_overlap)
+            if (
+                max_target_query_overlap_ratio is not None
+                and target_overlap > max_target_query_overlap_ratio
+            ):
+                target_query_overlap_count += 1
+                append_issue(
+                    issues,
+                    max_issues,
+                    issue(
+                        "warning",
+                        "target_query_overlap",
+                        "Retrieval case query terms overlap the expected target text too strongly.",
+                        index,
+                        case,
+                        {
+                            "target_query_overlap_ratio": target_overlap,
+                            "max_target_query_overlap_ratio": max_target_query_overlap_ratio,
+                            "min_terms_for_target_overlap": min_terms_for_target_overlap,
+                        },
+                    ),
+                )
         normalized_query = normalize_query(query)
         if normalized_query:
             normalized_queries.setdefault(normalized_query, []).append(index)
@@ -226,6 +260,12 @@ def audit_retrieval_cases(
 
     min_query_term_count = min(query_term_counts, default=0)
     max_query_term_count = max(query_term_counts, default=0)
+    max_target_query_overlap = max(target_query_overlap_check_ratios, default=0.0)
+    mean_target_query_overlap = (
+        sum(target_query_overlap_ratios) / len(target_query_overlap_ratios)
+        if target_query_overlap_ratios
+        else 0.0
+    )
     short_query_count = (
         sum(1 for count in query_term_counts if count < min_query_terms_per_case)
         if min_query_terms_per_case > 0
@@ -248,6 +288,7 @@ def audit_retrieval_cases(
         "non_visual_only_object_probe_count": visual_object_probe_counts["non_visual_only"],
         "duplicate_query_count": duplicate_query_count,
         "min_query_term_count": min_query_term_count,
+        "max_target_query_overlap_ratio": max_target_query_overlap,
     }
     checks = [
         min_check("min_case_count", "case_count", metrics, min_case_count),
@@ -288,6 +329,15 @@ def audit_retrieval_cases(
                 "min_query_term_count",
                 metrics,
                 min_query_terms_per_case,
+            )
+        )
+    if max_target_query_overlap_ratio is not None:
+        checks.append(
+            max_check(
+                "max_target_query_overlap_ratio",
+                "max_target_query_overlap_ratio",
+                metrics,
+                max_target_query_overlap_ratio,
             )
         )
     checks.extend(
@@ -337,6 +387,9 @@ def audit_retrieval_cases(
         short_query_count=short_query_count,
         min_query_term_count=min_query_term_count,
         max_query_term_count=max_query_term_count,
+        target_query_overlap_count=target_query_overlap_count,
+        max_target_query_overlap_ratio=max_target_query_overlap,
+        mean_target_query_overlap_ratio=mean_target_query_overlap,
         missing_target_counts=missing_target_counts,
         failed_checks=failed_checks,
         checks=checks,
@@ -421,6 +474,93 @@ def retrieval_case_target_values(case: RetrievalCase) -> dict[str, list[Any]]:
         "asset": list(case.expected_asset_ids),
         "triple": list(case.expected_triple_ids),
     }
+
+
+def build_target_text_index(
+    chunks: list[DocumentChunk],
+    assets: list[VisualAsset],
+    triples: list[GraphTriple],
+) -> dict[str, dict[Any, str]]:
+    chunks_by_page: dict[int, list[DocumentChunk]] = {}
+    for chunk in chunks:
+        for page_no in range(chunk.page_start, chunk.page_end + 1):
+            chunks_by_page.setdefault(page_no, []).append(chunk)
+    assets_by_page: dict[int, list[VisualAsset]] = {}
+    for asset in assets:
+        assets_by_page.setdefault(asset.page_no, []).append(asset)
+
+    return {
+        "page": {
+            page_no: "\n".join(
+                [
+                    *[target_text_for_chunk(chunk) for chunk in chunks_by_page.get(page_no, [])],
+                    *[target_text_for_asset(asset) for asset in assets_by_page.get(page_no, [])],
+                ]
+            )
+            for page_no in sorted(set(chunks_by_page) | set(assets_by_page))
+        },
+        "chunk": {chunk.chunk_id: target_text_for_chunk(chunk) for chunk in chunks},
+        "asset": {asset.asset_id: target_text_for_asset(asset) for asset in assets},
+        "triple": {triple.triple_id: target_text_for_triple(triple) for triple in triples},
+    }
+
+
+def target_query_overlap_ratio(
+    case: RetrievalCase,
+    query_terms: list[str],
+    target_text_index: dict[str, dict[Any, str]],
+) -> float:
+    if not query_terms:
+        return 0.0
+    target_terms: set[str] = set()
+    for target_name, target_values in retrieval_case_target_values(case).items():
+        for target_value in target_values:
+            target_terms.update(distinct_query_terms(target_text_index.get(target_name, {}).get(target_value, "")))
+    if not target_terms:
+        return 0.0
+    return len(set(query_terms).intersection(target_terms)) / len(set(query_terms))
+
+
+def target_text_for_chunk(chunk: DocumentChunk) -> str:
+    return "\n".join([chunk.text, *text_fragments(chunk.metadata)])
+
+
+def target_text_for_asset(asset: VisualAsset) -> str:
+    return "\n".join(
+        [
+            asset.caption or "",
+            asset.ocr_text or "",
+            asset.vlm_summary or "",
+            *text_fragments(asset.metadata),
+        ]
+    )
+
+
+def target_text_for_triple(triple: GraphTriple) -> str:
+    return "\n".join(
+        [
+            triple.subject,
+            triple.predicate,
+            triple.object,
+            *text_fragments(triple.qualifiers),
+        ]
+    )
+
+
+def text_fragments(value: Any) -> list[str]:
+    if isinstance(value, str):
+        return [value] if value else []
+    if isinstance(value, dict):
+        fragments = []
+        for item in value.values():
+            fragments.extend(text_fragments(item))
+        return fragments
+    if isinstance(value, (list, tuple, set)):
+        fragments = []
+        for item in value:
+            fragments.extend(text_fragments(item))
+        return fragments
+    return []
 
 
 def count_visual_object_probes(cases: list[RetrievalCase]) -> dict[str, int]:
@@ -624,8 +764,8 @@ def append_issue(
 def min_check(
     name: str,
     metric: str,
-    metrics: dict[str, int],
-    threshold: int,
+    metrics: dict[str, int | float],
+    threshold: int | float,
 ) -> RetrievalCaseAuditCheck:
     actual = metrics[metric]
     return RetrievalCaseAuditCheck(
@@ -641,8 +781,8 @@ def min_check(
 def max_check(
     name: str,
     metric: str,
-    metrics: dict[str, int],
-    threshold: int,
+    metrics: dict[str, int | float],
+    threshold: int | float,
 ) -> RetrievalCaseAuditCheck:
     actual = metrics[metric]
     return RetrievalCaseAuditCheck(

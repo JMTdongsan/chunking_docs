@@ -248,6 +248,15 @@ def build_ingestion_readiness_report(
                     "short_query_count": retrieval_case_audit.short_query_count,
                     "min_query_term_count": retrieval_case_audit.min_query_term_count,
                     "max_query_term_count": retrieval_case_audit.max_query_term_count,
+                    "target_query_overlap_count": (
+                        retrieval_case_audit.target_query_overlap_count
+                    ),
+                    "max_target_query_overlap_ratio": (
+                        retrieval_case_audit.max_target_query_overlap_ratio
+                    ),
+                    "mean_target_query_overlap_ratio": (
+                        retrieval_case_audit.mean_target_query_overlap_ratio
+                    ),
                     "missing_target_counts": retrieval_case_audit.missing_target_counts,
                 },
             )

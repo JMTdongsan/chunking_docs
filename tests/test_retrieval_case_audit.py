@@ -273,6 +273,38 @@ def test_audit_retrieval_cases_checks_query_term_strength():
     assert check.threshold == 2
 
 
+def test_audit_retrieval_cases_checks_target_query_overlap():
+    profiles, chunks, assets, triples = package_records()
+    cases = [
+        RetrievalCase(
+            query="overview target visual graph",
+            expected_chunk_ids=["chunk-1"],
+        )
+    ]
+
+    report = audit_retrieval_cases(
+        cases,
+        profiles=profiles,
+        chunks=chunks,
+        assets=assets,
+        triples=triples,
+        max_target_query_overlap_ratio=0.75,
+        min_terms_for_target_overlap=2,
+    )
+
+    assert report.passed is False
+    assert report.target_query_overlap_count == 1
+    assert report.max_target_query_overlap_ratio == 1.0
+    assert report.mean_target_query_overlap_ratio == 1.0
+    assert "max_target_query_overlap_ratio" in report.failed_checks
+    assert "target_query_overlap" in {issue.code for issue in report.issues}
+    check = next(
+        check for check in report.checks if check.name == "max_target_query_overlap_ratio"
+    )
+    assert check.actual == 1.0
+    assert check.threshold == 0.75
+
+
 def test_audit_retrieval_cases_can_require_visual_only_object_probes():
     profiles, chunks, assets, triples = package_records()
     cases = [
