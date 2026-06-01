@@ -194,6 +194,34 @@ class QdrantRerankerAblationReport(BaseModel):
     pairwise: list[AblationPairwiseComparison] = Field(default_factory=list)
 
 
+class QdrantRerankerAblationGateReport(BaseModel):
+    passed: bool
+    mode: str
+    baseline_mode: str | None = None
+    reranker: str = "none"
+    rerank_top_k: int = 0
+    metrics: dict[str, float]
+    baseline_metrics: dict[str, float] = Field(default_factory=dict)
+    target_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
+    source_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
+    source_family_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
+    chunk_strategy_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
+    retrieval_role_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
+    case_group_metrics: dict[str, dict[str, dict[str, float]]] = Field(default_factory=dict)
+    pairwise_metrics: dict[str, float | None] = Field(default_factory=dict)
+    best_by_recall: str | None = None
+    best_by_target_coverage: str | None = None
+    best_by_target_ndcg: str | None = None
+    best_by_mrr: str | None = None
+    fastest_by_mean_latency: str | None = None
+    case_group_best_modes: dict[
+        str,
+        dict[str, dict[str, AblationBestModeMetric]],
+    ] = Field(default_factory=dict)
+    failed_checks: list[str] = Field(default_factory=list)
+    checks: list[RetrievalGateCheck] = Field(default_factory=list)
+
+
 class QdrantVectorAblationGateReport(BaseModel):
     passed: bool
     mode: str
@@ -1752,10 +1780,303 @@ def gate_qdrant_vector_ablation(
     )
 
 
+def gate_qdrant_reranker_ablation(
+    report: QdrantRerankerAblationReport,
+    mode: str,
+    baseline_mode: str | None = None,
+    min_recall_at_k: float = 0.0,
+    min_target_coverage_at_k: float = 0.0,
+    min_target_ndcg_at_k: float = 0.0,
+    min_mrr: float = 0.0,
+    min_precision_at_k: float = 0.0,
+    max_failed_queries: int | None = None,
+    max_mean_first_relevant_rank: float | None = None,
+    max_p95_first_relevant_rank: float | None = None,
+    max_mean_target_rank: float | None = None,
+    max_p95_target_rank: float | None = None,
+    max_mean_latency_ms: float | None = None,
+    max_p95_latency_ms: float | None = None,
+    max_excluded_target_hit_rate: float | None = None,
+    max_excluded_query_hit_rate: float | None = None,
+    max_excluded_hit_query_count: int | None = None,
+    min_target_type_coverage: dict[str, float] | None = None,
+    min_source_target_coverage: dict[str, float] | None = None,
+    min_source_family_target_coverage: dict[str, float] | None = None,
+    max_source_excluded_target_hit_rate: dict[str, float] | None = None,
+    max_source_family_excluded_target_hit_rate: dict[str, float] | None = None,
+    max_chunk_strategy_excluded_target_hit_rate: dict[str, float] | None = None,
+    max_retrieval_role_excluded_target_hit_rate: dict[str, float] | None = None,
+    min_case_group_target_coverage: dict[str, float] | None = None,
+    min_pairwise_shared_queries: int | None = None,
+    min_pairwise_win_rate: float | None = None,
+    min_pairwise_target_coverage_lift: float | None = None,
+    min_pairwise_target_ndcg_lift: float | None = None,
+    min_pairwise_mrr_lift: float | None = None,
+    min_pairwise_precision_lift: float | None = None,
+    min_pairwise_target_coverage_ci_low: float | None = None,
+    min_pairwise_target_ndcg_ci_low: float | None = None,
+    min_pairwise_mrr_ci_low: float | None = None,
+    min_pairwise_precision_ci_low: float | None = None,
+    max_pairwise_mean_first_relevant_rank_delta: float | None = None,
+    max_pairwise_mean_target_rank_delta: float | None = None,
+    max_pairwise_first_relevant_rank_delta_ci_high: float | None = None,
+    max_pairwise_target_rank_delta_ci_high: float | None = None,
+    max_pairwise_mean_latency_delta_ms: float | None = None,
+    require_best_by_recall: bool = False,
+    require_best_by_target_coverage: bool = False,
+    require_best_by_target_ndcg: bool = False,
+    require_fastest_by_mean_latency: bool = False,
+) -> QdrantRerankerAblationGateReport:
+    row = qdrant_reranker_ablation_row(report, mode)
+    if row is None:
+        raise ValueError(f"Qdrant reranker ablation mode not found: {mode}")
+
+    baseline_row = None
+    if baseline_mode is not None:
+        baseline_row = qdrant_reranker_ablation_row(report, baseline_mode)
+        if baseline_row is None:
+            raise ValueError(f"Baseline Qdrant reranker ablation mode not found: {baseline_mode}")
+    elif requires_baseline(
+        min_pairwise_shared_queries,
+        min_pairwise_win_rate,
+        min_pairwise_target_coverage_lift,
+        min_pairwise_target_ndcg_lift,
+        min_pairwise_mrr_lift,
+        min_pairwise_precision_lift,
+        min_pairwise_target_coverage_ci_low,
+        min_pairwise_target_ndcg_ci_low,
+        min_pairwise_mrr_ci_low,
+        min_pairwise_precision_ci_low,
+        max_pairwise_mean_first_relevant_rank_delta,
+        max_pairwise_mean_target_rank_delta,
+        max_pairwise_first_relevant_rank_delta_ci_high,
+        max_pairwise_target_rank_delta_ci_high,
+        max_pairwise_mean_latency_delta_ms,
+    ):
+        raise ValueError("A baseline mode is required for pairwise checks.")
+
+    target_metrics = retrieval_target_metrics(row.evaluation)
+    source_metrics = retrieval_source_metrics(row.evaluation)
+    source_family_metrics = retrieval_source_family_metrics(row.evaluation)
+    chunk_strategy_metrics = retrieval_chunk_strategy_metrics(row.evaluation)
+    retrieval_role_metrics = retrieval_role_metrics_payload(row.evaluation)
+    case_group_metrics = retrieval_case_group_metrics(row.evaluation)
+    metrics = qdrant_vector_ablation_metrics(
+        row.evaluation,
+        target_metrics,
+        source_metrics,
+        source_family_metrics,
+        chunk_strategy_metrics,
+        retrieval_role_metrics,
+        case_group_metrics,
+    )
+    baseline_metrics = {}
+    if baseline_row is not None:
+        baseline_metrics = qdrant_vector_ablation_metrics(
+            baseline_row.evaluation,
+            retrieval_target_metrics(baseline_row.evaluation),
+            retrieval_source_metrics(baseline_row.evaluation),
+            retrieval_source_family_metrics(baseline_row.evaluation),
+            retrieval_chunk_strategy_metrics(baseline_row.evaluation),
+            retrieval_role_metrics_payload(baseline_row.evaluation),
+            retrieval_case_group_metrics(baseline_row.evaluation),
+        )
+    pairwise_metrics = ablation_pairwise_metrics(
+        find_ablation_pairwise_comparison(report.pairwise, mode, baseline_mode)
+    )
+    checks = [
+        minimum_check("min_recall_at_k", "recall_at_k", metrics, min_recall_at_k),
+        minimum_check(
+            "min_target_coverage_at_k",
+            "target_coverage_at_k",
+            metrics,
+            min_target_coverage_at_k,
+        ),
+        minimum_check(
+            "min_target_ndcg_at_k",
+            "mean_target_ndcg_at_k",
+            metrics,
+            min_target_ndcg_at_k,
+        ),
+        minimum_check("min_mrr", "mrr", metrics, min_mrr),
+        minimum_check("min_precision_at_k", "mean_precision_at_k", metrics, min_precision_at_k),
+    ]
+    if max_failed_queries is not None:
+        checks.append(
+            maximum_check(
+                "max_failed_queries",
+                "failed_query_count",
+                metrics,
+                float(max_failed_queries),
+            )
+        )
+    if max_mean_latency_ms is not None:
+        checks.append(
+            maximum_check(
+                "max_mean_latency_ms",
+                "mean_latency_ms",
+                metrics,
+                max_mean_latency_ms,
+            )
+        )
+    if max_p95_latency_ms is not None:
+        checks.append(
+            maximum_check(
+                "max_p95_latency_ms",
+                "p95_latency_ms",
+                metrics,
+                max_p95_latency_ms,
+            )
+        )
+    checks.extend(
+        excluded_target_limit_checks(
+            metrics,
+            max_excluded_target_hit_rate=max_excluded_target_hit_rate,
+            max_excluded_query_hit_rate=max_excluded_query_hit_rate,
+            max_excluded_hit_query_count=max_excluded_hit_query_count,
+        )
+    )
+    checks.extend(
+        rank_limit_checks(
+            metrics,
+            max_mean_first_relevant_rank=max_mean_first_relevant_rank,
+            max_p95_first_relevant_rank=max_p95_first_relevant_rank,
+            max_mean_target_rank=max_mean_target_rank,
+            max_p95_target_rank=max_p95_target_rank,
+        )
+    )
+    checks.extend(target_type_coverage_checks(metrics, min_target_type_coverage or {}))
+    checks.extend(source_target_coverage_checks(metrics, min_source_target_coverage or {}))
+    checks.extend(
+        source_family_target_coverage_checks(
+            metrics,
+            min_source_family_target_coverage or {},
+        )
+    )
+    checks.extend(
+        source_excluded_target_hit_rate_checks(
+            metrics,
+            max_source_excluded_target_hit_rate or {},
+        )
+    )
+    checks.extend(
+        source_family_excluded_target_hit_rate_checks(
+            metrics,
+            max_source_family_excluded_target_hit_rate or {},
+        )
+    )
+    checks.extend(
+        grouped_excluded_target_hit_rate_checks(
+            metrics,
+            max_chunk_strategy_excluded_target_hit_rate or {},
+            metric_key_fn=chunk_strategy_metric_key,
+            check_prefix="max_chunk_strategy_excluded_target_hit_rate",
+        )
+    )
+    checks.extend(
+        grouped_excluded_target_hit_rate_checks(
+            metrics,
+            max_retrieval_role_excluded_target_hit_rate or {},
+            metric_key_fn=retrieval_role_metric_key,
+            check_prefix="max_retrieval_role_excluded_target_hit_rate",
+        )
+    )
+    checks.extend(case_group_target_coverage_checks(metrics, min_case_group_target_coverage or {}))
+    if baseline_row is not None:
+        checks.extend(
+            pairwise_threshold_checks(
+                pairwise_metrics,
+                min_pairwise_shared_queries=min_pairwise_shared_queries,
+                min_pairwise_win_rate=min_pairwise_win_rate,
+                min_pairwise_target_coverage_lift=min_pairwise_target_coverage_lift,
+                min_pairwise_target_ndcg_lift=min_pairwise_target_ndcg_lift,
+                min_pairwise_mrr_lift=min_pairwise_mrr_lift,
+                min_pairwise_precision_lift=min_pairwise_precision_lift,
+                min_pairwise_target_coverage_ci_low=min_pairwise_target_coverage_ci_low,
+                min_pairwise_target_ndcg_ci_low=min_pairwise_target_ndcg_ci_low,
+                min_pairwise_mrr_ci_low=min_pairwise_mrr_ci_low,
+                min_pairwise_precision_ci_low=min_pairwise_precision_ci_low,
+                max_pairwise_mean_first_relevant_rank_delta=(
+                    max_pairwise_mean_first_relevant_rank_delta
+                ),
+                max_pairwise_mean_target_rank_delta=max_pairwise_mean_target_rank_delta,
+                max_pairwise_first_relevant_rank_delta_ci_high=(
+                    max_pairwise_first_relevant_rank_delta_ci_high
+                ),
+                max_pairwise_target_rank_delta_ci_high=(
+                    max_pairwise_target_rank_delta_ci_high
+                ),
+                max_pairwise_mean_latency_delta_ms=max_pairwise_mean_latency_delta_ms,
+            )
+        )
+    if require_best_by_recall:
+        checks.append(best_mode_check("require_best_by_recall", mode, report.best_by_recall))
+    if require_best_by_target_coverage:
+        checks.append(
+            best_mode_check(
+                "require_best_by_target_coverage",
+                mode,
+                report.best_by_target_coverage,
+            )
+        )
+    if require_best_by_target_ndcg:
+        checks.append(
+            best_mode_check(
+                "require_best_by_target_ndcg",
+                mode,
+                report.best_by_target_ndcg,
+            )
+        )
+    if require_fastest_by_mean_latency:
+        checks.append(
+            best_mode_check(
+                "require_fastest_by_mean_latency",
+                mode,
+                report.fastest_by_mean_latency,
+            )
+        )
+
+    failed_checks = [check.name for check in checks if not check.passed]
+    return QdrantRerankerAblationGateReport(
+        passed=not failed_checks,
+        mode=mode,
+        baseline_mode=baseline_mode,
+        reranker=row.mode.reranker,
+        rerank_top_k=row.mode.rerank_top_k,
+        metrics=metrics,
+        baseline_metrics=baseline_metrics,
+        target_metrics=target_metrics,
+        source_metrics=source_metrics,
+        source_family_metrics=source_family_metrics,
+        chunk_strategy_metrics=chunk_strategy_metrics,
+        retrieval_role_metrics=retrieval_role_metrics,
+        case_group_metrics=case_group_metrics,
+        pairwise_metrics=pairwise_metrics,
+        best_by_recall=report.best_by_recall,
+        best_by_target_coverage=report.best_by_target_coverage,
+        best_by_target_ndcg=report.best_by_target_ndcg,
+        best_by_mrr=report.best_by_mrr,
+        fastest_by_mean_latency=report.fastest_by_mean_latency,
+        case_group_best_modes=report.case_group_best_modes,
+        failed_checks=failed_checks,
+        checks=checks,
+    )
+
+
 def qdrant_vector_ablation_row(
     report: QdrantVectorAblationReport,
     mode: str,
 ) -> QdrantVectorAblationRow | None:
+    for row in report.rows:
+        if row.mode.name == mode:
+            return row
+    return None
+
+
+def qdrant_reranker_ablation_row(
+    report: QdrantRerankerAblationReport,
+    mode: str,
+) -> QdrantRerankerAblationRow | None:
     for row in report.rows:
         if row.mode.name == mode:
             return row

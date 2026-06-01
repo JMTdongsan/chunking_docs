@@ -10,10 +10,13 @@ from pydantic import BaseModel, Field, ValidationError
 from chunking_docs.embeddings.records import visual_object_embedding_items
 from chunking_docs.evaluation.audit import PackageAudit, audit_package, qdrant_record_filename
 from chunking_docs.evaluation.ablation import (
+    QdrantRerankerAblationGateReport,
+    QdrantRerankerAblationReport,
     QdrantVectorAblationGateReport,
     QdrantVectorAblationReport,
     RetrievalAblationGateReport,
     RetrievalAblationReport,
+    gate_qdrant_reranker_ablation,
     gate_retrieval_ablation,
     gate_qdrant_vector_ablation,
 )
@@ -71,6 +74,7 @@ class IngestionReadinessReport(BaseModel):
     chunking_comparison_gate: ChunkingComparisonGateReport | None = None
     retrieval_ablation_gate: RetrievalAblationGateReport | None = None
     qdrant_vector_ablation_gate: QdrantVectorAblationGateReport | None = None
+    qdrant_reranker_ablation_gate: QdrantRerankerAblationGateReport | None = None
     rag_context_gate: RAGContextGateReport | None = None
     components: list[ReadinessComponent] = Field(default_factory=list)
     failed_components: list[str] = Field(default_factory=list)
@@ -113,6 +117,10 @@ def build_ingestion_readiness_report(
     require_qdrant_vector_ablation: bool = False,
     qdrant_vector_ablation_mode: str | None = None,
     qdrant_vector_ablation_gate_options: dict[str, Any] | None = None,
+    qdrant_reranker_ablation: QdrantRerankerAblationReport | None = None,
+    require_qdrant_reranker_ablation: bool = False,
+    qdrant_reranker_ablation_mode: str | None = None,
+    qdrant_reranker_ablation_gate_options: dict[str, Any] | None = None,
     qdrant_retrieval_config: QdrantRetrievalConfig | None = None,
     require_qdrant_retrieval_config: bool = False,
     rag_context_evaluation: RAGContextEvaluation | None = None,
@@ -505,6 +513,79 @@ def build_ingestion_readiness_report(
             )
         )
 
+    qdrant_reranker_ablation_gate = None
+    if qdrant_reranker_ablation is not None:
+        if qdrant_reranker_ablation_mode is None:
+            components.append(
+                ReadinessComponent(
+                    name="qdrant_reranker_ablation_gate",
+                    passed=False,
+                    message="Qdrant reranker ablation report was supplied but no mode was selected.",
+                )
+            )
+        else:
+            try:
+                qdrant_reranker_ablation_gate = gate_qdrant_reranker_ablation(
+                    qdrant_reranker_ablation,
+                    mode=qdrant_reranker_ablation_mode,
+                    **(qdrant_reranker_ablation_gate_options or {}),
+                )
+                components.append(
+                    ReadinessComponent(
+                        name="qdrant_reranker_ablation_gate",
+                        passed=qdrant_reranker_ablation_gate.passed,
+                        message="Selected Qdrant reranker mode meets configured retrieval thresholds.",
+                        metadata={
+                            "mode": qdrant_reranker_ablation_gate.mode,
+                            "baseline_mode": qdrant_reranker_ablation_gate.baseline_mode,
+                            "reranker": qdrant_reranker_ablation_gate.reranker,
+                            "rerank_top_k": qdrant_reranker_ablation_gate.rerank_top_k,
+                            "failed_checks": qdrant_reranker_ablation_gate.failed_checks,
+                            "metrics": qdrant_reranker_ablation_gate.metrics,
+                            "baseline_metrics": qdrant_reranker_ablation_gate.baseline_metrics,
+                            "target_metrics": qdrant_reranker_ablation_gate.target_metrics,
+                            "source_metrics": qdrant_reranker_ablation_gate.source_metrics,
+                            "source_family_metrics": (
+                                qdrant_reranker_ablation_gate.source_family_metrics
+                            ),
+                            "chunk_strategy_metrics": (
+                                qdrant_reranker_ablation_gate.chunk_strategy_metrics
+                            ),
+                            "retrieval_role_metrics": (
+                                qdrant_reranker_ablation_gate.retrieval_role_metrics
+                            ),
+                            "case_group_metrics": (
+                                qdrant_reranker_ablation_gate.case_group_metrics
+                            ),
+                            "pairwise_metrics": qdrant_reranker_ablation_gate.pairwise_metrics,
+                            "case_group_best_modes": (
+                                qdrant_reranker_ablation_gate.case_group_best_modes
+                            ),
+                            "best_by_recall": qdrant_reranker_ablation_gate.best_by_recall,
+                            "best_by_target_coverage": qdrant_reranker_ablation_gate.best_by_target_coverage,
+                            "best_by_target_ndcg": qdrant_reranker_ablation_gate.best_by_target_ndcg,
+                            "fastest_by_mean_latency": qdrant_reranker_ablation_gate.fastest_by_mean_latency,
+                        },
+                    )
+                )
+            except ValueError as exc:
+                components.append(
+                    ReadinessComponent(
+                        name="qdrant_reranker_ablation_gate",
+                        passed=False,
+                        message="Qdrant reranker ablation gate could not be evaluated.",
+                        metadata={"error": str(exc), "mode": qdrant_reranker_ablation_mode},
+                    )
+                )
+    elif require_qdrant_reranker_ablation:
+        components.append(
+            ReadinessComponent(
+                name="qdrant_reranker_ablation_gate",
+                passed=False,
+                message="Qdrant reranker ablation gate is required but no report was supplied.",
+            )
+        )
+
     if qdrant_retrieval_config is not None:
         components.append(
             qdrant_retrieval_config_component(
@@ -575,6 +656,7 @@ def build_ingestion_readiness_report(
         chunking_comparison_gate=chunking_comparison_gate,
         retrieval_ablation_gate=retrieval_ablation_gate,
         qdrant_vector_ablation_gate=qdrant_vector_ablation_gate,
+        qdrant_reranker_ablation_gate=qdrant_reranker_ablation_gate,
         rag_context_gate=rag_context_gate,
         components=components,
         failed_components=failed_components,

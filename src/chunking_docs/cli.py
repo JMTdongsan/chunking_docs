@@ -19,6 +19,7 @@ from chunking_docs.chunking.section_map import load_section_ranges
 from chunking_docs.embeddings.tokenizers import LexicalTokenizerConfig, TokenizerStrategy
 from chunking_docs.evaluation.audit import audit_package, audit_public_artifacts
 from chunking_docs.evaluation.ablation import (
+    QdrantRerankerAblationReport,
     QdrantRerankerAblationRow,
     QdrantVectorAblationReport,
     QdrantVectorAblationRow,
@@ -26,6 +27,7 @@ from chunking_docs.evaluation.ablation import (
     build_qdrant_reranker_ablation_report,
     build_qdrant_vector_ablation_report,
     evaluate_retrieval_ablation,
+    gate_qdrant_reranker_ablation,
     gate_retrieval_ablation,
     gate_qdrant_vector_ablation,
     parse_ablation_modes,
@@ -2704,6 +2706,243 @@ def gate_qdrant_vector_ablation_command(
         raise typer.Exit(1)
 
 
+@app.command(name="gate-qdrant-reranker-ablation")
+def gate_qdrant_reranker_ablation_command(
+    report: Path,
+    mode: str = typer.Option(
+        ...,
+        "--mode",
+        help="Reranker ablation mode to gate, such as lexical or cross_encoder.",
+    ),
+    baseline_mode: str | None = typer.Option(
+        None,
+        "--baseline-mode",
+        help="Optional baseline mode for query-paired comparison metrics.",
+    ),
+    output: Path | None = None,
+    min_recall_at_k: float = 0.0,
+    min_target_coverage_at_k: float = 0.0,
+    min_target_ndcg_at_k: float = 0.0,
+    min_mrr: float = 0.0,
+    min_precision_at_k: float = 0.0,
+    max_failed_queries: int | None = None,
+    max_mean_first_relevant_rank: float | None = None,
+    max_p95_first_relevant_rank: float | None = None,
+    max_mean_target_rank: float | None = None,
+    max_p95_target_rank: float | None = None,
+    max_mean_latency_ms: float | None = None,
+    max_p95_latency_ms: float | None = None,
+    max_excluded_target_hit_rate: float | None = typer.Option(
+        None,
+        "--max-excluded-target-hit-rate",
+        help="Limit selected mode explicit excluded page/chunk/asset/triple target hit rate.",
+    ),
+    max_excluded_query_hit_rate: float | None = typer.Option(
+        None,
+        "--max-excluded-query-hit-rate",
+        help="Limit selected mode hard-negative query hit rate.",
+    ),
+    max_excluded_hit_query_count: int | None = typer.Option(
+        None,
+        "--max-excluded-hit-query-count",
+        help="Limit selected mode hard-negative hit query count.",
+    ),
+    min_target_type_coverage: list[str] = typer.Option(
+        None,
+        "--min-target-type-coverage",
+        help="Require target-type coverage such as asset=1.0. Repeat for multiple types.",
+    ),
+    min_source_target_coverage: list[str] = typer.Option(
+        None,
+        "--min-source-target-coverage",
+        help=(
+            "Require exact retrieval-source target coverage such as "
+            "rerank:lexical=0.8. Repeat for multiple sources."
+        ),
+    ),
+    min_source_family_target_coverage: list[str] = typer.Option(
+        None,
+        "--min-source-family-target-coverage",
+        help="Require source-family target coverage such as lexical=0.8. Repeat for multiple families.",
+    ),
+    max_source_excluded_target_hit_rate: list[str] = typer.Option(
+        None,
+        "--max-source-excluded-target-hit-rate",
+        help=(
+            "Limit selected mode exact-source excluded-target hit rate such as "
+            "rerank:lexical=0.0."
+        ),
+    ),
+    max_source_family_excluded_target_hit_rate: list[str] = typer.Option(
+        None,
+        "--max-source-family-excluded-target-hit-rate",
+        help="Limit selected mode source-family excluded-target hit rate such as lexical=0.0.",
+    ),
+    max_chunk_strategy_excluded_target_hit_rate: list[str] = typer.Option(
+        None,
+        "--max-chunk-strategy-excluded-target-hit-rate",
+        help=(
+            "Limit selected mode chunking-strategy excluded-target hit rate such as "
+            "visual_asset_text=0.0."
+        ),
+    ),
+    max_retrieval_role_excluded_target_hit_rate: list[str] = typer.Option(
+        None,
+        "--max-retrieval-role-excluded-target-hit-rate",
+        help="Limit selected mode retrieval-role excluded-target hit rate such as child=0.0.",
+    ),
+    min_case_group_target_coverage: list[str] = typer.Option(
+        None,
+        "--min-case-group-target-coverage",
+        help=(
+            "Require metadata case-group target coverage such as "
+            "case_source:visual_object_probe=0.7."
+        ),
+    ),
+    min_pairwise_shared_queries: int | None = None,
+    min_pairwise_win_rate: float | None = None,
+    min_pairwise_target_coverage_lift: float | None = None,
+    min_pairwise_target_ndcg_lift: float | None = None,
+    min_pairwise_mrr_lift: float | None = None,
+    min_pairwise_precision_lift: float | None = None,
+    min_pairwise_target_coverage_ci_low: float | None = None,
+    min_pairwise_target_ndcg_ci_low: float | None = None,
+    min_pairwise_mrr_ci_low: float | None = None,
+    min_pairwise_precision_ci_low: float | None = None,
+    max_pairwise_mean_first_relevant_rank_delta: float | None = None,
+    max_pairwise_mean_target_rank_delta: float | None = None,
+    max_pairwise_first_relevant_rank_delta_ci_high: float | None = None,
+    max_pairwise_target_rank_delta_ci_high: float | None = None,
+    max_pairwise_mean_latency_delta_ms: float | None = None,
+    require_best_by_recall: bool = False,
+    require_best_by_target_coverage: bool = False,
+    require_best_by_target_ndcg: bool = False,
+    require_fastest_by_mean_latency: bool = False,
+    fail: bool = typer.Option(
+        True,
+        "--fail/--no-fail",
+        help="Exit with status 1 when the reranker ablation gate fails.",
+    ),
+):
+    """Fail a Qdrant reranker mode when retrieval lift or latency is outside thresholds."""
+    parsed_report = QdrantRerankerAblationReport.model_validate_json(
+        report.read_text(encoding="utf-8")
+    )
+    source_family_thresholds = parse_named_float_thresholds(
+        min_source_family_target_coverage,
+        "source family target coverage",
+    )
+    source_thresholds = parse_named_float_thresholds(
+        min_source_target_coverage,
+        "source target coverage",
+    )
+    source_excluded_thresholds = parse_named_float_thresholds(
+        max_source_excluded_target_hit_rate,
+        "source excluded-target hit rate",
+    )
+    source_family_excluded_thresholds = parse_named_float_thresholds(
+        max_source_family_excluded_target_hit_rate,
+        "source family excluded-target hit rate",
+    )
+    chunk_strategy_excluded_thresholds = parse_named_float_thresholds(
+        max_chunk_strategy_excluded_target_hit_rate,
+        "chunk strategy excluded-target hit rate",
+    )
+    retrieval_role_excluded_thresholds = parse_named_float_thresholds(
+        max_retrieval_role_excluded_target_hit_rate,
+        "retrieval role excluded-target hit rate",
+    )
+    target_type_thresholds = parse_named_float_thresholds(
+        min_target_type_coverage,
+        "target type coverage",
+    )
+    case_group_thresholds = parse_named_float_thresholds(
+        min_case_group_target_coverage,
+        "case group target coverage",
+    )
+    try:
+        gate_report = gate_qdrant_reranker_ablation(
+            parsed_report,
+            mode=mode,
+            baseline_mode=baseline_mode,
+            min_recall_at_k=min_recall_at_k,
+            min_target_coverage_at_k=min_target_coverage_at_k,
+            min_target_ndcg_at_k=min_target_ndcg_at_k,
+            min_mrr=min_mrr,
+            min_precision_at_k=min_precision_at_k,
+            max_failed_queries=max_failed_queries,
+            max_mean_first_relevant_rank=max_mean_first_relevant_rank,
+            max_p95_first_relevant_rank=max_p95_first_relevant_rank,
+            max_mean_target_rank=max_mean_target_rank,
+            max_p95_target_rank=max_p95_target_rank,
+            max_mean_latency_ms=max_mean_latency_ms,
+            max_p95_latency_ms=max_p95_latency_ms,
+            max_excluded_target_hit_rate=max_excluded_target_hit_rate,
+            max_excluded_query_hit_rate=max_excluded_query_hit_rate,
+            max_excluded_hit_query_count=max_excluded_hit_query_count,
+            min_target_type_coverage=target_type_thresholds,
+            min_source_target_coverage=source_thresholds,
+            min_source_family_target_coverage=source_family_thresholds,
+            max_source_excluded_target_hit_rate=source_excluded_thresholds,
+            max_source_family_excluded_target_hit_rate=source_family_excluded_thresholds,
+            max_chunk_strategy_excluded_target_hit_rate=chunk_strategy_excluded_thresholds,
+            max_retrieval_role_excluded_target_hit_rate=retrieval_role_excluded_thresholds,
+            min_case_group_target_coverage=case_group_thresholds,
+            min_pairwise_shared_queries=min_pairwise_shared_queries,
+            min_pairwise_win_rate=min_pairwise_win_rate,
+            min_pairwise_target_coverage_lift=min_pairwise_target_coverage_lift,
+            min_pairwise_target_ndcg_lift=min_pairwise_target_ndcg_lift,
+            min_pairwise_mrr_lift=min_pairwise_mrr_lift,
+            min_pairwise_precision_lift=min_pairwise_precision_lift,
+            min_pairwise_target_coverage_ci_low=min_pairwise_target_coverage_ci_low,
+            min_pairwise_target_ndcg_ci_low=min_pairwise_target_ndcg_ci_low,
+            min_pairwise_mrr_ci_low=min_pairwise_mrr_ci_low,
+            min_pairwise_precision_ci_low=min_pairwise_precision_ci_low,
+            max_pairwise_mean_first_relevant_rank_delta=(
+                max_pairwise_mean_first_relevant_rank_delta
+            ),
+            max_pairwise_mean_target_rank_delta=max_pairwise_mean_target_rank_delta,
+            max_pairwise_first_relevant_rank_delta_ci_high=(
+                max_pairwise_first_relevant_rank_delta_ci_high
+            ),
+            max_pairwise_target_rank_delta_ci_high=max_pairwise_target_rank_delta_ci_high,
+            max_pairwise_mean_latency_delta_ms=max_pairwise_mean_latency_delta_ms,
+            require_best_by_recall=require_best_by_recall,
+            require_best_by_target_coverage=require_best_by_target_coverage,
+            require_best_by_target_ndcg=require_best_by_target_ndcg,
+            require_fastest_by_mean_latency=require_fastest_by_mean_latency,
+        )
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+    payload = gate_report.model_dump()
+    if output is not None:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(gate_report.model_dump_json(indent=2), encoding="utf-8")
+        payload = {
+            "output": str(output),
+            "passed": gate_report.passed,
+            "mode": gate_report.mode,
+            "baseline_mode": gate_report.baseline_mode,
+            "reranker": gate_report.reranker,
+            "rerank_top_k": gate_report.rerank_top_k,
+            "failed_checks": gate_report.failed_checks,
+            "metrics": gate_report.metrics,
+            "baseline_metrics": gate_report.baseline_metrics,
+            "target_metrics": gate_report.target_metrics,
+            "source_metrics": gate_report.source_metrics,
+            "source_family_metrics": gate_report.source_family_metrics,
+            "chunk_strategy_metrics": gate_report.chunk_strategy_metrics,
+            "retrieval_role_metrics": gate_report.retrieval_role_metrics,
+            "case_group_metrics": gate_report.case_group_metrics,
+            "pairwise_metrics": gate_report.pairwise_metrics,
+            "case_group_best_modes": gate_report.case_group_best_modes,
+        }
+    print(payload)
+    if fail and not gate_report.passed:
+        raise typer.Exit(1)
+
+
 @app.command(name="embed-package")
 def embed_package_command(
     package_dir: Path = Path("outputs/package"),
@@ -4708,6 +4947,64 @@ def ingestion_readiness_command(
     require_qdrant_vector_best_by_target_coverage: bool = False,
     require_qdrant_vector_best_by_target_ndcg: bool = False,
     require_qdrant_vector_fastest_by_mean_latency: bool = False,
+    qdrant_reranker_ablation: Path | None = None,
+    require_qdrant_reranker_ablation: bool = False,
+    qdrant_reranker_mode: str | None = None,
+    qdrant_reranker_baseline_mode: str | None = None,
+    min_qdrant_reranker_pairwise_shared_queries: int | None = None,
+    min_qdrant_reranker_pairwise_win_rate: float | None = None,
+    min_qdrant_reranker_pairwise_target_coverage_lift: float | None = None,
+    min_qdrant_reranker_pairwise_target_ndcg_lift: float | None = None,
+    min_qdrant_reranker_pairwise_mrr_lift: float | None = None,
+    min_qdrant_reranker_pairwise_precision_lift: float | None = None,
+    min_qdrant_reranker_pairwise_target_coverage_ci_low: float | None = None,
+    min_qdrant_reranker_pairwise_target_ndcg_ci_low: float | None = None,
+    min_qdrant_reranker_pairwise_mrr_ci_low: float | None = None,
+    min_qdrant_reranker_pairwise_precision_ci_low: float | None = None,
+    max_qdrant_reranker_pairwise_mean_first_relevant_rank_delta: float | None = None,
+    max_qdrant_reranker_pairwise_mean_target_rank_delta: float | None = None,
+    max_qdrant_reranker_pairwise_first_relevant_rank_delta_ci_high: float | None = None,
+    max_qdrant_reranker_pairwise_target_rank_delta_ci_high: float | None = None,
+    max_qdrant_reranker_pairwise_mean_latency_delta_ms: float | None = None,
+    min_qdrant_reranker_recall_at_k: float = 0.0,
+    min_qdrant_reranker_target_coverage_at_k: float = 0.0,
+    min_qdrant_reranker_target_ndcg_at_k: float = 0.0,
+    min_qdrant_reranker_mrr: float = 0.0,
+    min_qdrant_reranker_precision_at_k: float = 0.0,
+    max_qdrant_reranker_failed_queries: int | None = None,
+    max_qdrant_reranker_mean_first_relevant_rank: float | None = None,
+    max_qdrant_reranker_p95_first_relevant_rank: float | None = None,
+    max_qdrant_reranker_mean_target_rank: float | None = None,
+    max_qdrant_reranker_p95_target_rank: float | None = None,
+    max_qdrant_reranker_mean_latency_ms: float | None = None,
+    max_qdrant_reranker_p95_latency_ms: float | None = None,
+    min_qdrant_reranker_target_type_coverage: list[str] = typer.Option(
+        None,
+        "--min-qdrant-reranker-target-type-coverage",
+        help="Require selected Qdrant reranker target-type coverage such as asset=1.0.",
+    ),
+    min_qdrant_reranker_source_family_target_coverage: list[str] = typer.Option(
+        None,
+        "--min-qdrant-reranker-source-family-target-coverage",
+        help="Require selected Qdrant reranker source-family coverage such as lexical=0.8.",
+    ),
+    min_qdrant_reranker_source_target_coverage: list[str] = typer.Option(
+        None,
+        "--min-qdrant-reranker-source-target-coverage",
+        help="Require selected Qdrant reranker exact-source coverage such as rerank:lexical=0.8.",
+    ),
+    min_qdrant_reranker_case_group_target_coverage: list[str] = typer.Option(
+        None,
+        "--min-qdrant-reranker-case-group-target-coverage",
+        help=(
+            "Require selected Qdrant reranker case-group coverage such as "
+            "case_source:visual_object_probe=0.7."
+        ),
+    ),
+    require_qdrant_reranker_best_by_recall: bool = False,
+    require_qdrant_reranker_best_by_target_coverage: bool = False,
+    require_qdrant_reranker_best_by_target_ndcg: bool = False,
+    require_qdrant_reranker_fastest_by_mean_latency: bool = False,
     fail: bool = typer.Option(
         True,
         "--fail/--no-fail",
@@ -4751,6 +5048,13 @@ def ingestion_readiness_command(
         if qdrant_vector_ablation
         else None
     )
+    parsed_qdrant_reranker_ablation = (
+        QdrantRerankerAblationReport.model_validate_json(
+            qdrant_reranker_ablation.read_text(encoding="utf-8")
+        )
+        if qdrant_reranker_ablation
+        else None
+    )
     qdrant_vector_source_family_thresholds = parse_named_float_thresholds(
         min_qdrant_vector_source_family_target_coverage,
         "Qdrant vector source family target coverage",
@@ -4766,6 +5070,22 @@ def ingestion_readiness_command(
     qdrant_vector_case_group_thresholds = parse_named_float_thresholds(
         min_qdrant_vector_case_group_target_coverage,
         "Qdrant vector case group target coverage",
+    )
+    qdrant_reranker_source_family_thresholds = parse_named_float_thresholds(
+        min_qdrant_reranker_source_family_target_coverage,
+        "Qdrant reranker source family target coverage",
+    )
+    qdrant_reranker_source_thresholds = parse_named_float_thresholds(
+        min_qdrant_reranker_source_target_coverage,
+        "Qdrant reranker source target coverage",
+    )
+    qdrant_reranker_target_type_thresholds = parse_named_float_thresholds(
+        min_qdrant_reranker_target_type_coverage,
+        "Qdrant reranker target type coverage",
+    )
+    qdrant_reranker_case_group_thresholds = parse_named_float_thresholds(
+        min_qdrant_reranker_case_group_target_coverage,
+        "Qdrant reranker case group target coverage",
     )
     retrieval_source_family_thresholds = parse_named_float_thresholds(
         min_retrieval_source_family_target_coverage,
@@ -5140,6 +5460,69 @@ def ingestion_readiness_command(
             "require_best_by_target_coverage": require_qdrant_vector_best_by_target_coverage,
             "require_best_by_target_ndcg": require_qdrant_vector_best_by_target_ndcg,
             "require_fastest_by_mean_latency": require_qdrant_vector_fastest_by_mean_latency,
+        },
+        qdrant_reranker_ablation=parsed_qdrant_reranker_ablation,
+        require_qdrant_reranker_ablation=require_qdrant_reranker_ablation,
+        qdrant_reranker_ablation_mode=qdrant_reranker_mode,
+        qdrant_reranker_ablation_gate_options={
+            "baseline_mode": qdrant_reranker_baseline_mode,
+            "min_pairwise_shared_queries": min_qdrant_reranker_pairwise_shared_queries,
+            "min_pairwise_win_rate": min_qdrant_reranker_pairwise_win_rate,
+            "min_pairwise_target_coverage_lift": (
+                min_qdrant_reranker_pairwise_target_coverage_lift
+            ),
+            "min_pairwise_target_ndcg_lift": (
+                min_qdrant_reranker_pairwise_target_ndcg_lift
+            ),
+            "min_pairwise_mrr_lift": min_qdrant_reranker_pairwise_mrr_lift,
+            "min_pairwise_precision_lift": min_qdrant_reranker_pairwise_precision_lift,
+            "min_pairwise_target_coverage_ci_low": (
+                min_qdrant_reranker_pairwise_target_coverage_ci_low
+            ),
+            "min_pairwise_target_ndcg_ci_low": (
+                min_qdrant_reranker_pairwise_target_ndcg_ci_low
+            ),
+            "min_pairwise_mrr_ci_low": min_qdrant_reranker_pairwise_mrr_ci_low,
+            "min_pairwise_precision_ci_low": min_qdrant_reranker_pairwise_precision_ci_low,
+            "max_pairwise_mean_first_relevant_rank_delta": (
+                max_qdrant_reranker_pairwise_mean_first_relevant_rank_delta
+            ),
+            "max_pairwise_mean_target_rank_delta": (
+                max_qdrant_reranker_pairwise_mean_target_rank_delta
+            ),
+            "max_pairwise_first_relevant_rank_delta_ci_high": (
+                max_qdrant_reranker_pairwise_first_relevant_rank_delta_ci_high
+            ),
+            "max_pairwise_target_rank_delta_ci_high": (
+                max_qdrant_reranker_pairwise_target_rank_delta_ci_high
+            ),
+            "max_pairwise_mean_latency_delta_ms": (
+                max_qdrant_reranker_pairwise_mean_latency_delta_ms
+            ),
+            "min_recall_at_k": min_qdrant_reranker_recall_at_k,
+            "min_target_coverage_at_k": min_qdrant_reranker_target_coverage_at_k,
+            "min_target_ndcg_at_k": min_qdrant_reranker_target_ndcg_at_k,
+            "min_mrr": min_qdrant_reranker_mrr,
+            "min_precision_at_k": min_qdrant_reranker_precision_at_k,
+            "max_failed_queries": max_qdrant_reranker_failed_queries,
+            "max_mean_first_relevant_rank": max_qdrant_reranker_mean_first_relevant_rank,
+            "max_p95_first_relevant_rank": max_qdrant_reranker_p95_first_relevant_rank,
+            "max_mean_target_rank": max_qdrant_reranker_mean_target_rank,
+            "max_p95_target_rank": max_qdrant_reranker_p95_target_rank,
+            "max_mean_latency_ms": max_qdrant_reranker_mean_latency_ms,
+            "max_p95_latency_ms": max_qdrant_reranker_p95_latency_ms,
+            "min_target_type_coverage": qdrant_reranker_target_type_thresholds,
+            "min_source_target_coverage": qdrant_reranker_source_thresholds,
+            "min_source_family_target_coverage": qdrant_reranker_source_family_thresholds,
+            "min_case_group_target_coverage": qdrant_reranker_case_group_thresholds,
+            "require_best_by_recall": require_qdrant_reranker_best_by_recall,
+            "require_best_by_target_coverage": (
+                require_qdrant_reranker_best_by_target_coverage
+            ),
+            "require_best_by_target_ndcg": require_qdrant_reranker_best_by_target_ndcg,
+            "require_fastest_by_mean_latency": (
+                require_qdrant_reranker_fastest_by_mean_latency
+            ),
         },
     )
     payload = report.model_dump()

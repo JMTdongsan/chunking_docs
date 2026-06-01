@@ -14,12 +14,14 @@ from chunking_docs.evaluation.audit import (
     required_payload_indexes,
 )
 from chunking_docs.evaluation.ablation import (
+    QdrantRerankerAblationMode,
     QdrantRerankerAblationRow,
     QdrantVectorAblationMode,
     QdrantVectorAblationRow,
     build_qdrant_reranker_ablation_report,
     build_qdrant_vector_ablation_report,
     evaluate_retrieval_ablation,
+    gate_qdrant_reranker_ablation,
     gate_retrieval_ablation,
     gate_qdrant_vector_ablation,
     parse_ablation_modes,
@@ -2498,6 +2500,149 @@ def test_eval_qdrant_reranker_ablation_cli_writes_report(monkeypatch, tmp_path):
     assert pairwise["shared_query_count"] == 1
     assert pairwise["candidate_win_rate"] == 1.0
     assert pairwise["mean_target_coverage_delta"] == 1.0
+
+
+def qdrant_reranker_ablation_report_for_gate():
+    chunk = DocumentChunk(
+        chunk_id="chunk-1",
+        doc_id="doc",
+        page_start=1,
+        page_end=1,
+        kind=ChunkKind.TEXT,
+        text="visual evidence",
+        asset_ids=["asset-1"],
+        metadata={
+            "chunking_strategy": "visual_asset_text",
+            "retrieval_role": "child",
+        },
+    )
+    cases = [
+        RetrievalCase(
+            query="visual evidence",
+            expected_asset_ids=["asset-1"],
+            metadata={"case_source": "visual_object_probe"},
+        )
+    ]
+    lexical_eval = evaluate_search_results(
+        cases=cases,
+        search_fn=lambda case, graph_expand: [
+            HybridSearchHit(
+                chunk=chunk,
+                score=0.9,
+                sources=["bm25", "rerank:lexical"],
+            )
+        ],
+        top_k=5,
+    )
+    none_eval = evaluate_search_results(
+        cases=cases,
+        search_fn=lambda case, graph_expand: [],
+        top_k=5,
+    )
+    return build_qdrant_reranker_ablation_report(
+        [
+            QdrantRerankerAblationRow(
+                mode=QdrantRerankerAblationMode(
+                    name="lexical",
+                    reranker="lexical",
+                    rerank_top_k=20,
+                ),
+                evaluation=lexical_eval,
+            ),
+            QdrantRerankerAblationRow(
+                mode=QdrantRerankerAblationMode(name="none"),
+                evaluation=none_eval,
+            ),
+        ]
+    )
+
+
+def test_gate_qdrant_reranker_ablation_passes_required_mode():
+    report = qdrant_reranker_ablation_report_for_gate()
+
+    gate = gate_qdrant_reranker_ablation(
+        report,
+        mode="lexical",
+        baseline_mode="none",
+        min_recall_at_k=1.0,
+        min_target_coverage_at_k=1.0,
+        min_target_ndcg_at_k=1.0,
+        min_mrr=1.0,
+        min_precision_at_k=0.2,
+        max_failed_queries=0,
+        max_mean_target_rank=1.0,
+        min_target_type_coverage={"asset": 1.0},
+        min_source_target_coverage={"rerank:lexical": 1.0},
+        min_source_family_target_coverage={"lexical": 1.0},
+        min_case_group_target_coverage={"case_source:visual_object_probe": 1.0},
+        min_pairwise_shared_queries=1,
+        min_pairwise_win_rate=1.0,
+        min_pairwise_target_coverage_lift=1.0,
+        min_pairwise_target_ndcg_lift=1.0,
+        min_pairwise_mrr_lift=1.0,
+        max_pairwise_mean_target_rank_delta=0.0,
+        require_best_by_recall=True,
+        require_best_by_target_coverage=True,
+        require_best_by_target_ndcg=True,
+    )
+
+    assert gate.passed is True
+    assert gate.mode == "lexical"
+    assert gate.baseline_mode == "none"
+    assert gate.reranker == "lexical"
+    assert gate.rerank_top_k == 20
+    assert gate.metrics["failed_query_count"] == 0.0
+    assert gate.metrics["target_coverage_at_k"] == 1.0
+    assert gate.pairwise_metrics["pairwise_candidate_win_rate"] == 1.0
+    assert gate.pairwise_metrics["pairwise_mean_target_rank_delta"] < 0
+    assert gate.target_metrics["asset"]["coverage_at_k"] == 1.0
+    assert gate.source_metrics["rerank:lexical"]["target_coverage_at_k"] == 1.0
+    assert gate.source_family_metrics["lexical"]["target_coverage_at_k"] == 1.0
+    assert (
+        gate.case_group_metrics["case_source"]["visual_object_probe"][
+            "target_coverage_at_k"
+        ]
+        == 1.0
+    )
+
+
+def test_gate_qdrant_reranker_ablation_cli_writes_report(tmp_path):
+    report_path = tmp_path / "qdrant_reranker_ablation.json"
+    output = tmp_path / "qdrant_reranker_ablation_gate.json"
+    report_path.write_text(
+        qdrant_reranker_ablation_report_for_gate().model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "gate-qdrant-reranker-ablation",
+            str(report_path),
+            "--mode",
+            "lexical",
+            "--baseline-mode",
+            "none",
+            "--min-target-coverage-at-k",
+            "1.0",
+            "--min-pairwise-win-rate",
+            "1.0",
+            "--max-pairwise-mean-target-rank-delta",
+            "0.0",
+            "--require-best-by-target-ndcg",
+            "--output",
+            str(output),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["passed"] is True
+    assert payload["mode"] == "lexical"
+    assert payload["baseline_mode"] == "none"
+    assert payload["reranker"] == "lexical"
+    assert payload["rerank_top_k"] == 20
+    assert payload["pairwise_metrics"]["pairwise_candidate_win_rate"] == 1.0
 
 
 def qdrant_vector_ablation_report_for_gate():

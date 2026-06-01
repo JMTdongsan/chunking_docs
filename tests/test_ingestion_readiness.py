@@ -9,6 +9,9 @@ from chunking_docs.embeddings.bm25 import BM25LexicalIndex, chunk_lexical_texts
 from chunking_docs.embeddings.tokenizers import LexicalTokenizerConfig
 from chunking_docs.evaluation.ablation import (
     AblationPairwiseComparison,
+    QdrantRerankerAblationMode,
+    QdrantRerankerAblationRow,
+    build_qdrant_reranker_ablation_report,
     QdrantVectorAblationMode,
     QdrantVectorAblationReport,
     QdrantVectorAblationRow,
@@ -653,6 +656,54 @@ def test_ingestion_readiness_includes_qdrant_vector_ablation_gate(tmp_path):
     assert report.failed_components == []
 
 
+def test_ingestion_readiness_includes_qdrant_reranker_ablation_gate(tmp_path):
+    package_dir, manifest = write_ready_package(tmp_path)
+
+    report = build_ingestion_readiness_report(
+        package_dir,
+        manifest,
+        qdrant_reranker_ablation=qdrant_reranker_ablation_report(),
+        qdrant_reranker_ablation_mode="lexical",
+        qdrant_reranker_ablation_gate_options={
+            "baseline_mode": "none",
+            "min_recall_at_k": 1.0,
+            "min_target_coverage_at_k": 1.0,
+            "max_failed_queries": 0,
+            "min_target_type_coverage": {"asset": 1.0},
+            "min_source_target_coverage": {"rerank:lexical": 1.0},
+            "min_source_family_target_coverage": {"lexical": 1.0},
+            "min_case_group_target_coverage": {"case_source:visual_object_probe": 1.0},
+            "max_mean_target_rank": 1.0,
+            "max_pairwise_mean_target_rank_delta": 0.0,
+            "require_best_by_recall": True,
+        },
+    )
+
+    assert report.passed is True
+    assert report.qdrant_reranker_ablation_gate is not None
+    assert report.qdrant_reranker_ablation_gate.mode == "lexical"
+    assert report.qdrant_reranker_ablation_gate.baseline_mode == "none"
+    assert report.qdrant_reranker_ablation_gate.reranker == "lexical"
+    assert report.qdrant_reranker_ablation_gate.rerank_top_k == 20
+    assert report.qdrant_reranker_ablation_gate.metrics["failed_query_count"] == 0.0
+    assert report.qdrant_reranker_ablation_gate.metrics["mean_target_rank"] == 1.0
+    assert (
+        report.qdrant_reranker_ablation_gate.pairwise_metrics[
+            "pairwise_mean_target_rank_delta"
+        ]
+        == -5.0
+    )
+    component = next(
+        component
+        for component in report.components
+        if component.name == "qdrant_reranker_ablation_gate"
+    )
+    assert component.metadata["reranker"] == "lexical"
+    assert component.metadata["rerank_top_k"] == 20
+    assert component.metadata["source_metrics"]["rerank:lexical"]["target_coverage_at_k"] == 1.0
+    assert report.failed_components == []
+
+
 def test_ingestion_readiness_includes_retrieval_ablation_lift_gate(tmp_path):
     package_dir, manifest = write_ready_package(tmp_path)
 
@@ -730,6 +781,19 @@ def test_ingestion_readiness_requires_qdrant_vector_ablation(tmp_path):
 
     assert report.passed is False
     assert "qdrant_vector_ablation_gate" in report.failed_components
+
+
+def test_ingestion_readiness_requires_qdrant_reranker_ablation(tmp_path):
+    package_dir, manifest = write_ready_package(tmp_path)
+
+    report = build_ingestion_readiness_report(
+        package_dir,
+        manifest,
+        require_qdrant_reranker_ablation=True,
+    )
+
+    assert report.passed is False
+    assert "qdrant_reranker_ablation_gate" in report.failed_components
 
 
 def test_ingestion_readiness_includes_rag_context_gate(tmp_path):
@@ -1691,6 +1755,64 @@ def test_ingestion_readiness_cli_can_gate_qdrant_vector_ablation(tmp_path):
     ] == 1.0
 
 
+def test_ingestion_readiness_cli_can_gate_qdrant_reranker_ablation(tmp_path):
+    package_dir, _ = write_ready_package(tmp_path)
+    ablation_path = tmp_path / "qdrant_reranker_ablation.json"
+    output = tmp_path / "readiness.json"
+    ablation_path.write_text(
+        qdrant_reranker_ablation_report().model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "ingestion-readiness",
+            "--package-dir",
+            str(package_dir),
+            "--qdrant-reranker-ablation",
+            str(ablation_path),
+            "--qdrant-reranker-mode",
+            "lexical",
+            "--qdrant-reranker-baseline-mode",
+            "none",
+            "--min-qdrant-reranker-target-coverage-at-k",
+            "1.0",
+            "--max-qdrant-reranker-failed-queries",
+            "0",
+            "--min-qdrant-reranker-source-target-coverage",
+            "rerank:lexical=1.0",
+            "--min-qdrant-reranker-case-group-target-coverage",
+            "case_source:visual_object_probe=1.0",
+            "--min-qdrant-reranker-pairwise-win-rate",
+            "1.0",
+            "--max-qdrant-reranker-pairwise-mean-target-rank-delta",
+            "0.0",
+            "--require-qdrant-reranker-best-by-recall",
+            "--output",
+            str(output),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["passed"] is True
+    component = next(
+        component
+        for component in payload["components"]
+        if component["name"] == "qdrant_reranker_ablation_gate"
+    )
+    assert component["metadata"]["mode"] == "lexical"
+    assert component["metadata"]["baseline_mode"] == "none"
+    assert component["metadata"]["reranker"] == "lexical"
+    assert component["metadata"]["rerank_top_k"] == 20
+    assert component["metadata"]["metrics"]["target_coverage_at_k"] == 1.0
+    assert component["metadata"]["source_metrics"]["rerank:lexical"][
+        "target_coverage_at_k"
+    ] == 1.0
+    assert component["metadata"]["pairwise_metrics"]["pairwise_candidate_win_rate"] == 1.0
+
+
 def test_ingestion_readiness_cli_can_gate_rag_context(tmp_path):
     package_dir, _ = write_ready_package(tmp_path)
     context_eval_path = tmp_path / "rag_context_eval.json"
@@ -2312,6 +2434,57 @@ def qdrant_vector_ablation_report():
                 mean_target_rank_delta=-5.0,
             )
         ],
+    )
+
+
+def qdrant_reranker_ablation_report():
+    chunk = DocumentChunk(
+        chunk_id="chunk-1",
+        doc_id="doc",
+        page_start=1,
+        page_end=1,
+        kind=ChunkKind.TEXT,
+        text="reference retrieval evidence",
+        asset_ids=["asset-1"],
+    )
+    cases = [
+        RetrievalCase(
+            query="reference evidence",
+            expected_asset_ids=["asset-1"],
+            metadata={"case_source": "visual_object_probe"},
+        )
+    ]
+    lexical_evaluation = evaluate_search_results(
+        cases=cases,
+        search_fn=lambda case, graph_expand: [
+            HybridSearchHit(
+                chunk=chunk,
+                score=0.9,
+                sources=["bm25", "rerank:lexical"],
+            )
+        ],
+        top_k=5,
+    )
+    none_evaluation = evaluate_search_results(
+        cases=cases,
+        search_fn=lambda case, graph_expand: [],
+        top_k=5,
+    )
+    return build_qdrant_reranker_ablation_report(
+        [
+            QdrantRerankerAblationRow(
+                mode=QdrantRerankerAblationMode(
+                    name="lexical",
+                    reranker="lexical",
+                    rerank_top_k=20,
+                ),
+                evaluation=lexical_evaluation,
+            ),
+            QdrantRerankerAblationRow(
+                mode=QdrantRerankerAblationMode(name="none"),
+                evaluation=none_evaluation,
+            ),
+        ]
     )
 
 
