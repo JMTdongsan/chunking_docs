@@ -322,6 +322,9 @@ def build_ingestion_readiness_report(
                             "chunk_strategy_metrics": retrieval_ablation_gate.chunk_strategy_metrics,
                             "retrieval_role_metrics": retrieval_ablation_gate.retrieval_role_metrics,
                             "case_group_metrics": retrieval_ablation_gate.case_group_metrics,
+                            "case_group_best_modes": (
+                                retrieval_ablation_gate.case_group_best_modes
+                            ),
                             "best_by_recall": retrieval_ablation_gate.best_by_recall,
                             "best_by_target_coverage": (
                                 retrieval_ablation_gate.best_by_target_coverage
@@ -394,6 +397,9 @@ def build_ingestion_readiness_report(
                             ),
                             "case_group_metrics": (
                                 qdrant_vector_ablation_gate.case_group_metrics
+                            ),
+                            "case_group_best_modes": (
+                                qdrant_vector_ablation_gate.case_group_best_modes
                             ),
                             "best_by_recall": qdrant_vector_ablation_gate.best_by_recall,
                             "best_by_target_coverage": qdrant_vector_ablation_gate.best_by_target_coverage,

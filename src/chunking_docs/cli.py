@@ -939,6 +939,7 @@ def eval_qdrant_vector_ablation_command(
                 "best_by_target_ndcg": report.best_by_target_ndcg,
                 "best_by_mrr": report.best_by_mrr,
                 "fastest_by_mean_latency": report.fastest_by_mean_latency,
+                "case_group_best_modes": report.case_group_best_modes,
                 "rows": [
                     {
                         "mode": row.mode.name,
@@ -1072,6 +1073,7 @@ def gate_qdrant_vector_ablation_command(
             "chunk_strategy_metrics": gate_report.chunk_strategy_metrics,
             "retrieval_role_metrics": gate_report.retrieval_role_metrics,
             "case_group_metrics": gate_report.case_group_metrics,
+            "case_group_best_modes": gate_report.case_group_best_modes,
         }
     print(payload)
     if fail and not gate_report.passed:
@@ -3029,6 +3031,7 @@ def eval_retrieval_ablation_command(
             "best_by_target_ndcg": report.best_by_target_ndcg,
             "best_by_mrr": report.best_by_mrr,
             "fastest_by_mean_latency": report.fastest_by_mean_latency,
+            "case_group_best_modes": report.case_group_best_modes,
             "rows": [
                 {
                     "mode": row.mode.name,
@@ -3175,6 +3178,7 @@ def gate_retrieval_ablation_command(
             "chunk_strategy_metrics": gate_report.chunk_strategy_metrics,
             "retrieval_role_metrics": gate_report.retrieval_role_metrics,
             "case_group_metrics": gate_report.case_group_metrics,
+            "case_group_best_modes": gate_report.case_group_best_modes,
         }
     print(payload)
     if fail and not gate_report.passed:

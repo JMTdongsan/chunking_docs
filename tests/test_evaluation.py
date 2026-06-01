@@ -15,8 +15,8 @@ from chunking_docs.evaluation.audit import (
 )
 from chunking_docs.evaluation.ablation import (
     QdrantVectorAblationMode,
-    QdrantVectorAblationReport,
     QdrantVectorAblationRow,
+    build_qdrant_vector_ablation_report,
     evaluate_retrieval_ablation,
     gate_retrieval_ablation,
     gate_qdrant_vector_ablation,
@@ -1220,6 +1220,10 @@ def test_evaluate_retrieval_ablation_can_measure_visual_lexical_gain():
     assert rows["bm25_text"].evaluation.metadata["include_asset_text"] is False
     assert rows["bm25_visual"].evaluation.metadata["include_asset_text"] is True
     assert report.best_by_recall == "bm25_visual"
+    visual_probe_best = report.case_group_best_modes["case_source"]["visual_lexical_probe"]
+    assert visual_probe_best["target_coverage_at_k"].mode == "bm25_visual"
+    assert visual_probe_best["target_coverage_at_k"].value == 1.0
+    assert visual_probe_best["ndcg_at_k"].mode == "bm25_visual"
 
 
 def test_gate_retrieval_ablation_can_require_visual_lift():
@@ -1253,6 +1257,9 @@ def test_gate_retrieval_ablation_can_require_visual_lift():
     assert gate.case_group_metrics["case_source"]["visual_lexical_probe"][
         "target_coverage_at_k"
     ] == 1.0
+    assert gate.case_group_best_modes["case_source"]["visual_lexical_probe"][
+        "target_coverage_at_k"
+    ].mode == "bm25_visual"
     assert gate.failed_checks == []
 
 
@@ -1540,6 +1547,12 @@ def test_eval_qdrant_vector_ablation_cli_writes_report(monkeypatch, tmp_path):
     assert payload["best_by_recall"] == "caption"
     assert payload["best_by_target_coverage"] == "caption"
     assert payload["best_by_target_ndcg"] == "caption"
+    assert (
+        payload["case_group_best_modes"]["case_source"]["visual_object_probe"][
+            "target_coverage_at_k"
+        ]["mode"]
+        == "caption"
+    )
     assert rows["text"]["evaluation"]["recall_at_k"] == 0.0
     assert rows["caption"]["evaluation"]["recall_at_k"] == 1.0
     assert rows["caption"]["evaluation"]["target_coverage_at_k"] == 1.0
@@ -1599,8 +1612,8 @@ def qdrant_vector_ablation_report_for_gate():
         search_fn=lambda case, graph_expand: [],
         top_k=5,
     )
-    return QdrantVectorAblationReport(
-        rows=[
+    return build_qdrant_vector_ablation_report(
+        [
             QdrantVectorAblationRow(
                 mode=QdrantVectorAblationMode(
                     name="caption_image",
@@ -1615,12 +1628,7 @@ def qdrant_vector_ablation_report_for_gate():
                 ),
                 evaluation=image_eval,
             ),
-        ],
-        best_by_recall="caption_image",
-        best_by_target_coverage="caption_image",
-        best_by_target_ndcg="caption_image",
-        best_by_mrr="caption_image",
-        fastest_by_mean_latency="image",
+        ]
     )
 
 
@@ -1733,6 +1741,9 @@ def test_gate_qdrant_vector_ablation_cli_writes_report(tmp_path):
     assert payload["case_group_metrics"]["case_source"]["visual_object_probe"][
         "target_coverage_at_k"
     ] == 1.0
+    assert payload["case_group_best_modes"]["case_source"]["visual_object_probe"][
+        "target_coverage_at_k"
+    ]["mode"] == "caption_image"
     assert payload["chunk_strategy_metrics"]["visual_asset_text"]["target_coverage_at_k"] == 1.0
     assert payload["retrieval_role_metrics"]["child"]["target_coverage_at_k"] == 1.0
 
@@ -1919,3 +1930,6 @@ def test_gate_retrieval_ablation_cli_writes_lift_report(tmp_path):
     assert payload["case_group_metrics"]["case_source"]["visual_lexical_probe"][
         "target_coverage_at_k"
     ] == 1.0
+    assert payload["case_group_best_modes"]["case_source"]["visual_lexical_probe"][
+        "target_coverage_at_k"
+    ]["mode"] == "bm25_visual"

@@ -39,6 +39,11 @@ class RetrievalAblationRow(BaseModel):
     evaluation: RetrievalEvaluation
 
 
+class AblationBestModeMetric(BaseModel):
+    mode: str | None = None
+    value: float | None = None
+
+
 class RetrievalAblationReport(BaseModel):
     rows: list[RetrievalAblationRow]
     best_by_recall: str | None
@@ -46,6 +51,10 @@ class RetrievalAblationReport(BaseModel):
     best_by_target_ndcg: str | None
     best_by_mrr: str | None
     fastest_by_mean_latency: str | None
+    case_group_best_modes: dict[
+        str,
+        dict[str, dict[str, AblationBestModeMetric]],
+    ] = Field(default_factory=dict)
 
 
 class RetrievalAblationGateReport(BaseModel):
@@ -71,6 +80,10 @@ class RetrievalAblationGateReport(BaseModel):
     best_by_target_ndcg: str | None = None
     best_by_mrr: str | None = None
     fastest_by_mean_latency: str | None = None
+    case_group_best_modes: dict[
+        str,
+        dict[str, dict[str, AblationBestModeMetric]],
+    ] = Field(default_factory=dict)
     failed_checks: list[str] = Field(default_factory=list)
     checks: list[RetrievalGateCheck] = Field(default_factory=list)
 
@@ -93,6 +106,10 @@ class QdrantVectorAblationReport(BaseModel):
     best_by_target_ndcg: str | None
     best_by_mrr: str | None
     fastest_by_mean_latency: str | None
+    case_group_best_modes: dict[
+        str,
+        dict[str, dict[str, AblationBestModeMetric]],
+    ] = Field(default_factory=dict)
 
 
 class QdrantVectorAblationGateReport(BaseModel):
@@ -111,6 +128,10 @@ class QdrantVectorAblationGateReport(BaseModel):
     best_by_target_ndcg: str | None = None
     best_by_mrr: str | None = None
     fastest_by_mean_latency: str | None = None
+    case_group_best_modes: dict[
+        str,
+        dict[str, dict[str, AblationBestModeMetric]],
+    ] = Field(default_factory=dict)
     failed_checks: list[str] = Field(default_factory=list)
     checks: list[RetrievalGateCheck] = Field(default_factory=list)
 
@@ -248,6 +269,7 @@ def evaluate_retrieval_ablation(
         fastest_by_mean_latency=min(rows, key=lambda row: row.evaluation.mean_latency_ms).mode.name
         if rows
         else None,
+        case_group_best_modes=case_group_best_modes(rows),
     )
 
 
@@ -486,6 +508,7 @@ def gate_retrieval_ablation(
         best_by_target_ndcg=report.best_by_target_ndcg,
         best_by_mrr=report.best_by_mrr,
         fastest_by_mean_latency=report.fastest_by_mean_latency,
+        case_group_best_modes=report.case_group_best_modes,
         failed_checks=failed_checks,
         checks=checks,
     )
@@ -620,6 +643,99 @@ def build_qdrant_vector_ablation_report(
         fastest_by_mean_latency=min(rows, key=lambda row: row.evaluation.mean_latency_ms).mode.name
         if rows
         else None,
+        case_group_best_modes=case_group_best_modes(rows),
+    )
+
+
+def case_group_best_modes(
+    rows: list[RetrievalAblationRow] | list[QdrantVectorAblationRow],
+) -> dict[str, dict[str, dict[str, AblationBestModeMetric]]]:
+    groups = sorted(
+        {
+            (group_name, group_value)
+            for row in rows
+            for group_name, group_values in row.evaluation.case_group_metrics.items()
+            for group_value in group_values
+        }
+    )
+    return {
+        group_name: {
+            group_value: {
+                "recall_at_k": best_case_group_mode(
+                    rows,
+                    group_name,
+                    group_value,
+                    "recall_at_k",
+                ),
+                "target_coverage_at_k": best_case_group_mode(
+                    rows,
+                    group_name,
+                    group_value,
+                    "target_coverage_at_k",
+                ),
+                "ndcg_at_k": best_case_group_mode(
+                    rows,
+                    group_name,
+                    group_value,
+                    "ndcg_at_k",
+                ),
+                "mrr": best_case_group_mode(rows, group_name, group_value, "mrr"),
+                "precision_at_k": best_case_group_mode(
+                    rows,
+                    group_name,
+                    group_value,
+                    "precision_at_k",
+                ),
+                "fastest_mean_latency_ms": best_case_group_mode(
+                    rows,
+                    group_name,
+                    group_value,
+                    "mean_latency_ms",
+                    prefer_lower=True,
+                ),
+            }
+            for group_value in sorted(
+                value for name, value in groups if name == group_name
+            )
+        }
+        for group_name in sorted({name for name, _value in groups})
+    }
+
+
+def best_case_group_mode(
+    rows: list[RetrievalAblationRow] | list[QdrantVectorAblationRow],
+    group_name: str,
+    group_value: str,
+    metric_name: str,
+    prefer_lower: bool = False,
+) -> AblationBestModeMetric:
+    scored_rows = []
+    for row in rows:
+        metric = row.evaluation.case_group_metrics.get(group_name, {}).get(group_value)
+        if metric is None:
+            continue
+        value = float(getattr(metric, metric_name))
+        scored_rows.append((case_group_mode_score(row, metric, metric_name, prefer_lower), row, value))
+    if not scored_rows:
+        return AblationBestModeMetric()
+    _score, best_row, value = max(scored_rows, key=lambda item: item[0])
+    return AblationBestModeMetric(mode=best_row.mode.name, value=value)
+
+
+def case_group_mode_score(
+    row: RetrievalAblationRow | QdrantVectorAblationRow,
+    metric,
+    metric_name: str,
+    prefer_lower: bool,
+) -> tuple[float, float, float, float, str]:
+    metric_value = float(getattr(metric, metric_name, 0.0))
+    primary = -metric_value if prefer_lower else metric_value
+    return (
+        primary,
+        metric.target_coverage_at_k,
+        metric.ndcg_at_k,
+        metric.recall_at_k,
+        row.mode.name,
     )
 
 
@@ -760,6 +876,7 @@ def gate_qdrant_vector_ablation(
         best_by_target_ndcg=report.best_by_target_ndcg,
         best_by_mrr=report.best_by_mrr,
         fastest_by_mean_latency=report.fastest_by_mean_latency,
+        case_group_best_modes=report.case_group_best_modes,
         failed_checks=failed_checks,
         checks=checks,
     )
