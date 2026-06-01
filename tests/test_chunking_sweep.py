@@ -577,6 +577,9 @@ def test_apply_chunking_sweep_cli_promotes_recommended_candidate(tmp_path):
         )
     )
     candidate_chunks = read_jsonl(candidate_file, DocumentChunk)
+    (package_dir / "qdrant_text_records.jsonl").write_text("stale\n", encoding="utf-8")
+    (package_dir / "qdrant_collection.json").write_text("{}", encoding="utf-8")
+    (package_dir / "embedding_manifest.json").write_text("{}", encoding="utf-8")
 
     apply_result = CliRunner().invoke(
         app,
@@ -598,6 +601,9 @@ def test_apply_chunking_sweep_cli_promotes_recommended_candidate(tmp_path):
     assert (package_dir / f"chunks.before-{safe_name}.jsonl").exists()
     assert (package_dir / f"triples.before-{safe_name}.jsonl").exists()
     assert (package_dir / "bm25_tokens.json").exists()
+    assert not (package_dir / "qdrant_text_records.jsonl").exists()
+    assert not (package_dir / "qdrant_collection.json").exists()
+    assert not (package_dir / "embedding_manifest.json").exists()
     manifest_payload = json.loads((package_dir / "manifest.json").read_text(encoding="utf-8"))
     selection = manifest_payload["metadata"]["selected_chunking_candidate"]
     assert selection["name"] == recommended

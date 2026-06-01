@@ -228,6 +228,25 @@ def rebuild_search_artifacts(
     )
 
 
+def clear_embedding_artifacts(output_dir: Path) -> list[str]:
+    """Remove vector artifacts that become stale when chunk IDs or text change."""
+    removed = []
+    for path in embedding_artifact_paths(output_dir):
+        if not path.exists():
+            continue
+        path.unlink()
+        removed.append(str(path))
+    return removed
+
+
+def embedding_artifact_paths(output_dir: Path) -> list[Path]:
+    return [
+        *(output_dir / filename for filename in QDRANT_RECORD_FILES.values()),
+        output_dir / "qdrant_collection.json",
+        output_dir / "embedding_manifest.json",
+    ]
+
+
 def write_split_chunks(output_dir: Path, chunks, max_chars: int = 1600, overlap_chars: int = 180):
     split_chunks = semantic_subchunks(chunks, max_chars=max_chars, overlap_chars=overlap_chars)
     write_jsonl(output_dir / "chunks.split.jsonl", split_chunks)
@@ -263,10 +282,7 @@ def write_embedding_artifacts(
 
     output_dir.mkdir(parents=True, exist_ok=True)
     if clear_existing:
-        for filename in QDRANT_RECORD_FILES.values():
-            path = output_dir / filename
-            if path.exists():
-                path.unlink()
+        clear_embedding_artifacts(output_dir)
 
     notes = vector_notes or {}
     metadata = {

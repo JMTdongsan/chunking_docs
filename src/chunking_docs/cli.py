@@ -75,6 +75,7 @@ from chunking_docs.io import read_jsonl, write_jsonl
 from chunking_docs.models import AssetKind, DocumentChunk, GraphTriple, VisualAsset
 from chunking_docs.pipeline import (
     build_processing_package,
+    clear_embedding_artifacts,
     load_processing_package,
     rebuild_search_artifacts,
     write_embedding_artifacts,
@@ -4840,6 +4841,7 @@ def apply_chunking_sweep_command(
     backup: bool = True,
     rebuild_search: bool = True,
     rebuild_dry_run_embeddings: bool = False,
+    clear_stale_embeddings: bool = True,
 ):
     """Apply a recommended chunking sweep candidate as the package chunk set."""
     if rebuild_dry_run_embeddings and not rebuild_search:
@@ -4854,6 +4856,7 @@ def apply_chunking_sweep_command(
         raise typer.BadParameter(f"Selected chunk file is empty: {selected_chunks_path}")
 
     remapped_triples = remap_triples_to_available_chunks(manifest.triples, selected_chunks)
+    stale_embedding_artifacts: list[str] = []
     backup_files = {}
     if backup:
         safe_name = safe_filename_part(selected.name)
@@ -4875,6 +4878,7 @@ def apply_chunking_sweep_command(
         "backup_files": backup_files,
         "rebuilt_search": bool(rebuild_search and not dry_run),
         "rebuilt_dry_run_embeddings": bool(rebuild_dry_run_embeddings and not dry_run),
+        "cleared_embedding_artifacts": stale_embedding_artifacts,
         "requires_embedding_rebuild": not rebuild_dry_run_embeddings,
         "next_embedding_command": (
             f"chunking-docs embed-package --package-dir {shlex.quote(package_dir.as_posix())}"
@@ -4900,6 +4904,9 @@ def apply_chunking_sweep_command(
             tokenizer_config=manifest_tokenizer_config(manifest),
             rebuild_embeddings=rebuild_dry_run_embeddings,
         )
+    if clear_stale_embeddings and not rebuild_dry_run_embeddings:
+        stale_embedding_artifacts = clear_embedding_artifacts(package_dir)
+        payload["cleared_embedding_artifacts"] = stale_embedding_artifacts
     update_manifest_chunking_selection(
         package_dir=package_dir,
         report=report,
