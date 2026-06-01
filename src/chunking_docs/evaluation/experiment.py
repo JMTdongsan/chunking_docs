@@ -153,6 +153,12 @@ SUMMARY_METRIC_KEYS = {
     "source_family.lexical.target_coverage_at_k",
     "source_family.visual.target_coverage_at_k",
     "source_family.graph.target_coverage_at_k",
+    "chunk_strategy.semantic_subchunks.target_coverage_at_k",
+    "chunk_strategy.visual_asset_text.target_coverage_at_k",
+    "chunk_strategy.hierarchical_parent.target_coverage_at_k",
+    "chunk_strategy.hierarchical_child.target_coverage_at_k",
+    "retrieval_role.parent.target_coverage_at_k",
+    "retrieval_role.child.target_coverage_at_k",
 }
 
 

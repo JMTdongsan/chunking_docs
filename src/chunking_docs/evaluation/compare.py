@@ -4,6 +4,8 @@ from pydantic import BaseModel, Field
 
 from chunking_docs.evaluation.chunking_quality import ChunkingQualityReport
 from chunking_docs.evaluation.gate import (
+    retrieval_chunk_strategy_metrics,
+    retrieval_role_metrics_payload,
     retrieval_source_family_metrics,
     retrieval_target_metrics,
 )
@@ -23,6 +25,8 @@ class ChunkingComparisonRow(BaseModel):
     retrieval_p95_latency_ms: float | None
     target_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
     source_family_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
+    chunk_strategy_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
+    retrieval_role_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
     failed_queries: list[str]
     page_coverage_ratio: float
     visual_annotation_ratio: float
@@ -50,6 +54,8 @@ def compare_chunking_reports(
     for name, report in reports.items():
         target_metrics = retrieval_target_metrics(report.retrieval)
         source_family_metrics = retrieval_source_family_metrics(report.retrieval)
+        chunk_strategy_metrics = retrieval_chunk_strategy_metrics(report.retrieval)
+        retrieval_role_metrics = retrieval_role_metrics_payload(report.retrieval)
         rows.append(
             ChunkingComparisonRow(
                 name=name,
@@ -71,6 +77,8 @@ def compare_chunking_reports(
                 retrieval_p95_latency_ms=report.retrieval.p95_latency_ms if report.retrieval else None,
                 target_metrics=target_metrics,
                 source_family_metrics=source_family_metrics,
+                chunk_strategy_metrics=chunk_strategy_metrics,
+                retrieval_role_metrics=retrieval_role_metrics,
                 failed_queries=report.retrieval.failed_queries if report.retrieval else [],
                 page_coverage_ratio=report.page_coverage_ratio,
                 visual_annotation_ratio=report.visual_annotation_ratio,

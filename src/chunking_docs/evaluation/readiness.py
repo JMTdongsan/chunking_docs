@@ -267,6 +267,8 @@ def build_ingestion_readiness_report(
                     "metrics": chunking_comparison_gate.metrics,
                     "target_metrics": chunking_comparison_gate.target_metrics,
                     "source_family_metrics": chunking_comparison_gate.source_family_metrics,
+                    "chunk_strategy_metrics": chunking_comparison_gate.chunk_strategy_metrics,
+                    "retrieval_role_metrics": chunking_comparison_gate.retrieval_role_metrics,
                 },
             )
         )

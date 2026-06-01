@@ -24,6 +24,10 @@ def test_compare_chunking_reports_ranks_by_retrieval_then_quality():
             kind=ChunkKind.TEXT,
             text="river corridor station hub",
             asset_ids=["asset-1"],
+            metadata={
+                "chunking_strategy": "visual_asset_text",
+                "retrieval_role": "child",
+            },
         )
     ]
     cases = [
@@ -59,6 +63,10 @@ def test_compare_chunking_reports_ranks_by_retrieval_then_quality():
     assert comparison.rows[0].retrieval_mean_latency_ms is not None
     assert comparison.rows[0].target_metrics["asset"]["coverage_at_k"] == 1.0
     assert comparison.rows[0].source_family_metrics["lexical"]["target_coverage_at_k"] == 1.0
+    assert comparison.rows[0].chunk_strategy_metrics["visual_asset_text"][
+        "target_coverage_at_k"
+    ] == 1.0
+    assert comparison.rows[0].retrieval_role_metrics["child"]["target_coverage_at_k"] == 1.0
     assert comparison.rows[0].visual_text_asset_count == 1
     assert comparison.rows[0].visual_text_covered_asset_count == 1
     assert comparison.rows[0].visual_text_coverage_ratio == 1.0

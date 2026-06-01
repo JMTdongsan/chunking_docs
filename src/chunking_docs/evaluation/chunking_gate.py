@@ -6,7 +6,12 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 
 from chunking_docs.evaluation.compare import ChunkingComparison, ChunkingComparisonRow
-from chunking_docs.evaluation.gate import source_family_metric_key, target_type_metric_key
+from chunking_docs.evaluation.gate import (
+    chunk_strategy_metric_key,
+    retrieval_role_metric_key,
+    source_family_metric_key,
+    target_type_metric_key,
+)
 
 
 class ChunkingComparisonGateCheck(BaseModel):
@@ -30,6 +35,8 @@ class ChunkingComparisonGateReport(BaseModel):
     metrics: dict[str, float | None]
     target_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
     source_family_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
+    chunk_strategy_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
+    retrieval_role_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
     baseline_metrics: dict[str, float | None] = Field(default_factory=dict)
     failed_checks: list[str] = Field(default_factory=list)
     checks: list[ChunkingComparisonGateCheck] = Field(default_factory=list)
@@ -65,6 +72,8 @@ def gate_chunking_comparison(
     max_chunks_over_max_chars: int | None = None,
     min_target_type_coverage: dict[str, float] | None = None,
     min_source_family_target_coverage: dict[str, float] | None = None,
+    min_chunk_strategy_target_coverage: dict[str, float] | None = None,
+    min_retrieval_role_target_coverage: dict[str, float] | None = None,
     max_quality_drop: float | None = None,
     max_recall_drop: float | None = None,
     max_target_coverage_drop: float | None = None,
@@ -187,6 +196,24 @@ def gate_chunking_comparison(
             min_source_family_target_coverage or {},
         )
     )
+    checks.extend(
+        grouped_target_coverage_checks(
+            selected_name,
+            metrics,
+            min_chunk_strategy_target_coverage or {},
+            metric_key_fn=chunk_strategy_metric_key,
+            check_prefix="min_chunk_strategy_target_coverage",
+        )
+    )
+    checks.extend(
+        grouped_target_coverage_checks(
+            selected_name,
+            metrics,
+            min_retrieval_role_target_coverage or {},
+            metric_key_fn=retrieval_role_metric_key,
+            check_prefix="min_retrieval_role_target_coverage",
+        )
+    )
 
     if baseline_candidate is not None:
         baseline_row = find_row(comparison, baseline_candidate)
@@ -234,6 +261,8 @@ def gate_chunking_comparison(
         metrics=metrics,
         target_metrics=selected_row.target_metrics,
         source_family_metrics=selected_row.source_family_metrics,
+        chunk_strategy_metrics=selected_row.chunk_strategy_metrics,
+        retrieval_role_metrics=selected_row.retrieval_role_metrics,
         baseline_metrics=baseline_metrics,
         failed_checks=failed_checks,
         checks=checks,
@@ -289,6 +318,12 @@ def row_metrics(row: ChunkingComparisonRow) -> dict[str, float | None]:
     for family, family_metrics in row.source_family_metrics.items():
         for key, value in family_metrics.items():
             metrics[source_family_metric_key(family, key)] = value
+    for strategy, strategy_metrics in row.chunk_strategy_metrics.items():
+        for key, value in strategy_metrics.items():
+            metrics[chunk_strategy_metric_key(strategy, key)] = value
+    for role, role_metrics in row.retrieval_role_metrics.items():
+        for key, value in role_metrics.items():
+            metrics[retrieval_role_metric_key(role, key)] = value
     return metrics
 
 
@@ -327,6 +362,30 @@ def source_family_target_coverage_checks(
         checks.append(
             minimum_check(
                 f"min_source_family_target_coverage:{normalized_family}",
+                candidate,
+                metric,
+                metrics,
+                threshold,
+            )
+        )
+    return checks
+
+
+def grouped_target_coverage_checks(
+    candidate: str,
+    metrics: dict[str, float | None],
+    thresholds: dict[str, float],
+    metric_key_fn,
+    check_prefix: str,
+) -> list[ChunkingComparisonGateCheck]:
+    checks = []
+    for group, threshold in sorted(thresholds.items()):
+        normalized_group = group.strip().lower()
+        metric = metric_key_fn(normalized_group, "target_coverage_at_k")
+        metrics.setdefault(metric, 0.0)
+        checks.append(
+            minimum_check(
+                f"{check_prefix}:{normalized_group}",
                 candidate,
                 metric,
                 metrics,
@@ -490,5 +549,7 @@ def chunking_gate_summary_payload(report: ChunkingComparisonGateReport) -> dict:
         "metrics": report.metrics,
         "target_metrics": report.target_metrics,
         "source_family_metrics": report.source_family_metrics,
+        "chunk_strategy_metrics": report.chunk_strategy_metrics,
+        "retrieval_role_metrics": report.retrieval_role_metrics,
         "baseline_metrics": report.baseline_metrics,
     }

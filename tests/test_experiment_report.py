@@ -46,6 +46,12 @@ def test_build_experiment_report_summarizes_artifacts_and_candidates(tmp_path):
     assert validations["retrieval_gate.final.json"].metrics["recall_at_k"] == 1.0
     assert validations["retrieval_gate.final.json"].metrics["mrr"] == 1.0
     assert validations["retrieval_gate.final.json"].metrics["p95_latency_ms"] == 12.0
+    assert validations["retrieval_gate.final.json"].metrics[
+        "chunk_strategy.visual_asset_text.target_coverage_at_k"
+    ] == 1.0
+    assert validations["retrieval_gate.final.json"].metrics[
+        "retrieval_role.child.target_coverage_at_k"
+    ] == 1.0
     assert validations["qdrant_eval.final.json"].metrics["target_coverage_at_k"] == 1.0
     assert validations["qdrant_eval.final.json"].metrics["mean_latency_ms"] == 8.0
     assert validations["qdrant_eval.final.json"].metrics["case_count"] == 1.0
@@ -68,6 +74,12 @@ def test_build_experiment_report_summarizes_artifacts_and_candidates(tmp_path):
     assert report.comparison is not None
     assert report.comparison.best_by_retrieval == "current"
     assert report.comparison.rows[0].visual_text_coverage_ratio == 1.0
+    assert report.comparison.rows[0].chunk_strategy_metrics["visual_asset_text"][
+        "target_coverage_at_k"
+    ] == 1.0
+    assert report.comparison.rows[0].retrieval_role_metrics["child"][
+        "target_coverage_at_k"
+    ] == 1.0
 
 
 def test_write_experiment_report_cli_writes_json(tmp_path):
@@ -133,6 +145,10 @@ def write_minimal_package(tmp_path):
             kind=ChunkKind.TEXT,
             text="retrieval benchmark visual evidence table policy",
             asset_ids=["asset-1"],
+            metadata={
+                "chunking_strategy": "visual_asset_text",
+                "retrieval_role": "child",
+            },
         )
     ]
     assets = [
@@ -204,6 +220,8 @@ def write_minimal_package(tmp_path):
                     "mrr": 1.0,
                     "p95_latency_ms": 12.0,
                     "target_type.asset.coverage_at_k": 1.0,
+                    "chunk_strategy.visual_asset_text.target_coverage_at_k": 1.0,
+                    "retrieval_role.child.target_coverage_at_k": 1.0,
                 },
             },
             indent=2,

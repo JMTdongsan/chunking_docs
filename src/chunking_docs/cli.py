@@ -3114,7 +3114,7 @@ def gate_retrieval_command(
     min_chunk_strategy_target_coverage: list[str] = typer.Option(
         None,
         "--min-chunk-strategy-target-coverage",
-        help="Require chunking-strategy target coverage such as hierarchical_child=0.8.",
+        help="Require chunking-strategy target coverage such as visual_asset_text=0.8.",
     ),
     min_retrieval_role_target_coverage: list[str] = typer.Option(
         None,
@@ -3330,6 +3330,16 @@ def gate_chunking_comparison_command(
         "--min-source-family-target-coverage",
         help="Require source-family target coverage such as lexical=0.8. Repeat for multiple families.",
     ),
+    min_chunk_strategy_target_coverage: list[str] = typer.Option(
+        None,
+        "--min-chunk-strategy-target-coverage",
+        help="Require chunking-strategy target coverage such as visual_asset_text=0.8.",
+    ),
+    min_retrieval_role_target_coverage: list[str] = typer.Option(
+        None,
+        "--min-retrieval-role-target-coverage",
+        help="Require retrieval-role target coverage such as child=0.8.",
+    ),
     max_quality_drop: float | None = None,
     max_recall_drop: float | None = None,
     max_target_coverage_drop: float | None = None,
@@ -3353,6 +3363,14 @@ def gate_chunking_comparison_command(
         min_source_family_target_coverage,
         "source family target coverage",
     )
+    chunk_strategy_thresholds = parse_named_float_thresholds(
+        min_chunk_strategy_target_coverage,
+        "chunk strategy target coverage",
+    )
+    retrieval_role_thresholds = parse_named_float_thresholds(
+        min_retrieval_role_target_coverage,
+        "retrieval role target coverage",
+    )
     report = gate_chunking_comparison(
         parsed_comparison,
         candidate=candidate,
@@ -3374,6 +3392,8 @@ def gate_chunking_comparison_command(
         max_chunks_over_max_chars=max_chunks_over_max_chars,
         min_target_type_coverage=target_type_thresholds,
         min_source_family_target_coverage=source_family_thresholds,
+        min_chunk_strategy_target_coverage=chunk_strategy_thresholds,
+        min_retrieval_role_target_coverage=retrieval_role_thresholds,
         max_quality_drop=max_quality_drop,
         max_recall_drop=max_recall_drop,
         max_target_coverage_drop=max_target_coverage_drop,
