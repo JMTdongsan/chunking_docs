@@ -809,6 +809,7 @@ def test_evaluate_search_results_reports_target_coverage_and_precision():
                 expected_pages=[1, 2],
                 expected_chunk_ids=["missing-chunk"],
                 expected_asset_ids=["asset-a"],
+                metadata={"case_source": "visual_lexical_probe", "query_mode": "salient_terms"},
             )
         ],
         search_fn=lambda case, graph_expand: [Hit(chunk_a), Hit(chunk_b)],
@@ -846,6 +847,15 @@ def test_evaluate_search_results_reports_target_coverage_and_precision():
     assert result.source_metrics["test"].relevant_hit_count == 2
     assert result.source_metrics["test"].matched_target_count == 3
     assert result.source_metrics["test"].target_coverage_at_k == 0.75
+    assert result.case_group_metrics["case_source"]["visual_lexical_probe"].case_count == 1
+    assert (
+        result.case_group_metrics["case_source"]["visual_lexical_probe"].target_coverage_at_k
+        == 0.75
+    )
+    assert result.case_group_metrics["query_mode"]["salient_terms"].ndcg_at_k == pytest.approx(
+        case_result.target_ndcg_at_k
+    )
+    assert result.case_group_metrics["graph_expand"]["false"].precision_at_k == 2 / 3
 
 
 def test_evaluate_retrieval_reports_ranked_failures():
@@ -1305,7 +1315,16 @@ def test_eval_retrieval_cli_writes_latency_report(tmp_path):
     ]
     write_jsonl(package_dir / "chunks.jsonl", chunks)
     write_jsonl(package_dir / "triples.jsonl", [])
-    write_jsonl(cases_path, [RetrievalCase(query="capital budget", expected_pages=[1])])
+    write_jsonl(
+        cases_path,
+        [
+            RetrievalCase(
+                query="capital budget",
+                expected_pages=[1],
+                metadata={"case_source": "page", "query_mode": "snippet"},
+            )
+        ],
+    )
 
     result = CliRunner().invoke(
         app,
@@ -1326,6 +1345,8 @@ def test_eval_retrieval_cli_writes_latency_report(tmp_path):
     assert payload["repeat"] == 2
     assert payload["mean_target_ndcg_at_k"] == 1.0
     assert payload["mean_latency_ms"] >= 0.0
+    assert payload["case_group_metrics"]["case_source"]["page"]["target_coverage_at_k"] == 1.0
+    assert payload["case_group_metrics"]["query_mode"]["snippet"]["recall_at_k"] == 1.0
     assert len(payload["results"][0]["latency_samples_ms"]) == 2
 
 

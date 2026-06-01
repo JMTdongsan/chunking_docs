@@ -3,6 +3,7 @@ from typer.testing import CliRunner
 from chunking_docs.cli import app
 from chunking_docs.evaluation.gate import gate_retrieval_evaluation
 from chunking_docs.evaluation.retrieval import (
+    RetrievalCaseGroupMetric,
     RetrievalEvaluation,
     RetrievalSourceMetric,
     RetrievalTargetMetric,
@@ -20,6 +21,7 @@ def make_evaluation(
     source_family_coverage: dict[str, float] | None = None,
     chunk_strategy_coverage: dict[str, float] | None = None,
     retrieval_role_coverage: dict[str, float] | None = None,
+    case_group_coverage: dict[str, dict[str, float]] | None = None,
 ) -> RetrievalEvaluation:
     return RetrievalEvaluation(
         case_count=10,
@@ -50,6 +52,13 @@ def make_evaluation(
         retrieval_role_metrics={
             role: source_family_metric(coverage)
             for role, coverage in (retrieval_role_coverage or {}).items()
+        },
+        case_group_metrics={
+            group_name: {
+                group_value: case_group_metric(coverage)
+                for group_value, coverage in group_values.items()
+            }
+            for group_name, group_values in (case_group_coverage or {}).items()
         },
         failed_queries=[],
         results=[],
@@ -141,6 +150,36 @@ def test_retrieval_gate_checks_chunk_strategy_and_role_coverage():
     assert failed.failed_checks == [
         "min_chunk_strategy_target_coverage:hierarchical_child",
         "min_retrieval_role_target_coverage:child",
+    ]
+
+
+def test_retrieval_gate_checks_case_group_target_coverage():
+    evaluation = make_evaluation(
+        case_group_coverage={
+            "case_source": {"visual_lexical_probe": 0.75, "page": 1.0},
+        }
+    )
+
+    report = gate_retrieval_evaluation(
+        evaluation,
+        min_case_group_target_coverage={"case_source:visual_lexical_probe": 0.7},
+    )
+
+    assert report.passed is True
+    assert (
+        report.metrics["case_group.case_source.visual_lexical_probe.target_coverage_at_k"]
+        == 0.75
+    )
+    assert report.case_group_metrics["case_source"]["page"]["target_coverage_at_k"] == 1.0
+
+    failed = gate_retrieval_evaluation(
+        evaluation,
+        min_case_group_target_coverage={"case_source:visual_lexical_probe": 0.8},
+    )
+
+    assert failed.passed is False
+    assert failed.failed_checks == [
+        "min_case_group_target_coverage:case_source:visual_lexical_probe"
     ]
 
 
@@ -242,6 +281,35 @@ def test_gate_retrieval_cli_checks_chunk_strategy_target_coverage(tmp_path):
     assert "chunk_strategy.visual_asset_text.target_coverage_at_k" in payload
 
 
+def test_gate_retrieval_cli_checks_case_group_target_coverage(tmp_path):
+    evaluation_path = tmp_path / "retrieval_eval.json"
+    output = tmp_path / "retrieval_gate.json"
+    evaluation_path.write_text(
+        make_evaluation(
+            case_group_coverage={"case_source": {"visual_lexical_probe": 0.5}}
+        ).model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "gate-retrieval",
+            str(evaluation_path),
+            "--min-case-group-target-coverage",
+            "case_source:visual_lexical_probe=0.8",
+            "--output",
+            str(output),
+            "--no-fail",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "min_case_group_target_coverage:case_source:visual_lexical_probe" in result.output
+    payload = output.read_text(encoding="utf-8")
+    assert "case_group.case_source.visual_lexical_probe.target_coverage_at_k" in payload
+
+
 def test_gate_retrieval_cli_checks_target_type_coverage(tmp_path):
     evaluation_path = tmp_path / "retrieval_eval.json"
     output = tmp_path / "retrieval_gate.json"
@@ -293,4 +361,21 @@ def source_family_metric(target_coverage: float) -> RetrievalSourceMetric:
         precision_at_hits=target_coverage,
         target_coverage_at_k=target_coverage,
         mean_relevant_rank=1.0,
+    )
+
+
+def case_group_metric(target_coverage: float) -> RetrievalCaseGroupMetric:
+    return RetrievalCaseGroupMetric(
+        case_count=10,
+        expected_case_count=10,
+        passed_count=int(target_coverage * 10),
+        failed_count=10 - int(target_coverage * 10),
+        recall_at_k=target_coverage,
+        mrr=target_coverage,
+        target_count=10,
+        matched_target_count=int(target_coverage * 10),
+        target_coverage_at_k=target_coverage,
+        ndcg_at_k=target_coverage,
+        precision_at_k=target_coverage,
+        mean_latency_ms=10.0,
     )

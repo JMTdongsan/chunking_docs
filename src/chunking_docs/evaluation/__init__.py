@@ -33,6 +33,7 @@ from .gate import RetrievalGateCheck, RetrievalGateReport, gate_retrieval_evalua
 from .readiness import IngestionReadinessReport, ReadinessComponent, build_ingestion_readiness_report
 from .retrieval import (
     RetrievalCase,
+    RetrievalCaseGroupMetric,
     RetrievalCaseResult,
     RetrievalEvaluation,
     evaluate_retrieval,
@@ -61,6 +62,7 @@ __all__ = [
     "RetrievalCaseAuditIssue",
     "RetrievalCaseAuditReport",
     "RetrievalCase",
+    "RetrievalCaseGroupMetric",
     "RetrievalCaseResult",
     "RetrievalDiagnosticRow",
     "RetrievalDiagnosticsReport",

@@ -809,6 +809,7 @@ def eval_qdrant_retrieval_command(
                 "source_family_metrics": retrieval_source_family_metrics_payload(evaluation),
                 "chunk_strategy_metrics": retrieval_chunk_strategy_metrics_payload(evaluation),
                 "retrieval_role_metrics": retrieval_role_metrics_payload(evaluation),
+                "case_group_metrics": retrieval_case_group_metrics_payload(evaluation),
                 **evaluation.metadata,
             }
         )
@@ -2340,6 +2341,11 @@ def ingestion_readiness_command(
         "--min-retrieval-source-family-target-coverage",
         help="Require retrieval source-family target coverage such as lexical=0.8.",
     ),
+    min_retrieval_case_group_target_coverage: list[str] = typer.Option(
+        None,
+        "--min-retrieval-case-group-target-coverage",
+        help="Require retrieval case group target coverage such as case_source:visual_lexical_probe=0.8.",
+    ),
     chunking_comparison: Path | None = None,
     require_chunking_comparison: bool = False,
     chunking_candidate: str | None = None,
@@ -2365,6 +2371,11 @@ def ingestion_readiness_command(
         None,
         "--min-chunking-source-family-target-coverage",
         help="Require selected chunking candidate source-family target coverage such as lexical=0.8.",
+    ),
+    min_chunking_case_group_target_coverage: list[str] = typer.Option(
+        None,
+        "--min-chunking-case-group-target-coverage",
+        help="Require selected chunking candidate case group target coverage such as case_source:visual_lexical_probe=0.8.",
     ),
     retrieval_ablation: Path | None = None,
     require_retrieval_ablation: bool = False,
@@ -2473,6 +2484,10 @@ def ingestion_readiness_command(
         min_retrieval_target_type_coverage,
         "retrieval target type coverage",
     )
+    retrieval_case_group_thresholds = parse_named_float_thresholds(
+        min_retrieval_case_group_target_coverage,
+        "retrieval case group target coverage",
+    )
     chunking_source_family_thresholds = parse_named_float_thresholds(
         min_chunking_source_family_target_coverage,
         "chunking source family target coverage",
@@ -2480,6 +2495,10 @@ def ingestion_readiness_command(
     chunking_target_type_thresholds = parse_named_float_thresholds(
         min_chunking_target_type_coverage,
         "chunking target type coverage",
+    )
+    chunking_case_group_thresholds = parse_named_float_thresholds(
+        min_chunking_case_group_target_coverage,
+        "chunking case group target coverage",
     )
     retrieval_ablation_source_family_thresholds = parse_named_float_thresholds(
         min_retrieval_ablation_source_family_target_coverage,
@@ -2540,6 +2559,7 @@ def ingestion_readiness_command(
             "max_p95_latency_ms": max_p95_latency_ms,
             "min_target_type_coverage": retrieval_target_type_thresholds,
             "min_source_family_target_coverage": retrieval_source_family_thresholds,
+            "min_case_group_target_coverage": retrieval_case_group_thresholds,
         },
         chunking_comparison=parsed_chunking_comparison,
         require_chunking_comparison=require_chunking_comparison,
@@ -2556,6 +2576,7 @@ def ingestion_readiness_command(
             "max_mean_latency_ratio": max_chunking_mean_latency_ratio,
             "min_target_type_coverage": chunking_target_type_thresholds,
             "min_source_family_target_coverage": chunking_source_family_thresholds,
+            "min_case_group_target_coverage": chunking_case_group_thresholds,
         },
         retrieval_ablation=parsed_retrieval_ablation,
         require_retrieval_ablation=require_retrieval_ablation,
@@ -2761,6 +2782,7 @@ def eval_retrieval_command(
                 "source_family_metrics": retrieval_source_family_metrics_payload(evaluation),
                 "chunk_strategy_metrics": retrieval_chunk_strategy_metrics_payload(evaluation),
                 "retrieval_role_metrics": retrieval_role_metrics_payload(evaluation),
+                "case_group_metrics": retrieval_case_group_metrics_payload(evaluation),
             }
         )
         return
@@ -3151,6 +3173,11 @@ def gate_retrieval_command(
         "--min-retrieval-role-target-coverage",
         help="Require retrieval-role target coverage such as child=0.8.",
     ),
+    min_case_group_target_coverage: list[str] = typer.Option(
+        None,
+        "--min-case-group-target-coverage",
+        help="Require case metadata group target coverage such as case_source:visual_lexical_probe=0.8.",
+    ),
     max_recall_drop: float | None = None,
     max_target_coverage_drop: float | None = None,
     max_target_ndcg_drop: float | None = None,
@@ -3182,6 +3209,10 @@ def gate_retrieval_command(
         min_retrieval_role_target_coverage,
         "retrieval role target coverage",
     )
+    case_group_thresholds = parse_named_float_thresholds(
+        min_case_group_target_coverage,
+        "case group target coverage",
+    )
     report = gate_retrieval_evaluation(
         parsed_evaluation,
         baseline=parsed_baseline,
@@ -3196,6 +3227,7 @@ def gate_retrieval_command(
         min_source_family_target_coverage=source_family_thresholds,
         min_chunk_strategy_target_coverage=chunk_strategy_thresholds,
         min_retrieval_role_target_coverage=retrieval_role_thresholds,
+        min_case_group_target_coverage=case_group_thresholds,
         max_recall_drop=max_recall_drop,
         max_target_coverage_drop=max_target_coverage_drop,
         max_target_ndcg_drop=max_target_ndcg_drop,
@@ -3370,6 +3402,11 @@ def gate_chunking_comparison_command(
         "--min-retrieval-role-target-coverage",
         help="Require retrieval-role target coverage such as child=0.8.",
     ),
+    min_case_group_target_coverage: list[str] = typer.Option(
+        None,
+        "--min-case-group-target-coverage",
+        help="Require case metadata group target coverage such as case_source:visual_lexical_probe=0.8.",
+    ),
     max_quality_drop: float | None = None,
     max_recall_drop: float | None = None,
     max_target_coverage_drop: float | None = None,
@@ -3408,6 +3445,10 @@ def gate_chunking_comparison_command(
         min_retrieval_role_target_coverage,
         "retrieval role target coverage",
     )
+    case_group_thresholds = parse_named_float_thresholds(
+        min_case_group_target_coverage,
+        "case group target coverage",
+    )
     report = gate_chunking_comparison(
         parsed_comparison,
         candidate=candidate,
@@ -3431,6 +3472,7 @@ def gate_chunking_comparison_command(
         min_source_family_target_coverage=source_family_thresholds,
         min_chunk_strategy_target_coverage=chunk_strategy_thresholds,
         min_retrieval_role_target_coverage=retrieval_role_thresholds,
+        min_case_group_target_coverage=case_group_thresholds,
         max_quality_drop=max_quality_drop,
         max_recall_drop=max_recall_drop,
         max_target_coverage_drop=max_target_coverage_drop,
@@ -3720,6 +3762,16 @@ def retrieval_role_metrics_payload(evaluation) -> dict:
     return {
         name: metric.model_dump()
         for name, metric in getattr(evaluation, "retrieval_role_metrics", {}).items()
+    }
+
+
+def retrieval_case_group_metrics_payload(evaluation) -> dict:
+    return {
+        group_name: {
+            group_value: metric.model_dump()
+            for group_value, metric in group_values.items()
+        }
+        for group_name, group_values in getattr(evaluation, "case_group_metrics", {}).items()
     }
 
 

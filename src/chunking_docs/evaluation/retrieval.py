@@ -88,6 +88,22 @@ class RetrievalSourceMetric(BaseModel):
     mean_relevant_rank: float = 0.0
 
 
+class RetrievalCaseGroupMetric(BaseModel):
+    case_count: int = 0
+    expected_case_count: int = 0
+    passed_count: int = 0
+    failed_count: int = 0
+    recall_at_k: float = 0.0
+    mrr: float = 0.0
+    target_count: int = 0
+    matched_target_count: int = 0
+    target_coverage_at_k: float = 0.0
+    ndcg_at_k: float = 0.0
+    precision_at_k: float = 0.0
+    mean_latency_ms: float = 0.0
+    failed_queries: list[str] = Field(default_factory=list)
+
+
 class RetrievalEvaluation(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
     case_count: int
@@ -111,8 +127,19 @@ class RetrievalEvaluation(BaseModel):
     source_family_metrics: dict[str, RetrievalSourceMetric] = Field(default_factory=dict)
     chunk_strategy_metrics: dict[str, RetrievalSourceMetric] = Field(default_factory=dict)
     retrieval_role_metrics: dict[str, RetrievalSourceMetric] = Field(default_factory=dict)
+    case_group_metrics: dict[str, dict[str, RetrievalCaseGroupMetric]] = Field(default_factory=dict)
     failed_queries: list[str]
     results: list[RetrievalCaseResult]
+
+
+CASE_GROUP_METADATA_KEYS = (
+    "case_source",
+    "query_mode",
+    "case_family",
+    "difficulty",
+    "modality",
+    "evidence_family",
+)
 
 
 def evaluate_retrieval(
@@ -339,6 +366,7 @@ def evaluate_search_results(
         source_family_metrics=source_metrics(results, family=True),
         chunk_strategy_metrics=hit_group_metrics(results, "top_chunking_strategies"),
         retrieval_role_metrics=hit_group_metrics(results, "top_retrieval_roles"),
+        case_group_metrics=case_group_metrics(results, cases),
         failed_queries=[result.query for result in results if not result.passed],
         results=results,
     )
@@ -838,6 +866,81 @@ def hit_group_metrics(
         )
         for group, values in sorted(accumulators.items())
     }
+
+
+def case_group_metrics(
+    results: list[RetrievalCaseResult],
+    cases: list[RetrievalCase],
+) -> dict[str, dict[str, RetrievalCaseGroupMetric]]:
+    groups: dict[str, dict[str, list[RetrievalCaseResult]]] = {}
+    for result, case in zip(results, cases):
+        for group_name, group_value in case_group_labels(case):
+            groups.setdefault(group_name, {}).setdefault(group_value, []).append(result)
+    return {
+        group_name: {
+            group_value: summarize_case_group(group_results)
+            for group_value, group_results in sorted(values.items())
+        }
+        for group_name, values in sorted(groups.items())
+    }
+
+
+def case_group_labels(case: RetrievalCase) -> list[tuple[str, str]]:
+    labels = []
+    for key in CASE_GROUP_METADATA_KEYS:
+        value = case.metadata.get(key)
+        for label in metadata_group_values(value):
+            labels.append((normalized_metric_label(key), normalized_metric_label(label)))
+    labels.append(("graph_expand", "true" if case.graph_expand else "false"))
+    return labels
+
+
+def metadata_group_values(value: Any) -> list[str]:
+    if value is None or isinstance(value, bool):
+        return []
+    if isinstance(value, (str, int, float)):
+        text = str(value).strip()
+        return [text] if text else []
+    if isinstance(value, list):
+        values = []
+        for item in value:
+            if isinstance(item, (str, int, float)):
+                text = str(item).strip()
+                if text:
+                    values.append(text)
+        return stable_ordered_values(values)
+    return []
+
+
+def summarize_case_group(results: list[RetrievalCaseResult]) -> RetrievalCaseGroupMetric:
+    expected_results = [result for result in results if result.expected_target_count > 0]
+    target_count = sum(result.expected_target_count for result in expected_results)
+    return RetrievalCaseGroupMetric(
+        case_count=len(results),
+        expected_case_count=len(expected_results),
+        passed_count=sum(1 for result in results if result.passed),
+        failed_count=sum(1 for result in results if not result.passed),
+        recall_at_k=sum(1 for result in expected_results if result.passed) / len(expected_results)
+        if expected_results
+        else 0.0,
+        mrr=sum(result.reciprocal_rank for result in expected_results) / len(expected_results)
+        if expected_results
+        else 0.0,
+        target_count=target_count,
+        matched_target_count=sum(result.matched_target_count for result in expected_results),
+        target_coverage_at_k=sum(result.matched_target_count for result in expected_results)
+        / target_count
+        if target_count
+        else 0.0,
+        ndcg_at_k=sum(result.target_ndcg_at_k for result in expected_results) / len(expected_results)
+        if expected_results
+        else 0.0,
+        precision_at_k=sum(result.precision_at_k for result in expected_results) / len(expected_results)
+        if expected_results
+        else 0.0,
+        mean_latency_ms=sum(result.latency_ms for result in results) / len(results) if results else 0.0,
+        failed_queries=[result.query for result in results if not result.passed],
+    )
 
 
 def metric_source_keys(sources: list[str], family: bool = False) -> set[str]:

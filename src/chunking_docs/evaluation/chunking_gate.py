@@ -11,7 +11,9 @@ from chunking_docs.evaluation.compare import (
     ChunkingPairwiseComparison,
 )
 from chunking_docs.evaluation.gate import (
+    case_group_metric_key,
     chunk_strategy_metric_key,
+    parse_case_group_spec,
     retrieval_role_metric_key,
     source_family_metric_key,
     target_type_metric_key,
@@ -41,6 +43,7 @@ class ChunkingComparisonGateReport(BaseModel):
     source_family_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
     chunk_strategy_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
     retrieval_role_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
+    case_group_metrics: dict[str, dict[str, dict[str, float]]] = Field(default_factory=dict)
     baseline_metrics: dict[str, float | None] = Field(default_factory=dict)
     pairwise_metrics: dict[str, float | None] = Field(default_factory=dict)
     failed_checks: list[str] = Field(default_factory=list)
@@ -79,6 +82,7 @@ def gate_chunking_comparison(
     min_source_family_target_coverage: dict[str, float] | None = None,
     min_chunk_strategy_target_coverage: dict[str, float] | None = None,
     min_retrieval_role_target_coverage: dict[str, float] | None = None,
+    min_case_group_target_coverage: dict[str, float] | None = None,
     max_quality_drop: float | None = None,
     max_recall_drop: float | None = None,
     max_target_coverage_drop: float | None = None,
@@ -227,6 +231,13 @@ def gate_chunking_comparison(
             check_prefix="min_retrieval_role_target_coverage",
         )
     )
+    checks.extend(
+        case_group_target_coverage_checks(
+            selected_name,
+            metrics,
+            min_case_group_target_coverage or {},
+        )
+    )
 
     if baseline_candidate is not None:
         baseline_row = find_row(comparison, baseline_candidate)
@@ -347,6 +358,7 @@ def gate_chunking_comparison(
         source_family_metrics=selected_row.source_family_metrics,
         chunk_strategy_metrics=selected_row.chunk_strategy_metrics,
         retrieval_role_metrics=selected_row.retrieval_role_metrics,
+        case_group_metrics=selected_row.case_group_metrics,
         baseline_metrics=baseline_metrics,
         pairwise_metrics=pairwise_metrics,
         failed_checks=failed_checks,
@@ -409,6 +421,10 @@ def row_metrics(row: ChunkingComparisonRow) -> dict[str, float | None]:
     for role, role_metrics in row.retrieval_role_metrics.items():
         for key, value in role_metrics.items():
             metrics[retrieval_role_metric_key(role, key)] = value
+    for group_name, group_values in row.case_group_metrics.items():
+        for group_value, group_metrics in group_values.items():
+            for key, value in group_metrics.items():
+                metrics[case_group_metric_key(group_name, group_value, key)] = value
     return metrics
 
 
@@ -514,6 +530,28 @@ def grouped_target_coverage_checks(
         checks.append(
             minimum_check(
                 f"{check_prefix}:{normalized_group}",
+                candidate,
+                metric,
+                metrics,
+                threshold,
+            )
+        )
+    return checks
+
+
+def case_group_target_coverage_checks(
+    candidate: str,
+    metrics: dict[str, float | None],
+    thresholds: dict[str, float],
+) -> list[ChunkingComparisonGateCheck]:
+    checks = []
+    for group_spec, threshold in sorted(thresholds.items()):
+        group_name, group_value = parse_case_group_spec(group_spec)
+        metric = case_group_metric_key(group_name, group_value, "target_coverage_at_k")
+        metrics.setdefault(metric, 0.0)
+        checks.append(
+            minimum_check(
+                f"min_case_group_target_coverage:{group_name}:{group_value}",
                 candidate,
                 metric,
                 metrics,
@@ -679,6 +717,7 @@ def chunking_gate_summary_payload(report: ChunkingComparisonGateReport) -> dict:
         "source_family_metrics": report.source_family_metrics,
         "chunk_strategy_metrics": report.chunk_strategy_metrics,
         "retrieval_role_metrics": report.retrieval_role_metrics,
+        "case_group_metrics": report.case_group_metrics,
         "baseline_metrics": report.baseline_metrics,
         "pairwise_metrics": report.pairwise_metrics,
     }

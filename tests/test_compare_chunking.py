@@ -35,6 +35,7 @@ def test_compare_chunking_reports_ranks_by_retrieval_then_quality():
             query="river corridor",
             expected_pages=[1],
             expected_asset_ids=["asset-1"],
+            metadata={"case_source": "visual_lexical_probe"},
         )
     ]
     assets = [
@@ -67,6 +68,9 @@ def test_compare_chunking_reports_ranks_by_retrieval_then_quality():
         "target_coverage_at_k"
     ] == 1.0
     assert comparison.rows[0].retrieval_role_metrics["child"]["target_coverage_at_k"] == 1.0
+    assert comparison.rows[0].case_group_metrics["case_source"]["visual_lexical_probe"][
+        "target_coverage_at_k"
+    ] == 1.0
     assert comparison.rows[0].visual_text_asset_count == 1
     assert comparison.rows[0].visual_text_covered_asset_count == 1
     assert comparison.rows[0].visual_text_coverage_ratio == 1.0
