@@ -5,9 +5,12 @@ from pydantic import BaseModel, Field
 from chunking_docs.embeddings.tokenizers import LexicalTokenizerConfig
 from chunking_docs.evaluation.gate import (
     RetrievalGateCheck,
+    case_group_metric_key,
+    case_group_target_coverage_checks,
     chunk_strategy_metric_key,
     maximum_check,
     minimum_check,
+    retrieval_case_group_metrics,
     retrieval_chunk_strategy_metrics,
     retrieval_role_metric_key,
     retrieval_role_metrics_payload,
@@ -55,10 +58,14 @@ class RetrievalAblationGateReport(BaseModel):
     source_family_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
     chunk_strategy_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
     retrieval_role_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
+    case_group_metrics: dict[str, dict[str, dict[str, float]]] = Field(default_factory=dict)
     baseline_target_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
     baseline_source_family_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
     baseline_chunk_strategy_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
     baseline_retrieval_role_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
+    baseline_case_group_metrics: dict[str, dict[str, dict[str, float]]] = Field(
+        default_factory=dict
+    )
     best_by_recall: str | None = None
     best_by_target_coverage: str | None = None
     best_by_target_ndcg: str | None = None
@@ -98,6 +105,7 @@ class QdrantVectorAblationGateReport(BaseModel):
     source_family_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
     chunk_strategy_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
     retrieval_role_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
+    case_group_metrics: dict[str, dict[str, dict[str, float]]] = Field(default_factory=dict)
     best_by_recall: str | None = None
     best_by_target_coverage: str | None = None
     best_by_target_ndcg: str | None = None
@@ -299,6 +307,7 @@ def gate_retrieval_ablation(
     max_p95_latency_ms: float | None = None,
     min_target_type_coverage: dict[str, float] | None = None,
     min_source_family_target_coverage: dict[str, float] | None = None,
+    min_case_group_target_coverage: dict[str, float] | None = None,
     min_recall_lift: float | None = None,
     min_target_coverage_lift: float | None = None,
     min_target_ndcg_lift: float | None = None,
@@ -335,12 +344,14 @@ def gate_retrieval_ablation(
     source_family_metrics = retrieval_source_family_metrics(row.evaluation)
     chunk_strategy_metrics = retrieval_chunk_strategy_metrics(row.evaluation)
     retrieval_role_metrics = retrieval_role_metrics_payload(row.evaluation)
+    case_group_metrics = retrieval_case_group_metrics(row.evaluation)
     metrics = qdrant_vector_ablation_metrics(
         row.evaluation,
         target_metrics,
         source_family_metrics,
         chunk_strategy_metrics,
         retrieval_role_metrics,
+        case_group_metrics,
     )
     baseline_target_metrics = retrieval_target_metrics(baseline_row.evaluation) if baseline_row else {}
     baseline_source_family_metrics = (
@@ -352,6 +363,9 @@ def gate_retrieval_ablation(
     baseline_retrieval_role_metrics = (
         retrieval_role_metrics_payload(baseline_row.evaluation) if baseline_row else {}
     )
+    baseline_case_group_metrics = (
+        retrieval_case_group_metrics(baseline_row.evaluation) if baseline_row else {}
+    )
     baseline_metrics = (
         qdrant_vector_ablation_metrics(
             baseline_row.evaluation,
@@ -359,6 +373,7 @@ def gate_retrieval_ablation(
             baseline_source_family_metrics,
             baseline_chunk_strategy_metrics,
             baseline_retrieval_role_metrics,
+            baseline_case_group_metrics,
         )
         if baseline_row
         else {}
@@ -397,6 +412,7 @@ def gate_retrieval_ablation(
     checks.extend(
         source_family_target_coverage_checks(metrics, min_source_family_target_coverage or {})
     )
+    checks.extend(case_group_target_coverage_checks(metrics, min_case_group_target_coverage or {}))
     if baseline_row is not None:
         checks.extend(
             baseline_lift_checks(
@@ -459,10 +475,12 @@ def gate_retrieval_ablation(
         source_family_metrics=source_family_metrics,
         chunk_strategy_metrics=chunk_strategy_metrics,
         retrieval_role_metrics=retrieval_role_metrics,
+        case_group_metrics=case_group_metrics,
         baseline_target_metrics=baseline_target_metrics,
         baseline_source_family_metrics=baseline_source_family_metrics,
         baseline_chunk_strategy_metrics=baseline_chunk_strategy_metrics,
         baseline_retrieval_role_metrics=baseline_retrieval_role_metrics,
+        baseline_case_group_metrics=baseline_case_group_metrics,
         best_by_recall=report.best_by_recall,
         best_by_target_coverage=report.best_by_target_coverage,
         best_by_target_ndcg=report.best_by_target_ndcg,
@@ -618,6 +636,7 @@ def gate_qdrant_vector_ablation(
     max_p95_latency_ms: float | None = None,
     min_target_type_coverage: dict[str, float] | None = None,
     min_source_family_target_coverage: dict[str, float] | None = None,
+    min_case_group_target_coverage: dict[str, float] | None = None,
     require_best_by_recall: bool = False,
     require_best_by_target_coverage: bool = False,
     require_best_by_target_ndcg: bool = False,
@@ -631,12 +650,14 @@ def gate_qdrant_vector_ablation(
     source_family_metrics = retrieval_source_family_metrics(row.evaluation)
     chunk_strategy_metrics = retrieval_chunk_strategy_metrics(row.evaluation)
     retrieval_role_metrics = retrieval_role_metrics_payload(row.evaluation)
+    case_group_metrics = retrieval_case_group_metrics(row.evaluation)
     metrics = qdrant_vector_ablation_metrics(
         row.evaluation,
         target_metrics,
         source_family_metrics,
         chunk_strategy_metrics,
         retrieval_role_metrics,
+        case_group_metrics,
     )
     checks = [
         minimum_check("min_recall_at_k", "recall_at_k", metrics, min_recall_at_k),
@@ -694,6 +715,7 @@ def gate_qdrant_vector_ablation(
             min_source_family_target_coverage or {},
         )
     )
+    checks.extend(case_group_target_coverage_checks(metrics, min_case_group_target_coverage or {}))
     if require_best_by_recall:
         checks.append(best_mode_check("require_best_by_recall", mode, report.best_by_recall))
     if require_best_by_target_coverage:
@@ -732,6 +754,7 @@ def gate_qdrant_vector_ablation(
         source_family_metrics=source_family_metrics,
         chunk_strategy_metrics=chunk_strategy_metrics,
         retrieval_role_metrics=retrieval_role_metrics,
+        case_group_metrics=case_group_metrics,
         best_by_recall=report.best_by_recall,
         best_by_target_coverage=report.best_by_target_coverage,
         best_by_target_ndcg=report.best_by_target_ndcg,
@@ -758,6 +781,7 @@ def qdrant_vector_ablation_metrics(
     source_family_metrics: dict[str, dict[str, float]] | None = None,
     chunk_strategy_metrics: dict[str, dict[str, float]] | None = None,
     retrieval_role_metrics: dict[str, dict[str, float]] | None = None,
+    case_group_metrics: dict[str, dict[str, dict[str, float]]] | None = None,
 ) -> dict[str, float]:
     metrics = {
         "hit_rate": evaluation.hit_rate,
@@ -782,6 +806,10 @@ def qdrant_vector_ablation_metrics(
     for role, role_metrics in (retrieval_role_metrics or {}).items():
         for key, value in role_metrics.items():
             metrics[retrieval_role_metric_key(role, key)] = value
+    for group_name, group_values in (case_group_metrics or {}).items():
+        for group_value, group_metrics in group_values.items():
+            for key, value in group_metrics.items():
+                metrics[case_group_metric_key(group_name, group_value, key)] = value
     return metrics
 
 

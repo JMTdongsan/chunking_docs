@@ -238,6 +238,7 @@ def test_ingestion_readiness_includes_qdrant_vector_ablation_gate(tmp_path):
             "max_failed_queries": 0,
             "min_target_type_coverage": {"asset": 1.0},
             "min_source_family_target_coverage": {"dense_text": 1.0},
+            "min_case_group_target_coverage": {"case_source:visual_object_probe": 1.0},
             "require_best_by_recall": True,
         },
     )
@@ -253,6 +254,9 @@ def test_ingestion_readiness_includes_qdrant_vector_ablation_gate(tmp_path):
         ]
         == 1.0
     )
+    assert report.qdrant_vector_ablation_gate.case_group_metrics["case_source"][
+        "visual_object_probe"
+    ]["target_coverage_at_k"] == 1.0
     assert report.failed_components == []
 
 
@@ -271,6 +275,7 @@ def test_ingestion_readiness_includes_retrieval_ablation_lift_gate(tmp_path):
             "min_target_coverage_lift": 1.0,
             "min_target_type_coverage": {"asset": 1.0},
             "min_source_family_target_coverage": {"lexical": 1.0},
+            "min_case_group_target_coverage": {"case_source:visual_lexical_probe": 1.0},
             "require_best_by_recall": True,
         },
     )
@@ -285,6 +290,12 @@ def test_ingestion_readiness_includes_retrieval_ablation_lift_gate(tmp_path):
         component for component in report.components if component.name == "retrieval_ablation_gate"
     )
     assert component.metadata["metrics"]["target_type.asset.coverage_at_k"] == 1.0
+    assert (
+        component.metadata["metrics"][
+            "case_group.case_source.visual_lexical_probe.target_coverage_at_k"
+        ]
+        == 1.0
+    )
     assert component.metadata["baseline_metrics"]["target_coverage_at_k"] == 0.0
     assert report.failed_components == []
 
@@ -675,6 +686,8 @@ def test_ingestion_readiness_cli_can_gate_qdrant_vector_ablation(tmp_path):
             "asset=1.0",
             "--min-qdrant-vector-source-family-target-coverage",
             "dense_text=1.0",
+            "--min-qdrant-vector-case-group-target-coverage",
+            "case_source:visual_object_probe=1.0",
             "--require-qdrant-vector-best-by-recall",
             "--output",
             str(output),
@@ -693,6 +706,9 @@ def test_ingestion_readiness_cli_can_gate_qdrant_vector_ablation(tmp_path):
     assert component["metadata"]["metrics"]["recall_at_k"] == 1.0
     assert component["metadata"]["target_metrics"]["asset"]["coverage_at_k"] == 1.0
     assert component["metadata"]["source_family_metrics"]["dense_text"]["target_coverage_at_k"] == 1.0
+    assert component["metadata"]["case_group_metrics"]["case_source"]["visual_object_probe"][
+        "target_coverage_at_k"
+    ] == 1.0
 
 
 def test_ingestion_readiness_cli_can_gate_retrieval_ablation_lift(tmp_path):
@@ -726,6 +742,8 @@ def test_ingestion_readiness_cli_can_gate_retrieval_ablation_lift(tmp_path):
             "asset=1.0",
             "--min-retrieval-ablation-source-family-target-coverage",
             "lexical=1.0",
+            "--min-retrieval-ablation-case-group-target-coverage",
+            "case_source:visual_lexical_probe=1.0",
             "--require-retrieval-ablation-best-by-recall",
             "--output",
             str(output),
@@ -744,6 +762,9 @@ def test_ingestion_readiness_cli_can_gate_retrieval_ablation_lift(tmp_path):
     assert component["metadata"]["baseline_mode"] == "bm25_text"
     assert component["metadata"]["metrics"]["recall_at_k"] == 1.0
     assert component["metadata"]["baseline_metrics"]["recall_at_k"] == 0.0
+    assert component["metadata"]["case_group_metrics"]["case_source"]["visual_lexical_probe"][
+        "target_coverage_at_k"
+    ] == 1.0
 
 
 def test_ingestion_readiness_cli_can_gate_chunking_target_coverage(tmp_path):
@@ -977,7 +998,13 @@ def retrieval_ablation_report():
         text="reference retrieval evidence",
         asset_ids=["asset-1"],
     )
-    cases = [RetrievalCase(query="reference evidence", expected_asset_ids=["asset-1"])]
+    cases = [
+        RetrievalCase(
+            query="reference evidence",
+            expected_asset_ids=["asset-1"],
+            metadata={"case_source": "visual_lexical_probe"},
+        )
+    ]
     passing_evaluation = evaluate_search_results(
         cases=cases,
         search_fn=lambda case, graph_expand: [
@@ -1033,7 +1060,13 @@ def qdrant_vector_ablation_report():
         text="reference retrieval evidence",
         asset_ids=["asset-1"],
     )
-    cases = [RetrievalCase(query="reference evidence", expected_asset_ids=["asset-1"])]
+    cases = [
+        RetrievalCase(
+            query="reference evidence",
+            expected_asset_ids=["asset-1"],
+            metadata={"case_source": "visual_object_probe"},
+        )
+    ]
     passing_evaluation = evaluate_search_results(
         cases=cases,
         search_fn=lambda case, graph_expand: [

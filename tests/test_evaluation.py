@@ -1232,6 +1232,7 @@ def test_gate_retrieval_ablation_can_require_visual_lift():
         min_recall_at_k=1.0,
         min_target_type_coverage={"asset": 1.0},
         min_source_family_target_coverage={"lexical": 1.0},
+        min_case_group_target_coverage={"case_source:visual_lexical_probe": 1.0},
         min_recall_lift=1.0,
         min_target_coverage_lift=1.0,
         require_best_by_recall=True,
@@ -1244,8 +1245,14 @@ def test_gate_retrieval_ablation_can_require_visual_lift():
     assert gate.baseline_metrics["recall_at_k"] == 0.0
     assert gate.metrics["chunk_strategy.visual_asset_text.target_coverage_at_k"] == 1.0
     assert gate.metrics["retrieval_role.child.target_coverage_at_k"] == 1.0
+    assert gate.metrics[
+        "case_group.case_source.visual_lexical_probe.target_coverage_at_k"
+    ] == 1.0
     assert gate.chunk_strategy_metrics["visual_asset_text"]["target_coverage_at_k"] == 1.0
     assert gate.retrieval_role_metrics["child"]["target_coverage_at_k"] == 1.0
+    assert gate.case_group_metrics["case_source"]["visual_lexical_probe"][
+        "target_coverage_at_k"
+    ] == 1.0
     assert gate.failed_checks == []
 
 
@@ -1288,7 +1295,13 @@ def visual_lexical_ablation_report():
             caption="north river corridor diagram",
         )
     ]
-    cases = [RetrievalCase(query="north river corridor diagram", expected_asset_ids=["asset-1"])]
+    cases = [
+        RetrievalCase(
+            query="north river corridor diagram",
+            expected_asset_ids=["asset-1"],
+            metadata={"case_source": "visual_lexical_probe"},
+        )
+    ]
     return evaluate_retrieval_ablation(
         chunks,
         [],
@@ -1445,7 +1458,16 @@ def test_eval_qdrant_vector_ablation_cli_writes_report(monkeypatch, tmp_path):
         text="visual caption evidence",
         asset_ids=["asset-1"],
     )
-    write_jsonl(cases_path, [RetrievalCase(query="visual evidence", expected_asset_ids=["asset-1"])])
+    write_jsonl(
+        cases_path,
+        [
+            RetrievalCase(
+                query="visual evidence",
+                expected_asset_ids=["asset-1"],
+                metadata={"case_source": "visual_object_probe"},
+            )
+        ],
+    )
     calls = []
 
     class FakeStore:
@@ -1522,6 +1544,12 @@ def test_eval_qdrant_vector_ablation_cli_writes_report(monkeypatch, tmp_path):
     assert rows["caption"]["evaluation"]["recall_at_k"] == 1.0
     assert rows["caption"]["evaluation"]["target_coverage_at_k"] == 1.0
     assert rows["caption"]["evaluation"]["source_family_metrics"]["visual"]["target_coverage_at_k"] == 1.0
+    assert (
+        rows["caption"]["evaluation"]["case_group_metrics"]["case_source"][
+            "visual_object_probe"
+        ]["target_coverage_at_k"]
+        == 1.0
+    )
     assert rows["caption"]["evaluation"]["metadata"]["vector_names"] == ["caption_dense"]
     assert rows["caption"]["evaluation"]["metadata"]["query_encoder_details"] == {
         "caption_dense": {
@@ -1548,7 +1576,13 @@ def qdrant_vector_ablation_report_for_gate():
             "retrieval_role": "child",
         },
     )
-    cases = [RetrievalCase(query="visual evidence", expected_asset_ids=["asset-1"])]
+    cases = [
+        RetrievalCase(
+            query="visual evidence",
+            expected_asset_ids=["asset-1"],
+            metadata={"case_source": "visual_object_probe"},
+        )
+    ]
     caption_image_eval = evaluate_search_results(
         cases=cases,
         search_fn=lambda case, graph_expand: [
@@ -1602,6 +1636,7 @@ def test_gate_qdrant_vector_ablation_passes_required_mode():
         max_failed_queries=0,
         min_target_type_coverage={"asset": 1.0},
         min_source_family_target_coverage={"visual": 1.0},
+        min_case_group_target_coverage={"case_source:visual_object_probe": 1.0},
         require_best_by_recall=True,
         require_best_by_target_coverage=True,
     )
@@ -1614,6 +1649,12 @@ def test_gate_qdrant_vector_ablation_passes_required_mode():
     assert gate.target_metrics["asset"]["coverage_at_k"] == 1.0
     assert gate.metrics["source_family.visual.target_coverage_at_k"] == 1.0
     assert gate.source_family_metrics["visual"]["target_coverage_at_k"] == 1.0
+    assert gate.metrics[
+        "case_group.case_source.visual_object_probe.target_coverage_at_k"
+    ] == 1.0
+    assert gate.case_group_metrics["case_source"]["visual_object_probe"][
+        "target_coverage_at_k"
+    ] == 1.0
     assert gate.metrics["chunk_strategy.visual_asset_text.target_coverage_at_k"] == 1.0
     assert gate.metrics["retrieval_role.child.target_coverage_at_k"] == 1.0
     assert gate.chunk_strategy_metrics["visual_asset_text"]["target_coverage_at_k"] == 1.0
@@ -1631,6 +1672,7 @@ def test_gate_qdrant_vector_ablation_reports_failed_checks():
         max_failed_queries=0,
         min_target_type_coverage={"asset": 1.0},
         min_source_family_target_coverage={"visual": 1.0},
+        min_case_group_target_coverage={"case_source:visual_object_probe": 1.0},
         require_best_by_recall=True,
     )
 
@@ -1643,6 +1685,7 @@ def test_gate_qdrant_vector_ablation_reports_failed_checks():
         "max_failed_queries",
         "min_target_type_coverage:asset",
         "min_source_family_target_coverage:visual",
+        "min_case_group_target_coverage:case_source:visual_object_probe",
         "require_best_by_recall",
     }
 
@@ -1672,6 +1715,8 @@ def test_gate_qdrant_vector_ablation_cli_writes_report(tmp_path):
             "asset=1.0",
             "--min-source-family-target-coverage",
             "visual=1.0",
+            "--min-case-group-target-coverage",
+            "case_source:visual_object_probe=1.0",
             "--require-best-by-recall",
             "--output",
             str(output),
@@ -1685,6 +1730,9 @@ def test_gate_qdrant_vector_ablation_cli_writes_report(tmp_path):
     assert payload["vector_names"] == ["caption_dense", "image_dense"]
     assert payload["target_metrics"]["asset"]["coverage_at_k"] == 1.0
     assert payload["source_family_metrics"]["visual"]["target_coverage_at_k"] == 1.0
+    assert payload["case_group_metrics"]["case_source"]["visual_object_probe"][
+        "target_coverage_at_k"
+    ] == 1.0
     assert payload["chunk_strategy_metrics"]["visual_asset_text"]["target_coverage_at_k"] == 1.0
     assert payload["retrieval_role_metrics"]["child"]["target_coverage_at_k"] == 1.0
 
@@ -1712,6 +1760,8 @@ def test_gate_qdrant_vector_ablation_cli_can_report_without_failing(tmp_path):
             "asset=1.0",
             "--min-source-family-target-coverage",
             "visual=1.0",
+            "--min-case-group-target-coverage",
+            "case_source:visual_object_probe=1.0",
             "--require-best-by-recall",
             "--no-fail",
             "--output",
@@ -1727,6 +1777,7 @@ def test_gate_qdrant_vector_ablation_cli_can_report_without_failing(tmp_path):
         "max_failed_queries",
         "min_target_type_coverage:asset",
         "min_source_family_target_coverage:visual",
+        "min_case_group_target_coverage:case_source:visual_object_probe",
         "require_best_by_recall",
     }
 
@@ -1850,6 +1901,8 @@ def test_gate_retrieval_ablation_cli_writes_lift_report(tmp_path):
             "asset=1.0",
             "--min-source-family-target-coverage",
             "lexical=1.0",
+            "--min-case-group-target-coverage",
+            "case_source:visual_lexical_probe=1.0",
             "--require-best-by-recall",
             "--output",
             str(output),
@@ -1863,3 +1916,6 @@ def test_gate_retrieval_ablation_cli_writes_lift_report(tmp_path):
     assert payload["baseline_mode"] == "bm25_text"
     assert payload["metrics"]["recall_at_k"] == 1.0
     assert payload["baseline_metrics"]["recall_at_k"] == 0.0
+    assert payload["case_group_metrics"]["case_source"]["visual_lexical_probe"][
+        "target_coverage_at_k"
+    ] == 1.0
