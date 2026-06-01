@@ -968,6 +968,15 @@ def dynamic_metric_payload(payload: dict[str, Any]) -> dict[str, float]:
     metrics.update(flat_count_metrics(payload.get("source_counts"), "source_hit"))
     metrics.update(flat_count_metrics(payload.get("source_family_counts"), "source_family_hit"))
     metrics.update(
+        flat_count_metrics(payload.get("matched_source_counts"), "matched_source_hit")
+    )
+    metrics.update(
+        flat_count_metrics(
+            payload.get("matched_source_family_counts"),
+            "matched_source_family_hit",
+        )
+    )
+    metrics.update(
         flat_count_metrics(payload.get("excluded_source_counts"), "excluded_source_hit")
     )
     metrics.update(
@@ -990,6 +999,18 @@ def dynamic_metric_payload(payload: dict[str, Any]) -> dict[str, float]:
         flat_case_group_count_metrics(
             payload.get("source_family_counts_by_case_group"),
             "source_family_hit",
+        )
+    )
+    metrics.update(
+        flat_case_group_count_metrics(
+            payload.get("matched_source_counts_by_case_group"),
+            "matched_source_hit",
+        )
+    )
+    metrics.update(
+        flat_case_group_count_metrics(
+            payload.get("matched_source_family_counts_by_case_group"),
+            "matched_source_family_hit",
         )
     )
     metrics.update(

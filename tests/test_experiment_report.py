@@ -163,6 +163,18 @@ def test_build_experiment_report_summarizes_artifacts_and_candidates(tmp_path):
     )
     assert (
         validations["retrieval_diagnostics.final.json"].metrics[
+            "matched_source_hit.qdrant:image_dense"
+        ]
+        == 2.0
+    )
+    assert (
+        validations["retrieval_diagnostics.final.json"].metrics[
+            "matched_source_family_hit.visual"
+        ]
+        == 2.0
+    )
+    assert (
+        validations["retrieval_diagnostics.final.json"].metrics[
             "excluded_source_hit.qdrant:image_dense"
         ]
         == 1.0
@@ -178,6 +190,12 @@ def test_build_experiment_report_summarizes_artifacts_and_candidates(tmp_path):
             "case_group.case_source.visual_object_probe.source_family_hit.visual"
         ]
         == 3.0
+    )
+    assert (
+        validations["retrieval_diagnostics.final.json"].metrics[
+            "case_group.case_source.visual_object_probe.matched_source_family_hit.visual"
+        ]
+        == 2.0
     )
     assert (
         validations["retrieval_diagnostics.final.json"].metrics[
@@ -561,6 +579,14 @@ def write_minimal_package(tmp_path):
                     "lexical": 5,
                     "visual": 4,
                 },
+                "matched_source_counts": {
+                    "bm25": 3,
+                    "qdrant:image_dense": 2,
+                },
+                "matched_source_family_counts": {
+                    "lexical": 3,
+                    "visual": 2,
+                },
                 "excluded_source_counts": {
                     "qdrant:image_dense": 1,
                 },
@@ -580,6 +606,22 @@ def write_minimal_package(tmp_path):
                         "visual_object_probe": {
                             "lexical": 2,
                             "visual": 3,
+                        }
+                    }
+                },
+                "matched_source_counts_by_case_group": {
+                    "case_source": {
+                        "visual_object_probe": {
+                            "bm25": 1,
+                            "qdrant:image_dense": 2,
+                        }
+                    }
+                },
+                "matched_source_family_counts_by_case_group": {
+                    "case_source": {
+                        "visual_object_probe": {
+                            "lexical": 1,
+                            "visual": 2,
                         }
                     }
                 },

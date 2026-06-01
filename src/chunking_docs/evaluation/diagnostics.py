@@ -26,6 +26,8 @@ class RetrievalDiagnosticRow(BaseModel):
     matched_excluded_targets: list[str] = Field(default_factory=list)
     source_counts: dict[str, int] = Field(default_factory=dict)
     source_family_counts: dict[str, int] = Field(default_factory=dict)
+    matched_source_counts: dict[str, int] = Field(default_factory=dict)
+    matched_source_family_counts: dict[str, int] = Field(default_factory=dict)
     excluded_source_counts: dict[str, int] = Field(default_factory=dict)
     excluded_source_family_counts: dict[str, int] = Field(default_factory=dict)
     top_excluded_sources: list[list[str]] = Field(default_factory=list)
@@ -60,6 +62,14 @@ class RetrievalDiagnosticsReport(BaseModel):
     source_family_counts_by_case_group: dict[str, dict[str, dict[str, int]]] = Field(
         default_factory=dict
     )
+    matched_source_counts: dict[str, int] = Field(default_factory=dict)
+    matched_source_family_counts: dict[str, int] = Field(default_factory=dict)
+    matched_source_counts_by_case_group: dict[str, dict[str, dict[str, int]]] = Field(
+        default_factory=dict
+    )
+    matched_source_family_counts_by_case_group: dict[str, dict[str, dict[str, int]]] = Field(
+        default_factory=dict
+    )
     excluded_source_counts: dict[str, int] = Field(default_factory=dict)
     excluded_source_family_counts: dict[str, int] = Field(default_factory=dict)
     excluded_source_counts_by_case_group: dict[str, dict[str, dict[str, int]]] = Field(
@@ -87,6 +97,10 @@ def analyze_retrieval_evaluation(
     source_family_counter: Counter[str] = Counter()
     group_source_counters: dict[str, dict[str, Counter[str]]] = {}
     group_source_family_counters: dict[str, dict[str, Counter[str]]] = {}
+    matched_source_counter: Counter[str] = Counter()
+    matched_source_family_counter: Counter[str] = Counter()
+    group_matched_source_counters: dict[str, dict[str, Counter[str]]] = {}
+    group_matched_source_family_counters: dict[str, dict[str, Counter[str]]] = {}
     excluded_source_counter: Counter[str] = Counter()
     excluded_source_family_counter: Counter[str] = Counter()
     group_excluded_source_counters: dict[str, dict[str, Counter[str]]] = {}
@@ -106,6 +120,8 @@ def analyze_retrieval_evaluation(
         missing_type_counter.update(missing_types)
         source_counter.update(row.source_counts)
         source_family_counter.update(row.source_family_counts)
+        matched_source_counter.update(row.matched_source_counts)
+        matched_source_family_counter.update(row.matched_source_family_counts)
         excluded_source_counter.update(row.excluded_source_counts)
         excluded_source_family_counter.update(row.excluded_source_family_counts)
         update_case_group_counters(group_reason_counters, row.case_groups, row.reasons)
@@ -119,6 +135,16 @@ def analyze_retrieval_evaluation(
             group_source_family_counters,
             row.case_groups,
             row.source_family_counts,
+        )
+        update_case_group_counter_mapping(
+            group_matched_source_counters,
+            row.case_groups,
+            row.matched_source_counts,
+        )
+        update_case_group_counter_mapping(
+            group_matched_source_family_counters,
+            row.case_groups,
+            row.matched_source_family_counts,
         )
         update_case_group_counter_mapping(
             group_excluded_source_counters,
@@ -160,6 +186,14 @@ def analyze_retrieval_evaluation(
         source_family_counts_by_case_group=serializable_group_counters(
             group_source_family_counters
         ),
+        matched_source_counts=dict(sorted(matched_source_counter.items())),
+        matched_source_family_counts=dict(sorted(matched_source_family_counter.items())),
+        matched_source_counts_by_case_group=serializable_group_counters(
+            group_matched_source_counters
+        ),
+        matched_source_family_counts_by_case_group=serializable_group_counters(
+            group_matched_source_family_counters
+        ),
         excluded_source_counts=dict(sorted(excluded_source_counter.items())),
         excluded_source_family_counts=dict(sorted(excluded_source_family_counter.items())),
         excluded_source_counts_by_case_group=serializable_group_counters(
@@ -184,6 +218,8 @@ def diagnostic_row(
     matched_excluded_targets = sorted_targets(matched_excluded_result_targets(result))
     source_counts = sources_for_result(result, family=False)
     source_family_counts = sources_for_result(result, family=True)
+    matched_source_counts = matched_sources_for_result(result, family=False)
+    matched_source_family_counts = matched_sources_for_result(result, family=True)
     excluded_source_counts = excluded_sources_for_result(result, family=False)
     excluded_source_family_counts = excluded_sources_for_result(result, family=True)
     reasons = diagnostic_reasons(
@@ -207,6 +243,8 @@ def diagnostic_row(
         matched_excluded_targets=matched_excluded_targets,
         source_counts=source_counts,
         source_family_counts=source_family_counts,
+        matched_source_counts=matched_source_counts,
+        matched_source_family_counts=matched_source_family_counts,
         excluded_source_counts=excluded_source_counts,
         excluded_source_family_counts=excluded_source_family_counts,
         top_excluded_sources=top_excluded_sources(result),
@@ -349,6 +387,21 @@ def sources_for_result(
     counts: Counter[str] = Counter()
     for sources in result.top_sources:
         counts.update(metric_source_keys(sources, family=family))
+    return dict(sorted(counts.items()))
+
+
+def matched_sources_for_result(
+    result: RetrievalCaseResult,
+    family: bool = False,
+) -> dict[str, int]:
+    counts: Counter[str] = Counter()
+    for index, targets in enumerate(result.top_matched_targets):
+        if not targets:
+            continue
+        sources = result.top_sources[index] if index < len(result.top_sources) else []
+        target_count = len(set(targets))
+        for source in sorted(metric_source_keys(sources, family=family)):
+            counts[source] += target_count
     return dict(sorted(counts.items()))
 
 
