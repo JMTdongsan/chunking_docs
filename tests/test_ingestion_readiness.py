@@ -6,6 +6,7 @@ from typer.testing import CliRunner
 
 from chunking_docs.cli import app
 from chunking_docs.embeddings.bm25 import BM25LexicalIndex, chunk_lexical_texts
+from chunking_docs.embeddings.tokenizers import LexicalTokenizerConfig
 from chunking_docs.evaluation.ablation import (
     AblationPairwiseComparison,
     QdrantVectorAblationMode,
@@ -56,7 +57,56 @@ def test_ingestion_readiness_passes_ready_package(tmp_path):
     bm25_component = next(component for component in report.components if component.name == "bm25_tokens")
     assert bm25_component.metadata["chunks_with_linked_asset_text"] == 1
     assert bm25_component.metadata["indexed_linked_asset_text_chunk_count"] == 1
+    reproducibility_component = next(
+        component for component in report.components if component.name == "package_reproducibility"
+    )
+    assert reproducibility_component.metadata["failed_checks"] == []
+    assert reproducibility_component.metadata["bm25_tokenizer"]["matches_package_config"] is True
     assert report.failed_components == []
+
+
+def test_ingestion_readiness_flags_missing_reproducibility_metadata(tmp_path):
+    package_dir, manifest = write_ready_package(tmp_path)
+    manifest.metadata = {}
+
+    report = build_ingestion_readiness_report(package_dir, manifest)
+
+    component = next(
+        component for component in report.components if component.name == "package_reproducibility"
+    )
+    assert report.passed is False
+    assert "package_reproducibility" in report.failed_components
+    assert component.metadata["failed_checks"] == [
+        "missing_package_config",
+        "missing_source_file",
+    ]
+
+
+def test_ingestion_readiness_flags_source_checksum_mismatch(tmp_path):
+    package_dir, manifest = write_ready_package(tmp_path)
+    manifest.metadata["source_file"]["sha256"] = "0" * 64
+
+    report = build_ingestion_readiness_report(package_dir, manifest)
+
+    component = next(
+        component for component in report.components if component.name == "package_reproducibility"
+    )
+    assert report.passed is False
+    assert "source_file_sha256_mismatch" in component.metadata["failed_checks"]
+
+
+def test_ingestion_readiness_flags_package_bm25_tokenizer_mismatch(tmp_path):
+    package_dir, manifest = write_ready_package(tmp_path)
+    manifest.metadata["package_config"]["lexical_tokenizer"]["strategy"] = "word"
+
+    report = build_ingestion_readiness_report(package_dir, manifest)
+
+    component = next(
+        component for component in report.components if component.name == "package_reproducibility"
+    )
+    assert report.passed is False
+    assert "bm25_tokenizer_mismatch" in component.metadata["failed_checks"]
+    assert component.metadata["bm25_tokenizer"]["matches_package_config"] is False
 
 
 def test_ingestion_readiness_can_require_visual_derived_triples(tmp_path):
@@ -1351,10 +1401,13 @@ def test_ingestion_readiness_cli_can_gate_chunking_target_coverage(tmp_path):
 def write_ready_package(tmp_path: Path):
     package_dir = tmp_path / "package"
     package_dir.mkdir()
+    source_path = tmp_path / "reference.pdf"
+    source_content = b"%PDF-1.4\nreference document\n"
+    source_path.write_bytes(source_content)
     doc = SourceDocument(
         doc_id="doc",
         title="Reference Document",
-        local_path=tmp_path / "reference.pdf",
+        local_path=source_path,
     )
     profiles = [
         PageProfile(
@@ -1393,7 +1446,27 @@ def write_ready_package(tmp_path: Path):
             metadata={"requires_ocr": False, "requires_vlm": False},
         )
     ]
-    manifest = ProcessingManifest(doc=doc, profiles=profiles, chunks=chunks, assets=assets)
+    manifest = ProcessingManifest(
+        doc=doc,
+        profiles=profiles,
+        chunks=chunks,
+        assets=assets,
+        metadata={
+            "source_file": {
+                "name": source_path.name,
+                "bytes": len(source_content),
+                "sha256": hashlib.sha256(source_content).hexdigest(),
+            },
+            "package_config": {
+                "base_chunking_strategy": "page",
+                "render_zoom": 2.0,
+                "dry_run_embeddings": True,
+                "section_map_count": 0,
+                "extract_tables": True,
+                "lexical_tokenizer": LexicalTokenizerConfig().model_dump(),
+            },
+        },
+    )
     (package_dir / "manifest.json").write_text(manifest.model_dump_json(indent=2), encoding="utf-8")
     write_jsonl(package_dir / "pages.jsonl", profiles)
     write_jsonl(package_dir / "chunks.jsonl", chunks)

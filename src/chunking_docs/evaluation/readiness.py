@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 from typing import Any
@@ -123,6 +124,13 @@ def build_ingestion_readiness_report(
             metadata={"issue_codes": [issue.code for issue in audit.issues]},
         )
     ]
+    components.append(
+        package_reproducibility_component(
+            package_dir,
+            manifest,
+            validate_bm25_tokenizer=require_bm25,
+        )
+    )
 
     if require_bm25:
         components.append(bm25_tokens_component(package_dir, manifest))
@@ -510,6 +518,220 @@ def required_artifact_component(
         message=f"Required package artifact exists: {filename}.",
         metadata={"file": filename},
     )
+
+
+REQUIRED_PACKAGE_CONFIG_KEYS = {
+    "base_chunking_strategy",
+    "render_zoom",
+    "dry_run_embeddings",
+    "section_map_count",
+    "extract_tables",
+    "lexical_tokenizer",
+}
+
+
+def package_reproducibility_component(
+    package_dir: Path,
+    manifest: ProcessingManifest,
+    validate_bm25_tokenizer: bool = True,
+) -> ReadinessComponent:
+    metadata: dict[str, Any] = {
+        "package_dir": str(package_dir),
+        "validate_bm25_tokenizer": validate_bm25_tokenizer,
+    }
+    failed_checks: list[str] = []
+
+    source_file = manifest.metadata.get("source_file")
+    source_summary: dict[str, Any] = {}
+    if not isinstance(source_file, dict):
+        failed_checks.append("missing_source_file")
+    else:
+        source_summary = {
+            "name": source_file.get("name"),
+            "bytes": source_file.get("bytes"),
+            "sha256": source_file.get("sha256"),
+        }
+        if not isinstance(source_file.get("name"), str) or not source_file["name"].strip():
+            failed_checks.append("invalid_source_file_name")
+        if not non_negative_int(source_file.get("bytes")):
+            failed_checks.append("invalid_source_file_bytes")
+        if not sha256_hex(source_file.get("sha256")):
+            failed_checks.append("invalid_source_file_sha256")
+        compare_local_source_file(source_file, manifest.doc.local_path, metadata, failed_checks)
+    metadata["source_file"] = source_summary
+
+    package_config = manifest.metadata.get("package_config")
+    package_config_summary: dict[str, Any] = {}
+    package_tokenizer_config: LexicalTokenizerConfig | None = None
+    if not isinstance(package_config, dict):
+        failed_checks.append("missing_package_config")
+    else:
+        package_config_summary = {key: package_config.get(key) for key in sorted(package_config)}
+        missing_config_keys = sorted(REQUIRED_PACKAGE_CONFIG_KEYS - set(package_config))
+        if missing_config_keys:
+            failed_checks.append("missing_package_config_keys")
+        metadata["missing_package_config_keys"] = missing_config_keys
+
+        if "base_chunking_strategy" in package_config and (
+            not isinstance(package_config["base_chunking_strategy"], str)
+            or not package_config["base_chunking_strategy"].strip()
+        ):
+            failed_checks.append("invalid_base_chunking_strategy")
+        if "render_zoom" in package_config and not positive_number(package_config["render_zoom"]):
+            failed_checks.append("invalid_render_zoom")
+        if "dry_run_embeddings" in package_config and not isinstance(
+            package_config["dry_run_embeddings"], bool
+        ):
+            failed_checks.append("invalid_dry_run_embeddings")
+        if "section_map_count" in package_config and not non_negative_int(
+            package_config["section_map_count"]
+        ):
+            failed_checks.append("invalid_section_map_count")
+        if "extract_tables" in package_config and not isinstance(
+            package_config["extract_tables"], bool
+        ):
+            failed_checks.append("invalid_extract_tables")
+
+        tokenizer_payload = package_config.get("lexical_tokenizer")
+        if not isinstance(tokenizer_payload, dict):
+            failed_checks.append("invalid_lexical_tokenizer")
+        else:
+            try:
+                package_tokenizer_config = LexicalTokenizerConfig.model_validate(tokenizer_payload)
+            except ValidationError as exc:
+                failed_checks.append("invalid_lexical_tokenizer")
+                metadata["lexical_tokenizer_errors"] = exc.errors()
+            else:
+                package_config_summary["lexical_tokenizer"] = package_tokenizer_config.model_dump()
+
+    metadata["package_config"] = package_config_summary
+
+    if validate_bm25_tokenizer and package_tokenizer_config is not None:
+        compare_bm25_tokenizer(
+            package_dir,
+            package_tokenizer_config,
+            metadata,
+            failed_checks,
+        )
+
+    failed_checks = sorted(set(failed_checks))
+    metadata["failed_checks"] = failed_checks
+    return ReadinessComponent(
+        name="package_reproducibility",
+        passed=not failed_checks,
+        message=(
+            "Package source checksum, generation config, and lexical tokenizer provenance are valid."
+            if not failed_checks
+            else "Package source checksum, generation config, or lexical tokenizer provenance is incomplete."
+        ),
+        metadata=metadata,
+    )
+
+
+def compare_local_source_file(
+    source_file: dict[str, Any],
+    local_path: Path,
+    metadata: dict[str, Any],
+    failed_checks: list[str],
+) -> None:
+    local_metadata: dict[str, Any] = {
+        "path": str(local_path),
+        "exists": local_path.exists(),
+    }
+    if not local_path.exists():
+        metadata["local_source_file"] = local_metadata
+        return
+    if not local_path.is_file():
+        failed_checks.append("source_file_not_file")
+        metadata["local_source_file"] = local_metadata
+        return
+
+    try:
+        content = local_path.read_bytes()
+    except OSError as exc:
+        failed_checks.append("source_file_read_error")
+        local_metadata["error"] = str(exc)
+        metadata["local_source_file"] = local_metadata
+        return
+
+    actual_summary = {
+        "name": local_path.name,
+        "bytes": len(content),
+        "sha256": hashlib.sha256(content).hexdigest(),
+    }
+    local_metadata.update(actual_summary)
+    if isinstance(source_file.get("name"), str) and source_file["name"] != actual_summary["name"]:
+        failed_checks.append("source_file_name_mismatch")
+    if non_negative_int(source_file.get("bytes")) and source_file["bytes"] != actual_summary["bytes"]:
+        failed_checks.append("source_file_bytes_mismatch")
+    if sha256_hex(source_file.get("sha256")) and (
+        str(source_file["sha256"]).lower() != actual_summary["sha256"]
+    ):
+        failed_checks.append("source_file_sha256_mismatch")
+    metadata["local_source_file"] = local_metadata
+
+
+def compare_bm25_tokenizer(
+    package_dir: Path,
+    package_tokenizer_config: LexicalTokenizerConfig,
+    metadata: dict[str, Any],
+    failed_checks: list[str],
+) -> None:
+    path = package_dir / "bm25_tokens.json"
+    bm25_metadata: dict[str, Any] = {"file": path.name, "exists": path.exists()}
+    if not path.exists():
+        failed_checks.append("missing_bm25_tokenizer")
+        metadata["bm25_tokenizer"] = bm25_metadata
+        return
+
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        failed_checks.append("invalid_bm25_tokenizer")
+        bm25_metadata["error"] = str(exc)
+        metadata["bm25_tokenizer"] = bm25_metadata
+        return
+
+    tokenizer_payload = payload.get("tokenizer") if isinstance(payload, dict) else None
+    if not isinstance(tokenizer_payload, dict):
+        failed_checks.append("invalid_bm25_tokenizer")
+        bm25_metadata["has_tokenizer"] = False
+        metadata["bm25_tokenizer"] = bm25_metadata
+        return
+
+    try:
+        bm25_tokenizer_config = LexicalTokenizerConfig.model_validate(tokenizer_payload)
+    except ValidationError as exc:
+        failed_checks.append("invalid_bm25_tokenizer")
+        bm25_metadata["errors"] = exc.errors()
+        metadata["bm25_tokenizer"] = bm25_metadata
+        return
+
+    package_tokenizer = package_tokenizer_config.model_dump()
+    bm25_tokenizer = bm25_tokenizer_config.model_dump()
+    bm25_metadata.update(
+        {
+            "tokenizer": bm25_tokenizer,
+            "matches_package_config": bm25_tokenizer == package_tokenizer,
+        }
+    )
+    if bm25_tokenizer != package_tokenizer:
+        failed_checks.append("bm25_tokenizer_mismatch")
+    metadata["bm25_tokenizer"] = bm25_metadata
+
+
+def non_negative_int(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
+def positive_number(value: Any) -> bool:
+    return isinstance(value, int | float) and not isinstance(value, bool) and value > 0
+
+
+def sha256_hex(value: Any) -> bool:
+    if not isinstance(value, str) or len(value) != 64:
+        return False
+    return all(char in "0123456789abcdefABCDEF" for char in value)
 
 
 def embedding_vectors_component(
