@@ -30,6 +30,9 @@ class QdrantRetrievalConfigSelection(BaseModel):
 class QdrantRetrievalConfig(BaseModel):
     config_version: int = 1
     backend: str = "qdrant_hybrid"
+    collection_name: str | None = None
+    package_dir: str | None = None
+    bm25_tokens_path: str = "bm25_tokens.json"
     vector_names: list[str] = Field(default_factory=list)
     graph_expand: bool = False
     fusion_weights: dict[str, float] = Field(default_factory=dict)
@@ -68,6 +71,9 @@ def build_qdrant_retrieval_config_from_fusion_sweep(
     query_encoders = metadata.get("query_encoders")
     lexical_tokenizer = metadata.get("lexical_tokenizer")
     return QdrantRetrievalConfig(
+        collection_name=collection_name(report, candidate),
+        package_dir=metadata_string(metadata, "package_dir"),
+        bm25_tokens_path=metadata_string(metadata, "bm25_tokens_path") or "bm25_tokens.json",
         vector_names=report.vector_names,
         graph_expand=report.graph_expand,
         fusion_weights=dict(candidate.fusion_weights),
@@ -132,6 +138,26 @@ def candidate_metrics(candidate: QdrantFusionSweepCandidate) -> dict[str, float]
         "p95_latency_ms": evaluation.p95_latency_ms,
         "failed_query_count": float(len(evaluation.failed_queries)),
     }
+
+
+def collection_name(
+    report: QdrantFusionSweepReport,
+    candidate: QdrantFusionSweepCandidate,
+) -> str | None:
+    return (
+        metadata_string(report.metadata, "collection")
+        or metadata_string(report.metadata, "collection_name")
+        or metadata_string(candidate.evaluation.metadata, "collection")
+        or metadata_string(candidate.evaluation.metadata, "collection_name")
+    )
+
+
+def metadata_string(metadata: dict[str, Any], key: str) -> str | None:
+    value = metadata.get(key)
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
 
 
 def candidate_case_group_metrics(

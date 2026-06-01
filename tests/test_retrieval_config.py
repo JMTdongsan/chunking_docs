@@ -20,6 +20,9 @@ def test_qdrant_retrieval_config_exports_global_recommended_candidate():
     config = build_qdrant_retrieval_config_from_fusion_sweep(report)
 
     assert config.backend == "qdrant_hybrid"
+    assert config.collection_name == "seoul_plan"
+    assert config.package_dir == "outputs/package"
+    assert config.bm25_tokens_path == "outputs/package/bm25_tokens.json"
     assert config.vector_names == ["text_dense", "caption_dense", "object_dense"]
     assert config.top_k == 7
     assert config.collapse_hierarchical is True
@@ -123,6 +126,9 @@ def fusion_sweep_report():
         min_target_coverage_at_k=0.8,
         max_failed_queries=1,
         metadata={
+            "collection": "seoul_plan",
+            "package_dir": "outputs/package",
+            "bm25_tokens_path": "outputs/package/bm25_tokens.json",
             "top_k": 7,
             "collapse_hierarchical": True,
             "query_encoders": {
