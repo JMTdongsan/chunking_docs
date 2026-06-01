@@ -370,6 +370,7 @@ def qdrant_check_collection(
             "missing_vectors": report.missing_vectors,
             "mismatched_vectors": report.mismatched_vectors,
             "missing_payload_indexes": report.missing_payload_indexes,
+            "mismatched_payload_indexes": report.mismatched_payload_indexes,
         }
     print(payload)
     if fail and not report.passed:

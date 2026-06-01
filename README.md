@@ -301,7 +301,7 @@ chunking-docs qdrant-check-collection \
 chunking-docs qdrant-upsert-package --package-dir outputs/package
 ```
 
-The package collection config includes payload index definitions for document IDs, chunk IDs, asset IDs, object IDs, chunking strategy fields, hierarchy links, standalone visual chunk flags, text-quality signals, OCR/VLM work flags, visual asset scope, object labels and bbox regions, tile parent/grid fields, page fields, and section fields. `qdrant-check-collection` validates an existing Qdrant collection against the package named-vector dimensions and payload indexes before upsert. `qdrant-upsert-package`, `qdrant-search-package`, and Qdrant hybrid evaluation create those indexes when the target Qdrant server supports them.
+The package collection config includes payload index definitions for document IDs, chunk IDs, asset IDs, object IDs, chunking strategy fields, hierarchy links, standalone visual chunk flags, text-quality signals, OCR/VLM work flags, visual asset scope, object labels and bbox regions, tile parent/grid fields, page fields, and section fields. `qdrant-check-collection` validates an existing Qdrant collection against the package named-vector dimensions, payload index fields, and payload index schemas before upsert. `qdrant-upsert-package`, `qdrant-search-package`, and Qdrant hybrid evaluation create those indexes when the target Qdrant server supports them.
 
 Without Docker, validate the upsert path with qdrant-client local mode:
 

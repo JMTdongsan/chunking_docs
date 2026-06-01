@@ -29,6 +29,9 @@ class QdrantCollectionContractReport(BaseModel):
     expected_payload_indexes: list[str] = Field(default_factory=list)
     actual_payload_indexes: list[str] = Field(default_factory=list)
     missing_payload_indexes: list[str] = Field(default_factory=list)
+    expected_payload_index_schemas: dict[str, str] = Field(default_factory=dict)
+    actual_payload_index_schemas: dict[str, str] = Field(default_factory=dict)
+    mismatched_payload_indexes: dict[str, dict[str, str | None]] = Field(default_factory=dict)
     checks: list[QdrantCollectionContractCheck] = Field(default_factory=list)
     failed_checks: list[str] = Field(default_factory=list)
 
@@ -106,6 +109,13 @@ class QdrantChunkStore:
             for field_name, _ in [self._normalize_payload_index(index) for index in payload_indexes or []]
             if field_name
         )
+        expected_payload_index_schemas = {
+            field_name: payload_schema_name(schema)
+            for field_name, schema in [
+                self._normalize_payload_index(index) for index in payload_indexes or []
+            ]
+            if field_name
+        }
         if not exists:
             checks = [
                 QdrantCollectionContractCheck(
@@ -122,13 +132,15 @@ class QdrantChunkStore:
                 passed=not failed_checks,
                 expected_vectors=dict(sorted(named_vectors.items())),
                 expected_payload_indexes=expected_payload_indexes,
+                expected_payload_index_schemas=dict(sorted(expected_payload_index_schemas.items())),
                 checks=checks,
                 failed_checks=failed_checks,
             )
 
         info = self.client.get_collection(collection_name=self.collection_name)
         actual_vectors = collection_vector_sizes(info)
-        actual_payload_indexes = sorted(collection_payload_indexes(info))
+        actual_payload_index_schemas = collection_payload_index_schemas(info)
+        actual_payload_indexes = sorted(actual_payload_index_schemas)
         missing_vectors = sorted(set(named_vectors) - set(actual_vectors))
         extra_vectors = sorted(set(actual_vectors) - set(named_vectors))
         mismatched_vectors = {
@@ -137,6 +149,16 @@ class QdrantChunkStore:
             if name in actual_vectors and actual_vectors.get(name) != expected_size
         }
         missing_payload_indexes = sorted(set(expected_payload_indexes) - set(actual_payload_indexes))
+        mismatched_payload_indexes = {
+            field_name: {
+                "expected": expected_schema,
+                "actual": actual_payload_index_schemas.get(field_name),
+            }
+            for field_name, expected_schema in sorted(expected_payload_index_schemas.items())
+            if field_name in actual_payload_index_schemas
+            and actual_payload_index_schemas.get(field_name) is not None
+            and actual_payload_index_schemas.get(field_name) != expected_schema
+        }
         checks = [
             QdrantCollectionContractCheck(
                 name="missing_vectors",
@@ -156,6 +178,12 @@ class QdrantChunkStore:
                 message="All expected payload indexes exist in the Qdrant collection.",
                 metadata={"fields": missing_payload_indexes},
             ),
+            QdrantCollectionContractCheck(
+                name="payload_index_schema_mismatch",
+                passed=not mismatched_payload_indexes,
+                message="Qdrant payload index schemas match the package contract.",
+                metadata={"fields": mismatched_payload_indexes},
+            ),
         ]
         failed_checks = [check.name for check in checks if not check.passed and check.severity == "error"]
         return QdrantCollectionContractReport(
@@ -170,6 +198,9 @@ class QdrantChunkStore:
             expected_payload_indexes=expected_payload_indexes,
             actual_payload_indexes=actual_payload_indexes,
             missing_payload_indexes=missing_payload_indexes,
+            expected_payload_index_schemas=dict(sorted(expected_payload_index_schemas.items())),
+            actual_payload_index_schemas=dict(sorted(actual_payload_index_schemas.items())),
+            mismatched_payload_indexes=mismatched_payload_indexes,
             checks=checks,
             failed_checks=failed_checks,
         )
@@ -337,10 +368,54 @@ def collection_vector_sizes(info) -> dict[str, int]:
 
 
 def collection_payload_indexes(info) -> set[str]:
+    return set(collection_payload_index_schemas(info))
+
+
+def collection_payload_index_schemas(info) -> dict[str, str | None]:
     payload_schema = nested_get(info, "payload_schema") or {}
-    if isinstance(payload_schema, dict):
-        return {str(key) for key in payload_schema}
-    return set()
+    if not isinstance(payload_schema, dict):
+        return {}
+    return {
+        str(field_name): payload_schema_name(schema)
+        for field_name, schema in payload_schema.items()
+    }
+
+
+def payload_schema_name(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return normalize_schema_name(value)
+    for key_path in [
+        ("data_type",),
+        ("schema",),
+        ("type",),
+        ("params", "type"),
+        ("params", "data_type"),
+    ]:
+        schema_value = nested_get(value, *key_path)
+        if schema_value is not None:
+            return normalize_schema_name(str(schema_value))
+    name = getattr(value, "name", None)
+    if isinstance(name, str):
+        return normalize_schema_name(name)
+    return normalize_schema_name(str(value))
+
+
+def normalize_schema_name(value: str) -> str:
+    normalized = value.strip().lower()
+    if "." in normalized:
+        normalized = normalized.rsplit(".", 1)[-1]
+    aliases = {
+        "int": "integer",
+        "int64": "integer",
+        "uint64": "integer",
+        "bool": "bool",
+        "boolean": "bool",
+        "float64": "float",
+        "double": "float",
+    }
+    return aliases.get(normalized, normalized)
 
 
 def nested_get(value, *keys):

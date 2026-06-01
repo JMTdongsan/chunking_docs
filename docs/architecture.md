@@ -204,7 +204,7 @@ Payload fields include document ID, chunk ID, asset ID, object ID, triple ID, pa
 
 The package writes payload index definitions with field schemas. Qdrant ingestion and package query commands apply those definitions so metadata filters such as document ID, asset ID, object ID, object label, bbox region, page, section, chunking strategy, hierarchy role, text quality, OCR/VLM work flags, visual asset scope, tile parent/grid fields, and standalone visual assets remain efficient on server-backed collections.
 
-`qdrant-check-collection` compares a live or local Qdrant collection against `qdrant_collection.json` before upsert. It detects missing named vectors, vector dimension mismatches, and missing payload indexes, which is especially important when embedding models or vector dimensions change between experiments.
+`qdrant-check-collection` compares a live or local Qdrant collection against `qdrant_collection.json` before upsert. It detects missing named vectors, vector dimension mismatches, missing payload indexes, and payload index schema mismatches, which is especially important when embedding models, vector dimensions, or filter fields change between experiments.
 
 Qdrant search commands accept repeatable payload filters using exact and range forms such as `kind=map`, `page_no=12`, `page_start<=12`, and `page_end>=12`.
 
@@ -247,7 +247,7 @@ Recommended checks:
 
 - `audit-publication`: public repository scan for forbidden text, accidental binary/document artifacts, oversized files, and required generated-artifact ignore patterns.
 - `audit-package`: structural completeness, orphan checks, OCR/VLM gaps, optional VLM-derived visual triple coverage, Qdrant vector dimensions, required payload fields, payload index definitions, text/caption/object/image payload freshness, and embedding manifest count/checksum consistency.
-- `qdrant-check-collection`: live Qdrant collection contract validation for named-vector dimensions and payload indexes.
+- `qdrant-check-collection`: live Qdrant collection contract validation for named-vector dimensions, payload indexes, and payload index schemas.
 - `postgres-schema`: offline PostgreSQL SQL contract export for review or migration tooling.
 - `postgres-check-schema`: live PostgreSQL schema contract validation for required extensions, tables, columns, column types, and indexes.
 - `eval-chunking`: page coverage, chunk size distribution, section coverage, visual linkage, annotation coverage, retrieval recall@k, MRR, target coverage@k, target nDCG@k, precision@k, latency, failed queries, and aggregate quality score.

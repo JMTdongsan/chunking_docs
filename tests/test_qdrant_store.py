@@ -158,6 +158,15 @@ def test_qdrant_collection_contract_passes_matching_collection():
     assert report.exists is True
     assert report.actual_vectors == {"caption_dense": 4, "text_dense": 3}
     assert report.missing_payload_indexes == []
+    assert report.expected_payload_index_schemas == {
+        "doc_id": "keyword",
+        "page_no": "integer",
+    }
+    assert report.actual_payload_index_schemas == {
+        "doc_id": "keyword",
+        "page_no": "integer",
+    }
+    assert report.mismatched_payload_indexes == {}
 
 
 def test_qdrant_collection_contract_flags_mismatch_and_missing_indexes():
@@ -186,6 +195,31 @@ def test_qdrant_collection_contract_flags_mismatch_and_missing_indexes():
         "vector_size_mismatch",
         "missing_payload_indexes",
     }
+
+
+def test_qdrant_collection_contract_flags_payload_index_schema_mismatch():
+    store = object.__new__(QdrantChunkStore)
+    store.collection_name = "collection"
+    store.client = FakeQdrantClient()
+    store.client.collections = ["collection"]
+    store.client.vector_config = {"text_dense": SimpleNamespace(size=3)}
+    store.client.payload_schema = {"doc_id": "keyword", "page_no": "keyword"}
+    store._payload_schema_type = SimpleNamespace(KEYWORD="keyword", INTEGER="integer", BOOL="bool")
+
+    report = store.check_collection_contract(
+        {"text_dense": 3},
+        payload_indexes=[
+            {"field": "doc_id", "schema": "keyword"},
+            {"field": "page_no", "schema": "integer"},
+        ],
+    )
+
+    assert report.passed is False
+    assert report.missing_payload_indexes == []
+    assert report.mismatched_payload_indexes == {
+        "page_no": {"expected": "integer", "actual": "keyword"}
+    }
+    assert "payload_index_schema_mismatch" in report.failed_checks
 
 
 def test_qdrant_collection_contract_allows_missing_collection():
