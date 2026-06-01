@@ -81,6 +81,7 @@ DEFAULT_ARTIFACTS = [
     "chunking_sweep.json",
     "qdrant_retrieval_eval.json",
     "qdrant_vector_ablation.json",
+    "qdrant_fusion_sweep.json",
     "retrieval_case_audit.json",
     "retrieval_gate.json",
     "retrieval_ablation.json",
@@ -105,6 +106,7 @@ DEFAULT_ARTIFACT_GLOBS = [
     "qdrant_retrieval_eval*.json",
     "qdrant_vector_ablation*.json",
     "qdrant_vector_ablation_gate*.json",
+    "qdrant_fusion_sweep*.json",
     "visual_asset_gate*.json",
     "visual_gate*.json",
     "visual_quality*.json",
@@ -315,6 +317,8 @@ def validation_artifact_summaries_for_path(
     summaries = []
     if is_visual_run_comparison_payload(payload):
         return [visual_run_comparison_summary(path, payload, root=root)]
+    if is_qdrant_fusion_sweep_payload(payload):
+        return [qdrant_fusion_sweep_summary(path, payload, root=root)]
     if is_chunking_sweep_payload(payload):
         return [chunking_sweep_summary(path, payload, root=root)]
     if not is_validation_payload(payload):
@@ -380,6 +384,90 @@ def is_visual_run_comparison_payload(payload: dict[str, Any]) -> bool:
 def is_chunking_sweep_payload(payload: dict[str, Any]) -> bool:
     selection = payload.get("selection")
     return isinstance(selection, dict) and isinstance(payload.get("candidates"), list)
+
+
+def is_qdrant_fusion_sweep_payload(payload: dict[str, Any]) -> bool:
+    return (
+        isinstance(payload.get("candidates"), list)
+        and isinstance(payload.get("vector_names"), list)
+        and "recommended" in payload
+        and "eligible_count" in payload
+    )
+
+
+def qdrant_fusion_sweep_summary(
+    path: Path,
+    payload: dict[str, Any],
+    root: Path | None = None,
+) -> ValidationSummary:
+    recommended = payload.get("recommended")
+    recommended = recommended if isinstance(recommended, str) else None
+    selected = qdrant_fusion_sweep_selected_candidate(payload, recommended)
+    failed_checks = []
+    if recommended is None:
+        failed_checks = qdrant_fusion_sweep_failed_constraints(payload)
+    return ValidationSummary(
+        path=display_artifact_path(path, root),
+        kind="qdrant_fusion_sweep",
+        passed=True if recommended else False,
+        failed_checks=failed_checks,
+        candidate=recommended,
+        metrics=qdrant_fusion_sweep_metrics(payload, selected),
+    )
+
+
+def qdrant_fusion_sweep_selected_candidate(
+    payload: dict[str, Any],
+    recommended: str | None,
+) -> dict[str, Any]:
+    candidates = [row for row in payload.get("candidates", []) if isinstance(row, dict)]
+    if recommended:
+        for row in candidates:
+            if row.get("name") == recommended:
+                return row
+    return candidates[0] if candidates else {}
+
+
+def qdrant_fusion_sweep_failed_constraints(payload: dict[str, Any]) -> list[str]:
+    seen: set[str] = set()
+    failed: list[str] = []
+    for row in payload.get("candidates", []):
+        if not isinstance(row, dict):
+            continue
+        for failure in row.get("eligibility_failures", []):
+            if not isinstance(failure, str) or failure in seen:
+                continue
+            seen.add(failure)
+            failed.append(failure)
+    return failed
+
+
+def qdrant_fusion_sweep_metrics(
+    payload: dict[str, Any],
+    selected: dict[str, Any],
+) -> dict[str, float]:
+    metrics = {
+        "candidate_count": numeric_metric(payload.get("candidate_count")),
+        "eligible_count": numeric_metric(payload.get("eligible_count")),
+        "selection_score": numeric_metric(selected.get("selection_score")),
+    }
+    evaluation = selected.get("evaluation")
+    if isinstance(evaluation, dict):
+        for key in [
+            "recall_at_k",
+            "target_coverage_at_k",
+            "mean_target_ndcg_at_k",
+            "mrr",
+            "mean_precision_at_k",
+            "mean_latency_ms",
+            "p95_latency_ms",
+        ]:
+            if (value := optional_numeric_metric(evaluation.get(key))) is not None:
+                metrics[key] = value
+        failed_queries = evaluation.get("failed_queries")
+        if isinstance(failed_queries, list):
+            metrics["failed_query_count"] = float(len(failed_queries))
+    return metrics
 
 
 def chunking_sweep_summary(

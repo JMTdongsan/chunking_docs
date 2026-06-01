@@ -54,6 +54,12 @@ from chunking_docs.evaluation.diagnostics import (
 )
 from chunking_docs.evaluation.delta import compare_processing_packages
 from chunking_docs.evaluation.experiment import build_experiment_report
+from chunking_docs.evaluation.fusion_sweep import (
+    QdrantFusionSweepCandidate,
+    build_fusion_weight_grid,
+    build_qdrant_fusion_sweep_report,
+    fusion_weight_candidate_name,
+)
 from chunking_docs.evaluation.gate import gate_retrieval_evaluation, gate_summary_payload
 from chunking_docs.evaluation.readiness import build_ingestion_readiness_report
 from chunking_docs.evaluation.retrieval import (
@@ -1102,6 +1108,219 @@ def eval_qdrant_vector_ablation_command(
         )
         return
     print(report.model_dump())
+
+
+@app.command(name="sweep-qdrant-fusion")
+def sweep_qdrant_fusion_command(
+    cases: Path,
+    package_dir: Path = Path("outputs/package"),
+    output: Path | None = None,
+    vector_names: str = "text_dense,caption_dense",
+    graph_expand: bool = typer.Option(False, "--graph-expand/--no-graph-expand"),
+    url: str = "http://localhost:6333",
+    collection: str = "",
+    location: str = "",
+    path: str = "",
+    top_k: int = 5,
+    repeat: int = 1,
+    collapse_hierarchical: bool = False,
+    text_backend: str = "hashing",
+    text_model: str = "BAAI/bge-m3",
+    image_query_backend: str = "none",
+    image_query_model: str = "openai/clip-vit-large-patch14",
+    device: str = "cuda",
+    hashing_dim: int = 384,
+    doc_id: str = "",
+    payload_filter: list[str] = typer.Option(
+        None,
+        "--filter",
+        help="Payload filter such as kind=map, page_no=12, page_start<=12. Repeat for multiple filters.",
+    ),
+    weight_grid: list[str] = typer.Option(
+        None,
+        "--weight-grid",
+        help=(
+            "Fusion weight grid as source=v1,v2. Sources include bm25, graph, qdrant, "
+            "or exact sources such as qdrant:caption_dense. Repeat for multiple sources."
+        ),
+    ),
+    fixed_fusion_weight: list[str] = typer.Option(
+        None,
+        "--fixed-fusion-weight",
+        help="Fusion weight fixed for every candidate, as source=value. Repeat for multiple sources.",
+    ),
+    include_fixed_candidate: bool = True,
+    max_candidates: int = 200,
+    min_recall_at_k: float = 0.0,
+    min_target_coverage_at_k: float = 0.0,
+    min_target_ndcg_at_k: float = 0.0,
+    min_mrr: float = 0.0,
+    max_failed_queries: int | None = None,
+    max_mean_latency_ms: float | None = None,
+    recall_weight: float = 1.0,
+    target_coverage_weight: float = 2.0,
+    target_ndcg_weight: float = 1.0,
+    mrr_weight: float = 1.0,
+    precision_weight: float = 0.5,
+    failed_query_penalty: float = 0.02,
+    latency_weight: float = 0.05,
+    lexical_tokenizer: TokenizerStrategy = "mixed",
+    ngram_min: int = 2,
+    ngram_max: int = 4,
+    ngram_cjk_only: bool = True,
+    deduplicate_tokens: bool = False,
+    summary_limit: int = 10,
+):
+    """Sweep Qdrant/BM25/graph fusion weights and recommend a retrieval configuration."""
+    grid = parse_fusion_weight_grid(weight_grid)
+    fixed_weights = parse_fusion_weights(fixed_fusion_weight)
+    try:
+        candidate_weights = build_fusion_weight_grid(
+            grid,
+            fixed_weights=fixed_weights,
+            include_fixed_candidate=include_fixed_candidate,
+            max_candidates=max_candidates,
+        )
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+    parsed_vector_names = [item.strip() for item in vector_names.split(",") if item.strip()]
+    prepare_start = perf_counter()
+    prepared = prepare_qdrant_hybrid_search(
+        package_dir=package_dir,
+        url=url,
+        collection=collection,
+        location=location,
+        path=path,
+        vector_names=vector_names,
+        text_backend=text_backend,
+        text_model=text_model,
+        image_query_backend=image_query_backend,
+        image_query_model=image_query_model,
+        device=device,
+        hashing_dim=hashing_dim,
+        lexical_tokenizer=lexical_tokenizer,
+        ngram_min=ngram_min,
+        ngram_max=ngram_max,
+        ngram_cjk_only=ngram_cjk_only,
+        deduplicate_tokens=deduplicate_tokens,
+    )
+    index_build_ms = (perf_counter() - prepare_start) * 1000
+    retrieval_cases = load_retrieval_cases(cases)
+    filters = build_payload_filter(filter_specs=payload_filter)
+    metadata_filters = build_payload_filter(doc_id=doc_id, filter_specs=payload_filter)
+
+    candidates = []
+    for weights in candidate_weights:
+        evaluation = evaluate_search_results(
+            cases=retrieval_cases,
+            search_fn=lambda case, case_graph_expand, weights=weights: prepared[
+                "searcher"
+            ].search(
+                query=case.query,
+                vector_names=parsed_vector_names,
+                top_k=top_k,
+                graph_expand=case_graph_expand,
+                doc_id=doc_id or None,
+                payload_filter=filters,
+                collapse_hierarchical=collapse_hierarchical,
+                fusion_weights=weights,
+            ),
+            top_k=top_k,
+            repeat=repeat,
+            index_build_ms=index_build_ms,
+            graph_expand_override=graph_expand,
+            triples=prepared["triples"],
+        )
+        evaluation.metadata.update(
+            {
+                "backend": "qdrant_hybrid",
+                "collection": prepared["collection_name"],
+                "vector_names": parsed_vector_names,
+                "graph_expand": graph_expand,
+                "query_encoders": {
+                    name: prepared["query_encoders"].get(name, "unknown")
+                    for name in parsed_vector_names
+                },
+                "query_encoder_details": {
+                    name: prepared.get("query_encoder_details", {}).get(name, {})
+                    for name in parsed_vector_names
+                },
+                "upserted": prepared["upserted"],
+                "stored_count": prepared["store"].count(),
+                "filters": metadata_filters,
+                "fusion_weights": weights,
+            }
+        )
+        candidates.append(
+            QdrantFusionSweepCandidate(
+                name=fusion_weight_candidate_name(weights),
+                fusion_weights=weights,
+                evaluation=evaluation,
+            )
+        )
+
+    report = build_qdrant_fusion_sweep_report(
+        candidates,
+        vector_names=parsed_vector_names,
+        graph_expand=graph_expand,
+        min_recall_at_k=min_recall_at_k,
+        min_target_coverage_at_k=min_target_coverage_at_k,
+        min_target_ndcg_at_k=min_target_ndcg_at_k,
+        min_mrr=min_mrr,
+        max_failed_queries=max_failed_queries,
+        max_mean_latency_ms=max_mean_latency_ms,
+        recall_weight=recall_weight,
+        target_coverage_weight=target_coverage_weight,
+        target_ndcg_weight=target_ndcg_weight,
+        mrr_weight=mrr_weight,
+        precision_weight=precision_weight,
+        failed_query_penalty=failed_query_penalty,
+        latency_weight=latency_weight,
+        metadata={
+            "weight_grid": grid,
+            "fixed_fusion_weights": fixed_weights,
+            "include_fixed_candidate": include_fixed_candidate,
+            "candidate_count": len(candidate_weights),
+            "top_k": top_k,
+            "repeat": repeat,
+            "collapse_hierarchical": collapse_hierarchical,
+            "query_encoders": prepared["query_encoders"],
+        },
+    )
+    if output is not None:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(report.model_dump_json(indent=2), encoding="utf-8")
+    print(
+        {
+            "output": str(output) if output is not None else None,
+            "candidate_count": report.candidate_count,
+            "eligible_count": report.eligible_count,
+            "recommended": report.recommended,
+            "best_by_recall": report.best_by_recall,
+            "best_by_target_coverage": report.best_by_target_coverage,
+            "best_by_target_ndcg": report.best_by_target_ndcg,
+            "best_by_mrr": report.best_by_mrr,
+            "fastest_by_mean_latency": report.fastest_by_mean_latency,
+            "candidates": [
+                {
+                    "rank": candidate.rank,
+                    "name": candidate.name,
+                    "fusion_weights": candidate.fusion_weights,
+                    "selection_score": candidate.selection_score,
+                    "eligible": candidate.eligible,
+                    "eligibility_failures": candidate.eligibility_failures,
+                    "recall_at_k": candidate.evaluation.recall_at_k,
+                    "target_coverage_at_k": candidate.evaluation.target_coverage_at_k,
+                    "mean_target_ndcg_at_k": candidate.evaluation.mean_target_ndcg_at_k,
+                    "mrr": candidate.evaluation.mrr,
+                    "mean_latency_ms": candidate.evaluation.mean_latency_ms,
+                    "failed_query_count": len(candidate.evaluation.failed_queries),
+                }
+                for candidate in report.candidates[: max(summary_limit, 0)]
+            ],
+        }
+    )
 
 
 @app.command(name="gate-qdrant-vector-ablation")
@@ -5613,6 +5832,37 @@ def parse_fusion_weights(specs: list[str] | None = None) -> dict[str, float]:
             raise typer.BadParameter(f"fusion weight for {source} must be non-negative")
         weights[source] = weight
     return weights
+
+
+def parse_fusion_weight_grid(specs: list[str] | None = None) -> dict[str, list[float]]:
+    grid: dict[str, list[float]] = {}
+    for spec in specs or []:
+        if "=" not in spec:
+            raise typer.BadParameter("fusion weight grids must use source=v1,v2")
+        source, raw_values = spec.split("=", 1)
+        source = source.strip()
+        if not source:
+            raise typer.BadParameter("fusion weight grid source must not be empty")
+        values = []
+        for raw_value in raw_values.split(","):
+            raw_value = raw_value.strip()
+            if not raw_value:
+                continue
+            try:
+                value = float(raw_value)
+            except ValueError as exc:
+                raise typer.BadParameter(
+                    f"fusion weight grid value for {source} must be numeric"
+                ) from exc
+            if value < 0:
+                raise typer.BadParameter(
+                    f"fusion weight grid value for {source} must be non-negative"
+                )
+            values.append(value)
+        if not values:
+            raise typer.BadParameter(f"fusion weight grid for {source} must not be empty")
+        grid[source] = values
+    return grid
 
 
 def parse_named_float_thresholds(

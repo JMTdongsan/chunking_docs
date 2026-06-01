@@ -37,6 +37,7 @@ def test_build_experiment_report_summarizes_artifacts_and_candidates(tmp_path):
     assert artifacts["ingestion_readiness.final.json"].exists is True
     assert artifacts["retrieval_gate.final.json"].exists is True
     assert artifacts["qdrant_eval.final.json"].exists is True
+    assert artifacts["qdrant_fusion_sweep.final.json"].exists is True
     assert artifacts["chunking_comparison_gate.final.json"].exists is True
     assert artifacts["chunking_sweep.final.json"].exists is True
     assert artifacts["graph_audit.final.json"].exists is True
@@ -64,6 +65,13 @@ def test_build_experiment_report_summarizes_artifacts_and_candidates(tmp_path):
     assert validations["qdrant_eval.final.json"].metrics[
         "case_group.modality.vision_object.ndcg_at_k"
     ] == 0.8
+    assert validations["qdrant_fusion_sweep.final.json"].passed is True
+    assert validations["qdrant_fusion_sweep.final.json"].candidate == "caption_weighted"
+    assert validations["qdrant_fusion_sweep.final.json"].metrics["candidate_count"] == 2.0
+    assert validations["qdrant_fusion_sweep.final.json"].metrics["eligible_count"] == 1.0
+    assert validations["qdrant_fusion_sweep.final.json"].metrics["selection_score"] == 4.2
+    assert validations["qdrant_fusion_sweep.final.json"].metrics["target_coverage_at_k"] == 0.98
+    assert validations["qdrant_fusion_sweep.final.json"].metrics["failed_query_count"] == 1.0
     assert validations["chunking_comparison_gate.final.json"].metrics[
         "case_group.case_source.visual_object_probe.target_coverage_at_k"
     ] == 0.9
@@ -327,6 +335,58 @@ def write_minimal_package(tmp_path):
                         }
                     }
                 },
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    (package_dir / "qdrant_fusion_sweep.final.json").write_text(
+        json.dumps(
+            {
+                "vector_names": ["text_dense", "caption_dense"],
+                "graph_expand": False,
+                "candidate_count": 2,
+                "eligible_count": 1,
+                "recommended": "caption_weighted",
+                "best_by_target_ndcg": "caption_weighted",
+                "candidates": [
+                    {
+                        "name": "caption_weighted",
+                        "fusion_weights": {"bm25": 1.2, "qdrant:caption_dense": 1.1},
+                        "selection_score": 4.2,
+                        "eligible": True,
+                        "eligibility_failures": [],
+                        "rank": 1,
+                        "evaluation": {
+                            "recall_at_k": 0.97,
+                            "target_coverage_at_k": 0.98,
+                            "mean_target_ndcg_at_k": 0.93,
+                            "mrr": 0.91,
+                            "mean_precision_at_k": 0.2,
+                            "mean_latency_ms": 34.0,
+                            "p95_latency_ms": 40.0,
+                            "failed_queries": ["miss"],
+                        },
+                    },
+                    {
+                        "name": "image_weighted",
+                        "fusion_weights": {"bm25": 1.2, "qdrant:image_dense": 0.5},
+                        "selection_score": 3.1,
+                        "eligible": False,
+                        "eligibility_failures": ["min_target_ndcg_at_k"],
+                        "rank": 2,
+                        "evaluation": {
+                            "recall_at_k": 0.95,
+                            "target_coverage_at_k": 0.95,
+                            "mean_target_ndcg_at_k": 0.68,
+                            "mrr": 0.7,
+                            "mean_precision_at_k": 0.19,
+                            "mean_latency_ms": 28.0,
+                            "p95_latency_ms": 32.0,
+                            "failed_queries": [],
+                        },
+                    },
+                ],
             },
             indent=2,
         ),
