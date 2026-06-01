@@ -4427,6 +4427,11 @@ def sweep_chunking_command(
         "--selection-min-visual-text-coverage-ratio",
         help="Only recommend sweep candidates at or above this linked visual text coverage.",
     ),
+    selection_min_visual_text_part_coverage_ratio: float | None = typer.Option(
+        None,
+        "--selection-min-visual-text-part-coverage-ratio",
+        help="Only recommend sweep candidates at or above this linked visual text part coverage.",
+    ),
     selection_min_result_stability_rate: float | None = typer.Option(
         None,
         "--selection-min-result-stability-rate",
@@ -4530,6 +4535,9 @@ def sweep_chunking_command(
         "min_precision_at_k": selection_min_precision_at_k,
         "min_quality_score": selection_min_quality_score,
         "min_visual_text_coverage_ratio": selection_min_visual_text_coverage_ratio,
+        "min_visual_text_part_coverage_ratio": (
+            selection_min_visual_text_part_coverage_ratio
+        ),
         "min_result_stability_rate": selection_min_result_stability_rate,
         "max_mean_target_rank": selection_max_mean_target_rank,
         "max_p95_target_rank": selection_max_p95_target_rank,

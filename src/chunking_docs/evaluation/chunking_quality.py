@@ -132,6 +132,9 @@ def evaluate_chunking_quality(
         visual_text_coverage_ratio=visual_text_coverage["coverage_ratio"]
         if visual_text_coverage["asset_count"]
         else None,
+        visual_text_part_coverage_ratio=visual_text_coverage["part_coverage_ratio"]
+        if visual_text_coverage["part_count"]
+        else None,
         retrieval_score=retrieval_quality_score(retrieval) if retrieval else None,
     )
 
@@ -313,6 +316,7 @@ def compute_quality_score(
     section_coverage_ratio: float,
     visual_asset_linkage_ratio: float,
     visual_text_coverage_ratio: float | None,
+    visual_text_part_coverage_ratio: float | None,
     retrieval_score: float | None,
 ) -> float:
     components = [
@@ -322,7 +326,9 @@ def compute_quality_score(
         (visual_asset_linkage_ratio, 0.15),
     ]
     if visual_text_coverage_ratio is not None:
-        components.append((visual_text_coverage_ratio, 0.15))
+        components.append((visual_text_coverage_ratio, 0.10))
+    if visual_text_part_coverage_ratio is not None:
+        components.append((visual_text_part_coverage_ratio, 0.05))
     if retrieval_score is not None:
         components.append((retrieval_score, 0.30))
     total_weight = sum(weight for _, weight in components)

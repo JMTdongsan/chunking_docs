@@ -47,6 +47,7 @@ def test_run_chunking_sweep_writes_candidates_and_comparison(tmp_path):
     assert report.selection.ranking[0].metrics["unstable_result_count"] == 0.0
     assert report.selection.ranking[0].metrics["total_chunk_chars"] is not None
     assert report.selection.ranking[0].metrics["embedding_text_kchars"] is not None
+    assert report.selection.ranking[0].metrics["visual_text_part_coverage_ratio"] is not None
     assert report.selection.eligible_count == 2
     assert report.selection.rejected_count == 0
     assert all(row.eligible for row in report.selection.ranking)
@@ -170,6 +171,35 @@ def test_sweep_selection_constraints_filter_embedding_text_budget(tmp_path):
     assert rejected.metrics["total_chunk_chars"] == 495.0
 
 
+def test_sweep_selection_constraints_can_require_visual_text_part_coverage(tmp_path):
+    manifest = make_manifest(tmp_path)
+
+    report = run_chunking_sweep(
+        chunks=manifest.chunks,
+        assets=manifest.assets,
+        profiles=manifest.profiles,
+        triples=manifest.triples,
+        strategies=["semantic", "multimodal"],
+        max_chars_values=[140],
+        overlap_chars_values=[20],
+        min_chars=40,
+        visual_context_chars_values=[120],
+        selection_constraints={"min_visual_text_part_coverage_ratio": 1.0},
+    )
+
+    assert report.selection.constraints == {
+        "min_visual_text_part_coverage_ratio": 1.0,
+    }
+    assert report.selection.recommended == "multimodal-max140-ov20-min40-visual120"
+    assert report.selection.eligible_count == 1
+    assert report.selection.rejected_count == 1
+    assert report.selection.ranking[0].metrics["visual_text_part_coverage_ratio"] == 1.0
+    rejected = next(row for row in report.selection.ranking if not row.eligible)
+    assert rejected.name == "semantic-max140-ov20-min40"
+    assert rejected.failed_constraints == ["min_visual_text_part_coverage_ratio"]
+    assert rejected.metrics["visual_text_part_coverage_ratio"] == 0.0
+
+
 def test_sweep_selection_reports_no_recommendation_when_constraints_all_fail(tmp_path):
     manifest = make_manifest(tmp_path)
 
@@ -273,6 +303,7 @@ def test_sweep_pareto_dominance_accounts_for_quality_and_cost():
         "precision_at_k": 0.6,
         "quality_score": 0.85,
         "visual_text_coverage_ratio": 1.0,
+        "visual_text_part_coverage_ratio": 1.0,
         "target_rank_efficiency": 1.0,
         "mean_target_rank": 1.0,
         "p95_target_rank": 1.0,
@@ -291,6 +322,7 @@ def test_sweep_pareto_dominance_accounts_for_quality_and_cost():
         "precision_at_k": 0.5,
         "quality_score": 0.8,
         "visual_text_coverage_ratio": 1.0,
+        "visual_text_part_coverage_ratio": 1.0,
         "target_rank_efficiency": 1 / 3,
         "mean_target_rank": 3.0,
         "p95_target_rank": 3.0,
@@ -392,6 +424,45 @@ def test_sweep_chunking_cli_writes_report(tmp_path):
     assert len(payload["candidates"]) == 2
     assert payload["candidates"][0]["name"] == payload["selection"]["recommended"]
     assert any(candidates_dir.glob("chunks.semantic-*.jsonl"))
+
+
+def test_sweep_chunking_cli_can_require_visual_text_part_coverage(tmp_path):
+    package_dir = write_package(tmp_path)
+    output_path = tmp_path / "sweep_report.json"
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "sweep-chunking",
+            "--package-dir",
+            str(package_dir),
+            "--strategies",
+            "semantic,multimodal",
+            "--max-chars",
+            "140",
+            "--overlap-chars",
+            "20",
+            "--min-chars",
+            "40",
+            "--visual-context-chars",
+            "120",
+            "--selection-min-visual-text-part-coverage-ratio",
+            "1.0",
+            "--output",
+            str(output_path),
+            "--no-write-candidates",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(output_path.read_text(encoding="utf-8"))
+    assert payload["selection"]["recommended"] == "multimodal-max140-ov20-min40-visual120"
+    assert payload["selection"]["constraints"] == {
+        "min_visual_text_part_coverage_ratio": 1.0,
+    }
+    assert payload["selection"]["eligible_count"] == 1
+    rejected = next(row for row in payload["selection"]["ranking"] if not row["eligible"])
+    assert rejected["failed_constraints"] == ["min_visual_text_part_coverage_ratio"]
 
 
 def write_package(tmp_path):

@@ -70,7 +70,8 @@ SWEEP_SELECTION_WEIGHTS = {
     "target_rank_efficiency": 0.12,
     "precision_at_k": 0.09,
     "quality_score": 0.09,
-    "visual_text_coverage_ratio": 0.05,
+    "visual_text_coverage_ratio": 0.03,
+    "visual_text_part_coverage_ratio": 0.02,
     "result_stability_rate": 0.03,
     "latency_efficiency": 0.03,
     "chunk_count_efficiency": 0.01,
@@ -83,6 +84,7 @@ PARETO_HIGHER_IS_BETTER = [
     "precision_at_k",
     "quality_score",
     "visual_text_coverage_ratio",
+    "visual_text_part_coverage_ratio",
     "target_rank_efficiency",
     "result_stability_rate",
 ]
@@ -108,6 +110,7 @@ MIN_SELECTION_CONSTRAINTS = {
     "min_precision_at_k": "precision_at_k",
     "min_quality_score": "quality_score",
     "min_visual_text_coverage_ratio": "visual_text_coverage_ratio",
+    "min_visual_text_part_coverage_ratio": "visual_text_part_coverage_ratio",
     "min_result_stability_rate": "result_stability_rate",
 }
 
@@ -375,6 +378,7 @@ def selection_metrics(candidate: ChunkingSweepCandidate) -> dict[str, float | No
         "latency_efficiency": latency_efficiency(mean_latency_ms),
         "quality_score": candidate.report.quality_score,
         "visual_text_coverage_ratio": candidate.report.visual_text_coverage_ratio,
+        "visual_text_part_coverage_ratio": candidate.report.visual_text_part_coverage_ratio,
         "chunk_count": float(candidate.chunk_count),
         "chunk_count_efficiency": 1.0 / candidate.chunk_count if candidate.chunk_count > 0 else 0.0,
         "total_chunk_chars": total_chunk_chars,
