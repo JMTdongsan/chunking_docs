@@ -35,13 +35,18 @@ def test_characterize_package_reports_strategy_observations(tmp_path):
     assert report.text_layer.degraded_or_empty_ratio == 0.5
     assert report.visual.asset_kind_counts["map"] == 1
     assert report.visual.pages_requiring_ocr_count == 1
+    assert report.visual.vlm_object_asset_count == 1
+    assert report.visual.vlm_object_count == 2
+    assert report.visual.vlm_object_bbox_count == 1
     assert report.graph.visual_triple_count == 1
     assert "text_layer_degraded" in observation_codes
     assert "visual_retrieval_required" in observation_codes
     assert "visual_annotation_pending" in observation_codes
+    assert "vlm_objects_available" in observation_codes
     assert "graph_triples_missing" not in observation_codes
     assert "prioritize_visual_annotations" in recommendation_codes
     assert "evaluate_visual_vectors" in recommendation_codes
+    assert "generate_visual_object_probe_cases" in recommendation_codes
     assert "compare_multimodal_hierarchical_chunking" in recommendation_codes
     assert "maintain_retrieval_benchmark" in recommendation_codes
 
@@ -66,8 +71,13 @@ def test_characterize_package_cli_writes_json(tmp_path):
     assert result.exit_code == 0, result.output
     payload = json.loads(output.read_text(encoding="utf-8"))
     assert payload["visual"]["asset_kind_counts"]["map"] == 1
+    assert payload["visual"]["vlm_object_count"] == 2
     assert any(item["code"] == "visual_retrieval_required" for item in payload["observations"])
     assert any(item["code"] == "evaluate_visual_vectors" for item in payload["recommendations"])
+    assert any(
+        item["code"] == "generate_visual_object_probe_cases"
+        for item in payload["recommendations"]
+    )
 
 
 def test_chunk_characteristics_counts_source_ref_visual_links():
@@ -142,7 +152,14 @@ def make_characteristic_package(tmp_path: Path):
             page_no=1,
             kind=AssetKind.MAP,
             caption="map",
-            metadata={"requires_ocr": True, "requires_vlm": True},
+            metadata={
+                "requires_ocr": True,
+                "requires_vlm": True,
+                "objects": [
+                    {"label": "station marker", "bbox": [0.1, 0.2, 0.3, 0.4]},
+                    {"label": "corridor line"},
+                ],
+            },
         )
     ]
     triples = [

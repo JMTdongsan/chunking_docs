@@ -76,7 +76,7 @@ chunking-docs characterize-package \
   --output outputs/package/document_characteristics.json
 ```
 
-The report includes observations and processing recommendations for visual annotation, multimodal embeddings, graph signals, and retrieval benchmark coverage.
+The report includes observations and processing recommendations for visual annotation, multimodal embeddings, graph signals, and retrieval benchmark coverage. When VLM object metadata is present, it reports object and bbox counts and recommends generating `visual_object_probe` retrieval cases so object detections are evaluated separately from aggregate retrieval scores.
 
 ## Document Structure
 

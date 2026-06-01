@@ -45,6 +45,9 @@ class VisualCharacteristics(BaseModel):
     pages_requiring_vlm_count: int = 0
     annotated_asset_count: int = 0
     annotation_coverage: float = 0.0
+    vlm_object_asset_count: int = 0
+    vlm_object_count: int = 0
+    vlm_object_bbox_count: int = 0
 
 
 class ChunkCharacteristics(BaseModel):
@@ -134,6 +137,14 @@ def visual_characteristics(
     pages_requiring_ocr = {asset.page_no for asset in assets if asset.metadata.get("requires_ocr") and not asset.ocr_text}
     pages_requiring_vlm = {asset.page_no for asset in assets if asset.metadata.get("requires_vlm") and not asset.vlm_summary}
     annotated_asset_count = sum(1 for asset in assets if asset.ocr_text or asset.vlm_summary)
+    asset_objects = [asset_visual_objects(asset) for asset in assets]
+    object_count = sum(len(objects) for objects in asset_objects)
+    object_bbox_count = sum(
+        1
+        for objects in asset_objects
+        for item in objects
+        if isinstance(item, dict) and item.get("bbox")
+    )
     visual_scores = [
         {
             "page_no": profile.page_no,
@@ -159,6 +170,9 @@ def visual_characteristics(
         pages_requiring_vlm_count=len(pages_requiring_vlm),
         annotated_asset_count=annotated_asset_count,
         annotation_coverage=annotated_asset_count / len(assets) if assets else 0.0,
+        vlm_object_asset_count=sum(1 for objects in asset_objects if objects),
+        vlm_object_count=object_count,
+        vlm_object_bbox_count=object_bbox_count,
     )
 
 
@@ -229,6 +243,19 @@ def observations(
                 metadata={
                     "pages_requiring_ocr_count": visual.pages_requiring_ocr_count,
                     "pages_requiring_vlm_count": visual.pages_requiring_vlm_count,
+                },
+            )
+        )
+    if visual.vlm_object_count:
+        result.append(
+            CharacteristicObservation(
+                code="vlm_objects_available",
+                severity="info",
+                message="Structured VLM object metadata is available and should be evaluated as its own retrieval case group.",
+                metadata={
+                    "vlm_object_asset_count": visual.vlm_object_asset_count,
+                    "vlm_object_count": visual.vlm_object_count,
+                    "vlm_object_bbox_count": visual.vlm_object_bbox_count,
                 },
             )
         )
@@ -317,6 +344,28 @@ def recommendations(
                     "chunking-docs eval-qdrant-vector-ablation examples/retrieval_cases.jsonl --package-dir outputs/package --modes text,caption,text_caption,all_graph",
                 ],
                 metadata={"asset_kind_counts": visual.asset_kind_counts},
+            )
+        )
+    if visual.vlm_object_count:
+        result.append(
+            ProcessingRecommendation(
+                code="generate_visual_object_probe_cases",
+                area="evaluation",
+                priority="required",
+                message=(
+                    "Generate and gate visual object probe retrieval cases so VLM object detections are measured "
+                    "separately from text and caption averages."
+                ),
+                commands=[
+                    "chunking-docs generate-retrieval-cases --package-dir outputs/package --object-probe-limit 20 --output examples/retrieval_cases.jsonl",
+                    "chunking-docs audit-retrieval-cases examples/retrieval_cases.jsonl --package-dir outputs/package --min-case-group-count case_source:visual_object_probe=5",
+                    "chunking-docs gate-qdrant-vector-ablation outputs/package/qdrant_vector_ablation.json --mode text_caption --min-case-group-target-coverage case_source:visual_object_probe=0.7",
+                ],
+                metadata={
+                    "vlm_object_asset_count": visual.vlm_object_asset_count,
+                    "vlm_object_count": visual.vlm_object_count,
+                    "vlm_object_bbox_count": visual.vlm_object_bbox_count,
+                },
             )
         )
     if visual.asset_kind_counts.get("table", 0) or chunks.table_chunk_count:
@@ -424,3 +473,22 @@ def page_visual_score(profile: PageProfile) -> int:
         + profile.embedded_image_count * 3
         + profile.drawing_count
     )
+
+
+def asset_visual_objects(asset: VisualAsset) -> list[Any]:
+    objects = []
+    for key in ("objects", "detected_objects", "visual_objects"):
+        value = asset.metadata.get(key)
+        if isinstance(value, list):
+            objects.extend(value)
+    for key in ("detections", "regions", "areas"):
+        value = asset.metadata.get(key)
+        if isinstance(value, list):
+            objects.extend(value)
+        elif isinstance(value, dict):
+            for nested in value.values():
+                if isinstance(nested, list):
+                    objects.extend(nested)
+                elif isinstance(nested, dict):
+                    objects.append(nested)
+    return objects
