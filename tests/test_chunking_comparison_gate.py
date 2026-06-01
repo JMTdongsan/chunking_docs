@@ -38,6 +38,12 @@ def test_gate_chunking_comparison_passes_selected_candidate_against_baseline():
         min_chunk_strategy_target_coverage={"visual_asset_text": 0.8},
         min_retrieval_role_target_coverage={"child": 0.8},
         min_case_group_target_coverage={"case_source:visual_lexical_probe": 0.8},
+        min_case_group_source_target_coverage={
+            "case_source:visual_lexical_probe:bm25": 0.8
+        },
+        min_case_group_source_family_target_coverage={
+            "case_source:visual_lexical_probe:lexical": 0.8
+        },
         max_failed_queries=0,
         max_total_chunk_chars=2000,
         max_embedding_text_kchars=2.0,
@@ -79,6 +85,18 @@ def test_gate_chunking_comparison_passes_selected_candidate_against_baseline():
     assert report.metrics["chunk_strategy.visual_asset_text.target_coverage_at_k"] == 0.9
     assert report.metrics["retrieval_role.child.target_coverage_at_k"] == 0.9
     assert report.metrics["case_group.case_source.visual_lexical_probe.target_coverage_at_k"] == 0.9
+    assert (
+        report.metrics[
+            "case_group_source.case_source.visual_lexical_probe.bm25.target_coverage_at_k"
+        ]
+        == 0.9
+    )
+    assert (
+        report.metrics[
+            "case_group_source_family.case_source.visual_lexical_probe.lexical.target_coverage_at_k"
+        ]
+        == 0.9
+    )
     assert report.target_metrics["asset"]["coverage_at_k"] == 0.85
     assert report.source_metrics["bm25"]["target_coverage_at_k"] == 0.9
     assert report.source_family_metrics["lexical"]["target_coverage_at_k"] == 0.9
@@ -87,6 +105,12 @@ def test_gate_chunking_comparison_passes_selected_candidate_against_baseline():
     assert report.case_group_metrics["case_source"]["visual_lexical_probe"][
         "target_coverage_at_k"
     ] == 0.9
+    assert report.case_group_source_metrics["case_source"]["visual_lexical_probe"][
+        "bm25"
+    ]["target_coverage_at_k"] == 0.9
+    assert report.case_group_source_family_metrics["case_source"][
+        "visual_lexical_probe"
+    ]["lexical"]["target_coverage_at_k"] == 0.9
 
 
 def test_gate_chunking_comparison_flags_retrieval_regressions():
@@ -110,6 +134,12 @@ def test_gate_chunking_comparison_flags_retrieval_regressions():
         min_chunk_strategy_target_coverage={"visual_asset_text": 0.8},
         min_retrieval_role_target_coverage={"child": 0.8},
         min_case_group_target_coverage={"case_source:visual_lexical_probe": 0.8},
+        min_case_group_source_target_coverage={
+            "case_source:visual_lexical_probe:bm25": 0.8
+        },
+        min_case_group_source_family_target_coverage={
+            "case_source:visual_lexical_probe:lexical": 0.8
+        },
         max_failed_queries=0,
         max_total_chunk_chars=2000,
         max_embedding_text_kchars=2.0,
@@ -141,6 +171,15 @@ def test_gate_chunking_comparison_flags_retrieval_regressions():
     assert "min_retrieval_role_target_coverage:child" in report.failed_checks
     assert (
         "min_case_group_target_coverage:case_source:visual_lexical_probe"
+        in report.failed_checks
+    )
+    assert (
+        "min_case_group_source_target_coverage:case_source:visual_lexical_probe:bm25"
+        in report.failed_checks
+    )
+    assert (
+        "min_case_group_source_family_target_coverage:"
+        "case_source:visual_lexical_probe:lexical"
         in report.failed_checks
     )
     assert "max_failed_queries" in report.failed_checks
@@ -281,6 +320,10 @@ def test_gate_chunking_comparison_cli_writes_json_and_fails(tmp_path):
             "child=0.8",
             "--min-case-group-target-coverage",
             "case_source:visual_lexical_probe=0.8",
+            "--min-case-group-source-target-coverage",
+            "case_source:visual_lexical_probe:bm25=0.8",
+            "--min-case-group-source-family-target-coverage",
+            "case_source:visual_lexical_probe:lexical=0.8",
             "--max-recall-drop",
             "0.1",
             "--min-pairwise-win-rate",
@@ -317,6 +360,15 @@ def test_gate_chunking_comparison_cli_writes_json_and_fails(tmp_path):
         "min_case_group_target_coverage:case_source:visual_lexical_probe"
         in payload["failed_checks"]
     )
+    assert (
+        "min_case_group_source_target_coverage:case_source:visual_lexical_probe:bm25"
+        in payload["failed_checks"]
+    )
+    assert (
+        "min_case_group_source_family_target_coverage:"
+        "case_source:visual_lexical_probe:lexical"
+        in payload["failed_checks"]
+    )
     assert payload["target_metrics"]["asset"]["coverage_at_k"] == 0.2
     assert payload["source_metrics"]["bm25"]["target_coverage_at_k"] == 0.1
     assert payload["source_family_metrics"]["lexical"]["target_coverage_at_k"] == 0.1
@@ -325,6 +377,12 @@ def test_gate_chunking_comparison_cli_writes_json_and_fails(tmp_path):
     assert payload["case_group_metrics"]["case_source"]["visual_lexical_probe"][
         "target_coverage_at_k"
     ] == 0.2
+    assert payload["case_group_source_metrics"]["case_source"]["visual_lexical_probe"][
+        "bm25"
+    ]["target_coverage_at_k"] == 0.2
+    assert payload["case_group_source_family_metrics"]["case_source"][
+        "visual_lexical_probe"
+    ]["lexical"]["target_coverage_at_k"] == 0.2
     assert "max_recall_at_k_drop" in payload["failed_checks"]
     assert "min_pairwise_win_rate" in payload["failed_checks"]
     assert "min_pairwise_target_coverage_ci_low" in payload["failed_checks"]
@@ -355,6 +413,20 @@ def comparison_report() -> ChunkingComparison:
                 case_group_metrics={
                     "case_source": {"visual_lexical_probe": {"target_coverage_at_k": 0.9}}
                 },
+                case_group_source_metrics={
+                    "case_source": {
+                        "visual_lexical_probe": {
+                            "bm25": {"target_coverage_at_k": 0.9}
+                        }
+                    }
+                },
+                case_group_source_family_metrics={
+                    "case_source": {
+                        "visual_lexical_probe": {
+                            "lexical": {"target_coverage_at_k": 0.9}
+                        }
+                    }
+                },
                 visual_text_coverage=0.9,
                 total_chunk_chars=1200.0,
             ),
@@ -376,6 +448,20 @@ def comparison_report() -> ChunkingComparison:
                 retrieval_role_metrics={"child": {"target_coverage_at_k": 0.1}},
                 case_group_metrics={
                     "case_source": {"visual_lexical_probe": {"target_coverage_at_k": 0.2}}
+                },
+                case_group_source_metrics={
+                    "case_source": {
+                        "visual_lexical_probe": {
+                            "bm25": {"target_coverage_at_k": 0.2}
+                        }
+                    }
+                },
+                case_group_source_family_metrics={
+                    "case_source": {
+                        "visual_lexical_probe": {
+                            "lexical": {"target_coverage_at_k": 0.2}
+                        }
+                    }
                 },
                 visual_text_coverage=0.2,
                 result_stability=0.5,
@@ -474,6 +560,12 @@ def row(
     chunk_strategy_metrics: dict[str, dict[str, float]] | None = None,
     retrieval_role_metrics: dict[str, dict[str, float]] | None = None,
     case_group_metrics: dict[str, dict[str, dict[str, float]]] | None = None,
+    case_group_source_metrics: dict[
+        str, dict[str, dict[str, dict[str, float]]]
+    ] | None = None,
+    case_group_source_family_metrics: dict[
+        str, dict[str, dict[str, dict[str, float]]]
+    ] | None = None,
     visual_text_coverage: float = 1.0,
     visual_text_part_coverage: float | None = None,
     result_stability: float = 1.0,
@@ -525,6 +617,8 @@ def row(
         chunk_strategy_metrics=chunk_strategy_metrics or {},
         retrieval_role_metrics=retrieval_role_metrics or {},
         case_group_metrics=case_group_metrics or {},
+        case_group_source_metrics=case_group_source_metrics or {},
+        case_group_source_family_metrics=case_group_source_family_metrics or {},
         failed_queries=failed_queries,
         page_coverage_ratio=1.0,
         visual_annotation_ratio=0.5,

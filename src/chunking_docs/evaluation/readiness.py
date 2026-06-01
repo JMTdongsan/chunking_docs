@@ -388,6 +388,12 @@ def build_ingestion_readiness_report(
                     "chunk_strategy_metrics": chunking_comparison_gate.chunk_strategy_metrics,
                     "retrieval_role_metrics": chunking_comparison_gate.retrieval_role_metrics,
                     "case_group_metrics": chunking_comparison_gate.case_group_metrics,
+                    "case_group_source_metrics": (
+                        chunking_comparison_gate.case_group_source_metrics
+                    ),
+                    "case_group_source_family_metrics": (
+                        chunking_comparison_gate.case_group_source_family_metrics
+                    ),
                     "pairwise_metrics": chunking_comparison_gate.pairwise_metrics,
                 },
             )

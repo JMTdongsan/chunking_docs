@@ -8,6 +8,8 @@ from chunking_docs.evaluation.chunking_quality import ChunkingQualityReport
 from chunking_docs.evaluation.gate import (
     result_expected_target_keys,
     retrieval_case_group_metrics,
+    retrieval_case_group_source_family_metrics,
+    retrieval_case_group_source_metrics,
     retrieval_chunk_strategy_metrics,
     retrieval_rank_metrics,
     retrieval_role_metrics_payload,
@@ -58,6 +60,12 @@ class ChunkingComparisonRow(BaseModel):
     chunk_strategy_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
     retrieval_role_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
     case_group_metrics: dict[str, dict[str, dict[str, float]]] = Field(default_factory=dict)
+    case_group_source_metrics: dict[
+        str, dict[str, dict[str, dict[str, float]]]
+    ] = Field(default_factory=dict)
+    case_group_source_family_metrics: dict[
+        str, dict[str, dict[str, dict[str, float]]]
+    ] = Field(default_factory=dict)
     failed_queries: list[str]
     page_coverage_ratio: float
     visual_annotation_ratio: float
@@ -132,6 +140,10 @@ def compare_chunking_reports(
         chunk_strategy_metrics = retrieval_chunk_strategy_metrics(report.retrieval)
         retrieval_role_metrics = retrieval_role_metrics_payload(report.retrieval)
         case_group_metrics = retrieval_case_group_metrics(report.retrieval)
+        case_group_source_metrics = retrieval_case_group_source_metrics(report.retrieval)
+        case_group_source_family_metrics = retrieval_case_group_source_family_metrics(
+            report.retrieval
+        )
         rank_metrics = retrieval_rank_metrics(report.retrieval) if report.retrieval else {}
         rows.append(
             ChunkingComparisonRow(
@@ -194,6 +206,8 @@ def compare_chunking_reports(
                 chunk_strategy_metrics=chunk_strategy_metrics,
                 retrieval_role_metrics=retrieval_role_metrics,
                 case_group_metrics=case_group_metrics,
+                case_group_source_metrics=case_group_source_metrics,
+                case_group_source_family_metrics=case_group_source_family_metrics,
                 failed_queries=report.retrieval.failed_queries if report.retrieval else [],
                 page_coverage_ratio=report.page_coverage_ratio,
                 visual_annotation_ratio=report.visual_annotation_ratio,

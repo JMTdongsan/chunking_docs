@@ -12,7 +12,10 @@ from chunking_docs.evaluation.compare import (
 )
 from chunking_docs.evaluation.gate import (
     case_group_metric_key,
+    case_group_source_family_metric_key,
+    case_group_source_metric_key,
     chunk_strategy_metric_key,
+    parse_case_group_source_spec,
     parse_case_group_spec,
     retrieval_role_metric_key,
     source_metric_key,
@@ -46,6 +49,12 @@ class ChunkingComparisonGateReport(BaseModel):
     chunk_strategy_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
     retrieval_role_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
     case_group_metrics: dict[str, dict[str, dict[str, float]]] = Field(default_factory=dict)
+    case_group_source_metrics: dict[
+        str, dict[str, dict[str, dict[str, float]]]
+    ] = Field(default_factory=dict)
+    case_group_source_family_metrics: dict[
+        str, dict[str, dict[str, dict[str, float]]]
+    ] = Field(default_factory=dict)
     baseline_metrics: dict[str, float | None] = Field(default_factory=dict)
     pairwise_metrics: dict[str, float | None] = Field(default_factory=dict)
     failed_checks: list[str] = Field(default_factory=list)
@@ -104,6 +113,8 @@ def gate_chunking_comparison(
     min_chunk_strategy_target_coverage: dict[str, float] | None = None,
     min_retrieval_role_target_coverage: dict[str, float] | None = None,
     min_case_group_target_coverage: dict[str, float] | None = None,
+    min_case_group_source_target_coverage: dict[str, float] | None = None,
+    min_case_group_source_family_target_coverage: dict[str, float] | None = None,
     max_quality_drop: float | None = None,
     max_recall_drop: float | None = None,
     max_target_coverage_drop: float | None = None,
@@ -400,6 +411,22 @@ def gate_chunking_comparison(
             min_case_group_target_coverage or {},
         )
     )
+    checks.extend(
+        case_group_source_target_coverage_checks(
+            selected_name,
+            metrics,
+            min_case_group_source_target_coverage or {},
+            family=False,
+        )
+    )
+    checks.extend(
+        case_group_source_target_coverage_checks(
+            selected_name,
+            metrics,
+            min_case_group_source_family_target_coverage or {},
+            family=True,
+        )
+    )
 
     if baseline_candidate is not None:
         baseline_row = find_row(comparison, baseline_candidate)
@@ -586,6 +613,8 @@ def gate_chunking_comparison(
         chunk_strategy_metrics=selected_row.chunk_strategy_metrics,
         retrieval_role_metrics=selected_row.retrieval_role_metrics,
         case_group_metrics=selected_row.case_group_metrics,
+        case_group_source_metrics=selected_row.case_group_source_metrics,
+        case_group_source_family_metrics=selected_row.case_group_source_family_metrics,
         baseline_metrics=baseline_metrics,
         pairwise_metrics=pairwise_metrics,
         failed_checks=failed_checks,
@@ -680,6 +709,30 @@ def row_metrics(row: ChunkingComparisonRow) -> dict[str, float | None]:
         for group_value, group_metrics in group_values.items():
             for key, value in group_metrics.items():
                 metrics[case_group_metric_key(group_name, group_value, key)] = value
+    for group_name, group_values in row.case_group_source_metrics.items():
+        for group_value, source_values in group_values.items():
+            for source, source_metrics in source_values.items():
+                for key, value in source_metrics.items():
+                    metrics[
+                        case_group_source_metric_key(
+                            group_name,
+                            group_value,
+                            source,
+                            key,
+                        )
+                    ] = value
+    for group_name, group_values in row.case_group_source_family_metrics.items():
+        for group_value, family_values in group_values.items():
+            for family, family_metrics in family_values.items():
+                for key, value in family_metrics.items():
+                    metrics[
+                        case_group_source_family_metric_key(
+                            group_name,
+                            group_value,
+                            family,
+                            key,
+                        )
+                    ] = value
     return metrics
 
 
@@ -823,6 +876,39 @@ def source_target_coverage_checks(
         checks.append(
             minimum_check(
                 f"min_source_target_coverage:{normalized_source}",
+                candidate,
+                metric,
+                metrics,
+                threshold,
+            )
+        )
+    return checks
+
+
+def case_group_source_target_coverage_checks(
+    candidate: str,
+    metrics: dict[str, float | None],
+    thresholds: dict[str, float],
+    family: bool = False,
+) -> list[ChunkingComparisonGateCheck]:
+    checks = []
+    for spec, threshold in sorted(thresholds.items()):
+        group_name, group_value, source = parse_case_group_source_spec(spec)
+        metric_key_fn = (
+            case_group_source_family_metric_key
+            if family
+            else case_group_source_metric_key
+        )
+        metric = metric_key_fn(group_name, group_value, source, "target_coverage_at_k")
+        metrics.setdefault(metric, 0.0)
+        check_prefix = (
+            "min_case_group_source_family_target_coverage"
+            if family
+            else "min_case_group_source_target_coverage"
+        )
+        checks.append(
+            minimum_check(
+                f"{check_prefix}:{group_name}:{group_value}:{source}",
                 candidate,
                 metric,
                 metrics,
@@ -1036,6 +1122,8 @@ def chunking_gate_summary_payload(report: ChunkingComparisonGateReport) -> dict:
         "chunk_strategy_metrics": report.chunk_strategy_metrics,
         "retrieval_role_metrics": report.retrieval_role_metrics,
         "case_group_metrics": report.case_group_metrics,
+        "case_group_source_metrics": report.case_group_source_metrics,
+        "case_group_source_family_metrics": report.case_group_source_family_metrics,
         "baseline_metrics": report.baseline_metrics,
         "pairwise_metrics": report.pairwise_metrics,
     }

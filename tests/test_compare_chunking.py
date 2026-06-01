@@ -112,6 +112,12 @@ def test_compare_chunking_reports_ranks_by_retrieval_then_quality():
     assert comparison.rows[0].case_group_metrics["case_source"]["visual_lexical_probe"][
         "target_coverage_at_k"
     ] == 1.0
+    assert comparison.rows[0].case_group_source_metrics["case_source"][
+        "visual_lexical_probe"
+    ]["bm25"]["target_coverage_at_k"] == 1.0
+    assert comparison.rows[0].case_group_source_family_metrics["case_source"][
+        "visual_lexical_probe"
+    ]["lexical"]["target_coverage_at_k"] == 1.0
     assert comparison.rows[0].visual_text_asset_count == 1
     assert comparison.rows[0].visual_text_covered_asset_count == 1
     assert comparison.rows[0].visual_text_coverage_ratio == 1.0

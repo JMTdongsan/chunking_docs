@@ -595,6 +595,12 @@ def test_ingestion_readiness_includes_retrieval_cases_and_chunking_gate(tmp_path
             "min_target_type_coverage": {"asset": 0.8, "triple": 0.8},
             "min_source_target_coverage": {"bm25": 0.8},
             "min_source_family_target_coverage": {"lexical": 0.8},
+            "min_case_group_source_target_coverage": {
+                "case_source:visual_lexical_probe:bm25": 0.8
+            },
+            "min_case_group_source_family_target_coverage": {
+                "case_source:visual_lexical_probe:lexical": 0.8
+            },
             "max_pairwise_mean_target_rank_delta": 0.0,
             "max_recall_drop": 0.05,
         },
@@ -639,6 +645,12 @@ def test_ingestion_readiness_includes_retrieval_cases_and_chunking_gate(tmp_path
     assert report.chunking_comparison_gate.source_family_metrics["lexical"][
         "target_coverage_at_k"
     ] == 0.9
+    assert report.chunking_comparison_gate.case_group_source_metrics["case_source"][
+        "visual_lexical_probe"
+    ]["bm25"]["target_coverage_at_k"] == 0.9
+    assert report.chunking_comparison_gate.case_group_source_family_metrics["case_source"][
+        "visual_lexical_probe"
+    ]["lexical"]["target_coverage_at_k"] == 0.9
     chunking_component = next(
         component for component in report.components if component.name == "chunking_comparison_gate"
     )
@@ -2133,6 +2145,10 @@ def test_ingestion_readiness_cli_can_gate_chunking_target_coverage(tmp_path):
             "bm25=0.8",
             "--min-chunking-source-family-target-coverage",
             "lexical=0.8",
+            "--min-chunking-case-group-source-target-coverage",
+            "case_source:visual_lexical_probe:bm25=0.8",
+            "--min-chunking-case-group-source-family-target-coverage",
+            "case_source:visual_lexical_probe:lexical=0.8",
             "--max-chunking-pairwise-mean-target-rank-delta",
             "0.0",
             "--output",
@@ -2163,6 +2179,12 @@ def test_ingestion_readiness_cli_can_gate_chunking_target_coverage(tmp_path):
     assert component["metadata"]["target_metrics"]["asset"]["coverage_at_k"] == 0.9
     assert component["metadata"]["source_metrics"]["bm25"]["target_coverage_at_k"] == 0.9
     assert component["metadata"]["source_family_metrics"]["lexical"]["target_coverage_at_k"] == 0.9
+    assert component["metadata"]["case_group_source_metrics"]["case_source"][
+        "visual_lexical_probe"
+    ]["bm25"]["target_coverage_at_k"] == 0.9
+    assert component["metadata"]["case_group_source_family_metrics"]["case_source"][
+        "visual_lexical_probe"
+    ]["lexical"]["target_coverage_at_k"] == 0.9
 
 
 def write_ready_package(tmp_path: Path):
@@ -2385,6 +2407,23 @@ def chunking_row(name: str, quality_score: float, recall: float, mean_target_ran
         },
         source_metrics={"bm25": {"target_coverage_at_k": recall}},
         source_family_metrics={"lexical": {"target_coverage_at_k": recall}},
+        case_group_metrics={
+            "case_source": {"visual_lexical_probe": {"target_coverage_at_k": recall}}
+        },
+        case_group_source_metrics={
+            "case_source": {
+                "visual_lexical_probe": {
+                    "bm25": {"target_coverage_at_k": recall}
+                }
+            }
+        },
+        case_group_source_family_metrics={
+            "case_source": {
+                "visual_lexical_probe": {
+                    "lexical": {"target_coverage_at_k": recall}
+                }
+            }
+        },
         failed_queries=[],
         page_coverage_ratio=1.0,
         visual_annotation_ratio=1.0,

@@ -4981,6 +4981,22 @@ def ingestion_readiness_command(
         "--min-chunking-case-group-target-coverage",
         help="Require selected chunking candidate case group target coverage such as case_source:visual_lexical_probe=0.8.",
     ),
+    min_chunking_case_group_source_target_coverage: list[str] = typer.Option(
+        None,
+        "--min-chunking-case-group-source-target-coverage",
+        help=(
+            "Require exact-source coverage inside a selected chunking candidate case group, "
+            "such as case_source:visual_lexical_probe:bm25=0.8."
+        ),
+    ),
+    min_chunking_case_group_source_family_target_coverage: list[str] = typer.Option(
+        None,
+        "--min-chunking-case-group-source-family-target-coverage",
+        help=(
+            "Require source-family coverage inside a selected chunking candidate case group, "
+            "such as case_source:visual_lexical_probe:lexical=0.8."
+        ),
+    ),
     retrieval_ablation: Path | None = None,
     require_retrieval_ablation: bool = False,
     retrieval_ablation_mode: str | None = None,
@@ -5309,6 +5325,14 @@ def ingestion_readiness_command(
         min_chunking_case_group_target_coverage,
         "chunking case group target coverage",
     )
+    chunking_case_group_source_thresholds = parse_named_float_thresholds(
+        min_chunking_case_group_source_target_coverage,
+        "chunking case group source target coverage",
+    )
+    chunking_case_group_source_family_thresholds = parse_named_float_thresholds(
+        min_chunking_case_group_source_family_target_coverage,
+        "chunking case group source family target coverage",
+    )
     retrieval_ablation_source_family_thresholds = parse_named_float_thresholds(
         min_retrieval_ablation_source_family_target_coverage,
         "retrieval ablation source family target coverage",
@@ -5504,6 +5528,12 @@ def ingestion_readiness_command(
             "min_source_target_coverage": chunking_source_thresholds,
             "min_source_family_target_coverage": chunking_source_family_thresholds,
             "min_case_group_target_coverage": chunking_case_group_thresholds,
+            "min_case_group_source_target_coverage": (
+                chunking_case_group_source_thresholds
+            ),
+            "min_case_group_source_family_target_coverage": (
+                chunking_case_group_source_family_thresholds
+            ),
         },
         retrieval_ablation=parsed_retrieval_ablation,
         require_retrieval_ablation=require_retrieval_ablation,
@@ -7117,6 +7147,22 @@ def gate_chunking_comparison_command(
         "--min-case-group-target-coverage",
         help="Require case metadata group target coverage such as case_source:visual_lexical_probe=0.8.",
     ),
+    min_case_group_source_target_coverage: list[str] = typer.Option(
+        None,
+        "--min-case-group-source-target-coverage",
+        help=(
+            "Require exact-source target coverage inside a case metadata group, "
+            "such as case_source:visual_lexical_probe:bm25=0.8."
+        ),
+    ),
+    min_case_group_source_family_target_coverage: list[str] = typer.Option(
+        None,
+        "--min-case-group-source-family-target-coverage",
+        help=(
+            "Require source-family target coverage inside a case metadata group, "
+            "such as case_source:visual_lexical_probe:lexical=0.8."
+        ),
+    ),
     max_quality_drop: float | None = None,
     max_recall_drop: float | None = None,
     max_target_coverage_drop: float | None = None,
@@ -7171,6 +7217,14 @@ def gate_chunking_comparison_command(
         min_case_group_target_coverage,
         "case group target coverage",
     )
+    case_group_source_thresholds = parse_named_float_thresholds(
+        min_case_group_source_target_coverage,
+        "case group source target coverage",
+    )
+    case_group_source_family_thresholds = parse_named_float_thresholds(
+        min_case_group_source_family_target_coverage,
+        "case group source family target coverage",
+    )
     report = gate_chunking_comparison(
         parsed_comparison,
         candidate=candidate,
@@ -7220,6 +7274,8 @@ def gate_chunking_comparison_command(
         min_chunk_strategy_target_coverage=chunk_strategy_thresholds,
         min_retrieval_role_target_coverage=retrieval_role_thresholds,
         min_case_group_target_coverage=case_group_thresholds,
+        min_case_group_source_target_coverage=case_group_source_thresholds,
+        min_case_group_source_family_target_coverage=case_group_source_family_thresholds,
         max_quality_drop=max_quality_drop,
         max_recall_drop=max_recall_drop,
         max_target_coverage_drop=max_target_coverage_drop,
