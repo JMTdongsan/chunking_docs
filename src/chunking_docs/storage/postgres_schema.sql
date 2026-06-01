@@ -121,6 +121,20 @@ create table if not exists embedding_records (
     foreign key (doc_id, vector_name) references embedding_artifacts(doc_id, vector_name) on delete cascade
 );
 
+create table if not exists embedding_vector_summaries (
+    doc_id text not null,
+    vector_name text not null,
+    target_kind text not null,
+    record_count integer not null default 0,
+    target_count integer not null default 0,
+    dimension integer,
+    dimension_min integer not null default 0,
+    dimension_max integer not null default 0,
+    metadata jsonb not null default '{}'::jsonb,
+    primary key (doc_id, vector_name, target_kind),
+    foreign key (doc_id, vector_name) references embedding_artifacts(doc_id, vector_name) on delete cascade
+);
+
 create index if not exists chunks_doc_page_idx on chunks(doc_id, page_start, page_end);
 create index if not exists pages_text_quality_idx on pages(doc_id, text_quality);
 create index if not exists chunks_text_quality_idx on chunks ((metadata->>'text_quality'));
@@ -145,3 +159,5 @@ create index if not exists embedding_artifacts_collection_idx on embedding_artif
 create index if not exists embedding_records_doc_vector_idx on embedding_records(doc_id, vector_name);
 create index if not exists embedding_records_target_idx on embedding_records(target_kind, target_id);
 create index if not exists embedding_records_payload_gin_idx on embedding_records using gin (payload);
+create index if not exists embedding_vector_summaries_target_idx
+    on embedding_vector_summaries(target_kind, vector_name);

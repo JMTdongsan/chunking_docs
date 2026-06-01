@@ -16,6 +16,7 @@ from chunking_docs.storage.postgres_records import (
     document_row,
     embedding_artifact_rows,
     embedding_record_rows,
+    embedding_vector_summary_rows,
     page_row,
     triple_row,
     visual_object_rows,
@@ -132,6 +133,17 @@ EXPECTED_POSTGRES_SCHEMA = {
         "payload": "jsonb",
         "metadata": "jsonb",
     },
+    "embedding_vector_summaries": {
+        "doc_id": "text",
+        "vector_name": "text",
+        "target_kind": "text",
+        "record_count": "integer",
+        "target_count": "integer",
+        "dimension": "integer",
+        "dimension_min": "integer",
+        "dimension_max": "integer",
+        "metadata": "jsonb",
+    },
 }
 
 EXPECTED_POSTGRES_INDEXES = {
@@ -151,6 +163,7 @@ EXPECTED_POSTGRES_INDEXES = {
     "embedding_records_doc_vector_idx": "embedding_records",
     "embedding_records_payload_gin_idx": "embedding_records",
     "embedding_records_target_idx": "embedding_records",
+    "embedding_vector_summaries_target_idx": "embedding_vector_summaries",
     "pages_text_quality_idx": "pages",
     "triples_spo_idx": "triples",
     "visual_objects_asset_idx": "visual_objects",
@@ -246,6 +259,7 @@ class PostgresDocumentStore:
                 upsert_triples(cursor, rows["triples"])
                 upsert_embedding_artifacts(cursor, rows["embedding_artifacts"])
                 upsert_embedding_records(cursor, rows["embedding_records"])
+                upsert_embedding_vector_summaries(cursor, rows["embedding_vector_summaries"])
         return {
             "documents": 1,
             "pages": len(rows["pages"]),
@@ -257,11 +271,13 @@ class PostgresDocumentStore:
             "triples": len(rows["triples"]),
             "embedding_artifacts": len(rows["embedding_artifacts"]),
             "embedding_records": len(rows["embedding_records"]),
+            "embedding_vector_summaries": len(rows["embedding_vector_summaries"]),
         }
 
 
 def manifest_rows(manifest: ProcessingManifest, base_dir: Path | None = None) -> dict[str, Any]:
     triples = remap_triples_to_available_chunks(manifest.triples, manifest.chunks)
+    embedding_records = embedding_record_rows(manifest.doc.doc_id, package_dir=base_dir)
     return {
         "document": document_row(manifest.doc),
         "pages": [page_row(profile) for profile in manifest.profiles],
@@ -279,7 +295,8 @@ def manifest_rows(manifest: ProcessingManifest, base_dir: Path | None = None) ->
         ),
         "triples": [triple_row(triple) for triple in triples],
         "embedding_artifacts": embedding_artifact_rows(manifest.doc.doc_id, package_dir=base_dir),
-        "embedding_records": embedding_record_rows(manifest.doc.doc_id, package_dir=base_dir),
+        "embedding_records": embedding_records,
+        "embedding_vector_summaries": embedding_vector_summary_rows(embedding_records),
     }
 
 
@@ -649,6 +666,32 @@ def upsert_embedding_records(cursor, rows: list[dict[str, Any]]) -> None:
             with_pgvector(with_json(with_json(row, "payload"), "metadata"), "vector")
             for row in rows
         ],
+    )
+
+
+def upsert_embedding_vector_summaries(cursor, rows: list[dict[str, Any]]) -> None:
+    if not rows:
+        return
+    cursor.executemany(
+        """
+        insert into embedding_vector_summaries (
+            doc_id, vector_name, target_kind, record_count, target_count,
+            dimension, dimension_min, dimension_max, metadata
+        )
+        values (
+            %(doc_id)s, %(vector_name)s, %(target_kind)s, %(record_count)s,
+            %(target_count)s, %(dimension)s, %(dimension_min)s, %(dimension_max)s,
+            %(metadata)s::jsonb
+        )
+        on conflict (doc_id, vector_name, target_kind) do update set
+            record_count = excluded.record_count,
+            target_count = excluded.target_count,
+            dimension = excluded.dimension,
+            dimension_min = excluded.dimension_min,
+            dimension_max = excluded.dimension_max,
+            metadata = excluded.metadata
+        """,
+        [with_json(row, "metadata") for row in rows],
     )
 
 

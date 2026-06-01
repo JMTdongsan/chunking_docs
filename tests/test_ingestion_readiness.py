@@ -70,6 +70,12 @@ def test_ingestion_readiness_passes_ready_package(tmp_path):
     assert report.artifact_presence["bm25_tokens.json"] is True
     assert report.postgres_row_counts["embedding_artifacts"] == 1
     assert report.postgres_row_counts["embedding_records"] == 1
+    assert report.postgres_row_counts["embedding_vector_summaries"] == 1
+    postgres_component = next(
+        component for component in report.components if component.name == "postgres_rows"
+    )
+    assert postgres_component.metadata["embedding_vector_summaries"][0]["vector_name"] == "text_dense"
+    assert postgres_component.metadata["embedding_vector_summaries"][0]["target_kind"] == "chunk"
     bm25_component = next(component for component in report.components if component.name == "bm25_tokens")
     assert bm25_component.metadata["chunks_with_linked_asset_text"] == 1
     assert bm25_component.metadata["indexed_linked_asset_text_chunk_count"] == 1

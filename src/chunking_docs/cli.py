@@ -4753,6 +4753,8 @@ def postgres_rows(package_dir: Path = Path("outputs/package")):
             "triples": len(rows["triples"]),
             "embedding_artifacts": len(rows["embedding_artifacts"]),
             "embedding_records": len(rows["embedding_records"]),
+            "embedding_vector_summaries": len(rows["embedding_vector_summaries"]),
+            "embedding_vector_summary_rows": rows["embedding_vector_summaries"],
             "first_document": rows["document"],
         }
     )

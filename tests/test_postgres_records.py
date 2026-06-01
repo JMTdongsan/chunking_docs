@@ -20,6 +20,7 @@ from chunking_docs.storage.postgres_records import (
     document_row,
     embedding_artifact_rows,
     embedding_record_rows,
+    embedding_vector_summary_rows,
     page_row,
     triple_row,
     visual_object_rows,
@@ -217,6 +218,7 @@ def test_manifest_rows_counts():
     assert rows["chunk_asset_links"] == []
     assert rows["embedding_artifacts"] == []
     assert rows["embedding_records"] == []
+    assert rows["embedding_vector_summaries"] == []
 
 
 def test_manifest_rows_include_normalized_chunk_asset_links():
@@ -535,6 +537,115 @@ def test_manifest_rows_includes_embedding_record_rows(tmp_path):
         "manifest_dimension": 2,
         "manifest_record_count": 1,
     }
+    assert rows["embedding_vector_summaries"] == [
+        {
+            "doc_id": "doc",
+            "vector_name": "image_dense",
+            "target_kind": "asset",
+            "record_count": 1,
+            "target_count": 1,
+            "dimension": 2,
+            "dimension_min": 2,
+            "dimension_max": 2,
+            "metadata": {
+                "dimension_consistent": True,
+                "record_files": ["qdrant_image_records.jsonl"],
+                "target_id_sample": ["asset"],
+            },
+        },
+        {
+            "doc_id": "doc",
+            "vector_name": "object_dense",
+            "target_kind": "object",
+            "record_count": 1,
+            "target_count": 1,
+            "dimension": 2,
+            "dimension_min": 2,
+            "dimension_max": 2,
+            "metadata": {
+                "dimension_consistent": True,
+                "record_files": ["qdrant_object_records.jsonl"],
+                "target_id_sample": ["asset:object:0"],
+            },
+        },
+        {
+            "doc_id": "doc",
+            "vector_name": "text_dense",
+            "target_kind": "chunk",
+            "record_count": 1,
+            "target_count": 1,
+            "dimension": 2,
+            "dimension_min": 2,
+            "dimension_max": 2,
+            "metadata": {
+                "dimension_consistent": True,
+                "record_files": ["qdrant_text_records.jsonl"],
+                "target_id_sample": ["chunk"],
+            },
+        },
+        {
+            "doc_id": "doc",
+            "vector_name": "triple_dense",
+            "target_kind": "triple",
+            "record_count": 1,
+            "target_count": 1,
+            "dimension": 2,
+            "dimension_min": 2,
+            "dimension_max": 2,
+            "metadata": {
+                "dimension_consistent": True,
+                "record_files": ["qdrant_triple_records.jsonl"],
+                "target_id_sample": ["triple"],
+            },
+        },
+    ]
+
+
+def test_embedding_vector_summary_rows_flags_mixed_dimensions():
+    rows = [
+        {
+            "doc_id": "doc",
+            "vector_name": "text_dense",
+            "target_kind": "chunk",
+            "target_id": "chunk-a",
+            "dimension": 2,
+            "metadata": {"record_file": "qdrant_text_records.jsonl"},
+        },
+        {
+            "doc_id": "doc",
+            "vector_name": "text_dense",
+            "target_kind": "chunk",
+            "target_id": "chunk-b",
+            "dimension": 3,
+            "metadata": {"record_file": "qdrant_text_records.jsonl"},
+        },
+        {
+            "doc_id": "doc",
+            "vector_name": "text_dense",
+            "target_kind": "chunk",
+            "target_id": "chunk-b",
+            "dimension": 3,
+            "metadata": {"record_file": "qdrant_text_records.2.jsonl"},
+        },
+    ]
+
+    assert embedding_vector_summary_rows(rows) == [
+        {
+            "doc_id": "doc",
+            "vector_name": "text_dense",
+            "target_kind": "chunk",
+            "record_count": 3,
+            "target_count": 2,
+            "dimension": None,
+            "dimension_min": 2,
+            "dimension_max": 3,
+            "metadata": {
+                "dimension_consistent": False,
+                "record_files": ["qdrant_text_records.2.jsonl", "qdrant_text_records.jsonl"],
+                "target_id_sample": ["chunk-a", "chunk-b"],
+            },
+        }
+    ]
 
 
 def test_embedding_record_rows_ignores_paths_outside_package(tmp_path):

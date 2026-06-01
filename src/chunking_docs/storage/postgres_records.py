@@ -325,6 +325,63 @@ def embedding_record_rows(doc_id: str, package_dir: Path | None = None) -> list[
     return rows
 
 
+def embedding_vector_summary_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    summaries: dict[tuple[str, str, str], dict[str, Any]] = {}
+    for row in rows:
+        key = (
+            str(row["doc_id"]),
+            str(row["vector_name"]),
+            str(row["target_kind"]),
+        )
+        summary = summaries.setdefault(
+            key,
+            {
+                "doc_id": key[0],
+                "vector_name": key[1],
+                "target_kind": key[2],
+                "record_count": 0,
+                "target_ids": set(),
+                "dimensions": [],
+                "record_files": set(),
+            },
+        )
+        summary["record_count"] += 1
+        summary["target_ids"].add(str(row["target_id"]))
+        summary["dimensions"].append(int(row["dimension"]))
+        record_file = row.get("metadata", {}).get("record_file")
+        if record_file:
+            summary["record_files"].add(str(record_file))
+
+    result = []
+    for summary in sorted(
+        summaries.values(),
+        key=lambda item: (item["doc_id"], item["vector_name"], item["target_kind"]),
+    ):
+        dimensions = summary["dimensions"]
+        dimension_min = min(dimensions) if dimensions else 0
+        dimension_max = max(dimensions) if dimensions else 0
+        dimension = dimension_min if dimension_min == dimension_max else None
+        target_ids = sorted(summary["target_ids"])
+        result.append(
+            {
+                "doc_id": summary["doc_id"],
+                "vector_name": summary["vector_name"],
+                "target_kind": summary["target_kind"],
+                "record_count": summary["record_count"],
+                "target_count": len(target_ids),
+                "dimension": dimension,
+                "dimension_min": dimension_min,
+                "dimension_max": dimension_max,
+                "metadata": {
+                    "dimension_consistent": dimension is not None,
+                    "record_files": sorted(summary["record_files"]),
+                    "target_id_sample": target_ids[:20],
+                },
+            }
+        )
+    return result
+
+
 def package_record_path(package_dir: Path, filename: str) -> Path | None:
     package_root = package_dir.resolve()
     record_path = (package_root / filename).resolve()

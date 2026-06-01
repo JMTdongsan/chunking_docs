@@ -2170,13 +2170,17 @@ def postgres_rows_component(
         "triples": len(rows["triples"]),
         "embedding_artifacts": len(rows["embedding_artifacts"]),
         "embedding_records": len(rows["embedding_records"]),
+        "embedding_vector_summaries": len(rows["embedding_vector_summaries"]),
     }
     return (
         ReadinessComponent(
             name="postgres_rows",
             passed=counts["chunks"] > 0 and counts["pages"] > 0,
             message="Package can be converted into PostgreSQL metadata rows.",
-            metadata={"row_counts": counts},
+            metadata={
+                "row_counts": counts,
+                "embedding_vector_summaries": rows["embedding_vector_summaries"],
+            },
         ),
         counts,
     )
