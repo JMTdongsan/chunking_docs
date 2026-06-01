@@ -622,7 +622,7 @@ chunking-docs gate-retrieval outputs/package/retrieval_eval.json \
 
 ## Lexical Tokenization
 
-BM25 uses the `mixed` tokenizer by default. It combines word tokens with CJK character n-grams, which helps retrieve compound terms that may appear without whitespace in PDF text or OCR output. The lexical corpus includes chunk text plus visual asset captions, OCR text, and VLM summaries linked through `asset_ids` or `asset:` source refs, so visual-only labels can still recover their parent chunks. The package writes `bm25_tokens.json`, and PostgreSQL row export mirrors those tokens into `chunk_lexical_tokens` for reproducible lexical scoring and future search-service migration.
+BM25 uses the `mixed` tokenizer by default. It combines word tokens with CJK character n-grams, which helps retrieve compound terms that may appear without whitespace in PDF text or OCR output. Tokens keep repeated term frequencies by default so BM25 can distinguish a chunk that emphasizes a concept from one that only mentions it once; set `deduplicate=True` on `LexicalTokenizerConfig` only when compact manifests are more important than frequency-sensitive ranking. The lexical corpus includes chunk text plus visual asset captions, OCR text, and VLM summaries linked through `asset_ids` or `asset:` source refs, so visual-only labels can still recover their parent chunks. The package writes `bm25_tokens.json`, and PostgreSQL row export mirrors those tokens into `chunk_lexical_tokens` for reproducible lexical scoring and future search-service migration.
 
 ```bash
 chunking-docs search-local "urban renewal plan" \

@@ -90,7 +90,7 @@
     - BM25 is generated from chunk text plus visual asset captions, OCR text, VLM summaries, and structured VLM metadata linked through `asset_ids` or `asset:` source refs.
     - Lexical search protects exact matches for names, identifiers, dates, codes, and policy terms.
     - Tokenization is configurable as `word`, `char_ngram`, or `mixed`.
-    - The default `mixed` tokenizer adds CJK character n-grams so compound terms without whitespace remain retrievable.
+    - The default `mixed` tokenizer adds CJK character n-grams so compound terms without whitespace remain retrievable, while preserving repeated term frequencies for BM25 ranking.
     - Dense and lexical results are combined with Reciprocal Rank Fusion in the local evaluator.
 
 12. **Graph Triples**

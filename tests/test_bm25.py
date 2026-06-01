@@ -1,6 +1,6 @@
 from chunking_docs.embeddings.bm25 import BM25LexicalIndex, chunk_lexical_texts
 from chunking_docs.embeddings.records import asset_text
-from chunking_docs.embeddings.tokenizers import LexicalTokenizerConfig
+from chunking_docs.embeddings.tokenizers import LexicalTokenizer, LexicalTokenizerConfig
 from chunking_docs.models import AssetKind, ChunkKind, DocumentChunk, VisualAsset
 
 
@@ -72,6 +72,76 @@ def test_bm25_mixed_tokenizer_matches_cjk_compound_terms():
 
     assert word_results == []
     assert mixed_results[0][0].chunk_id == "a"
+
+
+def test_mixed_tokenizer_preserves_term_frequency_by_default():
+    tokens = LexicalTokenizer(
+        LexicalTokenizerConfig(strategy="mixed", min_n=2, max_n=2)
+    ).tokenize("도시재생 도시재생")
+
+    assert tokens.count("도시재생") == 2
+    assert tokens.count("도시") == 2
+
+
+def test_mixed_tokenizer_can_deduplicate_for_compact_manifests():
+    tokens = LexicalTokenizer(
+        LexicalTokenizerConfig(strategy="mixed", min_n=2, max_n=2, deduplicate=True)
+    ).tokenize("도시재생 도시재생")
+
+    assert tokens.count("도시재생") == 1
+    assert tokens.count("도시") == 1
+
+
+def test_bm25_ranking_uses_repeated_term_frequency():
+    chunks = [
+        DocumentChunk(
+            chunk_id="once",
+            doc_id="doc",
+            page_start=1,
+            page_end=1,
+            kind=ChunkKind.TEXT,
+            text="target corridor",
+        ),
+        DocumentChunk(
+            chunk_id="repeated",
+            doc_id="doc",
+            page_start=2,
+            page_end=2,
+            kind=ChunkKind.TEXT,
+            text="target target target corridor",
+        ),
+        DocumentChunk(
+            chunk_id="other-1",
+            doc_id="doc",
+            page_start=3,
+            page_end=3,
+            kind=ChunkKind.TEXT,
+            text="population trend",
+        ),
+        DocumentChunk(
+            chunk_id="other-2",
+            doc_id="doc",
+            page_start=4,
+            page_end=4,
+            kind=ChunkKind.TEXT,
+            text="housing supply",
+        ),
+        DocumentChunk(
+            chunk_id="other-3",
+            doc_id="doc",
+            page_start=5,
+            page_end=5,
+            kind=ChunkKind.TEXT,
+            text="transport network",
+        ),
+    ]
+
+    results = BM25LexicalIndex(
+        chunks,
+        tokenizer_config=LexicalTokenizerConfig(strategy="word"),
+    ).search("target", top_k=2)
+
+    assert [chunk.chunk_id for chunk, _ in results] == ["repeated", "once"]
 
 
 def test_bm25_can_index_linked_visual_asset_text():
@@ -250,3 +320,4 @@ def test_bm25_manifest_records_tokenizer_config(tmp_path):
 
     assert '"strategy": "mixed"' in output.read_text(encoding="utf-8")
     assert '"min_n": 2' in output.read_text(encoding="utf-8")
+    assert '"deduplicate": false' in output.read_text(encoding="utf-8")

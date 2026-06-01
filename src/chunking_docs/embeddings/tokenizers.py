@@ -17,6 +17,7 @@ class LexicalTokenizerConfig(BaseModel):
     min_n: int = 2
     max_n: int = 4
     ngram_cjk_only: bool = True
+    deduplicate: bool = False
 
 
 class LexicalTokenizer:
@@ -25,17 +26,23 @@ class LexicalTokenizer:
 
     def tokenize(self, text: str) -> list[str]:
         if self.config.strategy == "word":
-            return word_tokens(text, lowercase=self.config.lowercase)
+            return maybe_deduplicate(
+                word_tokens(text, lowercase=self.config.lowercase),
+                deduplicate=self.config.deduplicate,
+            )
         if self.config.strategy == "char_ngram":
-            return char_ngram_tokens(
-                text,
-                min_n=self.config.min_n,
-                max_n=self.config.max_n,
-                lowercase=self.config.lowercase,
-                cjk_only=self.config.ngram_cjk_only,
+            return maybe_deduplicate(
+                char_ngram_tokens(
+                    text,
+                    min_n=self.config.min_n,
+                    max_n=self.config.max_n,
+                    lowercase=self.config.lowercase,
+                    cjk_only=self.config.ngram_cjk_only,
+                ),
+                deduplicate=self.config.deduplicate,
             )
         if self.config.strategy == "mixed":
-            return stable_unique(
+            return maybe_deduplicate(
                 word_tokens(text, lowercase=self.config.lowercase)
                 + char_ngram_tokens(
                     text,
@@ -43,7 +50,8 @@ class LexicalTokenizer:
                     max_n=self.config.max_n,
                     lowercase=self.config.lowercase,
                     cjk_only=self.config.ngram_cjk_only,
-                )
+                ),
+                deduplicate=self.config.deduplicate,
             )
         raise ValueError(f"Unsupported tokenizer strategy: {self.config.strategy}")
 
@@ -70,7 +78,7 @@ def char_ngram_tokens(
         if cjk_only and not CJK_RE.search(token):
             continue
         ngrams.extend(token_ngrams(token, min_n=min_n, max_n=max_n))
-    return stable_unique(ngrams)
+    return ngrams
 
 
 def token_ngrams(token: str, min_n: int, max_n: int) -> list[str]:
@@ -91,3 +99,7 @@ def stable_unique(tokens: list[str]) -> list[str]:
         seen.add(token)
         unique.append(token)
     return unique
+
+
+def maybe_deduplicate(tokens: list[str], deduplicate: bool) -> list[str]:
+    return stable_unique(tokens) if deduplicate else tokens
