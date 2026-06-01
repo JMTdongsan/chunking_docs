@@ -1520,6 +1520,19 @@ def gate_qdrant_vector_ablation_command(
         "--min-source-family-target-coverage",
         help="Require source-family target coverage such as visual=0.8. Repeat for multiple families.",
     ),
+    max_source_excluded_target_hit_rate: list[str] = typer.Option(
+        None,
+        "--max-source-excluded-target-hit-rate",
+        help=(
+            "Limit selected mode exact-source excluded-target hit rate such as "
+            "qdrant:image_dense=0.0."
+        ),
+    ),
+    max_source_family_excluded_target_hit_rate: list[str] = typer.Option(
+        None,
+        "--max-source-family-excluded-target-hit-rate",
+        help="Limit selected mode source-family excluded-target hit rate such as visual=0.0.",
+    ),
     min_case_group_target_coverage: list[str] = typer.Option(
         None,
         "--min-case-group-target-coverage",
@@ -1565,6 +1578,14 @@ def gate_qdrant_vector_ablation_command(
         min_source_target_coverage,
         "source target coverage",
     )
+    source_excluded_thresholds = parse_named_float_thresholds(
+        max_source_excluded_target_hit_rate,
+        "source excluded-target hit rate",
+    )
+    source_family_excluded_thresholds = parse_named_float_thresholds(
+        max_source_family_excluded_target_hit_rate,
+        "source family excluded-target hit rate",
+    )
     target_type_thresholds = parse_named_float_thresholds(
         min_target_type_coverage,
         "target type coverage",
@@ -1596,6 +1617,8 @@ def gate_qdrant_vector_ablation_command(
             min_target_type_coverage=target_type_thresholds,
             min_source_target_coverage=source_thresholds,
             min_source_family_target_coverage=source_family_thresholds,
+            max_source_excluded_target_hit_rate=source_excluded_thresholds,
+            max_source_family_excluded_target_hit_rate=source_family_excluded_thresholds,
             min_case_group_target_coverage=case_group_thresholds,
             min_pairwise_shared_queries=min_pairwise_shared_queries,
             min_pairwise_win_rate=min_pairwise_win_rate,
@@ -4503,6 +4526,16 @@ def gate_retrieval_ablation_command(
         "--min-source-family-target-coverage",
         help="Require selected mode source-family target coverage such as lexical=0.8.",
     ),
+    max_source_excluded_target_hit_rate: list[str] = typer.Option(
+        None,
+        "--max-source-excluded-target-hit-rate",
+        help="Limit selected mode exact-source excluded-target hit rate such as bm25=0.0.",
+    ),
+    max_source_family_excluded_target_hit_rate: list[str] = typer.Option(
+        None,
+        "--max-source-family-excluded-target-hit-rate",
+        help="Limit selected mode source-family excluded-target hit rate such as lexical=0.0.",
+    ),
     min_case_group_target_coverage: list[str] = typer.Option(
         None,
         "--min-case-group-target-coverage",
@@ -4553,6 +4586,14 @@ def gate_retrieval_ablation_command(
         min_source_target_coverage,
         "source target coverage",
     )
+    source_excluded_thresholds = parse_named_float_thresholds(
+        max_source_excluded_target_hit_rate,
+        "source excluded-target hit rate",
+    )
+    source_family_excluded_thresholds = parse_named_float_thresholds(
+        max_source_family_excluded_target_hit_rate,
+        "source family excluded-target hit rate",
+    )
     target_type_thresholds = parse_named_float_thresholds(
         min_target_type_coverage,
         "target type coverage",
@@ -4584,6 +4625,8 @@ def gate_retrieval_ablation_command(
             min_target_type_coverage=target_type_thresholds,
             min_source_target_coverage=source_thresholds,
             min_source_family_target_coverage=source_family_thresholds,
+            max_source_excluded_target_hit_rate=source_excluded_thresholds,
+            max_source_family_excluded_target_hit_rate=source_family_excluded_thresholds,
             min_case_group_target_coverage=case_group_thresholds,
             min_recall_lift=min_recall_lift,
             min_target_coverage_lift=min_target_coverage_lift,

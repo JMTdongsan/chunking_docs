@@ -1888,39 +1888,7 @@ def test_gate_retrieval_ablation_reports_failed_rank_gate():
 
 
 def test_gate_retrieval_ablation_checks_excluded_target_hits():
-    chunks = [
-        DocumentChunk(
-            chunk_id="chunk-1",
-            doc_id="doc",
-            page_start=1,
-            page_end=1,
-            kind=ChunkKind.TEXT,
-            text="north river corridor diagram",
-            asset_ids=["asset-1"],
-        ),
-        DocumentChunk(
-            chunk_id="chunk-2",
-            doc_id="doc",
-            page_start=2,
-            page_end=2,
-            kind=ChunkKind.TEXT,
-            text="north river corridor diagram",
-            asset_ids=["asset-2"],
-        ),
-    ]
-    cases = [
-        RetrievalCase(
-            query="north river corridor diagram",
-            expected_asset_ids=["asset-1"],
-            excluded_asset_ids=["asset-2"],
-        )
-    ]
-    report = evaluate_retrieval_ablation(
-        chunks,
-        [],
-        cases,
-        modes=parse_ablation_modes("bm25"),
-    )
+    report = retrieval_ablation_report_with_excluded_hits()
 
     gate = gate_retrieval_ablation(
         report,
@@ -1938,6 +1906,25 @@ def test_gate_retrieval_ablation_checks_excluded_target_hits():
         "max_excluded_target_hit_rate",
         "max_excluded_query_hit_rate",
         "max_excluded_hit_query_count",
+    }
+
+
+def test_gate_retrieval_ablation_checks_source_excluded_target_hits():
+    report = retrieval_ablation_report_with_excluded_hits()
+
+    gate = gate_retrieval_ablation(
+        report,
+        mode="bm25",
+        max_source_excluded_target_hit_rate={"bm25": 0.0},
+        max_source_family_excluded_target_hit_rate={"lexical": 0.0},
+    )
+
+    assert gate.passed is False
+    assert gate.metrics["source.bm25.excluded_target_hit_rate"] == 1.0
+    assert gate.metrics["source_family.lexical.excluded_target_hit_rate"] == 1.0
+    assert set(gate.failed_checks) == {
+        "max_source_excluded_target_hit_rate:bm25",
+        "max_source_family_excluded_target_hit_rate:lexical",
     }
 
 
@@ -2008,6 +1995,42 @@ def visual_lexical_ablation_report():
         cases,
         assets=assets,
         modes=parse_ablation_modes("bm25_text,bm25_visual"),
+    )
+
+
+def retrieval_ablation_report_with_excluded_hits():
+    chunks = [
+        DocumentChunk(
+            chunk_id="chunk-1",
+            doc_id="doc",
+            page_start=1,
+            page_end=1,
+            kind=ChunkKind.TEXT,
+            text="north river corridor diagram",
+            asset_ids=["asset-1"],
+        ),
+        DocumentChunk(
+            chunk_id="chunk-2",
+            doc_id="doc",
+            page_start=2,
+            page_end=2,
+            kind=ChunkKind.TEXT,
+            text="north river corridor diagram",
+            asset_ids=["asset-2"],
+        ),
+    ]
+    cases = [
+        RetrievalCase(
+            query="north river corridor diagram",
+            expected_asset_ids=["asset-1"],
+            excluded_asset_ids=["asset-2"],
+        )
+    ]
+    return evaluate_retrieval_ablation(
+        chunks,
+        [],
+        cases,
+        modes=parse_ablation_modes("bm25"),
     )
 
 
@@ -2537,6 +2560,25 @@ def test_gate_qdrant_vector_ablation_checks_excluded_target_hits():
     }
 
 
+def test_gate_qdrant_vector_ablation_checks_source_excluded_target_hits():
+    report = qdrant_vector_ablation_report_with_excluded_hits()
+
+    gate = gate_qdrant_vector_ablation(
+        report,
+        mode="leaky",
+        max_source_excluded_target_hit_rate={"qdrant:image_dense": 0.0},
+        max_source_family_excluded_target_hit_rate={"visual": 0.0},
+    )
+
+    assert gate.passed is False
+    assert gate.metrics["source.qdrant:image_dense.excluded_target_hit_rate"] == 1.0
+    assert gate.metrics["source_family.visual.excluded_target_hit_rate"] == 1.0
+    assert set(gate.failed_checks) == {
+        "max_source_excluded_target_hit_rate:qdrant:image_dense",
+        "max_source_family_excluded_target_hit_rate:visual",
+    }
+
+
 def test_gate_qdrant_vector_ablation_requires_baseline_for_pairwise_checks():
     report = qdrant_vector_ablation_report_for_gate()
 
@@ -2641,6 +2683,10 @@ def test_gate_qdrant_vector_ablation_cli_checks_excluded_target_hits(tmp_path):
             "0",
             "--max-excluded-hit-query-count",
             "0",
+            "--max-source-excluded-target-hit-rate",
+            "qdrant:image_dense=0",
+            "--max-source-family-excluded-target-hit-rate",
+            "visual=0",
             "--no-fail",
             "--output",
             str(output),
@@ -2651,10 +2697,14 @@ def test_gate_qdrant_vector_ablation_cli_checks_excluded_target_hits(tmp_path):
     payload = json.loads(output.read_text(encoding="utf-8"))
     assert payload["passed"] is False
     assert payload["metrics"]["excluded_target_hit_rate"] == 1.0
+    assert payload["metrics"]["source.qdrant:image_dense.excluded_target_hit_rate"] == 1.0
+    assert payload["metrics"]["source_family.visual.excluded_target_hit_rate"] == 1.0
     assert set(payload["failed_checks"]) == {
         "max_excluded_target_hit_rate",
         "max_excluded_query_hit_rate",
         "max_excluded_hit_query_count",
+        "max_source_excluded_target_hit_rate:qdrant:image_dense",
+        "max_source_family_excluded_target_hit_rate:visual",
     }
 
 
@@ -2873,3 +2923,39 @@ def test_gate_retrieval_ablation_cli_writes_lift_report(tmp_path):
     assert payload["case_group_best_modes"]["case_source"]["visual_lexical_probe"][
         "target_coverage_at_k"
     ]["mode"] == "bm25_visual"
+
+
+def test_gate_retrieval_ablation_cli_checks_source_excluded_target_hits(tmp_path):
+    report_path = tmp_path / "ablation.json"
+    output = tmp_path / "ablation_gate.json"
+    report_path.write_text(
+        retrieval_ablation_report_with_excluded_hits().model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "gate-retrieval-ablation",
+            str(report_path),
+            "--mode",
+            "bm25",
+            "--max-source-excluded-target-hit-rate",
+            "bm25=0",
+            "--max-source-family-excluded-target-hit-rate",
+            "lexical=0",
+            "--output",
+            str(output),
+            "--no-fail",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["passed"] is False
+    assert payload["metrics"]["source.bm25.excluded_target_hit_rate"] == 1.0
+    assert payload["metrics"]["source_family.lexical.excluded_target_hit_rate"] == 1.0
+    assert set(payload["failed_checks"]) == {
+        "max_source_excluded_target_hit_rate:bm25",
+        "max_source_family_excluded_target_hit_rate:lexical",
+    }
