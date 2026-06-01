@@ -50,6 +50,7 @@ from chunking_docs.evaluation.chunking_gate import (
 )
 from chunking_docs.evaluation.chunking_quality import evaluate_chunking_quality
 from chunking_docs.evaluation.compare import compare_chunking_reports
+from chunking_docs.evaluation.context_quality import evaluate_rag_contexts
 from chunking_docs.evaluation.diagnostics import (
     analyze_retrieval_evaluation,
     load_retrieval_evaluation,
@@ -933,6 +934,183 @@ def qdrant_rag_context_config_command(
         print({"output": str(output), **bundle.metadata})
         return
     print(bundle.model_dump())
+
+
+@app.command(name="eval-qdrant-rag-context-config")
+def eval_qdrant_rag_context_config_command(
+    config: Path,
+    cases: Path,
+    output: Path | None = None,
+    contexts_output: Path | None = typer.Option(
+        None,
+        "--contexts-output",
+        help="Optional JSONL output containing the generated context bundle for each case.",
+    ),
+    package_dir: Path | None = typer.Option(
+        None,
+        "--package-dir",
+        help="Override package_dir from the retrieval config.",
+    ),
+    url: str = "http://localhost:6333",
+    collection: str = "",
+    location: str = "",
+    path: str = "",
+    max_chars_per_chunk: int = 1400,
+    max_chars_per_asset_text: int = 1400,
+    include_evidence: bool = True,
+    neighbor_window: int = 0,
+    include_assets: bool = True,
+    include_triples: bool = True,
+    text_backend: str = "hashing",
+    text_model: str = "BAAI/bge-m3",
+    image_query_backend: str = "none",
+    image_query_model: str = "openai/clip-vit-large-patch14",
+    device: str = "cuda",
+    hashing_dim: int = 384,
+    doc_id: str = "",
+    payload_filter: list[str] = typer.Option(
+        None,
+        "--filter",
+        help="Payload filter such as kind=map, page_no=12, page_start<=12. Repeat for multiple filters.",
+    ),
+):
+    """Evaluate final RAG context bundles built from an exported Qdrant config."""
+    retrieval_config = read_qdrant_retrieval_config(config)
+    tokenizer_options = retrieval_config_tokenizer_options(retrieval_config)
+    effective_package_dir = package_dir or Path(
+        retrieval_config.package_dir or "outputs/package"
+    )
+    effective_collection = collection or retrieval_config.collection_name or ""
+    vector_names = ",".join(retrieval_config.vector_names)
+    filters = build_payload_filter(filter_specs=payload_filter)
+    metadata_filters = build_payload_filter(doc_id=doc_id, filter_specs=payload_filter)
+
+    prepare_start = perf_counter()
+    prepared = prepare_qdrant_hybrid_search(
+        package_dir=effective_package_dir,
+        url=url,
+        collection=effective_collection,
+        location=location,
+        path=path,
+        vector_names=vector_names,
+        text_backend=text_backend,
+        text_model=text_model,
+        image_query_backend=image_query_backend,
+        image_query_model=image_query_model,
+        device=device,
+        hashing_dim=hashing_dim,
+        lexical_tokenizer=tokenizer_options["strategy"],
+        ngram_min=tokenizer_options["min_n"],
+        ngram_max=tokenizer_options["max_n"],
+        ngram_cjk_only=tokenizer_options["ngram_cjk_only"],
+        deduplicate_tokens=tokenizer_options["deduplicate"],
+    )
+    index_build_ms = (perf_counter() - prepare_start) * 1000
+    loaded_cases = load_retrieval_cases(cases)
+    bundles = []
+    latencies_ms = []
+    for case in loaded_cases:
+        case_start = perf_counter()
+        hits = prepared["searcher"].search(
+            query=case.query,
+            vector_names=prepared["selected_vectors"],
+            top_k=retrieval_config.top_k,
+            graph_expand=retrieval_config.graph_expand,
+            doc_id=doc_id or None,
+            payload_filter=filters,
+            collapse_hierarchical=retrieval_config.collapse_hierarchical,
+            fusion_weights=retrieval_config.fusion_weights,
+        )
+        bundle = build_context_bundle(
+            query=case.query,
+            hits=hits,
+            chunks=prepared["chunks"],
+            assets=prepared["assets"],
+            triples=prepared["triples"],
+            max_chars_per_chunk=max_chars_per_chunk,
+            max_chars_per_asset_text=max_chars_per_asset_text,
+            include_evidence=include_evidence,
+            neighbor_window=neighbor_window,
+            include_assets=include_assets,
+            include_triples=include_triples,
+        )
+        latencies_ms.append((perf_counter() - case_start) * 1000)
+        bundle.metadata.update(
+            {
+                "backend": "qdrant_hybrid_config",
+                "config": str(config),
+                "config_selection": retrieval_config.selection.model_dump(),
+                "collection": prepared["collection_name"],
+                "vector_names": prepared["selected_vectors"],
+                "graph_expand": retrieval_config.graph_expand,
+                "query_encoders": prepared["query_encoders"],
+                "query_encoder_details": prepared.get("query_encoder_details", {}),
+                "filters": metadata_filters,
+                "fusion_weights": retrieval_config.fusion_weights,
+                "collapse_hierarchical": retrieval_config.collapse_hierarchical,
+                "lexical_tokenizer": tokenizer_options,
+                "case_metadata": case.metadata,
+            }
+        )
+        bundles.append(bundle)
+    evaluation = evaluate_rag_contexts(
+        cases=loaded_cases,
+        bundles=bundles,
+        latencies_ms=latencies_ms,
+    )
+    evaluation.metadata.update(
+        {
+            "backend": "qdrant_rag_context_config",
+            "config": str(config),
+            "config_selection": retrieval_config.selection.model_dump(),
+            "cases": str(cases),
+            "contexts_output": str(contexts_output) if contexts_output is not None else None,
+            "collection": prepared["collection_name"],
+            "vector_names": prepared["selected_vectors"],
+            "graph_expand": retrieval_config.graph_expand,
+            "query_encoders": prepared["query_encoders"],
+            "query_encoder_details": prepared.get("query_encoder_details", {}),
+            "upserted": prepared["upserted"],
+            "stored_count": prepared["store"].count(),
+            "filters": metadata_filters,
+            "fusion_weights": retrieval_config.fusion_weights,
+            "collapse_hierarchical": retrieval_config.collapse_hierarchical,
+            "lexical_tokenizer": tokenizer_options,
+            "index_build_ms": index_build_ms,
+            "context_options": {
+                "max_chars_per_chunk": max_chars_per_chunk,
+                "max_chars_per_asset_text": max_chars_per_asset_text,
+                "include_evidence": include_evidence,
+                "neighbor_window": neighbor_window,
+                "include_assets": include_assets,
+                "include_triples": include_triples,
+            },
+        }
+    )
+    if contexts_output is not None:
+        write_jsonl(contexts_output, bundles)
+    if output is not None:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(evaluation.model_dump_json(indent=2), encoding="utf-8")
+    print(
+        {
+            "output": str(output) if output is not None else None,
+            "contexts_output": str(contexts_output) if contexts_output is not None else None,
+            "config": str(config),
+            "case_count": evaluation.case_count,
+            "passed_count": evaluation.passed_count,
+            "failed_count": evaluation.failed_count,
+            "target_coverage": evaluation.target_coverage,
+            "excluded_target_hit_rate": evaluation.excluded_target_hit_rate,
+            "mean_context_char_count": evaluation.mean_context_char_count,
+            "max_context_char_count": evaluation.max_context_char_count,
+            "mean_latency_ms": evaluation.mean_latency_ms,
+            "collection": prepared["collection_name"],
+            "vector_names": prepared["selected_vectors"],
+            "fusion_weights": retrieval_config.fusion_weights,
+            "config_selection": retrieval_config.selection.model_dump(),
+        }
+    )
 
 
 @app.command(name="eval-qdrant-retrieval")

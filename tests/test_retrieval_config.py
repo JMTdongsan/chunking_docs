@@ -16,7 +16,7 @@ from chunking_docs.evaluation.retrieval import (
 from chunking_docs.evaluation.retrieval_config import (
     build_qdrant_retrieval_config_from_fusion_sweep,
 )
-from chunking_docs.models import ChunkKind, DocumentChunk
+from chunking_docs.models import AssetKind, ChunkKind, DocumentChunk, GraphTriple, VisualAsset
 from chunking_docs.retrieval.qdrant_hybrid import QdrantHybridSearchHit
 
 
@@ -295,6 +295,156 @@ def test_qdrant_rag_context_config_cli_uses_exported_settings(tmp_path, monkeypa
     assert payload["metadata"]["backend"] == "qdrant_hybrid_config"
     assert payload["metadata"]["config_selection"]["candidate"] == "balanced"
     assert payload["metadata"]["fusion_weights"] == {"bm25": 1.2}
+
+
+def test_eval_qdrant_rag_context_config_cli_scores_generated_contexts(
+    tmp_path,
+    monkeypatch,
+):
+    config = build_qdrant_retrieval_config_from_fusion_sweep(fusion_sweep_report())
+    config = config.model_copy(
+        update={
+            "package_dir": str(tmp_path / "package"),
+            "collection_name": "config_collection",
+            "vector_names": ["text_dense"],
+            "graph_expand": True,
+            "fusion_weights": {"bm25": 1.2},
+            "top_k": 3,
+            "collapse_hierarchical": True,
+            "lexical_tokenizer": {
+                "strategy": "mixed",
+                "min_n": 2,
+                "max_n": 3,
+                "ngram_cjk_only": False,
+                "deduplicate": True,
+            },
+        }
+    )
+    config_path = tmp_path / "qdrant_retrieval_config.json"
+    cases_path = tmp_path / "cases.jsonl"
+    output_path = tmp_path / "context_eval.json"
+    contexts_path = tmp_path / "contexts.jsonl"
+    config_path.write_text(config.model_dump_json(indent=2), encoding="utf-8")
+    cases_path.write_text(
+        json.dumps(
+            {
+                "query": "redevelopment visual policy",
+                "expected_pages": [1],
+                "expected_asset_ids": ["asset-1"],
+                "expected_triple_ids": ["triple-1"],
+                "metadata": {"case_source": "visual_object_probe"},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    chunk = DocumentChunk(
+        chunk_id="chunk-1",
+        doc_id="doc",
+        page_start=1,
+        page_end=1,
+        kind=ChunkKind.TEXT,
+        text="redevelopment visual policy",
+        metadata={"chunking_strategy": "semantic", "retrieval_role": "child"},
+    )
+    asset = VisualAsset(
+        asset_id="asset-1",
+        doc_id="doc",
+        page_no=1,
+        kind=AssetKind.MAP,
+        caption="redevelopment map",
+    )
+    triple = GraphTriple(
+        triple_id="triple-1",
+        doc_id="doc",
+        chunk_id="chunk-1",
+        subject="redevelopment",
+        predicate="uses",
+        object="station corridor",
+        qualifiers={"asset_id": "asset-1"},
+    )
+    calls = {}
+
+    class FakeStore:
+        def count(self):
+            return 1
+
+    class FakeSearcher:
+        def search(self, **kwargs):
+            calls["search"] = kwargs
+            return [
+                QdrantHybridSearchHit(
+                    item_id="chunk-1",
+                    score=1.0,
+                    sources=["qdrant:text_dense"],
+                    chunk=chunk,
+                    payloads=[
+                        {
+                            "asset_id": ["asset-1"],
+                            "triple_ids": ["triple-1"],
+                            "doc_id": "doc",
+                            "page_no": 1,
+                            "kind": "map",
+                        }
+                    ],
+                )
+            ]
+
+    def fake_prepare_qdrant_hybrid_search(**kwargs):
+        calls["prepare"] = kwargs
+        return {
+            "searcher": FakeSearcher(),
+            "store": FakeStore(),
+            "collection_name": kwargs["collection"],
+            "selected_vectors": ["text_dense"],
+            "query_encoders": {"text_dense": "default_text"},
+            "query_encoder_details": {"text_dense": {"backend": "hashing"}},
+            "upserted": {"count": 1},
+            "chunks": [chunk],
+            "assets": [asset],
+            "triples": [triple],
+        }
+
+    monkeypatch.setattr(
+        "chunking_docs.cli.prepare_qdrant_hybrid_search",
+        fake_prepare_qdrant_hybrid_search,
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "eval-qdrant-rag-context-config",
+            str(config_path),
+            str(cases_path),
+            "--output",
+            str(output_path),
+            "--contexts-output",
+            str(contexts_path),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert calls["prepare"]["package_dir"] == tmp_path / "package"
+    assert calls["prepare"]["collection"] == "config_collection"
+    assert calls["prepare"]["vector_names"] == "text_dense"
+    assert calls["prepare"]["ngram_max"] == 3
+    assert calls["search"]["query"] == "redevelopment visual policy"
+    assert calls["search"]["top_k"] == 3
+    assert calls["search"]["graph_expand"] is True
+    assert calls["search"]["collapse_hierarchical"] is True
+    assert calls["search"]["fusion_weights"] == {"bm25": 1.2}
+    payload = json.loads(output_path.read_text(encoding="utf-8"))
+    assert payload["passed_count"] == 1
+    assert payload["target_coverage"] == 1.0
+    assert payload["target_metrics"]["asset"]["coverage"] == 1.0
+    assert payload["target_metrics"]["triple"]["coverage"] == 1.0
+    assert payload["metadata"]["backend"] == "qdrant_rag_context_config"
+    assert payload["metadata"]["config_selection"]["candidate"] == "balanced"
+    context_payload = json.loads(contexts_path.read_text(encoding="utf-8").splitlines()[0])
+    assert context_payload["metadata"]["case_metadata"] == {
+        "case_source": "visual_object_probe"
+    }
+    assert context_payload["metadata"]["retrieved_asset_ids"] == ["asset-1"]
 
 
 def fusion_sweep_report():
