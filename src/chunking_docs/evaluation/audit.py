@@ -14,12 +14,14 @@ from chunking_docs.graph.provenance import (
     chunk_asset_ids,
     chunk_id_alias_map,
     chunk_ids_by_asset_id,
+    triple_asset_ids,
     triple_resolved_chunk_ids,
 )
 from chunking_docs.io import read_jsonl
 from chunking_docs.models import DocumentChunk, GraphTriple, PageProfile, TextQuality, VisualAsset
 from chunking_docs.storage.qdrant_config import qdrant_payload_index_fields
 from chunking_docs.storage.records import EmbeddingRecord
+from chunking_docs.vision.vlm_output import visual_triples_from_payload
 
 
 class AuditIssue(BaseModel):
@@ -285,6 +287,7 @@ def audit_package(
     require_annotations_for_visual_pages: bool = False,
     package_dir: Path | None = None,
     require_qdrant_records: bool = False,
+    require_visual_derived_triples: bool = False,
 ) -> PackageAudit:
     issues: list[AuditIssue] = []
     profile_pages = {profile.page_no for profile in profiles}
@@ -330,6 +333,13 @@ def audit_package(
                 metadata={"triple_ids": orphan_triples[:50], "count": len(orphan_triples)},
             )
         )
+
+    validate_visual_derived_triple_coverage(
+        assets=assets,
+        triples=triples,
+        issues=issues,
+        require_visual_derived_triples=require_visual_derived_triples,
+    )
 
     pages_requiring_ocr = sorted(
         asset.page_no for asset in assets if asset.metadata.get("requires_ocr") and asset_requires_ocr(asset)
@@ -386,6 +396,83 @@ def audit_package(
         qdrant_vector_sizes=qdrant_vector_sizes,
         issues=issues,
     )
+
+
+def validate_visual_derived_triple_coverage(
+    assets: list[VisualAsset],
+    triples: list[GraphTriple],
+    issues: list[AuditIssue],
+    require_visual_derived_triples: bool = False,
+) -> None:
+    existing_keys_by_asset = triple_keys_by_asset_id(triples)
+    missing_assets = []
+    for asset in assets:
+        expected_keys = {
+            normalized_graph_triple_key(triple.get("subject"), triple.get("predicate"), triple.get("object"))
+            for triple in visual_triples_from_payload(visual_triple_payload(asset))
+            if triple.get("derived_from_vlm_field")
+        }
+        expected_keys.discard(("", "", ""))
+        if not expected_keys:
+            continue
+        missing_keys = sorted(expected_keys - existing_keys_by_asset.get(asset.asset_id, set()))
+        if not missing_keys:
+            continue
+        missing_assets.append(
+            {
+                "asset_id": asset.asset_id,
+                "page_no": asset.page_no,
+                "missing_triple_count": len(missing_keys),
+                "missing_triples": [format_graph_triple_key(key) for key in missing_keys[:10]],
+            }
+        )
+
+    if missing_assets:
+        issues.append(
+            AuditIssue(
+                severity="error" if require_visual_derived_triples else "warning",
+                code="missing_visual_derived_triples",
+                message=(
+                    "Some structured VLM metadata is not represented by graph triples with visual asset provenance."
+                ),
+                metadata={
+                    "asset_count": len(missing_assets),
+                    "assets": missing_assets[:50],
+                    "requires_visual_derived_triples": require_visual_derived_triples,
+                },
+            )
+        )
+
+
+def triple_keys_by_asset_id(triples: list[GraphTriple]) -> dict[str, set[tuple[str, str, str]]]:
+    indexed: dict[str, set[tuple[str, str, str]]] = {}
+    for triple in triples:
+        key = normalized_graph_triple_key(triple.subject, triple.predicate, triple.object)
+        if key == ("", "", ""):
+            continue
+        for asset_id in sorted(triple_asset_ids(triple)):
+            indexed.setdefault(asset_id, set()).add(key)
+    return indexed
+
+
+def visual_triple_payload(asset: VisualAsset) -> dict[str, Any]:
+    payload = dict(asset.metadata)
+    if asset.caption and not any(payload.get(key) for key in ("title", "caption", "name")):
+        payload["caption"] = asset.caption
+    return payload
+
+
+def normalized_graph_triple_key(subject: Any, predicate: Any, object_: Any) -> tuple[str, str, str]:
+    return (
+        str(subject or "").strip().casefold(),
+        str(predicate or "").strip().casefold(),
+        str(object_ or "").strip().casefold(),
+    )
+
+
+def format_graph_triple_key(key: tuple[str, str, str]) -> dict[str, str]:
+    subject, predicate, object_ = key
+    return {"subject": subject, "predicate": predicate, "object": object_}
 
 
 def asset_requires_vlm(asset: VisualAsset) -> bool:

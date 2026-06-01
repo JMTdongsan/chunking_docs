@@ -55,6 +55,72 @@ def test_ingestion_readiness_passes_ready_package(tmp_path):
     assert report.failed_components == []
 
 
+def test_ingestion_readiness_can_require_visual_derived_triples(tmp_path):
+    package_dir, manifest = write_ready_package(tmp_path)
+    manifest.assets[0] = manifest.assets[0].model_copy(
+        update={
+            "metadata": {
+                "requires_ocr": False,
+                "requires_vlm": False,
+                "title": "map panel",
+                "objects": [{"label": "route line"}],
+            }
+        }
+    )
+    write_jsonl(package_dir / "assets.jsonl", manifest.assets)
+
+    report = build_ingestion_readiness_report(
+        package_dir,
+        manifest,
+        require_bm25=False,
+        require_visual_derived_triples=True,
+    )
+
+    component = next(component for component in report.components if component.name == "package_audit")
+    assert report.passed is False
+    assert "package_audit" in report.failed_components
+    assert "missing_visual_derived_triples" in component.metadata["issue_codes"]
+
+
+def test_ingestion_readiness_cli_can_require_visual_derived_triples(tmp_path):
+    package_dir, manifest = write_ready_package(tmp_path)
+    manifest.assets[0] = manifest.assets[0].model_copy(
+        update={
+            "metadata": {
+                "requires_ocr": False,
+                "requires_vlm": False,
+                "title": "map panel",
+                "objects": [{"label": "route line"}],
+            }
+        }
+    )
+    write_jsonl(package_dir / "assets.jsonl", manifest.assets)
+    write_bm25_manifest(package_dir, manifest.chunks, manifest.assets)
+    output = tmp_path / "readiness.json"
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "ingestion-readiness",
+            "--package-dir",
+            str(package_dir),
+            "--require-visual-derived-triples",
+            "--output",
+            str(output),
+            "--no-fail",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["passed"] is False
+    assert "package_audit" in payload["failed_components"]
+    component = next(
+        component for component in payload["components"] if component["name"] == "package_audit"
+    )
+    assert "missing_visual_derived_triples" in component["metadata"]["issue_codes"]
+
+
 def test_chunks_with_linked_asset_text_counts_source_refs():
     manifest = ProcessingManifest(
         doc=SourceDocument(doc_id="doc", title="title", local_path=Path("/tmp/doc.pdf")),

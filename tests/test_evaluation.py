@@ -241,6 +241,128 @@ def test_audit_package_accepts_asset_backed_graph_triples():
     assert "orphan_triples" not in {issue.code for issue in audit.issues}
 
 
+def test_audit_package_warns_when_vlm_metadata_triples_are_missing():
+    chunk = DocumentChunk(
+        chunk_id="chunk",
+        doc_id="doc",
+        page_start=1,
+        page_end=1,
+        kind=ChunkKind.TEXT,
+        text="visual context",
+        asset_ids=["asset"],
+    )
+    asset = VisualAsset(
+        asset_id="asset",
+        doc_id="doc",
+        page_no=1,
+        kind=AssetKind.PAGE_IMAGE,
+        metadata={
+            "title": "map panel",
+            "entities": ["station marker"],
+            "objects": [{"label": "route line"}],
+        },
+    )
+
+    audit = audit_package([], [chunk], [asset], [])
+
+    issue = next(issue for issue in audit.issues if issue.code == "missing_visual_derived_triples")
+    assert audit.passed
+    assert issue.severity == "warning"
+    assert issue.metadata["assets"][0]["missing_triple_count"] == 2
+
+
+def test_audit_package_can_require_vlm_metadata_triples():
+    chunk = DocumentChunk(
+        chunk_id="chunk",
+        doc_id="doc",
+        page_start=1,
+        page_end=1,
+        kind=ChunkKind.TEXT,
+        text="visual context",
+        asset_ids=["asset"],
+    )
+    asset = VisualAsset(
+        asset_id="asset",
+        doc_id="doc",
+        page_no=1,
+        kind=AssetKind.PAGE_IMAGE,
+        metadata={"title": "map panel", "visual_elements": ["legend"]},
+    )
+
+    audit = audit_package([], [chunk], [asset], [], require_visual_derived_triples=True)
+
+    issue = next(issue for issue in audit.issues if issue.code == "missing_visual_derived_triples")
+    assert not audit.passed
+    assert issue.severity == "error"
+
+
+def test_audit_package_accepts_vlm_metadata_triples_with_asset_provenance():
+    chunk = DocumentChunk(
+        chunk_id="chunk",
+        doc_id="doc",
+        page_start=1,
+        page_end=1,
+        kind=ChunkKind.TEXT,
+        text="visual context",
+        asset_ids=["asset"],
+    )
+    asset = VisualAsset(
+        asset_id="asset",
+        doc_id="doc",
+        page_no=1,
+        kind=AssetKind.PAGE_IMAGE,
+        metadata={"title": "map panel", "entities": ["station marker"]},
+    )
+    triple = GraphTriple(
+        triple_id="visual-entity",
+        doc_id="doc",
+        chunk_id="chunk",
+        subject="map panel",
+        predicate="mentions_entity",
+        object="station marker",
+        qualifiers={"asset_id": "asset", "derived_from_vlm_field": True, "source_field": "entities"},
+    )
+
+    audit = audit_package([], [chunk], [asset], [triple], require_visual_derived_triples=True)
+
+    assert audit.passed
+    assert "missing_visual_derived_triples" not in {issue.code for issue in audit.issues}
+
+
+def test_audit_package_uses_asset_caption_for_vlm_metadata_triple_subject():
+    chunk = DocumentChunk(
+        chunk_id="chunk",
+        doc_id="doc",
+        page_start=1,
+        page_end=1,
+        kind=ChunkKind.TEXT,
+        text="visual context",
+        asset_ids=["asset"],
+    )
+    asset = VisualAsset(
+        asset_id="asset",
+        doc_id="doc",
+        page_no=1,
+        kind=AssetKind.PAGE_IMAGE,
+        caption="map panel",
+        metadata={"entities": ["station marker"]},
+    )
+    triple = GraphTriple(
+        triple_id="visual-entity",
+        doc_id="doc",
+        chunk_id="chunk",
+        subject="map panel",
+        predicate="mentions_entity",
+        object="station marker",
+        qualifiers={"asset_id": "asset"},
+    )
+
+    audit = audit_package([], [chunk], [asset], [triple], require_visual_derived_triples=True)
+
+    assert audit.passed
+    assert "missing_visual_derived_triples" not in {issue.code for issue in audit.issues}
+
+
 def test_audit_package_requires_vlm_retry_when_parse_status_is_missing():
     profiles = [
         PageProfile(

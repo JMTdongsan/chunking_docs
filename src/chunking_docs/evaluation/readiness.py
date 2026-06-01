@@ -76,6 +76,7 @@ def build_ingestion_readiness_report(
     required_vectors: list[str] | None = None,
     require_postgres_rows: bool = True,
     require_visual_annotations: bool = False,
+    require_visual_derived_triples: bool = False,
     min_visual_text_coverage_ratio: float | None = None,
     min_visual_text_part_coverage_ratio: float | None = None,
     visual_results: list[VisualJobRunResult] | None = None,
@@ -112,6 +113,7 @@ def build_ingestion_readiness_report(
         require_annotations_for_visual_pages=require_visual_annotations,
         package_dir=package_dir,
         require_qdrant_records=require_qdrant_records,
+        require_visual_derived_triples=require_visual_derived_triples,
     )
     components = [
         ReadinessComponent(

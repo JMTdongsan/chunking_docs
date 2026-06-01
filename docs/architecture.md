@@ -93,7 +93,7 @@
     - Section metadata creates baseline graph relationships.
     - OCR/VLM JSON or external annotations can add `subject, predicate, object` triples.
     - Triple normalization canonicalizes labels, predicate names, and stable IDs.
-    - Triple audit flags duplicates, orphan chunk references, empty fields, and invalid confidence values.
+    - Triple audit flags duplicates, orphan chunk references, empty fields, invalid confidence values, and optional gaps between VLM-derived visual metadata and asset-provenance graph triples.
     - Graph terms are used for query expansion and relationship browsing.
 
 13. **Storage**
@@ -226,7 +226,7 @@ Chunking changes should be judged by retrieval behavior, not only by successful 
 Recommended checks:
 
 - `audit-publication`: public repository scan for forbidden text, accidental binary/document artifacts, oversized files, and required generated-artifact ignore patterns.
-- `audit-package`: structural completeness, orphan checks, OCR/VLM gaps, Qdrant vector dimensions, required payload fields, payload index definitions, text/caption/image payload freshness, and embedding manifest count/checksum consistency.
+- `audit-package`: structural completeness, orphan checks, OCR/VLM gaps, optional VLM-derived visual triple coverage, Qdrant vector dimensions, required payload fields, payload index definitions, text/caption/image payload freshness, and embedding manifest count/checksum consistency.
 - `qdrant-check-collection`: live Qdrant collection contract validation for named-vector dimensions and payload indexes.
 - `postgres-schema`: offline PostgreSQL SQL contract export for review or migration tooling.
 - `postgres-check-schema`: live PostgreSQL schema contract validation for required extensions, tables, columns, column types, and indexes.
@@ -238,7 +238,7 @@ Recommended checks:
 - `eval-qdrant-retrieval`: the same benchmark cases against Qdrant named vectors plus BM25 and optional graph expansion.
 - `eval-qdrant-vector-ablation`: Qdrant text, visual caption, optional image, and graph-expanded vector comparison on the same cases, including case-group best-mode summaries, query-paired rank deltas, and candidate-vs-baseline comparisons for benchmark subsets such as visual object probes.
 - `gate-qdrant-vector-ablation`: pass/fail checks for a selected Qdrant vector mode using recall, target coverage, target nDCG, target rank limits, precision, failed-query count, latency, target-type coverage, source-family and exact source target coverage, case metadata group coverage, optional best-mode requirements, pairwise rank-delta ceilings, and query-paired baseline thresholds when a baseline mode is supplied.
-- `ingestion-readiness`: final pre-ingestion gate that can combine package audit results, BM25 token manifest freshness for asset-enriched lexical text, linked visual text coverage at asset and text-part levels in package chunks, storage artifacts, required vector-family checks, PostgreSQL row conversion, retrieval case metadata group coverage, visual quality, VLM run comparison checks, retrieval gates, chunking comparison gates, retrieval ablation gates, and selected Qdrant vector ablation gates, including exact source coverage for selected retrieval, ablation, and Qdrant vector sources.
+- `ingestion-readiness`: final pre-ingestion gate that can combine package audit results, BM25 token manifest freshness for asset-enriched lexical text, linked visual text coverage at asset and text-part levels in package chunks, VLM-derived visual triple coverage, storage artifacts, required vector-family checks, PostgreSQL row conversion, retrieval case metadata group coverage, visual quality, VLM run comparison checks, retrieval gates, chunking comparison gates, retrieval ablation gates, and selected Qdrant vector ablation gates, including exact source coverage for selected retrieval, ablation, and Qdrant vector sources.
 - `compare-visual-runs`: OCR/VLM run comparison by coverage, structured parse rate, object detection coverage, graph triple density, latency, and shared job-set validation.
 - `plan-vlm-experiments`: reproducible profile-by-profile command recipes for running the same visual job set through multiple VLMs.
 - `eval-retrieval-ablation`: dense-only, BM25-only, graph-only, hybrid, graph-expanded hybrid, and text-only versus visual-asset-enriched lexical comparison on the same cases, including target coverage@k, target nDCG@k, chunking-strategy coverage, retrieval-role coverage, case metadata group coverage, case-group best-mode summaries, query-paired rank deltas, query-paired comparisons, and latency.

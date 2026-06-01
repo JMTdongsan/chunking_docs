@@ -2370,6 +2370,14 @@ def audit_package_command(
     package_dir: Path = Path("outputs/package"),
     require_annotations_for_visual_pages: bool = False,
     require_qdrant_records: bool = False,
+    require_visual_derived_triples: bool = typer.Option(
+        False,
+        "--require-visual-derived-triples",
+        help=(
+            "Fail when VLM entity, object, or visual-element metadata is not represented "
+            "by graph triples with visual asset provenance."
+        ),
+    ),
 ):
     """Audit package completeness and remaining OCR/VLM work."""
     manifest = load_processing_package(package_dir)
@@ -2381,6 +2389,7 @@ def audit_package_command(
         require_annotations_for_visual_pages=require_annotations_for_visual_pages,
         package_dir=package_dir,
         require_qdrant_records=require_qdrant_records,
+        require_visual_derived_triples=require_visual_derived_triples,
     )
     print(audit.model_dump())
 
@@ -2463,6 +2472,14 @@ def ingestion_readiness_command(
     ),
     require_postgres_rows: bool = True,
     require_visual_annotations: bool = False,
+    require_visual_derived_triples: bool = typer.Option(
+        False,
+        "--require-visual-derived-triples",
+        help=(
+            "Fail readiness when VLM entity, object, or visual-element metadata is not represented "
+            "by graph triples with visual asset provenance."
+        ),
+    ),
     min_visual_text_coverage_ratio: float | None = typer.Option(
         None,
         "--min-visual-text-coverage-ratio",
@@ -2836,6 +2853,7 @@ def ingestion_readiness_command(
         required_vectors=required_vectors,
         require_postgres_rows=require_postgres_rows,
         require_visual_annotations=require_visual_annotations,
+        require_visual_derived_triples=require_visual_derived_triples,
         min_visual_text_coverage_ratio=min_visual_text_coverage_ratio,
         min_visual_text_part_coverage_ratio=min_visual_text_part_coverage_ratio,
         visual_results=parsed_visual_results,
