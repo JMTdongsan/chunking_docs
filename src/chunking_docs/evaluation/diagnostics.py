@@ -21,6 +21,8 @@ class RetrievalDiagnosticRow(BaseModel):
     expected_targets: list[str] = Field(default_factory=list)
     matched_targets: list[str] = Field(default_factory=list)
     missing_targets: list[str] = Field(default_factory=list)
+    excluded_targets: list[str] = Field(default_factory=list)
+    matched_excluded_targets: list[str] = Field(default_factory=list)
     target_coverage_at_k: float = 0.0
     target_ndcg_at_k: float = 0.0
     precision_at_k: float = 0.0
@@ -115,10 +117,13 @@ def diagnostic_row(
     expected_targets = sorted_targets(expected_result_targets(result))
     matched_targets = sorted_targets(matched_result_targets(result))
     missing_targets = sorted_targets(set(expected_targets) - set(matched_targets))
+    excluded_targets = sorted_targets(excluded_result_targets(result))
+    matched_excluded_targets = sorted_targets(matched_excluded_result_targets(result))
     reasons = diagnostic_reasons(
         result,
         matched_targets,
         missing_targets,
+        matched_excluded_targets,
         precision_floor=precision_floor,
         target_ndcg_floor=target_ndcg_floor,
     )
@@ -131,6 +136,8 @@ def diagnostic_row(
         expected_targets=expected_targets,
         matched_targets=matched_targets,
         missing_targets=missing_targets,
+        excluded_targets=excluded_targets,
+        matched_excluded_targets=matched_excluded_targets,
         target_coverage_at_k=result.target_coverage_at_k,
         target_ndcg_at_k=result.target_ndcg_at_k,
         precision_at_k=result.precision_at_k,
@@ -180,6 +187,7 @@ def diagnostic_reasons(
     result: RetrievalCaseResult,
     matched_targets: list[str],
     missing_targets: list[str],
+    matched_excluded_targets: list[str],
     precision_floor: float = 0.2,
     target_ndcg_floor: float = 0.7,
 ) -> list[str]:
@@ -198,6 +206,12 @@ def diagnostic_reasons(
         and result.target_ndcg_at_k < target_ndcg_floor
     ):
         reasons.append("low_target_ndcg_at_k")
+    if matched_excluded_targets:
+        reasons.append("excluded_target_retrieved")
+        for target in matched_excluded_targets:
+            reason = f"excluded_{target_type(target)}_hit"
+            if reason not in reasons:
+                reasons.append(reason)
     for target in missing_targets:
         reason = f"missing_{target_type(target)}"
         if reason not in reasons:
@@ -215,6 +229,18 @@ def expected_result_targets(result: RetrievalCaseResult) -> set[str]:
 
 def matched_result_targets(result: RetrievalCaseResult) -> set[str]:
     return {target for targets in result.top_matched_targets for target in targets}
+
+
+def excluded_result_targets(result: RetrievalCaseResult) -> set[str]:
+    targets = {f"page:{page}" for page in result.excluded_pages}
+    targets.update(f"chunk:{chunk_id}" for chunk_id in result.excluded_chunk_ids)
+    targets.update(f"asset:{asset_id}" for asset_id in result.excluded_asset_ids)
+    targets.update(f"triple:{triple_id}" for triple_id in result.excluded_triple_ids)
+    return targets
+
+
+def matched_excluded_result_targets(result: RetrievalCaseResult) -> set[str]:
+    return {target for targets in result.top_excluded_targets for target in targets}
 
 
 def sorted_targets(targets) -> list[str]:

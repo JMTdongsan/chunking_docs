@@ -23,6 +23,10 @@ class RetrievalCase(BaseModel):
     expected_chunk_ids: list[str] = Field(default_factory=list)
     expected_asset_ids: list[str] = Field(default_factory=list)
     expected_triple_ids: list[str] = Field(default_factory=list)
+    excluded_pages: list[int] = Field(default_factory=list)
+    excluded_chunk_ids: list[str] = Field(default_factory=list)
+    excluded_asset_ids: list[str] = Field(default_factory=list)
+    excluded_triple_ids: list[str] = Field(default_factory=list)
     graph_expand: bool = False
     metadata: dict[str, Any] = Field(default_factory=dict)
 
@@ -49,12 +53,20 @@ class RetrievalCaseResult(BaseModel):
     expected_chunk_ids: list[str]
     expected_asset_ids: list[str] = Field(default_factory=list)
     expected_triple_ids: list[str] = Field(default_factory=list)
+    excluded_pages: list[int] = Field(default_factory=list)
+    excluded_chunk_ids: list[str] = Field(default_factory=list)
+    excluded_asset_ids: list[str] = Field(default_factory=list)
+    excluded_triple_ids: list[str] = Field(default_factory=list)
     expected_target_count: int = 0
     matched_target_count: int = 0
     target_coverage_at_k: float = 0.0
     target_ndcg_at_k: float = 0.0
     relevant_hit_count: int = 0
     precision_at_k: float = 0.0
+    excluded_target_count: int = 0
+    excluded_matched_target_count: int = 0
+    excluded_hit_count: int = 0
+    excluded_target_hit_rate: float = 0.0
     matched_rank: int | None = None
     matched_chunk_id: str | None = None
     matched_asset_id: str | None = None
@@ -65,6 +77,8 @@ class RetrievalCaseResult(BaseModel):
     target_matched_ranks: dict[str, int] = Field(default_factory=dict)
     target_key_matched_ranks: dict[str, int] = Field(default_factory=dict)
     target_reciprocal_ranks: dict[str, float] = Field(default_factory=dict)
+    top_excluded_targets: list[list[str]] = Field(default_factory=list)
+    excluded_target_matched_ranks: dict[str, int] = Field(default_factory=dict)
 
 
 class RetrievalTargetMetric(BaseModel):
@@ -119,6 +133,12 @@ class RetrievalEvaluation(BaseModel):
     target_coverage_at_k: float = 0.0
     mean_target_ndcg_at_k: float = 0.0
     mean_precision_at_k: float = 0.0
+    excluded_query_count: int = 0
+    excluded_hit_query_count: int = 0
+    excluded_query_hit_rate: float = 0.0
+    excluded_target_count: int = 0
+    excluded_matched_target_count: int = 0
+    excluded_target_hit_rate: float = 0.0
     top_k: int
     repeat: int = 1
     unstable_result_count: int = 0
@@ -254,9 +274,13 @@ def evaluate_search_results(
         top_chunking_strategies = [hit_chunking_strategies(hit) for hit in hits_with_chunks]
         top_retrieval_roles = [hit_retrieval_roles(hit) for hit in hits_with_chunks]
         expected_targets = expected_target_keys(case)
+        excluded_targets = excluded_target_keys(case)
         seen_targets: set[str] = set()
+        seen_excluded_targets: set[str] = set()
         top_matched_targets: list[list[str]] = []
+        top_excluded_targets: list[list[str]] = []
         relevant_hit_count = 0
+        excluded_hit_count = 0
         for hit in hits_with_chunks:
             matched_targets = hit_target_keys(
                 hit,
@@ -264,17 +288,35 @@ def evaluate_search_results(
                 triples_by_chunk=triples_by_chunk,
                 triples_by_asset=triples_by_asset,
             )
+            excluded_matched_targets = hit_excluded_target_keys(
+                hit,
+                case,
+                triples_by_chunk=triples_by_chunk,
+                triples_by_asset=triples_by_asset,
+            )
             if matched_targets:
                 relevant_hit_count += 1
+            if excluded_matched_targets:
+                excluded_hit_count += 1
             seen_targets.update(matched_targets)
+            seen_excluded_targets.update(excluded_matched_targets)
             top_matched_targets.append(sorted_target_keys(matched_targets))
+            top_excluded_targets.append(sorted_target_keys(excluded_matched_targets))
         matched_target_count = len(seen_targets)
+        excluded_matched_target_count = len(seen_excluded_targets)
         target_key_matched_ranks = matched_target_key_ranks(top_matched_targets)
+        excluded_target_matched_ranks = matched_target_key_ranks(top_excluded_targets)
         expected_any = bool(
             case.expected_pages
             or case.expected_chunk_ids
             or case.expected_asset_ids
             or case.expected_triple_ids
+        )
+        excluded_any = bool(
+            case.excluded_pages
+            or case.excluded_chunk_ids
+            or case.excluded_asset_ids
+            or case.excluded_triple_ids
         )
         match = first_relevant_hit(
             hits_with_chunks,
@@ -293,7 +335,12 @@ def evaluate_search_results(
             for target, target_match in target_hits.items()
             if target_match is not None
         }
-        passed = match is not None if expected_any else bool(hits_with_chunks)
+        if expected_any:
+            passed = match is not None and excluded_hit_count == 0
+        elif excluded_any:
+            passed = excluded_hit_count == 0
+        else:
+            passed = bool(hits_with_chunks)
         matched_rank = match.rank if match else (1 if not expected_any and hits_with_chunks else None)
         results.append(
             RetrievalCaseResult(
@@ -318,6 +365,10 @@ def evaluate_search_results(
                 expected_chunk_ids=case.expected_chunk_ids,
                 expected_asset_ids=case.expected_asset_ids,
                 expected_triple_ids=case.expected_triple_ids,
+                excluded_pages=case.excluded_pages,
+                excluded_chunk_ids=case.excluded_chunk_ids,
+                excluded_asset_ids=case.excluded_asset_ids,
+                excluded_triple_ids=case.excluded_triple_ids,
                 expected_target_count=len(expected_targets),
                 matched_target_count=matched_target_count,
                 target_coverage_at_k=matched_target_count / len(expected_targets)
@@ -326,6 +377,12 @@ def evaluate_search_results(
                 target_ndcg_at_k=target_ndcg_score(expected_targets, target_key_matched_ranks),
                 relevant_hit_count=relevant_hit_count,
                 precision_at_k=relevant_hit_count / top_k if top_k > 0 else 0.0,
+                excluded_target_count=len(excluded_targets),
+                excluded_matched_target_count=excluded_matched_target_count,
+                excluded_hit_count=excluded_hit_count,
+                excluded_target_hit_rate=excluded_matched_target_count / len(excluded_targets)
+                if excluded_targets
+                else 0.0,
                 matched_rank=matched_rank,
                 matched_chunk_id=match.chunk_id if match else None,
                 matched_asset_id=match.asset_id if match else None,
@@ -340,6 +397,8 @@ def evaluate_search_results(
                 target_reciprocal_ranks={
                     target: 1.0 / rank for target, rank in target_matched_ranks.items()
                 },
+                top_excluded_targets=top_excluded_targets,
+                excluded_target_matched_ranks=excluded_target_matched_ranks,
             )
         )
     passed_count = sum(1 for result in results if result.passed)
@@ -348,7 +407,13 @@ def evaluate_search_results(
         for result, case in zip(results, cases)
         if case.expected_pages or case.expected_chunk_ids or case.expected_asset_ids or case.expected_triple_ids
     ]
-    expected_passed = sum(1 for result in expected_results if result.passed)
+    expected_passed = sum(1 for result in expected_results if result.matched_rank is not None)
+    excluded_results = [result for result in results if result.excluded_target_count > 0]
+    excluded_target_count = sum(result.excluded_target_count for result in excluded_results)
+    excluded_matched_target_count = sum(
+        result.excluded_matched_target_count for result in excluded_results
+    )
+    excluded_hit_query_count = sum(1 for result in excluded_results if result.excluded_hit_count > 0)
     unstable_result_count = sum(1 for result in results if not result.result_consistent)
     return RetrievalEvaluation(
         case_count=len(cases),
@@ -371,6 +436,16 @@ def evaluate_search_results(
         mean_precision_at_k=sum(result.precision_at_k for result in expected_results)
         / len(expected_results)
         if expected_results
+        else 0.0,
+        excluded_query_count=len(excluded_results),
+        excluded_hit_query_count=excluded_hit_query_count,
+        excluded_query_hit_rate=excluded_hit_query_count / len(excluded_results)
+        if excluded_results
+        else 0.0,
+        excluded_target_count=excluded_target_count,
+        excluded_matched_target_count=excluded_matched_target_count,
+        excluded_target_hit_rate=excluded_matched_target_count / excluded_target_count
+        if excluded_target_count
         else 0.0,
         top_k=top_k,
         repeat=repeat,
@@ -539,9 +614,54 @@ def expected_target_keys(case: RetrievalCase) -> set[str]:
     return keys
 
 
+def excluded_target_keys(case: RetrievalCase) -> set[str]:
+    keys = {f"page:{page}" for page in case.excluded_pages}
+    keys.update(f"chunk:{chunk_id}" for chunk_id in case.excluded_chunk_ids)
+    keys.update(f"asset:{asset_id}" for asset_id in case.excluded_asset_ids)
+    keys.update(f"triple:{triple_id}" for triple_id in case.excluded_triple_ids)
+    return keys
+
+
 def hit_target_keys(
     hit,
     case: RetrievalCase,
+    triples_by_chunk: dict[str, list[GraphTriple]],
+    triples_by_asset: dict[str, list[GraphTriple]] | None = None,
+) -> set[str]:
+    return hit_selected_target_keys(
+        hit,
+        expected_pages=set(case.expected_pages),
+        expected_chunk_ids=set(case.expected_chunk_ids),
+        expected_asset_ids=set(case.expected_asset_ids),
+        expected_triple_ids=set(case.expected_triple_ids),
+        triples_by_chunk=triples_by_chunk,
+        triples_by_asset=triples_by_asset,
+    )
+
+
+def hit_excluded_target_keys(
+    hit,
+    case: RetrievalCase,
+    triples_by_chunk: dict[str, list[GraphTriple]],
+    triples_by_asset: dict[str, list[GraphTriple]] | None = None,
+) -> set[str]:
+    return hit_selected_target_keys(
+        hit,
+        expected_pages=set(case.excluded_pages),
+        expected_chunk_ids=set(case.excluded_chunk_ids),
+        expected_asset_ids=set(case.excluded_asset_ids),
+        expected_triple_ids=set(case.excluded_triple_ids),
+        triples_by_chunk=triples_by_chunk,
+        triples_by_asset=triples_by_asset,
+    )
+
+
+def hit_selected_target_keys(
+    hit,
+    expected_pages: set[int],
+    expected_chunk_ids: set[str],
+    expected_asset_ids: set[str],
+    expected_triple_ids: set[str],
     triples_by_chunk: dict[str, list[GraphTriple]],
     triples_by_asset: dict[str, list[GraphTriple]] | None = None,
 ) -> set[str]:
@@ -550,10 +670,6 @@ def hit_target_keys(
         return set()
 
     keys: set[str] = set()
-    expected_pages = set(case.expected_pages)
-    expected_chunk_ids = set(case.expected_chunk_ids)
-    expected_asset_ids = set(case.expected_asset_ids)
-    expected_triple_ids = set(case.expected_triple_ids)
 
     candidate_chunks = [chunk, *hit_evidence_chunks(hit)]
     for candidate_chunk in candidate_chunks:
@@ -966,7 +1082,8 @@ def summarize_case_group(results: list[RetrievalCaseResult]) -> RetrievalCaseGro
         expected_case_count=len(expected_results),
         passed_count=sum(1 for result in results if result.passed),
         failed_count=sum(1 for result in results if not result.passed),
-        recall_at_k=sum(1 for result in expected_results if result.passed) / len(expected_results)
+        recall_at_k=sum(1 for result in expected_results if result.matched_rank is not None)
+        / len(expected_results)
         if expected_results
         else 0.0,
         mrr=sum(result.reciprocal_rank for result in expected_results) / len(expected_results)

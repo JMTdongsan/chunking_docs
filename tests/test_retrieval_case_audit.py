@@ -116,6 +116,45 @@ def test_audit_retrieval_cases_flags_bad_cases():
     assert "max_duplicate_queries" in report.failed_checks
 
 
+def test_audit_retrieval_cases_validates_excluded_targets():
+    profiles, chunks, assets, triples = package_records()
+    cases = [
+        RetrievalCase(
+            query="hard negative target",
+            expected_pages=[1],
+            excluded_pages=[1, 99],
+            excluded_chunk_ids=["chunk-1", "missing-chunk"],
+            excluded_asset_ids=["asset-1"],
+            excluded_triple_ids=["triple-1"],
+        )
+    ]
+
+    report = audit_retrieval_cases(
+        cases,
+        profiles=profiles,
+        chunks=chunks,
+        assets=assets,
+        triples=triples,
+    )
+
+    assert report.passed is False
+    assert report.excluded_target_counts == {"page": 1, "chunk": 1, "asset": 1, "triple": 1}
+    assert report.excluded_distinct_target_counts == {
+        "page": 2,
+        "chunk": 2,
+        "asset": 1,
+        "triple": 1,
+    }
+    assert report.excluded_missing_target_counts == {
+        "page": 1,
+        "chunk": 1,
+        "asset": 0,
+        "triple": 0,
+    }
+    assert "unknown_excluded_page_target" in {issue.code for issue in report.issues}
+    assert "unknown_excluded_chunk_target" in {issue.code for issue in report.issues}
+
+
 def test_audit_retrieval_cases_checks_case_group_counts():
     profiles, chunks, assets, triples = package_records()
     cases = [

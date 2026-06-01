@@ -29,6 +29,10 @@ def make_evaluation(
     chunk_strategy_coverage: dict[str, float] | None = None,
     retrieval_role_coverage: dict[str, float] | None = None,
     case_group_coverage: dict[str, dict[str, float]] | None = None,
+    excluded_query_count: int = 0,
+    excluded_hit_query_count: int = 0,
+    excluded_target_count: int = 0,
+    excluded_matched_target_count: int = 0,
 ) -> RetrievalEvaluation:
     return RetrievalEvaluation(
         case_count=10,
@@ -41,6 +45,16 @@ def make_evaluation(
         target_coverage_at_k=target_coverage,
         mean_target_ndcg_at_k=target_ndcg,
         mean_precision_at_k=precision,
+        excluded_query_count=excluded_query_count,
+        excluded_hit_query_count=excluded_hit_query_count,
+        excluded_query_hit_rate=excluded_hit_query_count / excluded_query_count
+        if excluded_query_count
+        else 0.0,
+        excluded_target_count=excluded_target_count,
+        excluded_matched_target_count=excluded_matched_target_count,
+        excluded_target_hit_rate=excluded_matched_target_count / excluded_target_count
+        if excluded_target_count
+        else 0.0,
         top_k=5,
         mean_latency_ms=mean_latency,
         p95_latency_ms=p95_latency,
@@ -107,6 +121,30 @@ def test_retrieval_gate_checks_result_stability():
     assert report.failed_checks == [
         "min_result_stability_rate",
         "max_unstable_result_count",
+    ]
+
+
+def test_retrieval_gate_checks_excluded_target_hits():
+    report = gate_retrieval_evaluation(
+        make_evaluation(
+            excluded_query_count=4,
+            excluded_hit_query_count=1,
+            excluded_target_count=8,
+            excluded_matched_target_count=2,
+        ),
+        max_excluded_target_hit_rate=0.2,
+        max_excluded_query_hit_rate=0.2,
+        max_excluded_hit_query_count=0,
+    )
+
+    assert report.passed is False
+    assert report.metrics["excluded_target_hit_rate"] == 0.25
+    assert report.metrics["excluded_query_hit_rate"] == 0.25
+    assert report.metrics["excluded_hit_query_count"] == 1.0
+    assert report.failed_checks == [
+        "max_excluded_target_hit_rate",
+        "max_excluded_query_hit_rate",
+        "max_excluded_hit_query_count",
     ]
 
 
@@ -339,6 +377,43 @@ def test_gate_retrieval_cli_exits_nonzero_on_failed_gate(tmp_path):
 
     assert result.exit_code == 1
     assert "min_recall_at_k" in result.output
+
+
+def test_gate_retrieval_cli_checks_excluded_target_hits(tmp_path):
+    evaluation_path = tmp_path / "retrieval_eval.json"
+    output = tmp_path / "retrieval_gate.json"
+    evaluation_path.write_text(
+        make_evaluation(
+            excluded_query_count=2,
+            excluded_hit_query_count=1,
+            excluded_target_count=4,
+            excluded_matched_target_count=1,
+        ).model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "gate-retrieval",
+            str(evaluation_path),
+            "--max-excluded-target-hit-rate",
+            "0",
+            "--max-excluded-query-hit-rate",
+            "0",
+            "--max-excluded-hit-query-count",
+            "0",
+            "--output",
+            str(output),
+            "--no-fail",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "max_excluded_target_hit_rate" in result.output
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["metrics"]["excluded_target_hit_rate"] == 0.25
+    assert payload["metrics"]["excluded_query_hit_rate"] == 0.5
 
 
 def test_gate_retrieval_cli_checks_source_family_target_coverage(tmp_path):

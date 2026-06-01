@@ -1316,6 +1316,69 @@ def test_evaluate_search_results_reports_target_coverage_and_precision():
     assert result.case_group_metrics["graph_expand"]["false"].precision_at_k == 2 / 3
 
 
+def test_evaluate_search_results_reports_excluded_target_hits():
+    chunk_a = DocumentChunk(
+        chunk_id="a",
+        doc_id="doc",
+        page_start=1,
+        page_end=1,
+        kind=ChunkKind.TEXT,
+        text="alpha",
+    )
+    chunk_b = DocumentChunk(
+        chunk_id="b",
+        doc_id="doc",
+        page_start=2,
+        page_end=2,
+        kind=ChunkKind.TEXT,
+        text="beta",
+        asset_ids=["asset-b"],
+    )
+
+    class Hit:
+        def __init__(self, chunk):
+            self.chunk = chunk
+            self.sources = ["test"]
+            self.evidence_chunks = []
+            self.payloads = []
+
+    result = evaluate_search_results(
+        cases=[
+            RetrievalCase(
+                query="hard negative target",
+                expected_pages=[1],
+                excluded_pages=[2],
+                excluded_chunk_ids=["b"],
+                excluded_asset_ids=["asset-b"],
+            )
+        ],
+        search_fn=lambda case, graph_expand: [Hit(chunk_a), Hit(chunk_b)],
+        top_k=2,
+    )
+
+    case_result = result.results[0]
+    assert case_result.passed is False
+    assert result.passed_count == 0
+    assert result.recall_at_k == 1.0
+    assert case_result.excluded_target_count == 3
+    assert case_result.excluded_matched_target_count == 3
+    assert case_result.excluded_hit_count == 1
+    assert case_result.excluded_target_hit_rate == 1.0
+    assert case_result.top_excluded_targets == [
+        [],
+        ["page:2", "chunk:b", "asset:asset-b"],
+    ]
+    assert result.excluded_query_count == 1
+    assert result.excluded_hit_query_count == 1
+    assert result.excluded_query_hit_rate == 1.0
+    assert result.excluded_target_count == 3
+    assert result.excluded_matched_target_count == 3
+    assert result.excluded_target_hit_rate == 1.0
+    assert result.failed_queries == ["hard negative target"]
+    assert result.case_group_metrics["graph_expand"]["false"].recall_at_k == 1.0
+    assert result.case_group_metrics["graph_expand"]["false"].passed_count == 0
+
+
 def test_evaluate_retrieval_reports_ranked_failures():
     chunks = [
         DocumentChunk(

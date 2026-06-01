@@ -54,6 +54,9 @@ def gate_retrieval_evaluation(
     max_p95_latency_ms: float | None = None,
     min_result_stability_rate: float = 0.0,
     max_unstable_result_count: int | None = None,
+    max_excluded_target_hit_rate: float | None = None,
+    max_excluded_query_hit_rate: float | None = None,
+    max_excluded_hit_query_count: int | None = None,
     min_target_type_coverage: dict[str, float] | None = None,
     min_source_target_coverage: dict[str, float] | None = None,
     min_source_family_target_coverage: dict[str, float] | None = None,
@@ -155,6 +158,33 @@ def gate_retrieval_evaluation(
                 "unstable_result_count",
                 metrics,
                 float(max_unstable_result_count),
+            )
+        )
+    if max_excluded_target_hit_rate is not None:
+        checks.append(
+            maximum_check(
+                "max_excluded_target_hit_rate",
+                "excluded_target_hit_rate",
+                metrics,
+                max_excluded_target_hit_rate,
+            )
+        )
+    if max_excluded_query_hit_rate is not None:
+        checks.append(
+            maximum_check(
+                "max_excluded_query_hit_rate",
+                "excluded_query_hit_rate",
+                metrics,
+                max_excluded_query_hit_rate,
+            )
+        )
+    if max_excluded_hit_query_count is not None:
+        checks.append(
+            maximum_check(
+                "max_excluded_hit_query_count",
+                "excluded_hit_query_count",
+                metrics,
+                float(max_excluded_hit_query_count),
             )
         )
     if max_mean_latency_ms is not None:
@@ -282,6 +312,12 @@ def retrieval_metrics(
         "target_coverage_at_k": evaluation.target_coverage_at_k,
         "mean_target_ndcg_at_k": evaluation.mean_target_ndcg_at_k,
         "mean_precision_at_k": evaluation.mean_precision_at_k,
+        "excluded_query_count": float(evaluation.excluded_query_count),
+        "excluded_hit_query_count": float(evaluation.excluded_hit_query_count),
+        "excluded_query_hit_rate": evaluation.excluded_query_hit_rate,
+        "excluded_target_count": float(evaluation.excluded_target_count),
+        "excluded_matched_target_count": float(evaluation.excluded_matched_target_count),
+        "excluded_target_hit_rate": evaluation.excluded_target_hit_rate,
         "mean_latency_ms": evaluation.mean_latency_ms,
         "p95_latency_ms": evaluation.p95_latency_ms,
         "unstable_result_count": float(evaluation.unstable_result_count),

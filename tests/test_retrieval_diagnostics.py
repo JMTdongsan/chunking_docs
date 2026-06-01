@@ -87,6 +87,42 @@ def test_analyze_retrieval_evaluation_reports_failure_reasons():
     assert rows["empty"].reasons == ["no_hits", "no_expected_target_retrieved", "missing_page"]
 
 
+def test_analyze_retrieval_evaluation_reports_excluded_target_hits():
+    chunk = DocumentChunk(
+        chunk_id="a",
+        doc_id="doc",
+        page_start=1,
+        page_end=1,
+        kind=ChunkKind.TEXT,
+        text="alpha",
+        asset_ids=["asset-a"],
+    )
+    evaluation = evaluate_search_results(
+        cases=[
+            RetrievalCase(
+                query="hard negative",
+                expected_pages=[1],
+                excluded_asset_ids=["asset-a"],
+                metadata={"case_source": "hard_negative"},
+            )
+        ],
+        search_fn=lambda case, graph_expand: [Hit(chunk)],
+        top_k=1,
+    )
+
+    report = analyze_retrieval_evaluation(evaluation)
+
+    assert report.failed_count == 1
+    assert report.reason_counts["excluded_target_retrieved"] == 1
+    assert report.reason_counts["excluded_asset_hit"] == 1
+    row = report.rows[0]
+    assert row.expected_targets == ["page:1"]
+    assert row.matched_targets == ["page:1"]
+    assert row.excluded_targets == ["asset:asset-a"]
+    assert row.matched_excluded_targets == ["asset:asset-a"]
+    assert row.reasons == ["excluded_target_retrieved", "excluded_asset_hit"]
+
+
 def test_diagnose_retrieval_cli_writes_report(tmp_path):
     evaluation_path = tmp_path / "eval.json"
     output_path = tmp_path / "diagnostics.json"

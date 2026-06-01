@@ -62,6 +62,8 @@ class RetrievalCaseAuditReport(BaseModel):
     expected_case_count: int
     target_counts: dict[str, int] = Field(default_factory=dict)
     distinct_target_counts: dict[str, int] = Field(default_factory=dict)
+    excluded_target_counts: dict[str, int] = Field(default_factory=dict)
+    excluded_distinct_target_counts: dict[str, int] = Field(default_factory=dict)
     max_cases_per_target: dict[str, int] = Field(default_factory=dict)
     case_group_counts: dict[str, dict[str, int]] = Field(default_factory=dict)
     case_group_distinct_target_counts: dict[str, dict[str, dict[str, int]]] = Field(default_factory=dict)
@@ -82,6 +84,7 @@ class RetrievalCaseAuditReport(BaseModel):
     max_target_query_overlap_terms: int = 0
     mean_target_query_overlap_terms: float = 0.0
     missing_target_counts: dict[str, int] = Field(default_factory=dict)
+    excluded_missing_target_counts: dict[str, int] = Field(default_factory=dict)
     failed_checks: list[str] = Field(default_factory=list)
     checks: list[RetrievalCaseAuditCheck] = Field(default_factory=list)
     issues: list[RetrievalCaseAuditIssue] = Field(default_factory=list)
@@ -124,11 +127,14 @@ def audit_retrieval_cases(
     issues: list[RetrievalCaseAuditIssue] = []
     target_counts = count_retrieval_case_targets(cases)
     distinct_target_counts = count_retrieval_case_distinct_targets(cases)
+    excluded_target_counts = count_retrieval_case_excluded_targets(cases)
+    excluded_distinct_target_counts = count_retrieval_case_distinct_excluded_targets(cases)
     max_cases_per_target = count_retrieval_case_max_target_mentions(cases)
     group_counts = count_case_groups(cases)
     group_distinct_target_counts = count_case_group_distinct_targets(cases)
     visual_object_probe_counts = count_visual_object_probes(cases)
     missing_target_counts = {"page": 0, "chunk": 0, "asset": 0, "triple": 0}
+    excluded_missing_target_counts = {"page": 0, "chunk": 0, "asset": 0, "triple": 0}
     normalized_queries: dict[str, list[int]] = {}
     query_term_counts: list[int] = []
     target_query_overlap_ratios: list[float] = []
@@ -256,6 +262,42 @@ def audit_retrieval_cases(
             case,
             "triple",
             case.expected_triple_ids,
+            triple_ids,
+        )
+        excluded_missing_target_counts["page"] += report_missing_values(
+            issues,
+            max_issues,
+            index,
+            case,
+            "excluded_page",
+            case.excluded_pages,
+            page_numbers,
+        )
+        excluded_missing_target_counts["chunk"] += report_missing_values(
+            issues,
+            max_issues,
+            index,
+            case,
+            "excluded_chunk",
+            case.excluded_chunk_ids,
+            chunk_ids,
+        )
+        excluded_missing_target_counts["asset"] += report_missing_values(
+            issues,
+            max_issues,
+            index,
+            case,
+            "excluded_asset",
+            case.excluded_asset_ids,
+            asset_ids,
+        )
+        excluded_missing_target_counts["triple"] += report_missing_values(
+            issues,
+            max_issues,
+            index,
+            case,
+            "excluded_triple",
+            case.excluded_triple_ids,
             triple_ids,
         )
         if case.expected_triple_ids and not case.graph_expand:
@@ -449,6 +491,8 @@ def audit_retrieval_cases(
         expected_case_count=sum(1 for case in cases if has_expected_target(case)),
         target_counts=target_counts,
         distinct_target_counts=distinct_target_counts,
+        excluded_target_counts=excluded_target_counts,
+        excluded_distinct_target_counts=excluded_distinct_target_counts,
         max_cases_per_target=max_cases_per_target,
         case_group_counts=group_counts,
         case_group_distinct_target_counts=group_distinct_target_counts,
@@ -469,6 +513,7 @@ def audit_retrieval_cases(
         max_target_query_overlap_terms=max_target_query_overlap_term_count,
         mean_target_query_overlap_terms=mean_target_query_overlap_term_count,
         missing_target_counts=missing_target_counts,
+        excluded_missing_target_counts=excluded_missing_target_counts,
         failed_checks=failed_checks,
         checks=checks,
         issues=issues,
@@ -490,6 +535,24 @@ def count_retrieval_case_distinct_targets(cases: list[RetrievalCase]) -> dict[st
         "chunk": len({chunk_id for case in cases for chunk_id in case.expected_chunk_ids}),
         "asset": len({asset_id for case in cases for asset_id in case.expected_asset_ids}),
         "triple": len({triple_id for case in cases for triple_id in case.expected_triple_ids}),
+    }
+
+
+def count_retrieval_case_excluded_targets(cases: list[RetrievalCase]) -> dict[str, int]:
+    return {
+        "page": sum(1 for case in cases if case.excluded_pages),
+        "chunk": sum(1 for case in cases if case.excluded_chunk_ids),
+        "asset": sum(1 for case in cases if case.excluded_asset_ids),
+        "triple": sum(1 for case in cases if case.excluded_triple_ids),
+    }
+
+
+def count_retrieval_case_distinct_excluded_targets(cases: list[RetrievalCase]) -> dict[str, int]:
+    return {
+        "page": len({page for case in cases for page in case.excluded_pages}),
+        "chunk": len({chunk_id for case in cases for chunk_id in case.excluded_chunk_ids}),
+        "asset": len({asset_id for case in cases for asset_id in case.excluded_asset_ids}),
+        "triple": len({triple_id for case in cases for triple_id in case.excluded_triple_ids}),
     }
 
 
