@@ -74,6 +74,29 @@ def test_build_experiment_report_summarizes_artifacts_and_candidates(tmp_path):
     ] == 0.7
     assert validations["graph_audit.final.json"].metrics["orphan_count"] == 0.0
     assert validations["visual_gate.final.json"].metrics["vlm_summary_coverage"] == 1.0
+    assert validations["retrieval_diagnostics.final.json"].metrics["no_hit_count"] == 1.0
+    assert (
+        validations["retrieval_diagnostics.final.json"]
+        .metrics["reason.no_expected_target_retrieved"]
+        == 2.0
+    )
+    assert (
+        validations["retrieval_diagnostics.final.json"]
+        .metrics["missing_target_type.triple"]
+        == 1.0
+    )
+    assert (
+        validations["retrieval_diagnostics.final.json"].metrics[
+            "case_group.case_source.visual_object_probe.reason.missing_asset"
+        ]
+        == 1.0
+    )
+    assert (
+        validations["retrieval_diagnostics.final.json"].metrics[
+            "case_group.query_mode.salient_terms.missing_target_type.triple"
+        ]
+        == 1.0
+    )
     assert (
         validations["ingestion_readiness.final.json#visual_text_coverage"]
         .metrics["visual_text_coverage_ratio"]
@@ -285,6 +308,54 @@ def write_minimal_package(tmp_path):
                             "ndcg_at_k": 0.8,
                         }
                     }
+                },
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    (package_dir / "retrieval_diagnostics.final.json").write_text(
+        json.dumps(
+            {
+                "case_count": 3,
+                "failed_count": 2,
+                "partial_count": 1,
+                "no_hit_count": 1,
+                "low_precision_count": 1,
+                "low_target_ndcg_count": 2,
+                "reason_counts": {
+                    "no_expected_target_retrieved": 2,
+                    "missing_asset": 1,
+                    "missing_triple": 1,
+                },
+                "missing_target_type_counts": {
+                    "asset": 1,
+                    "triple": 1,
+                },
+                "reason_counts_by_case_group": {
+                    "case_source": {
+                        "visual_object_probe": {
+                            "missing_asset": 1,
+                            "no_expected_target_retrieved": 1,
+                        }
+                    },
+                    "query_mode": {
+                        "salient_terms": {
+                            "missing_triple": 1,
+                        }
+                    },
+                },
+                "missing_target_type_counts_by_case_group": {
+                    "case_source": {
+                        "visual_object_probe": {
+                            "asset": 1,
+                        }
+                    },
+                    "query_mode": {
+                        "salient_terms": {
+                            "triple": 1,
+                        }
+                    },
                 },
             },
             indent=2,

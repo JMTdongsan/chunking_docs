@@ -148,6 +148,10 @@ SUMMARY_METRIC_KEYS = {
     "expected_case_count",
     "passed_count",
     "failed_count",
+    "partial_count",
+    "no_hit_count",
+    "low_precision_count",
+    "low_target_ndcg_count",
     "failed_query_count",
     "run_count",
     "union_job_count",
@@ -483,6 +487,22 @@ def dynamic_metric_payload(payload: dict[str, Any]) -> dict[str, float]:
     metrics.update(flat_metric_group(payload.get("chunk_strategy_metrics"), "chunk_strategy"))
     metrics.update(flat_metric_group(payload.get("retrieval_role_metrics"), "retrieval_role"))
     metrics.update(flat_case_group_metrics(payload.get("case_group_metrics")))
+    metrics.update(flat_count_metrics(payload.get("reason_counts"), "reason"))
+    metrics.update(
+        flat_count_metrics(payload.get("missing_target_type_counts"), "missing_target_type")
+    )
+    metrics.update(
+        flat_case_group_count_metrics(
+            payload.get("reason_counts_by_case_group"),
+            "reason",
+        )
+    )
+    metrics.update(
+        flat_case_group_count_metrics(
+            payload.get("missing_target_type_counts_by_case_group"),
+            "missing_target_type",
+        )
+    )
     metrics.update(numeric_prefixed_metrics(payload.get("pairwise_metrics"), "pairwise_"))
     return metrics
 
@@ -515,6 +535,36 @@ def flat_case_group_metrics(value: Any) -> dict[str, float]:
                 numeric_value = optional_numeric_metric(metric_value)
                 if numeric_value is not None:
                     metrics[f"case_group.{group_name}.{group_value}.{metric_name}"] = (
+                        numeric_value
+                    )
+    return metrics
+
+
+def flat_count_metrics(value: Any, prefix: str) -> dict[str, float]:
+    if not isinstance(value, dict):
+        return {}
+    metrics: dict[str, float] = {}
+    for name, metric_value in value.items():
+        numeric_value = optional_numeric_metric(metric_value)
+        if numeric_value is not None:
+            metrics[f"{prefix}.{name}"] = numeric_value
+    return metrics
+
+
+def flat_case_group_count_metrics(value: Any, metric_prefix: str) -> dict[str, float]:
+    if not isinstance(value, dict):
+        return {}
+    metrics: dict[str, float] = {}
+    for group_name, group_values in value.items():
+        if not isinstance(group_values, dict):
+            continue
+        for group_value, counts in group_values.items():
+            if not isinstance(counts, dict):
+                continue
+            for count_name, count_value in counts.items():
+                numeric_value = optional_numeric_metric(count_value)
+                if numeric_value is not None:
+                    metrics[f"case_group.{group_name}.{group_value}.{metric_prefix}.{count_name}"] = (
                         numeric_value
                     )
     return metrics
