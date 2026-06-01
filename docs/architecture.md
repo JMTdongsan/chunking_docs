@@ -61,6 +61,7 @@
    - Write VLM experiment plans so several profiles can be run against the same visual job set and compared afterward.
    - Gate visual runs by completion rate, OCR text coverage, VLM summary coverage, JSON parse rate, object coverage, bbox coverage, triple density, and failure counts.
    - Apply annotations back into chunks, assets, graph triples, BM25, and Qdrant records through direct asset links and `asset:` source refs.
+   - Preserve compact asset scope, tile parent/grid, text-quality, and OCR/VLM work metadata on visual text chunks so text, caption, and image vectors share the same filter contract.
    - Compare before/after package directories to verify how annotations changed chunks, assets, graph triples, and vector records.
 
 8. **Semantic Splitting**

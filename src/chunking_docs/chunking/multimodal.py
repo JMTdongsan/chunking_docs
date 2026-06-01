@@ -3,13 +3,40 @@ from __future__ import annotations
 import hashlib
 from typing import Literal
 
-from chunking_docs.chunking.hierarchical import build_hierarchical_chunks, chunk_visual_context
+from chunking_docs.chunking.hierarchical import (
+    build_hierarchical_chunks,
+    chunk_visual_context,
+    tile_descriptor,
+)
 from chunking_docs.chunking.semantic_splitter import semantic_subchunks
 from chunking_docs.embeddings.records import asset_text
 from chunking_docs.graph.provenance import chunk_asset_ids
 from chunking_docs.models import ChunkKind, DocumentChunk, SectionPath, VisualAsset
 
 ChunkStrategy = Literal["page", "semantic", "multimodal", "hierarchical"]
+
+VISUAL_CHUNK_METADATA_KEYS = (
+    "asset_scope",
+    "parent_asset_id",
+    "tile_index",
+    "tile_row",
+    "tile_col",
+    "tile_rows",
+    "tile_cols",
+    "tile_overlap_ratio",
+    "text_quality",
+    "text_quality_reasons",
+    "control_char_count",
+    "control_char_ratio",
+    "letter_or_number_ratio",
+    "cjk_char_ratio",
+    "image_block_count",
+    "embedded_image_count",
+    "drawing_count",
+    "requires_ocr",
+    "requires_vlm",
+    "section_label",
+)
 
 
 def build_strategy_chunks(
@@ -153,6 +180,7 @@ def visual_asset_chunks(
                 prefix,
                 f"Visual asset kind: {asset.kind}",
                 f"Asset page: {asset.page_no}",
+                *visual_asset_descriptor_lines(asset),
                 text,
             ]
             if part
@@ -189,6 +217,7 @@ def visual_asset_context_prefix(asset: VisualAsset, parent: DocumentChunk | None
 def visual_asset_chunk_metadata(asset: VisualAsset, parent: DocumentChunk | None) -> dict:
     metadata = {
         **(parent.metadata if parent is not None else {}),
+        **visual_asset_payload_metadata(asset),
         "asset_id": asset.asset_id,
         "asset_kind": str(asset.kind),
         "chunking_strategy": "visual_asset_text",
@@ -197,10 +226,34 @@ def visual_asset_chunk_metadata(asset: VisualAsset, parent: DocumentChunk | None
         metadata["parent_chunk_id"] = parent.chunk_id
     else:
         metadata["visual_asset_unlinked"] = True
-        section_label = asset.metadata.get("section_label")
-        if isinstance(section_label, str) and section_label:
-            metadata["section_label"] = section_label
     return metadata
+
+
+def visual_asset_payload_metadata(asset: VisualAsset) -> dict:
+    return {
+        key: asset.metadata[key]
+        for key in VISUAL_CHUNK_METADATA_KEYS
+        if key in asset.metadata
+    }
+
+
+def visual_asset_descriptor_lines(asset: VisualAsset) -> list[str]:
+    metadata = asset.metadata
+    lines = []
+    scope = metadata_text(metadata.get("asset_scope"))
+    if scope:
+        lines.append(f"Asset scope: {scope}")
+    tile = tile_descriptor(metadata)
+    if tile:
+        lines.append(f"Tile: {tile}")
+    text_quality = metadata_text(metadata.get("text_quality"))
+    if text_quality:
+        lines.append(f"Text quality: {text_quality}")
+    if metadata.get("requires_ocr") is not None:
+        lines.append(f"Requires OCR: {bool(metadata.get('requires_ocr'))}")
+    if metadata.get("requires_vlm") is not None:
+        lines.append(f"Requires VLM: {bool(metadata.get('requires_vlm'))}")
+    return lines
 
 
 def context_prefix(chunk: DocumentChunk) -> str:
@@ -224,3 +277,9 @@ def asset_chunk_kind(asset: VisualAsset) -> ChunkKind:
 def visual_chunk_id(parent_chunk_id: str, asset_id: str) -> str:
     raw = f"{parent_chunk_id}:visual:{asset_id}".encode("utf-8")
     return hashlib.sha256(raw).hexdigest()[:20]
+
+
+def metadata_text(value) -> str:
+    if value is None:
+        return ""
+    return str(value).strip()

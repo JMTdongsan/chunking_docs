@@ -132,8 +132,41 @@ def chunk_visual_context(
         text = asset_text(asset)
         if not text:
             continue
-        entries.append(f"- {asset.kind} page {asset.page_no}: {text}")
+        entries.append(f"- {visual_asset_context_label(asset)}: {text}")
     return trim_text("\n".join(entries), max_chars)
+
+
+def visual_asset_context_label(asset: VisualAsset) -> str:
+    tile = tile_descriptor(asset.metadata)
+    if asset.metadata.get("asset_scope") == "tile" and tile:
+        return f"{asset.kind} tile {tile} page {asset.page_no}"
+    return f"{asset.kind} page {asset.page_no}"
+
+
+def tile_descriptor(metadata: dict) -> str:
+    tile_index = metadata_int(metadata.get("tile_index"))
+    tile_row = metadata_int(metadata.get("tile_row"))
+    tile_col = metadata_int(metadata.get("tile_col"))
+    tile_rows = metadata_int(metadata.get("tile_rows"))
+    tile_cols = metadata_int(metadata.get("tile_cols"))
+    parts = []
+    if tile_index is not None:
+        if tile_rows and tile_cols:
+            parts.append(f"{tile_index + 1}/{tile_rows * tile_cols}")
+        else:
+            parts.append(str(tile_index + 1))
+    if tile_row is not None and tile_col is not None:
+        parts.append(f"row {tile_row + 1} col {tile_col + 1}")
+    return ", ".join(parts)
+
+
+def metadata_int(value) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def trim_text(text: str, max_chars: int) -> str:
