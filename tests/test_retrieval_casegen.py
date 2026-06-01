@@ -627,6 +627,13 @@ def test_generate_retrieval_cases_cli_writes_object_probe_cases(tmp_path):
     assert rows[0]["metadata"]["case_source"] == "visual_object_probe"
     assert rows[0]["metadata"]["modality"] == "vision_object"
     assert rows[0]["metadata"]["object_probe_visual_only"] is False
+    assert "'target_counts':" in result.output
+    assert "'asset': 1" in result.output
+    assert "'case_group_counts':" in result.output
+    assert "'visual_object_probe': 1" in result.output
+    assert "'visual_object_probe_count': 1" in result.output
+    assert "'visual_only_object_probe_count': 0" in result.output
+    assert "'non_visual_only_object_probe_count': 1" in result.output
 
 
 def test_generate_retrieval_cases_cli_accepts_candidate_chunks(tmp_path):

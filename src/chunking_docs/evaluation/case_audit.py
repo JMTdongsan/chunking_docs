@@ -35,6 +35,9 @@ class RetrievalCaseAuditReport(BaseModel):
     expected_case_count: int
     target_counts: dict[str, int] = Field(default_factory=dict)
     case_group_counts: dict[str, dict[str, int]] = Field(default_factory=dict)
+    visual_object_probe_count: int = 0
+    visual_only_object_probe_count: int = 0
+    non_visual_only_object_probe_count: int = 0
     graph_expand_count: int = 0
     duplicate_query_count: int = 0
     empty_query_count: int = 0
@@ -57,6 +60,7 @@ def audit_retrieval_cases(
     min_asset_cases: int = 0,
     min_triple_cases: int = 0,
     min_case_group_counts: dict[str, int] | None = None,
+    require_visual_only_object_probes: bool = False,
     max_duplicate_queries: int = 0,
     max_issues: int = 200,
 ) -> RetrievalCaseAuditReport:
@@ -65,8 +69,9 @@ def audit_retrieval_cases(
     asset_ids = {asset.asset_id for asset in assets}
     triple_ids = {triple.triple_id for triple in triples}
     issues: list[RetrievalCaseAuditIssue] = []
-    target_counts = {"page": 0, "chunk": 0, "asset": 0, "triple": 0}
+    target_counts = count_retrieval_case_targets(cases)
     group_counts = count_case_groups(cases)
+    visual_object_probe_counts = count_visual_object_probes(cases)
     missing_target_counts = {"page": 0, "chunk": 0, "asset": 0, "triple": 0}
     normalized_queries: dict[str, list[int]] = {}
 
@@ -95,11 +100,6 @@ def audit_retrieval_cases(
                     case,
                 ),
             )
-
-        target_counts["page"] += int(bool(case.expected_pages))
-        target_counts["chunk"] += int(bool(case.expected_chunk_ids))
-        target_counts["asset"] += int(bool(case.expected_asset_ids))
-        target_counts["triple"] += int(bool(case.expected_triple_ids))
 
         missing_target_counts["page"] += report_missing_values(
             issues,
@@ -149,6 +149,19 @@ def audit_retrieval_cases(
                     case,
                 ),
             )
+        if require_visual_only_object_probes and is_visual_object_probe(case) and not is_visual_only_object_probe(case):
+            append_issue(
+                issues,
+                max_issues,
+                issue(
+                    "error",
+                    "non_visual_only_object_probe",
+                    "Visual object probe case was not generated with visual-only object terms.",
+                    index,
+                    case,
+                    {"object_probe_visual_only": case.metadata.get("object_probe_visual_only")},
+                ),
+            )
 
     duplicate_query_count = duplicate_count(normalized_queries)
     for query, indexes in sorted(normalized_queries.items()):
@@ -173,6 +186,7 @@ def audit_retrieval_cases(
         "chunk_cases": target_counts["chunk"],
         "asset_cases": target_counts["asset"],
         "triple_cases": target_counts["triple"],
+        "non_visual_only_object_probe_count": visual_object_probe_counts["non_visual_only"],
         "duplicate_query_count": duplicate_query_count,
     }
     checks = [
@@ -183,6 +197,15 @@ def audit_retrieval_cases(
         min_check("min_triple_cases", "triple_cases", metrics, min_triple_cases),
         max_check("max_duplicate_queries", "duplicate_query_count", metrics, max_duplicate_queries),
     ]
+    if require_visual_only_object_probes:
+        checks.append(
+            max_check(
+                "require_visual_only_object_probes",
+                "non_visual_only_object_probe_count",
+                metrics,
+                0,
+            )
+        )
     checks.extend(case_group_count_checks(group_counts, min_case_group_counts or {}))
     failed_checks = [check.name for check in checks if not check.passed]
     return RetrievalCaseAuditReport(
@@ -191,6 +214,9 @@ def audit_retrieval_cases(
         expected_case_count=sum(1 for case in cases if has_expected_target(case)),
         target_counts=target_counts,
         case_group_counts=group_counts,
+        visual_object_probe_count=visual_object_probe_counts["total"],
+        visual_only_object_probe_count=visual_object_probe_counts["visual_only"],
+        non_visual_only_object_probe_count=visual_object_probe_counts["non_visual_only"],
         graph_expand_count=sum(1 for case in cases if case.graph_expand),
         duplicate_query_count=duplicate_query_count,
         empty_query_count=sum(1 for case in cases if not case.query.strip()),
@@ -200,6 +226,15 @@ def audit_retrieval_cases(
         checks=checks,
         issues=issues,
     )
+
+
+def count_retrieval_case_targets(cases: list[RetrievalCase]) -> dict[str, int]:
+    return {
+        "page": sum(1 for case in cases if case.expected_pages),
+        "chunk": sum(1 for case in cases if case.expected_chunk_ids),
+        "asset": sum(1 for case in cases if case.expected_asset_ids),
+        "triple": sum(1 for case in cases if case.expected_triple_ids),
+    }
 
 
 def count_case_groups(cases: list[RetrievalCase]) -> dict[str, dict[str, int]]:
@@ -212,6 +247,29 @@ def count_case_groups(cases: list[RetrievalCase]) -> dict[str, dict[str, int]]:
         group_name: dict(sorted(values.items()))
         for group_name, values in sorted(counts.items())
     }
+
+
+def count_visual_object_probes(cases: list[RetrievalCase]) -> dict[str, int]:
+    total = 0
+    visual_only = 0
+    for case in cases:
+        if not is_visual_object_probe(case):
+            continue
+        total += 1
+        visual_only += int(is_visual_only_object_probe(case))
+    return {
+        "total": total,
+        "visual_only": visual_only,
+        "non_visual_only": total - visual_only,
+    }
+
+
+def is_visual_object_probe(case: RetrievalCase) -> bool:
+    return ("case_source", "visual_object_probe") in case_group_labels(case)
+
+
+def is_visual_only_object_probe(case: RetrievalCase) -> bool:
+    return case.metadata.get("object_probe_visual_only") is True
 
 
 def case_group_count_checks(

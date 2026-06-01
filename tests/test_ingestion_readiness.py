@@ -186,7 +186,11 @@ def test_ingestion_readiness_includes_retrieval_cases_and_chunking_gate(tmp_path
     package_dir, manifest = write_ready_package(tmp_path)
     cases = [
         RetrievalCase(query="reference evidence", expected_pages=[1]),
-        RetrievalCase(query="visual evidence", expected_asset_ids=["asset-1"]),
+        RetrievalCase(
+            query="visual evidence",
+            expected_asset_ids=["asset-1"],
+            metadata={"case_source": "visual_object_probe", "object_probe_visual_only": True},
+        ),
     ]
     comparison = chunking_comparison()
 
@@ -194,7 +198,12 @@ def test_ingestion_readiness_includes_retrieval_cases_and_chunking_gate(tmp_path
         package_dir,
         manifest,
         retrieval_cases=cases,
-        retrieval_case_options={"min_case_count": 2, "min_page_cases": 1, "min_asset_cases": 1},
+        retrieval_case_options={
+            "min_case_count": 2,
+            "min_page_cases": 1,
+            "min_asset_cases": 1,
+            "require_visual_only_object_probes": True,
+        },
         chunking_comparison=comparison,
         chunking_gate_options={
             "candidate": "candidate",
@@ -211,6 +220,12 @@ def test_ingestion_readiness_includes_retrieval_cases_and_chunking_gate(tmp_path
     assert report.passed is True
     assert report.retrieval_case_audit is not None
     assert report.retrieval_case_audit.target_counts["asset"] == 1
+    assert report.retrieval_case_audit.visual_only_object_probe_count == 1
+    retrieval_component = next(
+        component for component in report.components if component.name == "retrieval_case_audit"
+    )
+    assert retrieval_component.metadata["visual_object_probe_count"] == 1
+    assert retrieval_component.metadata["non_visual_only_object_probe_count"] == 0
     assert report.chunking_comparison_gate is not None
     assert report.chunking_comparison_gate.candidate == "candidate"
     assert report.chunking_comparison_gate.metrics["visual_text_coverage_ratio"] == 0.9
@@ -502,6 +517,51 @@ def test_ingestion_readiness_cli_requires_retrieval_cases(tmp_path):
     payload = json.loads(output.read_text(encoding="utf-8"))
     assert payload["passed"] is False
     assert "retrieval_case_audit" in payload["failed_components"]
+
+
+def test_ingestion_readiness_cli_can_require_visual_only_object_probes(tmp_path):
+    package_dir, _ = write_ready_package(tmp_path)
+    cases_path = tmp_path / "cases.jsonl"
+    output = tmp_path / "readiness.json"
+    write_jsonl(
+        cases_path,
+        [
+            RetrievalCase(
+                query="broad object target",
+                expected_asset_ids=["asset-1"],
+                metadata={
+                    "case_source": "visual_object_probe",
+                    "object_probe_visual_only": False,
+                },
+            )
+        ],
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "ingestion-readiness",
+            "--package-dir",
+            str(package_dir),
+            "--retrieval-cases",
+            str(cases_path),
+            "--require-visual-only-object-probes",
+            "--output",
+            str(output),
+            "--no-fail",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["passed"] is False
+    assert "retrieval_case_audit" in payload["failed_components"]
+    component = next(
+        component for component in payload["components"] if component["name"] == "retrieval_case_audit"
+    )
+    assert component["metadata"]["failed_checks"] == ["require_visual_only_object_probes"]
+    assert component["metadata"]["visual_object_probe_count"] == 1
+    assert component["metadata"]["non_visual_only_object_probe_count"] == 1
 
 
 def test_ingestion_readiness_cli_can_gate_visual_quality_from_assets(tmp_path):

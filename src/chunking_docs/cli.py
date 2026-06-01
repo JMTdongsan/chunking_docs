@@ -29,7 +29,12 @@ from chunking_docs.evaluation.ablation import (
     qdrant_vector_names_for_modes,
 )
 from chunking_docs.evaluation.casegen import generate_retrieval_case_skeleton
-from chunking_docs.evaluation.case_audit import audit_retrieval_cases
+from chunking_docs.evaluation.case_audit import (
+    audit_retrieval_cases,
+    count_case_groups,
+    count_retrieval_case_targets,
+    count_visual_object_probes,
+)
 from chunking_docs.evaluation.chunking_gate import (
     chunking_gate_summary_payload,
     gate_chunking_comparison,
@@ -2385,6 +2390,11 @@ def ingestion_readiness_command(
         "--min-retrieval-case-group-count",
         help="Require retrieval case metadata group counts such as case_source:visual_object_probe=5.",
     ),
+    require_visual_only_object_probes: bool = typer.Option(
+        False,
+        "--require-visual-only-object-probes",
+        help="Fail readiness when visual_object_probe cases were not generated with visual-only object terms.",
+    ),
     max_duplicate_queries: int = 0,
     retrieval_evaluation: Path | None = None,
     require_retrieval_evaluation: bool = False,
@@ -2661,6 +2671,7 @@ def ingestion_readiness_command(
             "min_asset_cases": min_asset_cases,
             "min_triple_cases": min_triple_cases,
             "min_case_group_counts": retrieval_case_group_count_thresholds,
+            "require_visual_only_object_probes": require_visual_only_object_probes,
             "max_duplicate_queries": max_duplicate_queries,
         },
         retrieval_evaluation=parsed_retrieval,
@@ -3009,10 +3020,16 @@ def generate_retrieval_cases_command(
         raise typer.BadParameter(str(exc)) from exc
     output_path = output or package_dir / "retrieval_cases.skeleton.jsonl"
     write_jsonl(output_path, cases)
+    visual_object_probe_counts = count_visual_object_probes(cases)
     print(
         {
             "output": str(output_path),
             "case_count": len(cases),
+            "target_counts": count_retrieval_case_targets(cases),
+            "case_group_counts": count_case_groups(cases),
+            "visual_object_probe_count": visual_object_probe_counts["total"],
+            "visual_only_object_probe_count": visual_object_probe_counts["visual_only"],
+            "non_visual_only_object_probe_count": visual_object_probe_counts["non_visual_only"],
             "page_limit": page_limit,
             "asset_limit": asset_limit,
             "triple_limit": triple_limit,
@@ -3043,6 +3060,11 @@ def audit_retrieval_cases_command(
         "--min-case-group-count",
         help="Require retrieval case metadata group counts such as case_source:visual_object_probe=5.",
     ),
+    require_visual_only_object_probes: bool = typer.Option(
+        False,
+        "--require-visual-only-object-probes",
+        help="Fail when visual_object_probe cases were not generated with visual-only object terms.",
+    ),
     max_duplicate_queries: int = 0,
     fail: bool = typer.Option(
         True,
@@ -3069,6 +3091,7 @@ def audit_retrieval_cases_command(
         min_asset_cases=min_asset_cases,
         min_triple_cases=min_triple_cases,
         min_case_group_counts=case_group_thresholds,
+        require_visual_only_object_probes=require_visual_only_object_probes,
         max_duplicate_queries=max_duplicate_queries,
     )
     payload = report.model_dump()
@@ -3081,6 +3104,9 @@ def audit_retrieval_cases_command(
             "case_count": report.case_count,
             "target_counts": report.target_counts,
             "case_group_counts": report.case_group_counts,
+            "visual_object_probe_count": report.visual_object_probe_count,
+            "visual_only_object_probe_count": report.visual_only_object_probe_count,
+            "non_visual_only_object_probe_count": report.non_visual_only_object_probe_count,
             "missing_target_counts": report.missing_target_counts,
             "failed_checks": report.failed_checks,
         }

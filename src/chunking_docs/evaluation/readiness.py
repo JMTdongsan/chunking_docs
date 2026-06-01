@@ -212,6 +212,13 @@ def build_ingestion_readiness_report(
                     "failed_checks": retrieval_case_audit.failed_checks,
                     "target_counts": retrieval_case_audit.target_counts,
                     "case_group_counts": retrieval_case_audit.case_group_counts,
+                    "visual_object_probe_count": retrieval_case_audit.visual_object_probe_count,
+                    "visual_only_object_probe_count": (
+                        retrieval_case_audit.visual_only_object_probe_count
+                    ),
+                    "non_visual_only_object_probe_count": (
+                        retrieval_case_audit.non_visual_only_object_probe_count
+                    ),
                     "missing_target_counts": retrieval_case_audit.missing_target_counts,
                 },
             )

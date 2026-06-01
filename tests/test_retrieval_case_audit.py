@@ -31,7 +31,11 @@ def test_audit_retrieval_cases_passes_valid_target_distribution():
         RetrievalCase(
             query="visual target",
             expected_asset_ids=["asset-1"],
-            metadata={"case_source": "visual_object_probe", "modality": "vision_object"},
+            metadata={
+                "case_source": "visual_object_probe",
+                "modality": "vision_object",
+                "object_probe_visual_only": True,
+            },
         ),
         RetrievalCase(
             query="graph target",
@@ -52,6 +56,7 @@ def test_audit_retrieval_cases_passes_valid_target_distribution():
         min_asset_cases=1,
         min_triple_cases=1,
         min_case_group_counts={"case_source:visual_object_probe": 1, "modality:vision_object": 1},
+        require_visual_only_object_probes=True,
     )
 
     assert report.passed is True
@@ -59,6 +64,9 @@ def test_audit_retrieval_cases_passes_valid_target_distribution():
     assert report.case_group_counts["case_source"]["visual_object_probe"] == 1
     assert report.case_group_counts["modality"]["vision_object"] == 1
     assert report.case_group_counts["graph_expand"]["true"] == 1
+    assert report.visual_object_probe_count == 1
+    assert report.visual_only_object_probe_count == 1
+    assert report.non_visual_only_object_probe_count == 0
     assert report.missing_target_counts == {"page": 0, "chunk": 0, "asset": 0, "triple": 0}
 
 
@@ -122,6 +130,43 @@ def test_audit_retrieval_cases_checks_case_group_counts():
     assert check.actual == 0
 
 
+def test_audit_retrieval_cases_can_require_visual_only_object_probes():
+    profiles, chunks, assets, triples = package_records()
+    cases = [
+        RetrievalCase(
+            query="visual only object target",
+            expected_asset_ids=["asset-1"],
+            metadata={"case_source": "visual_object_probe", "object_probe_visual_only": True},
+        ),
+        RetrievalCase(
+            query="broad object target",
+            expected_asset_ids=["asset-1"],
+            metadata={"case_source": "visual_object_probe", "object_probe_visual_only": False},
+        ),
+    ]
+
+    report = audit_retrieval_cases(
+        cases,
+        profiles=profiles,
+        chunks=chunks,
+        assets=assets,
+        triples=triples,
+        require_visual_only_object_probes=True,
+    )
+
+    assert report.passed is False
+    assert report.visual_object_probe_count == 2
+    assert report.visual_only_object_probe_count == 1
+    assert report.non_visual_only_object_probe_count == 1
+    assert "require_visual_only_object_probes" in report.failed_checks
+    assert {issue.code for issue in report.issues} == {"non_visual_only_object_probe"}
+    check = next(
+        check for check in report.checks if check.name == "require_visual_only_object_probes"
+    )
+    assert check.actual == 1
+    assert check.threshold == 0
+
+
 def test_audit_retrieval_cases_cli_writes_report(tmp_path):
     package_dir = write_package(tmp_path)
     cases_path = tmp_path / "cases.jsonl"
@@ -137,7 +182,7 @@ def test_audit_retrieval_cases_cli_writes_report(tmp_path):
             RetrievalCase(
                 query="visual target",
                 expected_asset_ids=["asset-1"],
-                metadata={"case_source": "visual_object_probe"},
+                metadata={"case_source": "visual_object_probe", "object_probe_visual_only": True},
             ),
         ],
     )
@@ -157,6 +202,7 @@ def test_audit_retrieval_cases_cli_writes_report(tmp_path):
             "1",
             "--min-case-group-count",
             "case_source:visual_object_probe=1",
+            "--require-visual-only-object-probes",
             "--output",
             str(output_path),
         ],
@@ -167,6 +213,9 @@ def test_audit_retrieval_cases_cli_writes_report(tmp_path):
     assert payload["passed"] is True
     assert payload["target_counts"]["asset"] == 1
     assert payload["case_group_counts"]["case_source"]["visual_object_probe"] == 1
+    assert payload["visual_object_probe_count"] == 1
+    assert payload["visual_only_object_probe_count"] == 1
+    assert payload["non_visual_only_object_probe_count"] == 0
 
 
 def write_package(tmp_path):
