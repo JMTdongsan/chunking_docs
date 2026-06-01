@@ -1464,6 +1464,10 @@ def eval_qdrant_retrieval_command(
                 "target_metrics": retrieval_target_metrics_payload(evaluation),
                 "source_metrics": retrieval_source_metrics_payload(evaluation),
                 "source_family_metrics": retrieval_source_family_metrics_payload(evaluation),
+                "case_group_source_metrics": retrieval_case_group_source_metrics_payload(evaluation),
+                "case_group_source_family_metrics": (
+                    retrieval_case_group_source_family_metrics_payload(evaluation)
+                ),
                 "chunk_strategy_metrics": retrieval_chunk_strategy_metrics_payload(evaluation),
                 "retrieval_role_metrics": retrieval_role_metrics_payload(evaluation),
                 "case_group_metrics": retrieval_case_group_metrics_payload(evaluation),
@@ -4796,6 +4800,22 @@ def ingestion_readiness_command(
         "--min-retrieval-case-group-target-coverage",
         help="Require retrieval case group target coverage such as case_source:visual_lexical_probe=0.8.",
     ),
+    min_retrieval_case_group_source_target_coverage: list[str] = typer.Option(
+        None,
+        "--min-retrieval-case-group-source-target-coverage",
+        help=(
+            "Require retrieval exact-source coverage inside a case group, such as "
+            "retrieval_route:visual_object:qdrant:object_dense=0.5."
+        ),
+    ),
+    min_retrieval_case_group_source_family_target_coverage: list[str] = typer.Option(
+        None,
+        "--min-retrieval-case-group-source-family-target-coverage",
+        help=(
+            "Require retrieval source-family coverage inside a case group, such as "
+            "retrieval_route:graph_triple:graph=0.5."
+        ),
+    ),
     qdrant_retrieval_config: Path | None = typer.Option(
         None,
         "--qdrant-retrieval-config",
@@ -5240,6 +5260,14 @@ def ingestion_readiness_command(
         min_retrieval_case_group_target_coverage,
         "retrieval case group target coverage",
     )
+    retrieval_case_group_source_thresholds = parse_named_float_thresholds(
+        min_retrieval_case_group_source_target_coverage,
+        "retrieval case group source target coverage",
+    )
+    retrieval_case_group_source_family_thresholds = parse_named_float_thresholds(
+        min_retrieval_case_group_source_family_target_coverage,
+        "retrieval case group source family target coverage",
+    )
     rag_context_target_type_thresholds = parse_named_float_thresholds(
         min_rag_context_target_type_coverage,
         "RAG context target type coverage",
@@ -5370,6 +5398,10 @@ def ingestion_readiness_command(
             "min_source_target_coverage": retrieval_source_thresholds,
             "min_source_family_target_coverage": retrieval_source_family_thresholds,
             "min_case_group_target_coverage": retrieval_case_group_thresholds,
+            "min_case_group_source_target_coverage": retrieval_case_group_source_thresholds,
+            "min_case_group_source_family_target_coverage": (
+                retrieval_case_group_source_family_thresholds
+            ),
         },
         qdrant_retrieval_config=parsed_qdrant_retrieval_config,
         require_qdrant_retrieval_config=require_qdrant_retrieval_config,
@@ -5863,6 +5895,10 @@ def eval_retrieval_command(
                 "target_metrics": retrieval_target_metrics_payload(evaluation),
                 "source_metrics": retrieval_source_metrics_payload(evaluation),
                 "source_family_metrics": retrieval_source_family_metrics_payload(evaluation),
+                "case_group_source_metrics": retrieval_case_group_source_metrics_payload(evaluation),
+                "case_group_source_family_metrics": (
+                    retrieval_case_group_source_family_metrics_payload(evaluation)
+                ),
                 "chunk_strategy_metrics": retrieval_chunk_strategy_metrics_payload(evaluation),
                 "retrieval_role_metrics": retrieval_role_metrics_payload(evaluation),
                 "case_group_metrics": retrieval_case_group_metrics_payload(evaluation),
@@ -6698,6 +6734,22 @@ def gate_retrieval_command(
         "--min-case-group-target-coverage",
         help="Require case metadata group target coverage such as case_source:visual_lexical_probe=0.8.",
     ),
+    min_case_group_source_target_coverage: list[str] = typer.Option(
+        None,
+        "--min-case-group-source-target-coverage",
+        help=(
+            "Require exact-source coverage inside a case group, such as "
+            "retrieval_route:visual_object:qdrant:object_dense=0.5."
+        ),
+    ),
+    min_case_group_source_family_target_coverage: list[str] = typer.Option(
+        None,
+        "--min-case-group-source-family-target-coverage",
+        help=(
+            "Require source-family coverage inside a case group, such as "
+            "retrieval_route:graph_triple:graph=0.5."
+        ),
+    ),
     max_recall_drop: float | None = None,
     max_target_coverage_drop: float | None = None,
     max_target_ndcg_drop: float | None = None,
@@ -6753,6 +6805,14 @@ def gate_retrieval_command(
         min_case_group_target_coverage,
         "case group target coverage",
     )
+    case_group_source_thresholds = parse_named_float_thresholds(
+        min_case_group_source_target_coverage,
+        "case group source target coverage",
+    )
+    case_group_source_family_thresholds = parse_named_float_thresholds(
+        min_case_group_source_family_target_coverage,
+        "case group source family target coverage",
+    )
     report = gate_retrieval_evaluation(
         parsed_evaluation,
         baseline=parsed_baseline,
@@ -6787,6 +6847,8 @@ def gate_retrieval_command(
         max_chunk_strategy_excluded_target_hit_rate=chunk_strategy_excluded_thresholds,
         max_retrieval_role_excluded_target_hit_rate=retrieval_role_excluded_thresholds,
         min_case_group_target_coverage=case_group_thresholds,
+        min_case_group_source_target_coverage=case_group_source_thresholds,
+        min_case_group_source_family_target_coverage=case_group_source_family_thresholds,
         max_recall_drop=max_recall_drop,
         max_target_coverage_drop=max_target_coverage_drop,
         max_target_ndcg_drop=max_target_ndcg_drop,
@@ -7793,6 +7855,40 @@ def retrieval_source_family_metrics_payload(evaluation) -> dict:
     return {
         name: metric.model_dump()
         for name, metric in getattr(evaluation, "source_family_metrics", {}).items()
+    }
+
+
+def retrieval_case_group_source_metrics_payload(evaluation) -> dict:
+    return {
+        group_name: {
+            group_value: {
+                source: metric.model_dump()
+                for source, metric in source_values.items()
+            }
+            for group_value, source_values in group_values.items()
+        }
+        for group_name, group_values in getattr(
+            evaluation,
+            "case_group_source_metrics",
+            {},
+        ).items()
+    }
+
+
+def retrieval_case_group_source_family_metrics_payload(evaluation) -> dict:
+    return {
+        group_name: {
+            group_value: {
+                family: metric.model_dump()
+                for family, metric in family_values.items()
+            }
+            for group_value, family_values in group_values.items()
+        }
+        for group_name, group_values in getattr(
+            evaluation,
+            "case_group_source_family_metrics",
+            {},
+        ).items()
     }
 
 

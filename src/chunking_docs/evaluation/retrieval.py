@@ -156,6 +156,12 @@ class RetrievalEvaluation(BaseModel):
     target_metrics: dict[str, RetrievalTargetMetric] = Field(default_factory=dict)
     source_metrics: dict[str, RetrievalSourceMetric] = Field(default_factory=dict)
     source_family_metrics: dict[str, RetrievalSourceMetric] = Field(default_factory=dict)
+    case_group_source_metrics: dict[str, dict[str, dict[str, RetrievalSourceMetric]]] = Field(
+        default_factory=dict
+    )
+    case_group_source_family_metrics: dict[
+        str, dict[str, dict[str, RetrievalSourceMetric]]
+    ] = Field(default_factory=dict)
     chunk_strategy_metrics: dict[str, RetrievalSourceMetric] = Field(default_factory=dict)
     retrieval_role_metrics: dict[str, RetrievalSourceMetric] = Field(default_factory=dict)
     case_group_metrics: dict[str, dict[str, RetrievalCaseGroupMetric]] = Field(default_factory=dict)
@@ -468,6 +474,8 @@ def evaluate_search_results(
         target_metrics=target_metrics(results),
         source_metrics=source_metrics(results),
         source_family_metrics=source_metrics(results, family=True),
+        case_group_source_metrics=case_group_source_metrics(results, cases),
+        case_group_source_family_metrics=case_group_source_metrics(results, cases, family=True),
         chunk_strategy_metrics=hit_group_metrics(results, "top_chunking_strategies"),
         retrieval_role_metrics=hit_group_metrics(results, "top_retrieval_roles"),
         case_group_metrics=case_group_metrics(results, cases),
@@ -1123,6 +1131,24 @@ def case_group_labels(case: RetrievalCase) -> list[tuple[str, str]]:
             labels.append((normalized_metric_label(key), normalized_metric_label(label)))
     labels.append(("graph_expand", "true" if case.graph_expand else "false"))
     return labels
+
+
+def case_group_source_metrics(
+    results: list[RetrievalCaseResult],
+    cases: list[RetrievalCase],
+    family: bool = False,
+) -> dict[str, dict[str, dict[str, RetrievalSourceMetric]]]:
+    groups: dict[str, dict[str, list[RetrievalCaseResult]]] = {}
+    for result, case in zip(results, cases):
+        for group_name, group_value in case_group_labels(case):
+            groups.setdefault(group_name, {}).setdefault(group_value, []).append(result)
+    return {
+        group_name: {
+            group_value: source_metrics(group_results, family=family)
+            for group_value, group_results in sorted(values.items())
+        }
+        for group_name, values in sorted(groups.items())
+    }
 
 
 def metadata_group_values(value: Any) -> list[str]:

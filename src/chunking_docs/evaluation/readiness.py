@@ -340,6 +340,10 @@ def build_ingestion_readiness_report(
                     "target_metrics": retrieval_gate.target_metrics,
                     "source_metrics": retrieval_gate.source_metrics,
                     "source_family_metrics": retrieval_gate.source_family_metrics,
+                    "case_group_source_metrics": retrieval_gate.case_group_source_metrics,
+                    "case_group_source_family_metrics": (
+                        retrieval_gate.case_group_source_family_metrics
+                    ),
                     "case_group_metrics": retrieval_gate.case_group_metrics,
                 },
             )

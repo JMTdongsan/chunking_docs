@@ -164,6 +164,8 @@ QDRANT_RAG_READINESS_GATE_ARGS = [
 QDRANT_ADAPTIVE_ROUTE_READINESS_GATE_ARGS = [
     "--min-retrieval-case-group-target-coverage retrieval_route:graph_triple=0.7",
     "--min-retrieval-case-group-target-coverage retrieval_route:visual_object=0.7",
+    "--min-retrieval-case-group-source-target-coverage retrieval_route:graph_triple:qdrant:triple_dense=0.7",
+    "--min-retrieval-case-group-source-target-coverage retrieval_route:visual_object:qdrant:object_dense=0.3",
     "--min-rag-context-case-group-target-coverage retrieval_route:graph_triple=0.7",
     "--min-rag-context-case-group-target-coverage retrieval_route:visual_object=0.7",
 ]

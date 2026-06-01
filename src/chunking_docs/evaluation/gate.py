@@ -25,6 +25,12 @@ class RetrievalGateReport(BaseModel):
     source_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
     target_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
     source_family_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
+    case_group_source_metrics: dict[
+        str, dict[str, dict[str, dict[str, float]]]
+    ] = Field(default_factory=dict)
+    case_group_source_family_metrics: dict[
+        str, dict[str, dict[str, dict[str, float]]]
+    ] = Field(default_factory=dict)
     chunk_strategy_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
     retrieval_role_metrics: dict[str, dict[str, float]] = Field(default_factory=dict)
     case_group_metrics: dict[str, dict[str, dict[str, float]]] = Field(default_factory=dict)
@@ -60,6 +66,8 @@ def gate_retrieval_evaluation(
     min_target_type_coverage: dict[str, float] | None = None,
     min_source_target_coverage: dict[str, float] | None = None,
     min_source_family_target_coverage: dict[str, float] | None = None,
+    min_case_group_source_target_coverage: dict[str, float] | None = None,
+    min_case_group_source_family_target_coverage: dict[str, float] | None = None,
     max_source_excluded_target_hit_rate: dict[str, float] | None = None,
     max_source_family_excluded_target_hit_rate: dict[str, float] | None = None,
     min_chunk_strategy_target_coverage: dict[str, float] | None = None,
@@ -78,6 +86,8 @@ def gate_retrieval_evaluation(
 
     source_metrics = retrieval_source_metrics(evaluation)
     source_family_metrics = retrieval_source_family_metrics(evaluation)
+    case_group_source_metrics = retrieval_case_group_source_metrics(evaluation)
+    case_group_source_family_metrics = retrieval_case_group_source_family_metrics(evaluation)
     target_metrics = retrieval_target_metrics(evaluation)
     chunk_strategy_metrics = retrieval_chunk_strategy_metrics(evaluation)
     retrieval_role_metrics = retrieval_role_metrics_payload(evaluation)
@@ -86,6 +96,8 @@ def gate_retrieval_evaluation(
         evaluation,
         source_metrics,
         source_family_metrics,
+        case_group_source_metrics,
+        case_group_source_family_metrics,
         target_metrics,
         chunk_strategy_metrics,
         retrieval_role_metrics,
@@ -96,6 +108,8 @@ def gate_retrieval_evaluation(
             baseline,
             retrieval_source_metrics(baseline),
             retrieval_source_family_metrics(baseline),
+            retrieval_case_group_source_metrics(baseline),
+            retrieval_case_group_source_family_metrics(baseline),
             retrieval_target_metrics(baseline),
             retrieval_chunk_strategy_metrics(baseline),
             retrieval_role_metrics_payload(baseline),
@@ -236,6 +250,20 @@ def gate_retrieval_evaluation(
         )
     )
     checks.extend(
+        case_group_source_target_coverage_checks(
+            metrics,
+            min_case_group_source_target_coverage or {},
+            family=False,
+        )
+    )
+    checks.extend(
+        case_group_source_target_coverage_checks(
+            metrics,
+            min_case_group_source_family_target_coverage or {},
+            family=True,
+        )
+    )
+    checks.extend(
         source_excluded_target_hit_rate_checks(
             metrics,
             max_source_excluded_target_hit_rate or {},
@@ -312,6 +340,8 @@ def gate_retrieval_evaluation(
         source_metrics=source_metrics,
         target_metrics=target_metrics,
         source_family_metrics=source_family_metrics,
+        case_group_source_metrics=case_group_source_metrics,
+        case_group_source_family_metrics=case_group_source_family_metrics,
         chunk_strategy_metrics=chunk_strategy_metrics,
         retrieval_role_metrics=retrieval_role_metrics,
         case_group_metrics=case_group_metrics,
@@ -325,6 +355,12 @@ def retrieval_metrics(
     evaluation: RetrievalEvaluation | None,
     source_metrics: dict[str, dict[str, float]] | None = None,
     source_family_metrics: dict[str, dict[str, float]] | None = None,
+    case_group_source_metrics: dict[
+        str, dict[str, dict[str, dict[str, float]]]
+    ] | None = None,
+    case_group_source_family_metrics: dict[
+        str, dict[str, dict[str, dict[str, float]]]
+    ] | None = None,
     target_metrics: dict[str, dict[str, float]] | None = None,
     chunk_strategy_metrics: dict[str, dict[str, float]] | None = None,
     retrieval_role_metrics: dict[str, dict[str, float]] | None = None,
@@ -365,6 +401,23 @@ def retrieval_metrics(
     for family, family_metrics in (source_family_metrics or {}).items():
         for key, value in family_metrics.items():
             metrics[source_family_metric_key(family, key)] = value
+    for group_name, group_values in (case_group_source_metrics or {}).items():
+        for group_value, source_values in group_values.items():
+            for source, source_metric_values in source_values.items():
+                for key, value in source_metric_values.items():
+                    metrics[case_group_source_metric_key(group_name, group_value, source, key)] = value
+    for group_name, group_values in (case_group_source_family_metrics or {}).items():
+        for group_value, family_values in group_values.items():
+            for family, family_metric_values in family_values.items():
+                for key, value in family_metric_values.items():
+                    metrics[
+                        case_group_source_family_metric_key(
+                            group_name,
+                            group_value,
+                            family,
+                            key,
+                        )
+                    ] = value
     for strategy, strategy_metrics in (chunk_strategy_metrics or {}).items():
         for key, value in strategy_metrics.items():
             metrics[chunk_strategy_metric_key(strategy, key)] = value
@@ -531,6 +584,64 @@ def retrieval_source_family_metrics(
             "mean_relevant_rank": metric.mean_relevant_rank,
         }
         for family, metric in sorted(evaluation.source_family_metrics.items())
+    }
+
+
+def retrieval_case_group_source_metrics(
+    evaluation: RetrievalEvaluation | None,
+) -> dict[str, dict[str, dict[str, dict[str, float]]]]:
+    if evaluation is None:
+        return {}
+    return {
+        normalize_case_group_key(group_name): {
+            normalize_case_group_key(group_value): {
+                source.strip().lower(): retrieval_source_metric_payload(metric)
+                for source, metric in sorted(source_values.items())
+            }
+            for group_value, source_values in sorted(group_values.items())
+        }
+        for group_name, group_values in sorted(
+            evaluation.case_group_source_metrics.items()
+        )
+    }
+
+
+def retrieval_case_group_source_family_metrics(
+    evaluation: RetrievalEvaluation | None,
+) -> dict[str, dict[str, dict[str, dict[str, float]]]]:
+    if evaluation is None:
+        return {}
+    return {
+        normalize_case_group_key(group_name): {
+            normalize_case_group_key(group_value): {
+                family.strip().lower(): retrieval_source_metric_payload(metric)
+                for family, metric in sorted(family_values.items())
+            }
+            for group_value, family_values in sorted(group_values.items())
+        }
+        for group_name, group_values in sorted(
+            evaluation.case_group_source_family_metrics.items()
+        )
+    }
+
+
+def retrieval_source_metric_payload(metric) -> dict[str, float]:
+    return {
+        "query_count": float(metric.query_count),
+        "relevant_query_count": float(metric.relevant_query_count),
+        "excluded_query_count": float(metric.excluded_query_count),
+        "hit_count": float(metric.hit_count),
+        "relevant_hit_count": float(metric.relevant_hit_count),
+        "excluded_hit_count": float(metric.excluded_hit_count),
+        "expected_target_count": float(metric.expected_target_count),
+        "matched_target_count": float(metric.matched_target_count),
+        "excluded_target_count": float(metric.excluded_target_count),
+        "excluded_matched_target_count": float(metric.excluded_matched_target_count),
+        "precision_at_hits": metric.precision_at_hits,
+        "excluded_precision_at_hits": metric.excluded_precision_at_hits,
+        "target_coverage_at_k": metric.target_coverage_at_k,
+        "excluded_target_hit_rate": metric.excluded_target_hit_rate,
+        "mean_relevant_rank": metric.mean_relevant_rank,
     }
 
 
@@ -776,12 +887,56 @@ def case_group_target_coverage_checks(
     return checks
 
 
+def case_group_source_target_coverage_checks(
+    metrics: dict[str, float],
+    thresholds: dict[str, float],
+    family: bool = False,
+) -> list[RetrievalGateCheck]:
+    checks = []
+    for spec, threshold in sorted(thresholds.items()):
+        group_name, group_value, source = parse_case_group_source_spec(spec)
+        metric_key_fn = (
+            case_group_source_family_metric_key
+            if family
+            else case_group_source_metric_key
+        )
+        metric = metric_key_fn(group_name, group_value, source, "target_coverage_at_k")
+        metrics.setdefault(metric, 0.0)
+        check_prefix = (
+            "min_case_group_source_family_target_coverage"
+            if family
+            else "min_case_group_source_target_coverage"
+        )
+        checks.append(
+            minimum_check(
+                f"{check_prefix}:{group_name}:{group_value}:{source}",
+                metric,
+                metrics,
+                threshold,
+            )
+        )
+    return checks
+
+
 def parse_case_group_spec(value: str) -> tuple[str, str]:
     if ":" in value:
         group_name, group_value = value.split(":", 1)
     else:
         group_name, group_value = "case_source", value
     return normalize_case_group_key(group_name), normalize_case_group_key(group_value)
+
+
+def parse_case_group_source_spec(value: str) -> tuple[str, str, str]:
+    parts = value.split(":")
+    if len(parts) < 3:
+        return "case_source", normalize_case_group_key(parts[0]), ":".join(parts[1:])
+    group_name, group_value, *source_parts = parts
+    source = ":".join(source_parts).strip().lower()
+    return (
+        normalize_case_group_key(group_name),
+        normalize_case_group_key(group_value),
+        source or "unspecified",
+    )
 
 
 def normalize_case_group_key(value: str) -> str:
@@ -799,6 +954,24 @@ def retrieval_role_metric_key(role: str, metric: str) -> str:
 
 def case_group_metric_key(group_name: str, group_value: str, metric: str) -> str:
     return f"case_group.{group_name}.{group_value}.{metric}"
+
+
+def case_group_source_metric_key(
+    group_name: str,
+    group_value: str,
+    source: str,
+    metric: str,
+) -> str:
+    return f"case_group_source.{group_name}.{group_value}.{source}.{metric}"
+
+
+def case_group_source_family_metric_key(
+    group_name: str,
+    group_value: str,
+    family: str,
+    metric: str,
+) -> str:
+    return f"case_group_source_family.{group_name}.{group_value}.{family}.{metric}"
 
 
 def minimum_check(
@@ -905,6 +1078,8 @@ def gate_summary_payload(report: RetrievalGateReport) -> dict[str, Any]:
         "target_metrics": report.target_metrics,
         "source_metrics": report.source_metrics,
         "source_family_metrics": report.source_family_metrics,
+        "case_group_source_metrics": report.case_group_source_metrics,
+        "case_group_source_family_metrics": report.case_group_source_family_metrics,
         "chunk_strategy_metrics": report.chunk_strategy_metrics,
         "retrieval_role_metrics": report.retrieval_role_metrics,
         "case_group_metrics": report.case_group_metrics,

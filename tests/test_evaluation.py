@@ -1315,6 +1315,16 @@ def test_evaluate_search_results_reports_target_coverage_and_precision():
     assert result.source_metrics["test"].relevant_hit_count == 2
     assert result.source_metrics["test"].matched_target_count == 3
     assert result.source_metrics["test"].target_coverage_at_k == 0.75
+    assert (
+        result.case_group_source_metrics["case_source"]["visual_lexical_probe"]["test"]
+        .target_coverage_at_k
+        == 0.75
+    )
+    assert (
+        result.case_group_source_family_metrics["case_source"]["visual_lexical_probe"]["test"]
+        .target_coverage_at_k
+        == 0.75
+    )
     assert result.case_group_metrics["case_source"]["visual_lexical_probe"].case_count == 1
     assert (
         result.case_group_metrics["case_source"]["visual_lexical_probe"].target_coverage_at_k

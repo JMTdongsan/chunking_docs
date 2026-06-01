@@ -265,6 +265,16 @@ def test_workflow_plan_exports_adaptive_qdrant_route_for_visual_object_graph_pac
         in readiness_command
     )
     assert (
+        "--min-retrieval-case-group-source-target-coverage "
+        "retrieval_route:graph_triple:qdrant:triple_dense=0.7"
+        in readiness_command
+    )
+    assert (
+        "--min-retrieval-case-group-source-target-coverage "
+        "retrieval_route:visual_object:qdrant:object_dense=0.3"
+        in readiness_command
+    )
+    assert (
         "--min-rag-context-case-group-target-coverage retrieval_route:graph_triple=0.7"
         in readiness_command
     )

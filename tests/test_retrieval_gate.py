@@ -33,6 +33,8 @@ def make_evaluation(
     chunk_strategy_excluded_hit_rate: dict[str, float] | None = None,
     retrieval_role_excluded_hit_rate: dict[str, float] | None = None,
     case_group_coverage: dict[str, dict[str, float]] | None = None,
+    case_group_source_coverage: dict[str, dict[str, dict[str, float]]] | None = None,
+    case_group_source_family_coverage: dict[str, dict[str, dict[str, float]]] | None = None,
     excluded_query_count: int = 0,
     excluded_hit_query_count: int = 0,
     excluded_target_count: int = 0,
@@ -108,6 +110,28 @@ def make_evaluation(
                 for group_value, coverage in group_values.items()
             }
             for group_name, group_values in (case_group_coverage or {}).items()
+        },
+        case_group_source_metrics={
+            group_name: {
+                group_value: {
+                    source: source_family_metric(coverage)
+                    for source, coverage in source_values.items()
+                }
+                for group_value, source_values in group_values.items()
+            }
+            for group_name, group_values in (case_group_source_coverage or {}).items()
+        },
+        case_group_source_family_metrics={
+            group_name: {
+                group_value: {
+                    family: source_family_metric(coverage)
+                    for family, coverage in family_values.items()
+                }
+                for group_value, family_values in group_values.items()
+            }
+            for group_name, group_values in (
+                case_group_source_family_coverage or {}
+            ).items()
         },
         failed_queries=[],
         results=[],
@@ -419,6 +443,53 @@ def test_retrieval_gate_checks_case_group_target_coverage():
     assert failed.passed is False
     assert failed.failed_checks == [
         "min_case_group_target_coverage:case_source:visual_lexical_probe"
+    ]
+
+
+def test_retrieval_gate_checks_case_group_source_target_coverage():
+    evaluation = make_evaluation(
+        case_group_source_coverage={
+            "retrieval_route": {
+                "visual_object": {
+                    "qdrant:object_dense": 0.75,
+                    "bm25": 1.0,
+                }
+            }
+        },
+        case_group_source_family_coverage={
+            "retrieval_route": {"graph_triple": {"graph": 0.8}}
+        },
+    )
+
+    report = gate_retrieval_evaluation(
+        evaluation,
+        min_case_group_source_target_coverage={
+            "retrieval_route:visual_object:qdrant:object_dense": 0.7
+        },
+        min_case_group_source_family_target_coverage={
+            "retrieval_route:graph_triple:graph": 0.75
+        },
+    )
+
+    assert report.passed is True
+    assert report.metrics[
+        "case_group_source.retrieval_route.visual_object.qdrant:object_dense.target_coverage_at_k"
+    ] == 0.75
+    assert report.metrics[
+        "case_group_source_family.retrieval_route.graph_triple.graph.target_coverage_at_k"
+    ] == 0.8
+
+    failed = gate_retrieval_evaluation(
+        evaluation,
+        min_case_group_source_target_coverage={
+            "retrieval_route:visual_object:qdrant:object_dense": 0.8
+        },
+    )
+
+    assert failed.passed is False
+    assert failed.failed_checks == [
+        "min_case_group_source_target_coverage:"
+        "retrieval_route:visual_object:qdrant:object_dense"
     ]
 
 
