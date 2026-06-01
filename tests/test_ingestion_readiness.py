@@ -262,6 +262,29 @@ def test_ingestion_readiness_warns_when_derived_triple_vector_is_missing(tmp_pat
     assert component.severity == "warning"
     assert "triple_dense" in component.metadata["expected_vectors"]
     assert "triple_dense" in component.metadata["missing_collection_vectors"]
+    assert component.metadata["missing_expected_vectors"] == ["caption_dense", "triple_dense"]
+    assert component.metadata["recommended_qdrant_vector_modes"] == [
+        "text",
+        "caption",
+        "text_caption",
+        "triple",
+        "text_triple",
+        "text_caption_graph",
+        "text_triple_graph",
+    ]
+    assert component.metadata["rebuild_commands"] == [
+        "chunking-docs normalize-graph-triples --package-dir outputs/package --export-graph",
+        (
+            "chunking-docs embed-package --package-dir outputs/package "
+            "--caption-backend same-as-text --triple-backend same-as-text"
+        ),
+        "chunking-docs audit-package --package-dir outputs/package --require-qdrant-records",
+        (
+            "chunking-docs eval-qdrant-vector-ablation examples/retrieval_cases.jsonl "
+            "--package-dir outputs/package "
+            "--modes text,caption,text_caption,triple,text_triple,text_caption_graph,text_triple_graph"
+        ),
+    ]
     assert component.metadata["expectations"]["triple_dense"]["source_count"] == 1
 
 
@@ -300,6 +323,26 @@ def test_ingestion_readiness_can_require_derived_object_vector_coverage(tmp_path
     assert component.severity == "error"
     assert "object_dense" in component.metadata["expected_vectors"]
     assert "object_dense" in component.metadata["missing_collection_vectors"]
+    assert component.metadata["missing_expected_vectors"] == ["caption_dense", "object_dense"]
+    assert component.metadata["recommended_qdrant_vector_modes"] == [
+        "text",
+        "caption",
+        "text_caption",
+        "object",
+        "text_object",
+        "caption_object",
+    ]
+    assert component.metadata["rebuild_commands"] == [
+        (
+            "chunking-docs embed-package --package-dir outputs/package "
+            "--caption-backend same-as-text --object-backend same-as-caption"
+        ),
+        "chunking-docs audit-package --package-dir outputs/package --require-qdrant-records",
+        (
+            "chunking-docs eval-qdrant-vector-ablation examples/retrieval_cases.jsonl "
+            "--package-dir outputs/package --modes text,caption,text_caption,object,text_object,caption_object"
+        ),
+    ]
     assert component.metadata["expectations"]["object_dense"]["source_count"] == 1
 
 
@@ -1327,6 +1370,9 @@ def test_ingestion_readiness_cli_can_require_derived_vector_coverage(tmp_path):
     assert "derived_embedding_vectors" in payload["failed_components"]
     assert "triple_dense" in component["metadata"]["expected_vectors"]
     assert "triple_dense" in component["metadata"]["missing_collection_vectors"]
+    assert component["metadata"]["missing_expected_vectors"] == ["caption_dense", "triple_dense"]
+    assert "--triple-backend same-as-text" in component["metadata"]["rebuild_commands"][1]
+    assert "text_triple_graph" in component["metadata"]["recommended_qdrant_vector_modes"]
 
 
 def test_ingestion_readiness_cli_can_gate_qdrant_vector_ablation(tmp_path):

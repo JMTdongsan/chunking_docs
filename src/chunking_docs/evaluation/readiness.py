@@ -893,6 +893,16 @@ def derived_embedding_vectors_component(
         )
 
     vector_component = embedding_vectors_component(package_dir, expected_vectors)
+    missing_expected_vectors = derived_vector_issue_names(
+        vector_component.metadata,
+        expected_vectors,
+        vector_component.passed,
+    )
+    rebuild_commands = derived_vector_rebuild_commands(
+        missing_expected_vectors,
+        expected_vectors,
+    )
+    recommended_modes = derived_vector_ablation_modes(expected_vectors)
     metadata.update(
         {
             "required_vector_details": vector_component.metadata.get(
@@ -911,6 +921,9 @@ def derived_embedding_vectors_component(
             "empty_record_vectors": vector_component.metadata.get("empty_record_vectors", []),
             "dimension_mismatches": vector_component.metadata.get("dimension_mismatches", {}),
             "contract_error": vector_component.metadata.get("error"),
+            "missing_expected_vectors": missing_expected_vectors,
+            "rebuild_commands": rebuild_commands,
+            "recommended_qdrant_vector_modes": recommended_modes,
         }
     )
     return ReadinessComponent(
@@ -924,6 +937,103 @@ def derived_embedding_vectors_component(
         ),
         metadata=metadata,
     )
+
+
+def derived_vector_issue_names(
+    vector_metadata: dict[str, Any],
+    expected_vectors: list[str],
+    passed: bool,
+) -> list[str]:
+    expected = set(expected_vectors)
+    issue_vectors: set[str] = set()
+    for key in (
+        "missing_collection_vectors",
+        "missing_manifest_vectors",
+        "missing_record_files",
+        "empty_record_vectors",
+    ):
+        value = vector_metadata.get(key, [])
+        if isinstance(value, list):
+            issue_vectors.update(str(item) for item in value if str(item) in expected)
+
+    dimension_mismatches = vector_metadata.get("dimension_mismatches", {})
+    if isinstance(dimension_mismatches, dict):
+        issue_vectors.update(str(vector) for vector in dimension_mismatches if str(vector) in expected)
+
+    if not passed and not issue_vectors:
+        return expected_vectors
+    return [vector for vector in expected_vectors if vector in issue_vectors]
+
+
+def derived_vector_rebuild_commands(
+    missing_vectors: list[str],
+    expected_vectors: list[str],
+) -> list[str]:
+    if not missing_vectors:
+        return []
+
+    missing = set(missing_vectors)
+    commands: list[str] = []
+    if "triple_dense" in missing:
+        commands.append("chunking-docs normalize-graph-triples --package-dir outputs/package --export-graph")
+
+    embed_parts = ["chunking-docs embed-package --package-dir outputs/package"]
+    if "caption_dense" in missing:
+        embed_parts.append("--caption-backend same-as-text")
+    if "object_dense" in missing:
+        embed_parts.append("--object-backend same-as-caption")
+    if "triple_dense" in missing:
+        embed_parts.append("--triple-backend same-as-text")
+    commands.append(" ".join(embed_parts))
+    commands.append("chunking-docs audit-package --package-dir outputs/package --require-qdrant-records")
+
+    modes = derived_vector_ablation_modes(expected_vectors)
+    if modes:
+        commands.append(
+            "chunking-docs eval-qdrant-vector-ablation examples/retrieval_cases.jsonl "
+            f"--package-dir outputs/package --modes {','.join(modes)}"
+        )
+    return commands
+
+
+def derived_vector_ablation_modes(expected_vectors: list[str]) -> list[str]:
+    expected = set(expected_vectors)
+    modes: list[str] = []
+
+    if "text_dense" in expected:
+        modes.append("text")
+    if "caption_dense" in expected:
+        modes.append("caption")
+    if {"text_dense", "caption_dense"} <= expected:
+        modes.extend(["text_caption"])
+    if "object_dense" in expected:
+        modes.append("object")
+    if {"text_dense", "object_dense"} <= expected:
+        modes.append("text_object")
+    if {"caption_dense", "object_dense"} <= expected:
+        modes.append("caption_object")
+    if "triple_dense" in expected:
+        modes.append("triple")
+    if {"text_dense", "triple_dense"} <= expected:
+        modes.append("text_triple")
+    if {"text_dense", "caption_dense", "triple_dense"} <= expected:
+        modes.append("text_caption_graph")
+    if {"text_dense", "object_dense", "triple_dense"} <= expected:
+        modes.append("text_object_graph")
+    if {"text_dense", "triple_dense"} <= expected:
+        modes.append("text_triple_graph")
+    return stable_string_list(modes)
+
+
+def stable_string_list(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        result.append(value)
+    return result
 
 
 def derived_vector_expectations(manifest: ProcessingManifest) -> dict[str, dict[str, Any]]:
