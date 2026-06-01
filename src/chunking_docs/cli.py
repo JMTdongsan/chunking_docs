@@ -74,7 +74,10 @@ from chunking_docs.evaluation.sweep import (
 )
 from chunking_docs.graph.heuristics import section_triples
 from chunking_docs.graph.quality import normalize_graph_triples
-from chunking_docs.graph.repair import remap_triples_to_available_chunks
+from chunking_docs.graph.repair import (
+    remap_triples_to_available_chunks,
+    repair_visual_derived_triples,
+)
 from chunking_docs.ingest.pdf_loader import load_source_document, render_pages
 from chunking_docs.ingest.tables import extract_pdf_tables
 from chunking_docs.io import read_jsonl, write_jsonl
@@ -2689,6 +2692,77 @@ def normalize_graph_triples_command(
             "graph_nodes_output": str(graph_nodes_output) if graph_nodes_output else None,
             "graph_edges_output": str(graph_edges_output) if graph_edges_output else None,
             "graph_summary_output": str(graph_summary_output) if graph_summary_output else None,
+        }
+    )
+
+
+@app.command(name="repair-visual-triples")
+def repair_visual_triples_command(
+    package_dir: Path = Path("outputs/package"),
+    output: Path | None = None,
+    in_place: bool = False,
+    export_graph_artifacts: bool = typer.Option(False, "--export-graph"),
+    clear_stale_embeddings: bool = True,
+):
+    """Repair missing graph triples derived from stored VLM asset metadata."""
+    from dataclasses import asdict
+
+    from chunking_docs.graph.export import export_graph, summarize_graph
+
+    chunks_path = package_dir / "chunks.jsonl"
+    assets_path = package_dir / "assets.jsonl"
+    triples_path = package_dir / "triples.jsonl"
+    if not chunks_path.exists():
+        raise typer.BadParameter(f"Missing chunks file: {chunks_path}")
+    if not assets_path.exists():
+        raise typer.BadParameter(f"Missing assets file: {assets_path}")
+    if not triples_path.exists():
+        raise typer.BadParameter(f"Missing triples file: {triples_path}")
+
+    chunks = read_jsonl(chunks_path, DocumentChunk)
+    assets = read_jsonl(assets_path, VisualAsset)
+    triples = read_jsonl(triples_path, GraphTriple)
+    repaired, report = repair_visual_derived_triples(assets, chunks, triples)
+
+    output_path = package_dir / "triples.jsonl" if in_place else output
+    if output_path is None:
+        output_path = package_dir / "triples.visual_repaired.jsonl"
+    write_jsonl(output_path, repaired)
+
+    graph_nodes_output = None
+    graph_edges_output = None
+    graph_summary_output = None
+    if in_place and export_graph_artifacts:
+        nodes, edges = export_graph(repaired, chunks=chunks)
+        summary = summarize_graph(nodes, edges)
+        graph_nodes_output = package_dir / "graph_nodes.jsonl"
+        graph_edges_output = package_dir / "graph_edges.jsonl"
+        graph_summary_output = package_dir / "graph_summary.json"
+        write_jsonl(graph_nodes_output, nodes)
+        write_jsonl(graph_edges_output, edges)
+        graph_summary_output.write_text(summary.model_dump_json(indent=2), encoding="utf-8")
+
+    cleared_embedding_artifacts = []
+    changed = report.added_triples > 0 or report.updated_triples > 0
+    if in_place and clear_stale_embeddings and changed:
+        cleared_embedding_artifacts = clear_embedding_artifacts(package_dir)
+
+    print_json(
+        {
+            **asdict(report),
+            "source": str(triples_path),
+            "output": str(output_path),
+            "in_place": in_place,
+            "graph_nodes_output": str(graph_nodes_output) if graph_nodes_output else None,
+            "graph_edges_output": str(graph_edges_output) if graph_edges_output else None,
+            "graph_summary_output": str(graph_summary_output) if graph_summary_output else None,
+            "cleared_embedding_artifacts": cleared_embedding_artifacts,
+            "requires_embedding_rebuild": bool(in_place and changed),
+            "next_embedding_command": (
+                f"chunking-docs embed-package --package-dir {shlex.quote(package_dir.as_posix())}"
+                if in_place and changed
+                else None
+            ),
         }
     )
 
