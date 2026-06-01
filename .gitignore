@@ -10,4 +10,5 @@ data/analysis/page_renders/
 data/analysis/*.json
 data/analysis/*.jsonl
 outputs/
+.local/
 .env
