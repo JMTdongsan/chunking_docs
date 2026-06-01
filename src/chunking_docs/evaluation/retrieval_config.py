@@ -28,6 +28,25 @@ class QdrantRetrievalConfigSelection(BaseModel):
     pairwise_comparisons: list[dict[str, Any]] = Field(default_factory=list)
 
 
+class QdrantRetrievalRoute(BaseModel):
+    name: str
+    description: str = ""
+    match_query_terms: list[str] = Field(default_factory=list)
+    match_case_metadata: dict[str, list[str] | str] = Field(default_factory=dict)
+    vector_names: list[str] = Field(default_factory=list)
+    graph_expand: bool | None = None
+    fusion_weights: dict[str, float] = Field(default_factory=dict)
+
+
+class QdrantRetrievalRouteDecision(BaseModel):
+    name: str | None = None
+    matched: bool = False
+    reason: str = "default"
+    vector_names: list[str] = Field(default_factory=list)
+    graph_expand: bool = False
+    fusion_weights: dict[str, float] = Field(default_factory=dict)
+
+
 class QdrantRetrievalConfig(BaseModel):
     config_version: int = 1
     backend: str = "qdrant_hybrid"
@@ -45,6 +64,7 @@ class QdrantRetrievalConfig(BaseModel):
     rerank_top_k: int = 0
     query_encoders: dict[str, Any] = Field(default_factory=dict)
     lexical_tokenizer: dict[str, Any] = Field(default_factory=dict)
+    routes: list[QdrantRetrievalRoute] = Field(default_factory=list)
     selection: QdrantRetrievalConfigSelection
     metadata: dict[str, Any] = Field(default_factory=dict)
 
@@ -218,6 +238,201 @@ def selected_pairwise_comparisons(
         )
     )
     return [comparison.model_dump() for comparison in comparisons]
+
+
+def qdrant_retrieval_route_preset(name: str) -> list[QdrantRetrievalRoute]:
+    normalized = name.strip().lower().replace("_", "-")
+    if not normalized or normalized == "none":
+        return []
+    if normalized not in {"adaptive", "visual-object-graph"}:
+        raise ValueError(
+            "Unknown route preset. Supported presets: adaptive, visual-object-graph."
+        )
+    return [
+        QdrantRetrievalRoute(
+            name="visual_object",
+            description=(
+                "Route visual-element, color, symbol, map, chart, and object queries "
+                "to object metadata extracted from OCR/VLM annotations."
+            ),
+            match_query_terms=[
+                "객체",
+                "색상",
+                "색깔",
+                "녹색",
+                "파란색",
+                "빨간색",
+                "노란색",
+                "기호",
+                "표식",
+                "범례",
+                "화살표",
+                "지도",
+                "도표",
+                "그림",
+                "이미지",
+                "사진",
+                "시각",
+                "object",
+                "visual",
+                "color",
+                "symbol",
+                "legend",
+                "map",
+                "chart",
+                "image",
+                "photo",
+            ],
+            match_case_metadata={
+                "case_source": ["visual_object_probe", "visual_image_probe"],
+                "evidence_family": "visual_object",
+                "modality": ["vision_object", "vision_image"],
+            },
+            vector_names=["object_dense"],
+            graph_expand=False,
+            fusion_weights={"bm25": 1.2, "qdrant:object_dense": 0.8},
+        ),
+        QdrantRetrievalRoute(
+            name="graph_triple",
+            description=(
+                "Route relation, evidence, goal-strategy, cause-effect, and entity-link "
+                "queries to text plus graph triples with graph expansion."
+            ),
+            match_query_terms=[
+                "관계",
+                "연관",
+                "연결",
+                "원인",
+                "영향",
+                "근거",
+                "목표",
+                "전략",
+                "수단",
+                "대상",
+                "주체",
+                "triple",
+                "graph",
+                "relation",
+                "evidence",
+                "cause",
+                "effect",
+            ],
+            match_case_metadata={
+                "case_source": "triple",
+                "evidence_family": "graph",
+            },
+            vector_names=["text_dense", "triple_dense"],
+            graph_expand=True,
+            fusion_weights={
+                "bm25": 1.2,
+                "qdrant:text_dense": 1.0,
+                "qdrant:triple_dense": 0.55,
+                "graph": 0.55,
+            },
+        ),
+    ]
+
+
+def apply_qdrant_retrieval_route_preset(
+    config: QdrantRetrievalConfig,
+    name: str,
+) -> QdrantRetrievalConfig:
+    routes = qdrant_retrieval_route_preset(name)
+    if not routes:
+        return config
+    query_encoders = dict(config.query_encoders)
+    for route in routes:
+        for vector_name in route.vector_names:
+            query_encoders.setdefault(vector_name, default_query_encoder_for_vector(vector_name))
+    metadata = {**config.metadata, "route_preset": name}
+    return config.model_copy(
+        update={
+            "routes": routes,
+            "query_encoders": query_encoders,
+            "metadata": metadata,
+        }
+    )
+
+
+def default_query_encoder_for_vector(vector_name: str) -> str:
+    if vector_name == "image_dense":
+        return "clip"
+    return "default_text"
+
+
+def qdrant_retrieval_config_vector_names(
+    config: QdrantRetrievalConfig,
+) -> list[str]:
+    vector_names = list(config.vector_names)
+    for route in config.routes:
+        for vector_name in route.vector_names:
+            if vector_name not in vector_names:
+                vector_names.append(vector_name)
+    return vector_names
+
+
+def select_qdrant_retrieval_route(
+    config: QdrantRetrievalConfig,
+    query: str,
+    case_metadata: dict[str, Any] | None = None,
+    graph_expand: bool | None = None,
+) -> QdrantRetrievalRouteDecision:
+    for route in config.routes:
+        reason = qdrant_route_match_reason(route, query, case_metadata or {})
+        if not reason:
+            continue
+        return QdrantRetrievalRouteDecision(
+            name=route.name,
+            matched=True,
+            reason=reason,
+            vector_names=route.vector_names or config.vector_names,
+            graph_expand=config.graph_expand if route.graph_expand is None else route.graph_expand,
+            fusion_weights=route.fusion_weights or config.fusion_weights,
+        )
+    return QdrantRetrievalRouteDecision(
+        name=None,
+        matched=False,
+        reason="default",
+        vector_names=config.vector_names,
+        graph_expand=config.graph_expand if graph_expand is None else graph_expand,
+        fusion_weights=config.fusion_weights,
+    )
+
+
+def qdrant_route_match_reason(
+    route: QdrantRetrievalRoute,
+    query: str,
+    case_metadata: dict[str, Any],
+) -> str | None:
+    query_text = query.casefold()
+    for term in route.match_query_terms:
+        normalized_term = str(term).strip().casefold()
+        if normalized_term and normalized_term in query_text:
+            return f"query_term:{term}"
+    for key, expected in route.match_case_metadata.items():
+        actual_values = flattened_metadata_values(case_metadata.get(key))
+        expected_values = [expected] if isinstance(expected, str) else list(expected)
+        for expected_value in expected_values:
+            expected_text = str(expected_value).strip().casefold()
+            if expected_text and expected_text in actual_values:
+                return f"case_metadata:{key}={expected_value}"
+    return None
+
+
+def flattened_metadata_values(value: Any) -> set[str]:
+    if value is None:
+        return set()
+    if isinstance(value, dict):
+        values: set[str] = set()
+        for nested in value.values():
+            values.update(flattened_metadata_values(nested))
+        return values
+    if isinstance(value, (list, tuple, set)):
+        values = set()
+        for item in value:
+            values.update(flattened_metadata_values(item))
+        return values
+    return {str(value).strip().casefold()}
 
 
 def retrieval_case_group_metric_payload(metric: RetrievalCaseGroupMetric) -> dict[str, float]:

@@ -37,7 +37,10 @@ from chunking_docs.evaluation.context_quality import (
 )
 from chunking_docs.evaluation.gate import RetrievalGateReport, gate_retrieval_evaluation
 from chunking_docs.evaluation.retrieval import RetrievalCase, RetrievalEvaluation
-from chunking_docs.evaluation.retrieval_config import QdrantRetrievalConfig
+from chunking_docs.evaluation.retrieval_config import (
+    QdrantRetrievalConfig,
+    qdrant_retrieval_config_vector_names,
+)
 from chunking_docs.embeddings.bm25 import asset_text_parts, chunk_lexical_texts
 from chunking_docs.embeddings.tokenizers import LexicalTokenizer, LexicalTokenizerConfig
 from chunking_docs.graph.provenance import chunk_asset_ids
@@ -1168,6 +1171,7 @@ def qdrant_retrieval_config_component(
     collection_path = package_dir / "qdrant_collection.json"
     bm25_path = resolve_config_path(package_dir, config.bm25_tokens_path)
     collection_payload = load_json_object(collection_path)
+    required_vector_names = qdrant_retrieval_config_vector_names(config)
     failed_checks: list[str] = []
     metadata: dict[str, Any] = {
         "backend": config.backend,
@@ -1177,6 +1181,7 @@ def qdrant_retrieval_config_component(
         "resolved_bm25_tokens_path": str(bm25_path) if bm25_path is not None else None,
         "bm25_tokens_exists": bm25_path is not None and bm25_path.exists(),
         "vector_names": config.vector_names,
+        "required_vector_names": required_vector_names,
         "top_k": config.top_k,
         "graph_expand": config.graph_expand,
         "collapse_hierarchical": config.collapse_hierarchical,
@@ -1187,6 +1192,7 @@ def qdrant_retrieval_config_component(
         "rerank_top_k": config.rerank_top_k,
         "query_encoders": config.query_encoders,
         "lexical_tokenizer": normalized_retrieval_config_tokenizer(config.lexical_tokenizer),
+        "routes": [route.model_dump() for route in config.routes],
         "selection": config.selection.model_dump(),
     }
 
@@ -1227,10 +1233,10 @@ def qdrant_retrieval_config_component(
             failed_checks.append("collection_name_mismatch")
 
     missing_collection_vectors = [
-        vector for vector in config.vector_names if vector not in collection_vectors
+        vector for vector in required_vector_names if vector not in collection_vectors
     ]
     missing_query_encoders = [
-        vector for vector in config.vector_names if vector not in config.query_encoders
+        vector for vector in required_vector_names if vector not in config.query_encoders
     ]
     if missing_collection_vectors:
         failed_checks.append("missing_collection_vectors")
@@ -1430,8 +1436,9 @@ def qdrant_config_evaluation_alignment(
         and observed["collection"] != config.collection_name
     ):
         failed_checks.append(f"{label}_collection_mismatch")
+    expected_vectors = qdrant_retrieval_config_vector_names(config)
     observed_vectors = metadata_string_list(observed["vector_names"])
-    if observed["vector_names"] is not None and observed_vectors != config.vector_names:
+    if observed["vector_names"] is not None and observed_vectors != expected_vectors:
         failed_checks.append(f"{label}_vector_names_mismatch")
     if observed["graph_expand"] is not None and observed["graph_expand"] != config.graph_expand:
         failed_checks.append(f"{label}_graph_expand_mismatch")

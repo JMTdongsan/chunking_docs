@@ -14,7 +14,11 @@ from chunking_docs.evaluation.retrieval import (
     RetrievalEvaluation,
 )
 from chunking_docs.evaluation.retrieval_config import (
+    QdrantRetrievalRoute,
+    apply_qdrant_retrieval_route_preset,
     build_qdrant_retrieval_config_from_fusion_sweep,
+    qdrant_retrieval_config_vector_names,
+    select_qdrant_retrieval_route,
 )
 from chunking_docs.models import AssetKind, ChunkKind, DocumentChunk, GraphTriple, VisualAsset
 from chunking_docs.retrieval.qdrant_hybrid import QdrantHybridSearchHit
@@ -63,6 +67,36 @@ def test_qdrant_retrieval_config_exports_case_group_recommendation():
     assert config.selection.case_group_recommended_from_globally_eligible is True
     assert config.fusion_weights == {"bm25": 1.0, "qdrant:object_dense": 1.4}
     assert config.selection.case_group_metrics["target_coverage_at_k"] == pytest.approx(0.9)
+
+
+def test_qdrant_retrieval_config_route_preset_selects_visual_and_graph_routes():
+    config = build_qdrant_retrieval_config_from_fusion_sweep(fusion_sweep_report())
+
+    routed = apply_qdrant_retrieval_route_preset(config, "adaptive")
+
+    assert [route.name for route in routed.routes] == ["visual_object", "graph_triple"]
+    assert qdrant_retrieval_config_vector_names(routed) == [
+        "text_dense",
+        "caption_dense",
+        "object_dense",
+        "triple_dense",
+    ]
+    assert routed.query_encoders["triple_dense"] == "default_text"
+
+    visual = select_qdrant_retrieval_route(routed, "색상 기호 의미")
+    assert visual.name == "visual_object"
+    assert visual.vector_names == ["object_dense"]
+    assert visual.fusion_weights == {"bm25": 1.2, "qdrant:object_dense": 0.8}
+
+    graph = select_qdrant_retrieval_route(routed, "목표와 전략의 관계")
+    assert graph.name == "graph_triple"
+    assert graph.vector_names == ["text_dense", "triple_dense"]
+    assert graph.graph_expand is True
+
+    default = select_qdrant_retrieval_route(routed, "서울 재개발 정책")
+    assert default.name is None
+    assert default.vector_names == config.vector_names
+    assert default.fusion_weights == config.fusion_weights
 
 
 def test_qdrant_retrieval_config_exports_reranker_settings():
@@ -224,6 +258,137 @@ def test_eval_qdrant_retrieval_config_cli_uses_exported_settings(tmp_path, monke
     assert payload["metadata"]["reranker"] == "rerank:lexical"
     assert payload["metadata"]["rerank_top_k"] == 11
     assert payload["metadata"]["config_selection"]["candidate"] == "balanced"
+
+
+def test_eval_qdrant_retrieval_config_cli_routes_visual_queries(tmp_path, monkeypatch):
+    config = build_qdrant_retrieval_config_from_fusion_sweep(fusion_sweep_report())
+    config = config.model_copy(
+        update={
+            "package_dir": str(tmp_path / "package"),
+            "collection_name": "config_collection",
+            "vector_names": ["text_dense"],
+            "query_encoders": {
+                "text_dense": "default_text",
+                "object_dense": "default_text",
+            },
+            "fusion_weights": {"bm25": 1.0, "qdrant:text_dense": 1.0},
+            "routes": [
+                QdrantRetrievalRoute(
+                    name="visual_object",
+                    match_query_terms=["색상"],
+                    vector_names=["object_dense"],
+                    graph_expand=False,
+                    fusion_weights={"bm25": 1.2, "qdrant:object_dense": 0.8},
+                )
+            ],
+        }
+    )
+    config_path = tmp_path / "qdrant_retrieval_config.json"
+    cases_path = tmp_path / "cases.jsonl"
+    output_path = tmp_path / "eval.json"
+    config_path.write_text(config.model_dump_json(indent=2), encoding="utf-8")
+    cases_path.write_text(
+        "\n".join(
+            [
+                json.dumps({"query": "색상 기호 의미", "expected_pages": [2]}),
+                json.dumps({"query": "redevelopment policy", "expected_pages": [1]}),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    text_chunk = DocumentChunk(
+        chunk_id="chunk-text",
+        doc_id="doc",
+        page_start=1,
+        page_end=1,
+        kind=ChunkKind.TEXT,
+        text="redevelopment policy",
+    )
+    visual_chunk = DocumentChunk(
+        chunk_id="chunk-visual",
+        doc_id="doc",
+        page_start=2,
+        page_end=2,
+        kind=ChunkKind.FIGURE,
+        text="색상 기호 의미",
+    )
+    calls = {"searches": []}
+
+    class FakeStore:
+        def count(self):
+            return 2
+
+    class FakeSearcher:
+        def search(self, **kwargs):
+            calls["searches"].append(kwargs)
+            chunk = visual_chunk if kwargs["vector_names"] == ["object_dense"] else text_chunk
+            return [
+                QdrantHybridSearchHit(
+                    item_id=chunk.chunk_id,
+                    score=1.0,
+                    sources=["bm25"],
+                    chunk=chunk,
+                )
+            ]
+
+    def fake_prepare_qdrant_hybrid_search(**kwargs):
+        calls["prepare"] = kwargs
+        selected_vectors = [
+            item.strip() for item in kwargs["vector_names"].split(",") if item.strip()
+        ]
+        return {
+            "searcher": FakeSearcher(),
+            "store": FakeStore(),
+            "collection_name": kwargs["collection"],
+            "selected_vectors": selected_vectors,
+            "query_encoders": {vector: "default_text" for vector in selected_vectors},
+            "query_encoder_details": {
+                vector: {"backend": "hashing"} for vector in selected_vectors
+            },
+            "upserted": {"count": 2},
+            "chunks": [text_chunk, visual_chunk],
+            "assets": [],
+            "triples": [],
+        }
+
+    monkeypatch.setattr(
+        "chunking_docs.cli.prepare_qdrant_hybrid_search",
+        fake_prepare_qdrant_hybrid_search,
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "eval-qdrant-retrieval-config",
+            str(config_path),
+            str(cases_path),
+            "--output",
+            str(output_path),
+            "--repeat",
+            "1",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert calls["prepare"]["vector_names"] == "text_dense,object_dense"
+    assert calls["searches"][0]["vector_names"] == ["object_dense"]
+    assert calls["searches"][0]["fusion_weights"] == {
+        "bm25": 1.2,
+        "qdrant:object_dense": 0.8,
+    }
+    assert calls["searches"][1]["vector_names"] == ["text_dense"]
+    assert calls["searches"][1]["fusion_weights"] == {
+        "bm25": 1.0,
+        "qdrant:text_dense": 1.0,
+    }
+    payload = json.loads(output_path.read_text(encoding="utf-8"))
+    assert payload["recall_at_k"] == 1.0
+    assert payload["metadata"]["route_usage"]["counts"] == {
+        "visual_object": 1,
+        "default": 1,
+    }
+    assert payload["metadata"]["route_decisions"][0]["name"] == "visual_object"
 
 
 def test_eval_qdrant_retrieval_config_cli_auto_detects_text_query_encoder(

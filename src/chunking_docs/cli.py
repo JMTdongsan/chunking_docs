@@ -83,7 +83,10 @@ from chunking_docs.evaluation.retrieval import (
 )
 from chunking_docs.evaluation.retrieval_config import (
     QdrantRetrievalConfig,
+    apply_qdrant_retrieval_route_preset,
     build_qdrant_retrieval_config_from_fusion_sweep,
+    qdrant_retrieval_config_vector_names,
+    select_qdrant_retrieval_route,
 )
 from chunking_docs.evaluation.sweep import (
     ChunkingSweepCandidate,
@@ -883,7 +886,8 @@ def qdrant_rag_context_config_command(
         retrieval_config.package_dir or "outputs/package"
     )
     effective_collection = collection or retrieval_config.collection_name or ""
-    vector_names = ",".join(retrieval_config.vector_names)
+    prepared_vector_names = qdrant_retrieval_config_vector_names(retrieval_config)
+    vector_names = ",".join(prepared_vector_names)
     parsed_reranker = build_retrieval_config_reranker(
         retrieval_config,
         tokenizer_options=tokenizer_options,
@@ -895,7 +899,7 @@ def qdrant_rag_context_config_command(
     )
     query_backend_options = resolve_qdrant_query_backend_options(
         package_dir=effective_package_dir,
-        selected_vectors=retrieval_config.vector_names,
+        selected_vectors=prepared_vector_names,
         text_backend=text_backend,
         text_model=text_model,
         image_query_backend=image_query_backend,
@@ -923,15 +927,16 @@ def qdrant_rag_context_config_command(
         ngram_cjk_only=tokenizer_options["ngram_cjk_only"],
         deduplicate_tokens=tokenizer_options["deduplicate"],
     )
+    route_decision = select_qdrant_retrieval_route(retrieval_config, query)
     hits = prepared["searcher"].search(
         query=query,
-        vector_names=prepared["selected_vectors"],
+        vector_names=route_decision.vector_names,
         top_k=retrieval_config.top_k,
-        graph_expand=retrieval_config.graph_expand,
+        graph_expand=route_decision.graph_expand,
         doc_id=doc_id or None,
         payload_filter=filters,
         collapse_hierarchical=retrieval_config.collapse_hierarchical,
-        fusion_weights=retrieval_config.fusion_weights,
+        fusion_weights=route_decision.fusion_weights,
         reranker=parsed_reranker,
         rerank_top_k=effective_rerank_top_k,
     )
@@ -955,17 +960,22 @@ def qdrant_rag_context_config_command(
             "config_selection": retrieval_config.selection.model_dump(),
             "collection": prepared["collection_name"],
             "vector_names": prepared["selected_vectors"],
+            "base_vector_names": retrieval_config.vector_names,
             "graph_expand": retrieval_config.graph_expand,
+            "selected_route": route_decision.model_dump(),
             "query_encoders": prepared["query_encoders"],
             "query_encoder_details": prepared.get("query_encoder_details", {}),
             "upserted": prepared["upserted"],
             "stored_count": prepared["store"].count(),
             "filters": metadata_filters,
             "fusion_weights": retrieval_config.fusion_weights,
+            "selected_fusion_weights": route_decision.fusion_weights,
             "collapse_hierarchical": retrieval_config.collapse_hierarchical,
             "reranker": parsed_reranker.source if parsed_reranker else None,
             "rerank_top_k": effective_rerank_top_k if parsed_reranker else None,
             "lexical_tokenizer": tokenizer_options,
+            "routing_enabled": bool(retrieval_config.routes),
+            "routes": [route.model_dump() for route in retrieval_config.routes],
         }
     )
     if output is not None:
@@ -1022,7 +1032,8 @@ def eval_qdrant_rag_context_config_command(
         retrieval_config.package_dir or "outputs/package"
     )
     effective_collection = collection or retrieval_config.collection_name or ""
-    vector_names = ",".join(retrieval_config.vector_names)
+    prepared_vector_names = qdrant_retrieval_config_vector_names(retrieval_config)
+    vector_names = ",".join(prepared_vector_names)
     parsed_reranker = build_retrieval_config_reranker(
         retrieval_config,
         tokenizer_options=tokenizer_options,
@@ -1034,7 +1045,7 @@ def eval_qdrant_rag_context_config_command(
     )
     query_backend_options = resolve_qdrant_query_backend_options(
         package_dir=effective_package_dir,
-        selected_vectors=retrieval_config.vector_names,
+        selected_vectors=prepared_vector_names,
         text_backend=text_backend,
         text_model=text_model,
         image_query_backend=image_query_backend,
@@ -1065,19 +1076,28 @@ def eval_qdrant_rag_context_config_command(
     )
     index_build_ms = (perf_counter() - prepare_start) * 1000
     loaded_cases = load_retrieval_cases(cases)
+    route_decisions = [
+        select_qdrant_retrieval_route(
+            retrieval_config,
+            case.query,
+            case_metadata=case.metadata,
+            graph_expand=retrieval_config.graph_expand,
+        )
+        for case in loaded_cases
+    ]
     bundles = []
     latencies_ms = []
-    for case in loaded_cases:
+    for case, route_decision in zip(loaded_cases, route_decisions):
         case_start = perf_counter()
         hits = prepared["searcher"].search(
             query=case.query,
-            vector_names=prepared["selected_vectors"],
+            vector_names=route_decision.vector_names,
             top_k=retrieval_config.top_k,
-            graph_expand=retrieval_config.graph_expand,
+            graph_expand=route_decision.graph_expand,
             doc_id=doc_id or None,
             payload_filter=filters,
             collapse_hierarchical=retrieval_config.collapse_hierarchical,
-            fusion_weights=retrieval_config.fusion_weights,
+            fusion_weights=route_decision.fusion_weights,
             reranker=parsed_reranker,
             rerank_top_k=effective_rerank_top_k,
         )
@@ -1102,16 +1122,21 @@ def eval_qdrant_rag_context_config_command(
                 "config_selection": retrieval_config.selection.model_dump(),
                 "collection": prepared["collection_name"],
                 "vector_names": prepared["selected_vectors"],
+                "base_vector_names": retrieval_config.vector_names,
                 "graph_expand": retrieval_config.graph_expand,
+                "selected_route": route_decision.model_dump(),
                 "query_encoders": prepared["query_encoders"],
                 "query_encoder_details": prepared.get("query_encoder_details", {}),
                 "filters": metadata_filters,
                 "fusion_weights": retrieval_config.fusion_weights,
+                "selected_fusion_weights": route_decision.fusion_weights,
                 "collapse_hierarchical": retrieval_config.collapse_hierarchical,
                 "reranker": parsed_reranker.source if parsed_reranker else None,
                 "rerank_top_k": effective_rerank_top_k if parsed_reranker else None,
                 "lexical_tokenizer": tokenizer_options,
                 "case_metadata": case.metadata,
+                "routing_enabled": bool(retrieval_config.routes),
+                "routes": [route.model_dump() for route in retrieval_config.routes],
             }
         )
         bundles.append(bundle)
@@ -1129,6 +1154,7 @@ def eval_qdrant_rag_context_config_command(
             "contexts_output": str(contexts_output) if contexts_output is not None else None,
             "collection": prepared["collection_name"],
             "vector_names": prepared["selected_vectors"],
+            "base_vector_names": retrieval_config.vector_names,
             "graph_expand": retrieval_config.graph_expand,
             "query_encoders": prepared["query_encoders"],
             "query_encoder_details": prepared.get("query_encoder_details", {}),
@@ -1141,6 +1167,10 @@ def eval_qdrant_rag_context_config_command(
             "rerank_top_k": effective_rerank_top_k if parsed_reranker else None,
             "lexical_tokenizer": tokenizer_options,
             "index_build_ms": index_build_ms,
+            "routing_enabled": bool(retrieval_config.routes),
+            "routes": [route.model_dump() for route in retrieval_config.routes],
+            "route_decisions": [decision.model_dump() for decision in route_decisions],
+            "route_usage": qdrant_route_usage(route_decisions),
             "context_options": {
                 "max_chars_per_chunk": max_chars_per_chunk,
                 "max_chars_per_asset_text": max_chars_per_asset_text,
@@ -1172,6 +1202,7 @@ def eval_qdrant_rag_context_config_command(
             "collection": prepared["collection_name"],
             "vector_names": prepared["selected_vectors"],
             "fusion_weights": retrieval_config.fusion_weights,
+            "route_usage": qdrant_route_usage(route_decisions),
             "config_selection": retrieval_config.selection.model_dump(),
         }
     )
@@ -1482,7 +1513,8 @@ def eval_qdrant_retrieval_config_command(
     )
     effective_repeat = repeat or int(retrieval_config.metadata.get("repeat") or 1)
     effective_collection = collection or retrieval_config.collection_name or ""
-    vector_names = ",".join(retrieval_config.vector_names)
+    prepared_vector_names = qdrant_retrieval_config_vector_names(retrieval_config)
+    vector_names = ",".join(prepared_vector_names)
     parsed_reranker = build_retrieval_config_reranker(
         retrieval_config,
         tokenizer_options=tokenizer_options,
@@ -1494,7 +1526,7 @@ def eval_qdrant_retrieval_config_command(
     )
     query_backend_options = resolve_qdrant_query_backend_options(
         package_dir=effective_package_dir,
-        selected_vectors=retrieval_config.vector_names,
+        selected_vectors=prepared_vector_names,
         text_backend=text_backend,
         text_model=text_model,
         image_query_backend=image_query_backend,
@@ -1524,20 +1556,40 @@ def eval_qdrant_retrieval_config_command(
         deduplicate_tokens=tokenizer_options["deduplicate"],
     )
     index_build_ms = (perf_counter() - prepare_start) * 1000
-    evaluation = evaluate_search_results(
-        cases=load_retrieval_cases(cases),
-        search_fn=lambda case, graph_expand: prepared["searcher"].search(
-            query=case.query,
-            vector_names=prepared["selected_vectors"],
-            top_k=retrieval_config.top_k,
+    loaded_cases = load_retrieval_cases(cases)
+    route_decisions = [
+        select_qdrant_retrieval_route(
+            retrieval_config,
+            case.query,
+            case_metadata=case.metadata,
+            graph_expand=retrieval_config.graph_expand,
+        )
+        for case in loaded_cases
+    ]
+
+    def search_with_config(case, graph_expand):
+        decision = select_qdrant_retrieval_route(
+            retrieval_config,
+            case.query,
+            case_metadata=case.metadata,
             graph_expand=graph_expand,
+        )
+        return prepared["searcher"].search(
+            query=case.query,
+            vector_names=decision.vector_names,
+            top_k=retrieval_config.top_k,
+            graph_expand=decision.graph_expand,
             doc_id=doc_id or None,
             payload_filter=filters,
             collapse_hierarchical=retrieval_config.collapse_hierarchical,
-            fusion_weights=retrieval_config.fusion_weights,
+            fusion_weights=decision.fusion_weights,
             reranker=parsed_reranker,
             rerank_top_k=effective_rerank_top_k,
-        ),
+        )
+
+    evaluation = evaluate_search_results(
+        cases=loaded_cases,
+        search_fn=search_with_config,
         top_k=retrieval_config.top_k,
         repeat=effective_repeat,
         index_build_ms=index_build_ms,
@@ -1551,6 +1603,7 @@ def eval_qdrant_retrieval_config_command(
             "config_selection": retrieval_config.selection.model_dump(),
             "collection": prepared["collection_name"],
             "vector_names": prepared["selected_vectors"],
+            "base_vector_names": retrieval_config.vector_names,
             "graph_expand": retrieval_config.graph_expand,
             "query_encoders": prepared["query_encoders"],
             "query_encoder_details": prepared.get("query_encoder_details", {}),
@@ -1562,6 +1615,10 @@ def eval_qdrant_retrieval_config_command(
             "reranker": parsed_reranker.source if parsed_reranker else None,
             "rerank_top_k": effective_rerank_top_k if parsed_reranker else None,
             "lexical_tokenizer": tokenizer_options,
+            "routing_enabled": bool(retrieval_config.routes),
+            "routes": [route.model_dump() for route in retrieval_config.routes],
+            "route_decisions": [decision.model_dump() for decision in route_decisions],
+            "route_usage": qdrant_route_usage(route_decisions),
         }
     )
     if output is not None:
@@ -1588,6 +1645,7 @@ def eval_qdrant_retrieval_config_command(
             "collection": prepared["collection_name"],
             "vector_names": prepared["selected_vectors"],
             "fusion_weights": retrieval_config.fusion_weights,
+            "route_usage": qdrant_route_usage(route_decisions),
             "config_selection": retrieval_config.selection.model_dump(),
         }
     )
@@ -2442,6 +2500,11 @@ def export_qdrant_retrieval_config_command(
         "--case-group",
         help="Case-group recommendation to export, such as case_source:visual_object_probe.",
     ),
+    route_preset: str = typer.Option(
+        "",
+        "--route-preset",
+        help="Attach a retrieval route preset such as adaptive or visual-object-graph.",
+    ),
 ):
     """Export a service-ready Qdrant retrieval config from a fusion sweep report."""
     try:
@@ -2454,6 +2517,7 @@ def export_qdrant_retrieval_config_command(
             case_group=case_group or None,
             source_report=str(report),
         )
+        config = apply_qdrant_retrieval_route_preset(config, route_preset)
     except OSError as exc:
         raise typer.BadParameter(f"Could not read fusion sweep report: {exc}") from exc
     except ValueError as exc:
@@ -2472,6 +2536,7 @@ def export_qdrant_retrieval_config_command(
             "fusion_weights": config.fusion_weights,
             "reranker": config.reranker,
             "rerank_top_k": config.rerank_top_k,
+            "routes": [route.name for route in config.routes],
             "selection": config.selection.model_dump(),
         }
     )
@@ -7759,6 +7824,20 @@ def read_qdrant_retrieval_config(config: Path) -> QdrantRetrievalConfig:
         raise typer.BadParameter(f"Could not read retrieval config: {exc}") from exc
     except ValueError as exc:
         raise typer.BadParameter(f"Invalid retrieval config: {exc}") from exc
+
+
+def qdrant_route_usage(route_decisions: list) -> dict[str, object]:
+    counts: dict[str, int] = {}
+    reasons: dict[str, int] = {}
+    for decision in route_decisions:
+        name = decision.name or "default"
+        counts[name] = counts.get(name, 0) + 1
+        reasons[decision.reason] = reasons.get(decision.reason, 0) + 1
+    return {
+        "matched_count": sum(1 for decision in route_decisions if decision.matched),
+        "counts": counts,
+        "reasons": reasons,
+    }
 
 
 def retrieval_config_tokenizer_options(

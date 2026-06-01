@@ -61,8 +61,14 @@ from .retrieval import (
 )
 from .retrieval_config import (
     QdrantRetrievalConfig,
+    QdrantRetrievalRoute,
+    QdrantRetrievalRouteDecision,
     QdrantRetrievalConfigSelection,
+    apply_qdrant_retrieval_route_preset,
     build_qdrant_retrieval_config_from_fusion_sweep,
+    qdrant_retrieval_config_vector_names,
+    qdrant_retrieval_route_preset,
+    select_qdrant_retrieval_route,
 )
 from .sweep import ChunkingSweepCandidate, ChunkingSweepReport, run_chunking_sweep
 
@@ -85,8 +91,11 @@ __all__ = [
     "QdrantFusionSweepReport",
     "QdrantRetrievalConfig",
     "QdrantRetrievalConfigSelection",
+    "QdrantRetrievalRoute",
+    "QdrantRetrievalRouteDecision",
     "RAGContextCaseResult",
     "RAGContextEvaluation",
+    "apply_qdrant_retrieval_route_preset",
     "RAGContextGateCheck",
     "RAGContextGateReport",
     "ReadinessComponent",
@@ -112,6 +121,8 @@ __all__ = [
     "build_ingestion_readiness_report",
     "build_qdrant_fusion_sweep_report",
     "build_qdrant_retrieval_config_from_fusion_sweep",
+    "qdrant_retrieval_config_vector_names",
+    "qdrant_retrieval_route_preset",
     "audit_retrieval_cases",
     "compare_processing_packages",
     "degraded_page_ratio",
@@ -130,4 +141,5 @@ __all__ = [
     "load_retrieval_cases",
     "parse_ablation_modes",
     "run_chunking_sweep",
+    "select_qdrant_retrieval_route",
 ]
