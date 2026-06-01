@@ -63,6 +63,7 @@ _STOP_TERMS = {
     "참고",
     "페이지",
 }
+VISUAL_OBJECT_METADATA_KEYS = ("objects", "detected_objects", "visual_objects", "detections", "regions", "areas")
 
 QueryMode = Literal["snippet", "salient_terms"]
 SelectionStrategy = Literal["document_order", "salience"]
@@ -100,6 +101,7 @@ def generate_retrieval_case_skeleton(
     max_query_terms: int = 8,
     dedupe_queries: bool = True,
     visual_probe_limit: int = 0,
+    object_probe_limit: int = 0,
 ) -> list[RetrievalCase]:
     validate_casegen_options(query_mode, selection_strategy, min_query_terms, max_query_terms)
     corpus_texts = case_source_texts(chunks, assets, triples)
@@ -141,6 +143,21 @@ def generate_retrieval_case_skeleton(
                 chunks,
                 assets,
                 limit=visual_probe_limit,
+                query_max_chars=query_max_chars,
+                query_mode=query_mode,
+                selection_strategy=selection_strategy,
+                term_df=term_df,
+                document_count=len(corpus_texts),
+                min_query_terms=min_query_terms,
+                max_query_terms=max_query_terms,
+            )
+        )
+    if object_probe_limit > 0:
+        cases.extend(
+            visual_object_probe_cases(
+                chunks,
+                assets,
+                limit=object_probe_limit,
                 query_max_chars=query_max_chars,
                 query_mode=query_mode,
                 selection_strategy=selection_strategy,
@@ -368,6 +385,215 @@ def visual_probe_query_from_asset(
         score=sum(score for score, _, _, _ in selected),
         terms=tuple(query_terms),
     )
+
+
+def visual_object_probe_cases(
+    chunks: list[DocumentChunk],
+    assets: list[VisualAsset],
+    limit: int,
+    query_max_chars: int,
+    query_mode: QueryMode = "snippet",
+    selection_strategy: SelectionStrategy = "document_order",
+    term_df: dict[str, int] | None = None,
+    document_count: int = 0,
+    min_query_terms: int = 3,
+    max_query_terms: int = 8,
+) -> list[RetrievalCase]:
+    candidates: list[CaseCandidate] = []
+    chunks_by_asset = chunks_by_asset_id(chunks)
+    for asset in sorted(assets, key=lambda item: (asset_priority(item), item.page_no, item.asset_id)):
+        linked_chunks = chunks_by_asset.get(asset.asset_id, [])
+        if not linked_chunks:
+            continue
+        for object_index, visual_object in enumerate(asset_visual_objects(asset), start=1):
+            draft = query_from_text(
+                visual_object_query_text(visual_object),
+                max_chars=query_max_chars,
+                mode=query_mode,
+                term_df=term_df,
+                document_count=document_count,
+                min_query_terms=min_query_terms,
+                max_query_terms=max_query_terms,
+            )
+            if not draft.query:
+                continue
+            label = object_label(visual_object)
+            case = with_case_metadata(
+                RetrievalCase(
+                    query=draft.query,
+                    expected_pages=[asset.page_no],
+                    expected_asset_ids=[asset.asset_id],
+                ),
+                case_source="visual_object_probe",
+                query_mode=query_mode,
+                draft=draft,
+            )
+            case = case.model_copy(
+                update={
+                    "metadata": {
+                        **case.metadata,
+                        "case_family": "visual",
+                        "evidence_family": "visual_object",
+                        "modality": "vision_object",
+                        "linked_chunk_ids": [chunk.chunk_id for chunk in linked_chunks],
+                        "object_label": label,
+                        "object_source_key": visual_object.get("source_key"),
+                        "object_has_bbox": bool(visual_object.get("bbox")),
+                    }
+                }
+            )
+            candidates.append(
+                CaseCandidate(
+                    case=case,
+                    score=draft.score,
+                    order=(asset_priority(asset), asset.page_no, asset.asset_id, object_index),
+                )
+            )
+    return select_candidates(merge_case_candidates_by_query(candidates), limit, selection_strategy)
+
+
+def asset_visual_objects(asset: VisualAsset) -> list[dict[str, object]]:
+    objects: list[dict[str, object]] = []
+    for key in VISUAL_OBJECT_METADATA_KEYS:
+        value = asset.metadata.get(key)
+        if isinstance(value, list):
+            for item in value:
+                normalized = normalize_visual_object(item, source_key=key)
+                if normalized:
+                    objects.append(normalized)
+        elif isinstance(value, dict):
+            normalized = normalize_visual_object(value, source_key=key)
+            if normalized:
+                objects.append(normalized)
+            else:
+                for label, details in value.items():
+                    normalized = normalize_visual_object_mapping(label, details, source_key=key)
+                    if normalized:
+                        objects.append(normalized)
+        else:
+            normalized = normalize_visual_object(value, source_key=key)
+            if normalized:
+                objects.append(normalized)
+    return dedupe_visual_objects(objects)
+
+
+def normalize_visual_object(value: object, source_key: str) -> dict[str, object] | None:
+    if isinstance(value, str):
+        label = value.strip()
+        return {"label": label, "source_key": source_key} if label else None
+    if not isinstance(value, dict):
+        return None
+    label = first_object_string(value, ["label", "name", "title", "object", "type", "category"])
+    if not label:
+        return None
+    normalized: dict[str, object] = {"label": label, "source_key": source_key}
+    attributes = object_text_items(
+        value.get("attributes") or value.get("features") or value.get("descriptors")
+    )
+    description = first_object_string(value, ["description", "summary", "text"])
+    if description and description not in attributes:
+        attributes.append(description)
+    location = first_object_string(value, ["location", "position", "region"])
+    if location:
+        normalized["location"] = location
+    if attributes:
+        normalized["attributes"] = attributes[:6]
+    if value.get("bbox") or value.get("box") or value.get("bounding_box"):
+        normalized["bbox"] = value.get("bbox") or value.get("box") or value.get("bounding_box")
+    return normalized
+
+
+def normalize_visual_object_mapping(label: object, details: object, source_key: str) -> dict[str, object] | None:
+    label_text = str(label).strip()
+    if not label_text:
+        return None
+    if isinstance(details, dict):
+        return normalize_visual_object({**details, "label": label_text}, source_key=source_key)
+    if isinstance(details, str):
+        return {
+            "label": label_text,
+            "description": details.strip(),
+            "source_key": source_key,
+        }
+    return {"label": label_text, "source_key": source_key}
+
+
+def dedupe_visual_objects(objects: list[dict[str, object]]) -> list[dict[str, object]]:
+    selected = []
+    seen = set()
+    for item in objects:
+        key = (
+            str(item.get("label") or "").casefold(),
+            str(item.get("location") or "").casefold(),
+            " ".join(object_text_items(item.get("attributes"))).casefold(),
+        )
+        if not key[0] or key in seen:
+            continue
+        seen.add(key)
+        selected.append(item)
+    return selected
+
+
+def visual_object_query_text(visual_object: dict[str, object]) -> str:
+    parts = [object_label(visual_object)]
+    parts.extend(object_text_items(visual_object.get("attributes")))
+    description = object_text_value(visual_object.get("description"))
+    if description:
+        parts.append(description)
+    location = object_text_value(visual_object.get("location"))
+    if location:
+        parts.append(location)
+    return " ".join(part for part in parts if part)
+
+
+def object_label(visual_object: dict[str, object]) -> str:
+    return object_text_value(visual_object.get("label"))
+
+
+def first_object_string(payload: dict, keys: list[str]) -> str:
+    for key in keys:
+        value = object_text_value(payload.get(key))
+        if value:
+            return value
+    return ""
+
+
+def object_text_items(value: object) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        values = [value]
+    elif isinstance(value, list):
+        values = []
+        for item in value:
+            if isinstance(item, dict):
+                text = first_object_string(item, ["label", "name", "title", "description", "summary", "text"])
+                if text:
+                    values.append(text)
+            else:
+                values.append(str(item))
+    else:
+        values = [str(value)]
+    return dedupe_text_values(values)
+
+
+def object_text_value(value: object) -> str:
+    if value is None:
+        return ""
+    return " ".join(str(value).split()).strip()
+
+
+def dedupe_text_values(values: list[str]) -> list[str]:
+    selected = []
+    seen = set()
+    for value in values:
+        text = object_text_value(value)
+        key = text.casefold()
+        if not text or key in seen:
+            continue
+        selected.append(text)
+        seen.add(key)
+    return selected
 
 
 def first_distinct_terms(

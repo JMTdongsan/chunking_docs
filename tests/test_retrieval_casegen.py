@@ -406,6 +406,56 @@ def test_generate_retrieval_case_skeleton_can_create_visual_probe_from_source_re
     assert cases[0].metadata["linked_chunk_ids"] == ["chunk-1"]
 
 
+def test_generate_retrieval_case_skeleton_can_create_visual_object_probes():
+    chunk = DocumentChunk(
+        chunk_id="chunk-1",
+        doc_id="doc",
+        page_start=1,
+        page_end=1,
+        kind=ChunkKind.TEXT,
+        text="Transit corridor station access evidence.",
+        asset_ids=["asset-1"],
+    )
+    asset = VisualAsset(
+        asset_id="asset-1",
+        doc_id="doc",
+        page_no=1,
+        kind=AssetKind.MAP,
+        metadata={
+            "objects": [
+                {
+                    "label": "transfer hub marker",
+                    "attributes": ["blue circle", "north gate"],
+                    "location": "upper right quadrant",
+                    "bbox": [0.1, 0.2, 0.3, 0.4],
+                }
+            ]
+        },
+    )
+
+    cases = generate_retrieval_case_skeleton(
+        [chunk],
+        [asset],
+        [],
+        include_pages=False,
+        include_assets=False,
+        include_triples=False,
+        object_probe_limit=1,
+    )
+
+    assert len(cases) == 1
+    assert cases[0].query == "transfer hub marker blue circle north gate upper right quadrant"
+    assert cases[0].expected_pages == [1]
+    assert cases[0].expected_asset_ids == ["asset-1"]
+    assert cases[0].metadata["case_source"] == "visual_object_probe"
+    assert cases[0].metadata["case_family"] == "visual"
+    assert cases[0].metadata["evidence_family"] == "visual_object"
+    assert cases[0].metadata["modality"] == "vision_object"
+    assert cases[0].metadata["object_label"] == "transfer hub marker"
+    assert cases[0].metadata["object_has_bbox"] is True
+    assert cases[0].metadata["linked_chunk_ids"] == ["chunk-1"]
+
+
 def test_generate_retrieval_cases_cli_writes_jsonl(tmp_path):
     package_dir = write_case_package(tmp_path)
     output = tmp_path / "cases.jsonl"
@@ -463,8 +513,35 @@ def test_generate_retrieval_cases_cli_writes_visual_probe_cases(tmp_path):
     assert result.exit_code == 0, result.output
     rows = [json.loads(line) for line in output.read_text(encoding="utf-8").splitlines()]
     assert len(rows) == 1
-    assert rows[0]["query"] == "map legend signal"
+    assert rows[0]["query"].startswith("map legend signal")
     assert rows[0]["metadata"]["case_source"] == "visual_lexical_probe"
+
+
+def test_generate_retrieval_cases_cli_writes_object_probe_cases(tmp_path):
+    package_dir = write_case_package(tmp_path)
+    output = tmp_path / "cases.jsonl"
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "generate-retrieval-cases",
+            "--package-dir",
+            str(package_dir),
+            "--output",
+            str(output),
+            "--no-include-pages",
+            "--no-include-assets",
+            "--no-include-triples",
+            "--object-probe-limit",
+            "1",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    rows = [json.loads(line) for line in output.read_text(encoding="utf-8").splitlines()]
+    assert len(rows) == 1
+    assert rows[0]["metadata"]["case_source"] == "visual_object_probe"
+    assert rows[0]["metadata"]["modality"] == "vision_object"
 
 
 def test_generate_retrieval_cases_cli_accepts_candidate_chunks(tmp_path):
@@ -543,6 +620,16 @@ def write_case_package(tmp_path: Path) -> Path:
         page_no=1,
         kind=AssetKind.MAP,
         caption="Station access map legend signal",
+        metadata={
+            "objects": [
+                {
+                    "label": "transfer hub marker",
+                    "attributes": ["blue circle", "north gate"],
+                    "location": "upper right quadrant",
+                    "bbox": [0.1, 0.2, 0.3, 0.4],
+                }
+            ]
+        },
     )
     triple = GraphTriple(
         triple_id="triple-1",
