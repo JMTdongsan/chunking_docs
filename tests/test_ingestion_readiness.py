@@ -29,7 +29,12 @@ from chunking_docs.evaluation.context_quality import (
     RAGContextEvaluation,
     RAGContextTargetMetric,
 )
-from chunking_docs.evaluation.readiness import build_ingestion_readiness_report, chunks_with_linked_asset_text
+from chunking_docs.evaluation.readiness import (
+    build_ingestion_readiness_report,
+    chunks_with_linked_asset_text,
+    postgres_rows_component,
+    postgres_vector_summary_issues,
+)
 from chunking_docs.evaluation.retrieval import (
     RetrievalCase,
     RetrievalEvaluation,
@@ -76,6 +81,7 @@ def test_ingestion_readiness_passes_ready_package(tmp_path):
     )
     assert postgres_component.metadata["embedding_vector_summaries"][0]["vector_name"] == "text_dense"
     assert postgres_component.metadata["embedding_vector_summaries"][0]["target_kind"] == "chunk"
+    assert postgres_component.metadata["vector_summary_issues"] == []
     bm25_component = next(component for component in report.components if component.name == "bm25_tokens")
     assert bm25_component.metadata["chunks_with_linked_asset_text"] == 1
     assert bm25_component.metadata["indexed_linked_asset_text_chunk_count"] == 1
@@ -85,6 +91,75 @@ def test_ingestion_readiness_passes_ready_package(tmp_path):
     assert reproducibility_component.metadata["failed_checks"] == []
     assert reproducibility_component.metadata["bm25_tokenizer"]["matches_package_config"] is True
     assert report.failed_components == []
+
+
+def test_postgres_rows_component_flags_stale_embedding_summary_contract(tmp_path):
+    package_dir, manifest = write_ready_package(tmp_path)
+    write_jsonl(
+        package_dir / "qdrant_text_records.jsonl",
+        [
+            EmbeddingRecord(
+                point_id="00000000-0000-0000-0000-000000000001",
+                chunk_id="chunk-1",
+                doc_id="doc",
+                vector_name="text_dense",
+                vector=[0.1, 0.2, 0.3],
+                payload={"chunk_id": "chunk-1", "doc_id": "doc"},
+            )
+        ],
+    )
+    manifest_payload = json.loads((package_dir / "embedding_manifest.json").read_text())
+    manifest_payload["vectors"]["text_dense"]["record_count"] = 2
+    manifest_payload["vectors"]["text_dense"]["dimension"] = 2
+    (package_dir / "embedding_manifest.json").write_text(
+        json.dumps(manifest_payload),
+        encoding="utf-8",
+    )
+
+    component, counts = postgres_rows_component(manifest, package_dir)
+
+    assert component.passed is False
+    assert counts["embedding_vector_summaries"] == 1
+    issues = component.metadata["vector_summary_issues"]
+    assert {issue["code"] for issue in issues} == {
+        "artifact_dimension_mismatch",
+        "artifact_record_count_mismatch",
+    }
+    assert issues[0]["vector_name"] == "text_dense"
+
+
+def test_postgres_vector_summary_issues_flag_unexpected_target_kind():
+    issues = postgres_vector_summary_issues(
+        {
+            "embedding_artifacts": [
+                {
+                    "vector_name": "object_dense",
+                    "record_count": 1,
+                    "dimension": 1024,
+                }
+            ],
+            "embedding_vector_summaries": [
+                {
+                    "vector_name": "object_dense",
+                    "target_kind": "asset",
+                    "record_count": 1,
+                    "dimension": 1024,
+                    "dimension_min": 1024,
+                    "dimension_max": 1024,
+                    "metadata": {"dimension_consistent": True},
+                }
+            ],
+        }
+    )
+
+    assert issues == [
+        {
+            "code": "unexpected_target_kind",
+            "vector_name": "object_dense",
+            "target_kind": "asset",
+            "expected_target_kind": "object",
+        }
+    ]
 
 
 def test_ingestion_readiness_includes_runtime_report(tmp_path):

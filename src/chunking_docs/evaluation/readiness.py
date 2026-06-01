@@ -55,6 +55,14 @@ from chunking_docs.vision.quality import (
     visual_results_from_assets,
 )
 
+EXPECTED_POSTGRES_VECTOR_TARGET_KINDS = {
+    "text_dense": "chunk",
+    "caption_dense": "asset",
+    "image_dense": "asset",
+    "object_dense": "object",
+    "triple_dense": "triple",
+}
+
 
 class ReadinessComponent(BaseModel):
     name: str
@@ -2172,15 +2180,102 @@ def postgres_rows_component(
         "embedding_records": len(rows["embedding_records"]),
         "embedding_vector_summaries": len(rows["embedding_vector_summaries"]),
     }
+    vector_summary_issues = postgres_vector_summary_issues(rows)
+    has_required_rows = counts["chunks"] > 0 and counts["pages"] > 0
+    passed = has_required_rows and not vector_summary_issues
+    message = "Package can be converted into PostgreSQL metadata rows."
+    if not has_required_rows:
+        message = "PostgreSQL row conversion did not produce required page and chunk rows."
+    elif vector_summary_issues:
+        message = "PostgreSQL row conversion produced inconsistent vector summary rows."
     return (
         ReadinessComponent(
             name="postgres_rows",
-            passed=counts["chunks"] > 0 and counts["pages"] > 0,
-            message="Package can be converted into PostgreSQL metadata rows.",
+            passed=passed,
+            message=message,
             metadata={
                 "row_counts": counts,
                 "embedding_vector_summaries": rows["embedding_vector_summaries"],
+                "vector_summary_issues": vector_summary_issues,
             },
         ),
         counts,
     )
+
+
+def postgres_vector_summary_issues(rows: dict[str, Any]) -> list[dict[str, Any]]:
+    artifacts_by_vector = {
+        str(row["vector_name"]): row for row in rows.get("embedding_artifacts", [])
+    }
+    summaries_by_vector: dict[str, list[dict[str, Any]]] = {}
+    issues: list[dict[str, Any]] = []
+    for summary in rows.get("embedding_vector_summaries", []):
+        vector_name = str(summary["vector_name"])
+        target_kind = str(summary["target_kind"])
+        summaries_by_vector.setdefault(vector_name, []).append(summary)
+
+        expected_target_kind = EXPECTED_POSTGRES_VECTOR_TARGET_KINDS.get(vector_name)
+        if expected_target_kind is not None and target_kind != expected_target_kind:
+            issues.append(
+                {
+                    "code": "unexpected_target_kind",
+                    "vector_name": vector_name,
+                    "target_kind": target_kind,
+                    "expected_target_kind": expected_target_kind,
+                }
+            )
+
+        if summary.get("metadata", {}).get("dimension_consistent") is False:
+            issues.append(
+                {
+                    "code": "mixed_dimensions",
+                    "vector_name": vector_name,
+                    "target_kind": target_kind,
+                    "dimension_min": summary.get("dimension_min"),
+                    "dimension_max": summary.get("dimension_max"),
+                }
+            )
+
+        artifact = artifacts_by_vector.get(vector_name)
+        if artifact is None:
+            issues.append(
+                {
+                    "code": "missing_embedding_artifact",
+                    "vector_name": vector_name,
+                    "target_kind": target_kind,
+                }
+            )
+            continue
+        artifact_dimension = int(artifact.get("dimension") or 0)
+        summary_dimension = summary.get("dimension")
+        if (
+            artifact_dimension > 0
+            and summary_dimension is not None
+            and int(summary_dimension) != artifact_dimension
+        ):
+            issues.append(
+                {
+                    "code": "artifact_dimension_mismatch",
+                    "vector_name": vector_name,
+                    "target_kind": target_kind,
+                    "artifact_dimension": artifact_dimension,
+                    "summary_dimension": summary_dimension,
+                }
+            )
+
+    for vector_name, artifact in artifacts_by_vector.items():
+        artifact_record_count = int(artifact.get("record_count") or 0)
+        summary_record_count = sum(
+            int(summary.get("record_count") or 0)
+            for summary in summaries_by_vector.get(vector_name, [])
+        )
+        if summary_record_count != artifact_record_count:
+            issues.append(
+                {
+                    "code": "artifact_record_count_mismatch",
+                    "vector_name": vector_name,
+                    "artifact_record_count": artifact_record_count,
+                    "summary_record_count": summary_record_count,
+                }
+            )
+    return issues
