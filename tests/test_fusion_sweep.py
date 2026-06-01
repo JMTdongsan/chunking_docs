@@ -106,6 +106,58 @@ def test_build_qdrant_fusion_sweep_report_recommends_best_eligible_candidate():
     ]
 
 
+def test_build_qdrant_fusion_sweep_report_penalizes_excluded_hits():
+    clean = QdrantFusionSweepCandidate(
+        name="clean",
+        fusion_weights={"bm25": 1.0},
+        evaluation=evaluation(
+            recall=0.95,
+            coverage=0.95,
+            ndcg=0.9,
+            mrr=0.85,
+            precision=0.2,
+            failed=0,
+            latency=30.0,
+        ),
+    )
+    leaky = QdrantFusionSweepCandidate(
+        name="leaky",
+        fusion_weights={"qdrant:image_dense": 2.0},
+        evaluation=evaluation(
+            recall=1.0,
+            coverage=1.0,
+            ndcg=0.98,
+            mrr=0.95,
+            precision=0.2,
+            failed=1,
+            latency=20.0,
+            excluded_query_count=2,
+            excluded_hit_query_count=1,
+            excluded_target_count=2,
+            excluded_matched_target_count=1,
+        ),
+    )
+
+    report = build_qdrant_fusion_sweep_report(
+        [clean, leaky],
+        vector_names=["text_dense", "image_dense"],
+        max_excluded_target_hit_rate=0.0,
+        max_excluded_query_hit_rate=0.0,
+        max_excluded_hit_query_count=0,
+    )
+
+    assert report.recommended == "clean"
+    assert report.eligible_count == 1
+    clean_row = next(candidate for candidate in report.candidates if candidate.name == "clean")
+    leaky_row = next(candidate for candidate in report.candidates if candidate.name == "leaky")
+    assert leaky_row.eligibility_failures == [
+        "max_excluded_target_hit_rate",
+        "max_excluded_query_hit_rate",
+        "max_excluded_hit_query_count",
+    ]
+    assert leaky_row.selection_score < clean_row.selection_score
+
+
 def test_build_qdrant_fusion_sweep_report_recommends_case_group_candidates():
     balanced = QdrantFusionSweepCandidate(
         name="balanced",
@@ -192,6 +244,10 @@ def evaluation(
     failed: int,
     latency: float,
     visual_object_group: RetrievalCaseGroupMetric | None = None,
+    excluded_query_count: int = 0,
+    excluded_hit_query_count: int = 0,
+    excluded_target_count: int = 0,
+    excluded_matched_target_count: int = 0,
 ) -> RetrievalEvaluation:
     case_group_metrics = {}
     if visual_object_group is not None:
@@ -207,6 +263,16 @@ def evaluation(
         target_coverage_at_k=coverage,
         mean_target_ndcg_at_k=ndcg,
         mean_precision_at_k=precision,
+        excluded_query_count=excluded_query_count,
+        excluded_hit_query_count=excluded_hit_query_count,
+        excluded_query_hit_rate=excluded_hit_query_count / excluded_query_count
+        if excluded_query_count
+        else 0.0,
+        excluded_target_count=excluded_target_count,
+        excluded_matched_target_count=excluded_matched_target_count,
+        excluded_target_hit_rate=excluded_matched_target_count / excluded_target_count
+        if excluded_target_count
+        else 0.0,
         top_k=5,
         total_query_latency_ms=latency * 10,
         mean_latency_ms=latency,

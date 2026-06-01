@@ -453,6 +453,9 @@ def gate_retrieval_ablation(
     max_p95_target_rank: float | None = None,
     max_mean_latency_ms: float | None = None,
     max_p95_latency_ms: float | None = None,
+    max_excluded_target_hit_rate: float | None = None,
+    max_excluded_query_hit_rate: float | None = None,
+    max_excluded_hit_query_count: int | None = None,
     min_target_type_coverage: dict[str, float] | None = None,
     min_source_target_coverage: dict[str, float] | None = None,
     min_source_family_target_coverage: dict[str, float] | None = None,
@@ -600,6 +603,14 @@ def gate_retrieval_ablation(
         checks.append(maximum_check("max_mean_latency_ms", "mean_latency_ms", metrics, max_mean_latency_ms))
     if max_p95_latency_ms is not None:
         checks.append(maximum_check("max_p95_latency_ms", "p95_latency_ms", metrics, max_p95_latency_ms))
+    checks.extend(
+        excluded_target_limit_checks(
+            metrics,
+            max_excluded_target_hit_rate=max_excluded_target_hit_rate,
+            max_excluded_query_hit_rate=max_excluded_query_hit_rate,
+            max_excluded_hit_query_count=max_excluded_hit_query_count,
+        )
+    )
     checks.extend(
         rank_limit_checks(
             metrics,
@@ -1338,6 +1349,9 @@ def gate_qdrant_vector_ablation(
     max_p95_target_rank: float | None = None,
     max_mean_latency_ms: float | None = None,
     max_p95_latency_ms: float | None = None,
+    max_excluded_target_hit_rate: float | None = None,
+    max_excluded_query_hit_rate: float | None = None,
+    max_excluded_hit_query_count: int | None = None,
     min_target_type_coverage: dict[str, float] | None = None,
     min_source_target_coverage: dict[str, float] | None = None,
     min_source_family_target_coverage: dict[str, float] | None = None,
@@ -1463,6 +1477,14 @@ def gate_qdrant_vector_ablation(
                 max_p95_latency_ms,
             )
         )
+    checks.extend(
+        excluded_target_limit_checks(
+            metrics,
+            max_excluded_target_hit_rate=max_excluded_target_hit_rate,
+            max_excluded_query_hit_rate=max_excluded_query_hit_rate,
+            max_excluded_hit_query_count=max_excluded_hit_query_count,
+        )
+    )
     checks.extend(
         rank_limit_checks(
             metrics,
@@ -1596,6 +1618,12 @@ def qdrant_vector_ablation_metrics(
         "mean_latency_ms": evaluation.mean_latency_ms,
         "p95_latency_ms": evaluation.p95_latency_ms,
         "failed_query_count": float(evaluation.failed_count),
+        "excluded_query_count": float(evaluation.excluded_query_count),
+        "excluded_hit_query_count": float(evaluation.excluded_hit_query_count),
+        "excluded_query_hit_rate": evaluation.excluded_query_hit_rate,
+        "excluded_target_count": float(evaluation.excluded_target_count),
+        "excluded_matched_target_count": float(evaluation.excluded_matched_target_count),
+        "excluded_target_hit_rate": evaluation.excluded_target_hit_rate,
     }
     metrics.update(retrieval_rank_metrics(evaluation))
     for source, source_metric_values in (source_metrics or {}).items():
@@ -1618,6 +1646,43 @@ def qdrant_vector_ablation_metrics(
             for key, value in group_metrics.items():
                 metrics[case_group_metric_key(group_name, group_value, key)] = value
     return metrics
+
+
+def excluded_target_limit_checks(
+    metrics: dict[str, float],
+    max_excluded_target_hit_rate: float | None = None,
+    max_excluded_query_hit_rate: float | None = None,
+    max_excluded_hit_query_count: int | None = None,
+) -> list[RetrievalGateCheck]:
+    checks = []
+    if max_excluded_target_hit_rate is not None:
+        checks.append(
+            maximum_check(
+                "max_excluded_target_hit_rate",
+                "excluded_target_hit_rate",
+                metrics,
+                max_excluded_target_hit_rate,
+            )
+        )
+    if max_excluded_query_hit_rate is not None:
+        checks.append(
+            maximum_check(
+                "max_excluded_query_hit_rate",
+                "excluded_query_hit_rate",
+                metrics,
+                max_excluded_query_hit_rate,
+            )
+        )
+    if max_excluded_hit_query_count is not None:
+        checks.append(
+            maximum_check(
+                "max_excluded_hit_query_count",
+                "excluded_hit_query_count",
+                metrics,
+                float(max_excluded_hit_query_count),
+            )
+        )
+    return checks
 
 
 def rank_limit_checks(

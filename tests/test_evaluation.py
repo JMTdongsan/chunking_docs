@@ -1880,6 +1880,60 @@ def test_gate_retrieval_ablation_reports_failed_rank_gate():
     assert gate.failed_checks == ["max_mean_target_rank"]
 
 
+def test_gate_retrieval_ablation_checks_excluded_target_hits():
+    chunks = [
+        DocumentChunk(
+            chunk_id="chunk-1",
+            doc_id="doc",
+            page_start=1,
+            page_end=1,
+            kind=ChunkKind.TEXT,
+            text="north river corridor diagram",
+            asset_ids=["asset-1"],
+        ),
+        DocumentChunk(
+            chunk_id="chunk-2",
+            doc_id="doc",
+            page_start=2,
+            page_end=2,
+            kind=ChunkKind.TEXT,
+            text="north river corridor diagram",
+            asset_ids=["asset-2"],
+        ),
+    ]
+    cases = [
+        RetrievalCase(
+            query="north river corridor diagram",
+            expected_asset_ids=["asset-1"],
+            excluded_asset_ids=["asset-2"],
+        )
+    ]
+    report = evaluate_retrieval_ablation(
+        chunks,
+        [],
+        cases,
+        modes=parse_ablation_modes("bm25"),
+    )
+
+    gate = gate_retrieval_ablation(
+        report,
+        mode="bm25",
+        max_excluded_target_hit_rate=0.0,
+        max_excluded_query_hit_rate=0.0,
+        max_excluded_hit_query_count=0,
+    )
+
+    assert gate.passed is False
+    assert gate.metrics["excluded_target_hit_rate"] == 1.0
+    assert gate.metrics["excluded_query_hit_rate"] == 1.0
+    assert gate.metrics["excluded_hit_query_count"] == 1.0
+    assert set(gate.failed_checks) == {
+        "max_excluded_target_hit_rate",
+        "max_excluded_query_hit_rate",
+        "max_excluded_hit_query_count",
+    }
+
+
 def test_gate_retrieval_ablation_reports_failed_pairwise_check():
     report = visual_lexical_ablation_report()
 
@@ -2277,6 +2331,79 @@ def qdrant_vector_ablation_report_for_gate():
     )
 
 
+def qdrant_vector_ablation_report_with_excluded_hits():
+    expected_chunk = DocumentChunk(
+        chunk_id="chunk-1",
+        doc_id="doc",
+        page_start=1,
+        page_end=1,
+        kind=ChunkKind.TEXT,
+        text="visual evidence",
+        asset_ids=["asset-1"],
+    )
+    excluded_chunk = DocumentChunk(
+        chunk_id="chunk-2",
+        doc_id="doc",
+        page_start=2,
+        page_end=2,
+        kind=ChunkKind.TEXT,
+        text="visual evidence",
+        asset_ids=["asset-2"],
+    )
+    cases = [
+        RetrievalCase(
+            query="visual evidence",
+            expected_asset_ids=["asset-1"],
+            excluded_asset_ids=["asset-2"],
+        )
+    ]
+    clean_eval = evaluate_search_results(
+        cases=cases,
+        search_fn=lambda case, graph_expand: [
+            HybridSearchHit(
+                chunk=expected_chunk,
+                score=0.9,
+                sources=["qdrant:caption_dense"],
+            )
+        ],
+        top_k=5,
+    )
+    leaky_eval = evaluate_search_results(
+        cases=cases,
+        search_fn=lambda case, graph_expand: [
+            HybridSearchHit(
+                chunk=expected_chunk,
+                score=0.9,
+                sources=["qdrant:caption_dense"],
+            ),
+            HybridSearchHit(
+                chunk=excluded_chunk,
+                score=0.8,
+                sources=["qdrant:image_dense"],
+            ),
+        ],
+        top_k=5,
+    )
+    return build_qdrant_vector_ablation_report(
+        [
+            QdrantVectorAblationRow(
+                mode=QdrantVectorAblationMode(
+                    name="clean",
+                    vector_names=["caption_dense"],
+                ),
+                evaluation=clean_eval,
+            ),
+            QdrantVectorAblationRow(
+                mode=QdrantVectorAblationMode(
+                    name="leaky",
+                    vector_names=["caption_dense", "image_dense"],
+                ),
+                evaluation=leaky_eval,
+            ),
+        ]
+    )
+
+
 def test_gate_qdrant_vector_ablation_passes_required_mode():
     report = qdrant_vector_ablation_report_for_gate()
 
@@ -2381,6 +2508,28 @@ def test_gate_qdrant_vector_ablation_reports_failed_checks():
     }
 
 
+def test_gate_qdrant_vector_ablation_checks_excluded_target_hits():
+    report = qdrant_vector_ablation_report_with_excluded_hits()
+
+    gate = gate_qdrant_vector_ablation(
+        report,
+        mode="leaky",
+        max_excluded_target_hit_rate=0.0,
+        max_excluded_query_hit_rate=0.0,
+        max_excluded_hit_query_count=0,
+    )
+
+    assert gate.passed is False
+    assert gate.metrics["excluded_target_hit_rate"] == 1.0
+    assert gate.metrics["excluded_query_hit_rate"] == 1.0
+    assert gate.metrics["excluded_hit_query_count"] == 1.0
+    assert set(gate.failed_checks) == {
+        "max_excluded_target_hit_rate",
+        "max_excluded_query_hit_rate",
+        "max_excluded_hit_query_count",
+    }
+
+
 def test_gate_qdrant_vector_ablation_requires_baseline_for_pairwise_checks():
     report = qdrant_vector_ablation_report_for_gate()
 
@@ -2462,6 +2611,44 @@ def test_gate_qdrant_vector_ablation_cli_writes_report(tmp_path):
     ]["mode"] == "caption_image"
     assert payload["chunk_strategy_metrics"]["visual_asset_text"]["target_coverage_at_k"] == 1.0
     assert payload["retrieval_role_metrics"]["child"]["target_coverage_at_k"] == 1.0
+
+
+def test_gate_qdrant_vector_ablation_cli_checks_excluded_target_hits(tmp_path):
+    report_path = tmp_path / "qdrant_vector_ablation.json"
+    output = tmp_path / "qdrant_vector_ablation_gate.json"
+    report_path.write_text(
+        qdrant_vector_ablation_report_with_excluded_hits().model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "gate-qdrant-vector-ablation",
+            str(report_path),
+            "--mode",
+            "leaky",
+            "--max-excluded-target-hit-rate",
+            "0",
+            "--max-excluded-query-hit-rate",
+            "0",
+            "--max-excluded-hit-query-count",
+            "0",
+            "--no-fail",
+            "--output",
+            str(output),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["passed"] is False
+    assert payload["metrics"]["excluded_target_hit_rate"] == 1.0
+    assert set(payload["failed_checks"]) == {
+        "max_excluded_target_hit_rate",
+        "max_excluded_query_hit_rate",
+        "max_excluded_hit_query_count",
+    }
 
 
 def test_gate_qdrant_vector_ablation_cli_can_report_without_failing(tmp_path):

@@ -144,12 +144,17 @@ def build_qdrant_fusion_sweep_report(
     min_mrr: float = 0.0,
     max_failed_queries: int | None = None,
     max_mean_latency_ms: float | None = None,
+    max_excluded_target_hit_rate: float | None = None,
+    max_excluded_query_hit_rate: float | None = None,
+    max_excluded_hit_query_count: int | None = None,
     recall_weight: float = 1.0,
     target_coverage_weight: float = 2.0,
     target_ndcg_weight: float = 1.0,
     mrr_weight: float = 1.0,
     precision_weight: float = 0.5,
     failed_query_penalty: float = 0.02,
+    excluded_query_hit_penalty: float = 1.0,
+    excluded_target_hit_penalty: float = 1.0,
     latency_weight: float = 0.05,
     case_group_top_k: int = 3,
     metadata: dict[str, Any] | None = None,
@@ -163,12 +168,17 @@ def build_qdrant_fusion_sweep_report(
             min_mrr=min_mrr,
             max_failed_queries=max_failed_queries,
             max_mean_latency_ms=max_mean_latency_ms,
+            max_excluded_target_hit_rate=max_excluded_target_hit_rate,
+            max_excluded_query_hit_rate=max_excluded_query_hit_rate,
+            max_excluded_hit_query_count=max_excluded_hit_query_count,
             recall_weight=recall_weight,
             target_coverage_weight=target_coverage_weight,
             target_ndcg_weight=target_ndcg_weight,
             mrr_weight=mrr_weight,
             precision_weight=precision_weight,
             failed_query_penalty=failed_query_penalty,
+            excluded_query_hit_penalty=excluded_query_hit_penalty,
+            excluded_target_hit_penalty=excluded_target_hit_penalty,
             latency_weight=latency_weight,
         )
         for candidate in candidates
@@ -218,12 +228,17 @@ def score_fusion_candidate(
     min_mrr: float,
     max_failed_queries: int | None,
     max_mean_latency_ms: float | None,
+    max_excluded_target_hit_rate: float | None,
+    max_excluded_query_hit_rate: float | None,
+    max_excluded_hit_query_count: int | None,
     recall_weight: float,
     target_coverage_weight: float,
     target_ndcg_weight: float,
     mrr_weight: float,
     precision_weight: float,
     failed_query_penalty: float,
+    excluded_query_hit_penalty: float,
+    excluded_target_hit_penalty: float,
     latency_weight: float,
 ) -> QdrantFusionSweepCandidate:
     evaluation = candidate.evaluation
@@ -235,6 +250,9 @@ def score_fusion_candidate(
         min_mrr=min_mrr,
         max_failed_queries=max_failed_queries,
         max_mean_latency_ms=max_mean_latency_ms,
+        max_excluded_target_hit_rate=max_excluded_target_hit_rate,
+        max_excluded_query_hit_rate=max_excluded_query_hit_rate,
+        max_excluded_hit_query_count=max_excluded_hit_query_count,
     )
     score = (
         recall_weight * evaluation.recall_at_k
@@ -243,6 +261,8 @@ def score_fusion_candidate(
         + mrr_weight * evaluation.mrr
         + precision_weight * evaluation.mean_precision_at_k
         - failed_query_penalty * len(evaluation.failed_queries)
+        - excluded_query_hit_penalty * evaluation.excluded_query_hit_rate
+        - excluded_target_hit_penalty * evaluation.excluded_target_hit_rate
         - latency_weight * (evaluation.mean_latency_ms / 1000.0)
     )
     return candidate.model_copy(
@@ -262,6 +282,9 @@ def fusion_candidate_failures(
     min_mrr: float = 0.0,
     max_failed_queries: int | None = None,
     max_mean_latency_ms: float | None = None,
+    max_excluded_target_hit_rate: float | None = None,
+    max_excluded_query_hit_rate: float | None = None,
+    max_excluded_hit_query_count: int | None = None,
 ) -> list[str]:
     failures = []
     if evaluation.recall_at_k < min_recall_at_k:
@@ -276,6 +299,21 @@ def fusion_candidate_failures(
         failures.append("max_failed_queries")
     if max_mean_latency_ms is not None and evaluation.mean_latency_ms > max_mean_latency_ms:
         failures.append("max_mean_latency_ms")
+    if (
+        max_excluded_target_hit_rate is not None
+        and evaluation.excluded_target_hit_rate > max_excluded_target_hit_rate
+    ):
+        failures.append("max_excluded_target_hit_rate")
+    if (
+        max_excluded_query_hit_rate is not None
+        and evaluation.excluded_query_hit_rate > max_excluded_query_hit_rate
+    ):
+        failures.append("max_excluded_query_hit_rate")
+    if (
+        max_excluded_hit_query_count is not None
+        and evaluation.excluded_hit_query_count > max_excluded_hit_query_count
+    ):
+        failures.append("max_excluded_hit_query_count")
     return failures
 
 
@@ -288,6 +326,9 @@ def fusion_candidate_rank_key(candidate: QdrantFusionSweepCandidate) -> tuple:
         evaluation.mean_target_ndcg_at_k,
         evaluation.mrr,
         evaluation.recall_at_k,
+        -evaluation.excluded_query_hit_rate,
+        -evaluation.excluded_target_hit_rate,
+        -evaluation.excluded_hit_query_count,
         -evaluation.mean_latency_ms,
         candidate.name,
     )
