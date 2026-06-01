@@ -2,6 +2,7 @@ from chunking_docs.embeddings.bm25 import BM25LexicalIndex, chunk_lexical_texts
 from chunking_docs.embeddings.records import asset_text
 from chunking_docs.embeddings.tokenizers import LexicalTokenizer, LexicalTokenizerConfig
 from chunking_docs.models import AssetKind, ChunkKind, DocumentChunk, VisualAsset
+from chunking_docs.cli import build_tokenizer_config
 
 
 def test_bm25_uses_lexical_overlap_when_idf_is_zero():
@@ -90,6 +91,18 @@ def test_mixed_tokenizer_can_deduplicate_for_compact_manifests():
 
     assert tokens.count("도시재생") == 1
     assert tokens.count("도시") == 1
+
+
+def test_cli_tokenizer_config_exposes_deduplicate_flag():
+    config = build_tokenizer_config(
+        strategy="mixed",
+        ngram_min=2,
+        ngram_max=4,
+        ngram_cjk_only=True,
+        deduplicate_tokens=True,
+    )
+
+    assert config.deduplicate is True
 
 
 def test_bm25_ranking_uses_repeated_term_frequency():

@@ -215,6 +215,7 @@ def package_pdf(
     ngram_min: int = 2,
     ngram_max: int = 4,
     ngram_cjk_only: bool = True,
+    deduplicate_tokens: bool = False,
     extract_tables: bool = True,
 ):
     """Build the full local processing package for DB ingestion."""
@@ -230,6 +231,7 @@ def package_pdf(
             ngram_min=ngram_min,
             ngram_max=ngram_max,
             ngram_cjk_only=ngram_cjk_only,
+            deduplicate_tokens=deduplicate_tokens,
         ),
         extract_tables=extract_tables,
     )
@@ -493,6 +495,7 @@ def qdrant_hybrid_search(
     ngram_min: int = 2,
     ngram_max: int = 4,
     ngram_cjk_only: bool = True,
+    deduplicate_tokens: bool = False,
 ):
     """Run Qdrant named-vector + BM25 + optional graph hybrid retrieval."""
     fusion_weights = parse_fusion_weights(fusion_weight)
@@ -501,6 +504,7 @@ def qdrant_hybrid_search(
         ngram_min=ngram_min,
         ngram_max=ngram_max,
         ngram_cjk_only=ngram_cjk_only,
+        deduplicate_tokens=deduplicate_tokens,
     )
     parsed_reranker = build_reranker(
         reranker,
@@ -526,6 +530,7 @@ def qdrant_hybrid_search(
         ngram_min=ngram_min,
         ngram_max=ngram_max,
         ngram_cjk_only=ngram_cjk_only,
+        deduplicate_tokens=deduplicate_tokens,
     )
     hits = prepared["searcher"].search(
         query=query,
@@ -621,6 +626,7 @@ def qdrant_rag_context_command(
     ngram_min: int = 2,
     ngram_max: int = 4,
     ngram_cjk_only: bool = True,
+    deduplicate_tokens: bool = False,
 ):
     """Build a citation-ready RAG context bundle from Qdrant hybrid search hits."""
     fusion_weights = parse_fusion_weights(fusion_weight)
@@ -629,6 +635,7 @@ def qdrant_rag_context_command(
         ngram_min=ngram_min,
         ngram_max=ngram_max,
         ngram_cjk_only=ngram_cjk_only,
+        deduplicate_tokens=deduplicate_tokens,
     )
     parsed_reranker = build_reranker(
         reranker,
@@ -654,6 +661,7 @@ def qdrant_rag_context_command(
         ngram_min=ngram_min,
         ngram_max=ngram_max,
         ngram_cjk_only=ngram_cjk_only,
+        deduplicate_tokens=deduplicate_tokens,
     )
     hits = prepared["searcher"].search(
         query=query,
@@ -741,6 +749,7 @@ def eval_qdrant_retrieval_command(
     ngram_min: int = 2,
     ngram_max: int = 4,
     ngram_cjk_only: bool = True,
+    deduplicate_tokens: bool = False,
 ):
     """Evaluate Qdrant hybrid retrieval against JSONL benchmark cases."""
     fusion_weights = parse_fusion_weights(fusion_weight)
@@ -749,6 +758,7 @@ def eval_qdrant_retrieval_command(
         ngram_min=ngram_min,
         ngram_max=ngram_max,
         ngram_cjk_only=ngram_cjk_only,
+        deduplicate_tokens=deduplicate_tokens,
     )
     parsed_reranker = build_reranker(
         reranker,
@@ -775,6 +785,7 @@ def eval_qdrant_retrieval_command(
         ngram_min=ngram_min,
         ngram_max=ngram_max,
         ngram_cjk_only=ngram_cjk_only,
+        deduplicate_tokens=deduplicate_tokens,
     )
     index_build_ms = (perf_counter() - prepare_start) * 1000
     evaluation = evaluate_search_results(
@@ -871,6 +882,7 @@ def eval_qdrant_vector_ablation_command(
     ngram_min: int = 2,
     ngram_max: int = 4,
     ngram_cjk_only: bool = True,
+    deduplicate_tokens: bool = False,
 ):
     """Compare Qdrant text, visual caption, image, and graph retrieval signals."""
     try:
@@ -898,6 +910,7 @@ def eval_qdrant_vector_ablation_command(
         ngram_min=ngram_min,
         ngram_max=ngram_max,
         ngram_cjk_only=ngram_cjk_only,
+        deduplicate_tokens=deduplicate_tokens,
     )
     index_build_ms = (perf_counter() - prepare_start) * 1000
     retrieval_cases = load_retrieval_cases(cases)
@@ -2040,6 +2053,7 @@ def search_local(
     ngram_min: int = 2,
     ngram_max: int = 4,
     ngram_cjk_only: bool = True,
+    deduplicate_tokens: bool = False,
 ):
     """Run local dry-run hybrid search over package chunks using hashing dense + BM25."""
     from chunking_docs.embeddings.interfaces import HashingTextEmbedder
@@ -2050,6 +2064,7 @@ def search_local(
         ngram_min=ngram_min,
         ngram_max=ngram_max,
         ngram_cjk_only=ngram_cjk_only,
+        deduplicate_tokens=deduplicate_tokens,
     )
     parsed_reranker = build_reranker(
         reranker,
@@ -2132,6 +2147,7 @@ def build_rag_context_command(
     ngram_min: int = 2,
     ngram_max: int = 4,
     ngram_cjk_only: bool = True,
+    deduplicate_tokens: bool = False,
 ):
     """Build a citation-ready RAG context bundle from local hybrid search hits."""
     from chunking_docs.embeddings.interfaces import HashingTextEmbedder
@@ -2142,6 +2158,7 @@ def build_rag_context_command(
         ngram_min=ngram_min,
         ngram_max=ngram_max,
         ngram_cjk_only=ngram_cjk_only,
+        deduplicate_tokens=deduplicate_tokens,
     )
     parsed_reranker = build_reranker(
         reranker,
@@ -3212,6 +3229,7 @@ def eval_retrieval_command(
     ngram_min: int = 2,
     ngram_max: int = 4,
     ngram_cjk_only: bool = True,
+    deduplicate_tokens: bool = False,
 ):
     """Evaluate local hybrid retrieval against JSONL seed cases."""
     fusion_weights = parse_fusion_weights(fusion_weight)
@@ -3220,6 +3238,7 @@ def eval_retrieval_command(
         ngram_min=ngram_min,
         ngram_max=ngram_max,
         ngram_cjk_only=ngram_cjk_only,
+        deduplicate_tokens=deduplicate_tokens,
     )
     parsed_reranker = build_reranker(
         reranker,
@@ -3480,6 +3499,7 @@ def eval_retrieval_ablation_command(
     ngram_min: int = 2,
     ngram_max: int = 4,
     ngram_cjk_only: bool = True,
+    deduplicate_tokens: bool = False,
 ):
     """Compare dense, BM25, graph, and fused retrieval on the same cases."""
     fusion_weights = parse_fusion_weights(fusion_weight)
@@ -3507,6 +3527,7 @@ def eval_retrieval_ablation_command(
             ngram_min=ngram_min,
             ngram_max=ngram_max,
             ngram_cjk_only=ngram_cjk_only,
+            deduplicate_tokens=deduplicate_tokens,
         ),
     )
     payload = report.model_dump()
@@ -3911,6 +3932,7 @@ def eval_chunking_command(
     ngram_min: int = 2,
     ngram_max: int = 4,
     ngram_cjk_only: bool = True,
+    deduplicate_tokens: bool = False,
 ):
     """Evaluate chunking quality and optional retrieval performance."""
     manifest = load_processing_package(package_dir)
@@ -3933,6 +3955,7 @@ def eval_chunking_command(
             ngram_min=ngram_min,
             ngram_max=ngram_max,
             ngram_cjk_only=ngram_cjk_only,
+            deduplicate_tokens=deduplicate_tokens,
         ),
     )
     print(report.model_dump())
@@ -3962,6 +3985,7 @@ def compare_chunking_command(
     ngram_min: int = 2,
     ngram_max: int = 4,
     ngram_cjk_only: bool = True,
+    deduplicate_tokens: bool = False,
 ):
     """Compare multiple chunk files with the same quality and retrieval metrics."""
     manifest = load_processing_package(package_dir)
@@ -3988,6 +4012,7 @@ def compare_chunking_command(
                 ngram_min=ngram_min,
                 ngram_max=ngram_max,
                 ngram_cjk_only=ngram_cjk_only,
+                deduplicate_tokens=deduplicate_tokens,
             ),
         )
     comparison = compare_chunking_reports(reports)
@@ -4305,6 +4330,7 @@ def sweep_chunking_command(
     ngram_min: int = 2,
     ngram_max: int = 4,
     ngram_cjk_only: bool = True,
+    deduplicate_tokens: bool = False,
 ):
     """Generate and evaluate a grid of chunking strategy candidates."""
     manifest = load_processing_package(package_dir)
@@ -4364,6 +4390,7 @@ def sweep_chunking_command(
         ngram_min=ngram_min,
         ngram_max=ngram_max,
         ngram_cjk_only=ngram_cjk_only,
+        deduplicate_tokens=deduplicate_tokens,
     )
     candidate_output_dir = candidates_dir or package_dir / "chunking_sweep"
     report = run_chunking_sweep(
@@ -4476,6 +4503,7 @@ def write_experiment_report_command(
     ngram_min: int = 2,
     ngram_max: int = 4,
     ngram_cjk_only: bool = True,
+    deduplicate_tokens: bool = False,
 ):
     """Write a reproducible experiment report for package artifacts and chunk candidates."""
     manifest = load_processing_package(package_dir)
@@ -4486,6 +4514,7 @@ def write_experiment_report_command(
         ngram_min=ngram_min,
         ngram_max=ngram_max,
         ngram_cjk_only=ngram_cjk_only,
+        deduplicate_tokens=deduplicate_tokens,
     )
     parsed_candidates = parse_candidates(candidates, package_dir)
     report = build_experiment_report(
@@ -5112,6 +5141,7 @@ def prepare_qdrant_hybrid_search(
     ngram_min: int,
     ngram_max: int,
     ngram_cjk_only: bool,
+    deduplicate_tokens: bool,
 ):
     from chunking_docs.retrieval.qdrant_hybrid import QdrantHybridSearcher
     from chunking_docs.storage.qdrant_store import QdrantChunkStore
@@ -5182,6 +5212,7 @@ def prepare_qdrant_hybrid_search(
             ngram_min=ngram_min,
             ngram_max=ngram_max,
             ngram_cjk_only=ngram_cjk_only,
+            deduplicate_tokens=deduplicate_tokens,
         ),
     )
     return {
@@ -5386,10 +5417,12 @@ def build_tokenizer_config(
     ngram_min: int,
     ngram_max: int,
     ngram_cjk_only: bool,
+    deduplicate_tokens: bool,
 ) -> LexicalTokenizerConfig:
     return LexicalTokenizerConfig(
         strategy=strategy,
         min_n=ngram_min,
         max_n=ngram_max,
         ngram_cjk_only=ngram_cjk_only,
+        deduplicate=deduplicate_tokens,
     )
