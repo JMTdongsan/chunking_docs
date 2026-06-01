@@ -15,7 +15,7 @@ from chunking_docs.chunking.multimodal import ChunkStrategy, build_strategy_chun
 from chunking_docs.chunking.page_chunker import page_level_chunks
 from chunking_docs.chunking.section_map import load_section_ranges
 from chunking_docs.embeddings.tokenizers import LexicalTokenizerConfig, TokenizerStrategy
-from chunking_docs.evaluation.audit import audit_package
+from chunking_docs.evaluation.audit import audit_package, audit_public_artifacts
 from chunking_docs.evaluation.ablation import (
     QdrantVectorAblationReport,
     QdrantVectorAblationRow,
@@ -2369,6 +2369,70 @@ def audit_package_command(
         require_qdrant_records=require_qdrant_records,
     )
     print(audit.model_dump())
+
+
+@app.command(name="audit-publication")
+def audit_publication_command(
+    root: Path = typer.Argument(Path(".")),
+    output: Path | None = None,
+    forbidden_pattern: list[str] = typer.Option(
+        None,
+        "--forbidden-pattern",
+        help="Fail when public text files contain this case-insensitive pattern.",
+    ),
+    include_glob: list[str] = typer.Option(
+        None,
+        "--include-glob",
+        help="Limit the scan to files matching this glob.",
+    ),
+    exclude_glob: list[str] = typer.Option(
+        None,
+        "--exclude-glob",
+        help="Exclude files matching this glob in addition to generated-artifact defaults.",
+    ),
+    blocked_extension: list[str] = typer.Option(
+        None,
+        "--blocked-extension",
+        help="Fail when a scanned public file has this extension, such as .pdf.",
+    ),
+    max_file_bytes: int = 2_000_000,
+    max_text_scan_bytes: int = 512_000,
+    required_gitignore_pattern: list[str] = typer.Option(
+        None,
+        "--required-gitignore-pattern",
+        help="Require a .gitignore pattern for generated or private artifacts.",
+    ),
+    fail: bool = typer.Option(
+        True,
+        "--fail/--no-fail",
+        help="Exit with status 1 when publication audit checks fail.",
+    ),
+):
+    """Audit public repository files for forbidden text and accidental artifacts."""
+    report = audit_public_artifacts(
+        root=root,
+        forbidden_patterns=forbidden_pattern,
+        include_globs=include_glob,
+        exclude_globs=exclude_glob,
+        blocked_extensions=blocked_extension,
+        max_file_bytes=max_file_bytes,
+        max_text_scan_bytes=max_text_scan_bytes,
+        required_gitignore_patterns=required_gitignore_pattern,
+    )
+    payload = {"passed": report.passed, **report.model_dump()}
+    if output is not None:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        payload = {
+            "output": str(output),
+            "passed": report.passed,
+            "scanned_file_count": report.scanned_file_count,
+            "skipped_file_count": report.skipped_file_count,
+            "failed_checks": [issue.code for issue in report.issues if issue.severity == "error"],
+        }
+    print(payload)
+    if fail and not report.passed:
+        raise typer.Exit(1)
 
 
 @app.command(name="ingestion-readiness")

@@ -8,6 +8,7 @@
    - Inspect optional dependencies for Qdrant, PostgreSQL, text embeddings, OCR, and VLM backends.
    - Detect visible NVIDIA GPUs, Torch CUDA availability, device names, compute capability, and bfloat16 support when GPU-backed runs are required.
    - Fail early when requested runtime capabilities are missing, including VLM profile GPU-memory fit, and warn when the configured VLM memory safety margin is not met.
+   - Audit public repository files for forbidden text patterns, blocked generated artifact extensions, oversized files, and required `.gitignore` protections before publishing.
 
 1. **Document Intake**
    - Download or load a PDF.
@@ -224,6 +225,7 @@ Chunking changes should be judged by retrieval behavior, not only by successful 
 
 Recommended checks:
 
+- `audit-publication`: public repository scan for forbidden text, accidental binary/document artifacts, oversized files, and required generated-artifact ignore patterns.
 - `audit-package`: structural completeness, orphan checks, OCR/VLM gaps, Qdrant vector dimensions, required payload fields, payload index definitions, and embedding manifest count/checksum consistency.
 - `qdrant-check-collection`: live Qdrant collection contract validation for named-vector dimensions and payload indexes.
 - `postgres-schema`: offline PostgreSQL SQL contract export for review or migration tooling.

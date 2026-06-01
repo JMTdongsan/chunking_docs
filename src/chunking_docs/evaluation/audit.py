@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections import Counter
+from fnmatch import fnmatch
 from pathlib import Path
 from typing import Any
 
@@ -49,6 +50,231 @@ class PackageAudit(BaseModel):
     @property
     def passed(self) -> bool:
         return not any(issue.severity == "error" for issue in self.issues)
+
+
+class PublicArtifactAudit(BaseModel):
+    root: str
+    scanned_file_count: int
+    skipped_file_count: int
+    forbidden_match_count: int
+    blocked_extension_count: int
+    large_file_count: int
+    issues: list[AuditIssue] = Field(default_factory=list)
+
+    @property
+    def passed(self) -> bool:
+        return not any(issue.severity == "error" for issue in self.issues)
+
+
+DEFAULT_PUBLIC_AUDIT_EXCLUDES = [
+    ".git/**",
+    ".venv/**",
+    ".pytest_cache/**",
+    ".ruff_cache/**",
+    "__pycache__/**",
+    "dist/**",
+    "*.egg-info/**",
+    "data/raw/**",
+    "data/analysis/**",
+    "outputs/**",
+]
+
+DEFAULT_BLOCKED_PUBLIC_EXTENSIONS = {
+    ".pdf",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".webp",
+    ".tif",
+    ".tiff",
+    ".bin",
+    ".parquet",
+    ".sqlite",
+    ".db",
+}
+
+DEFAULT_REQUIRED_GITIGNORE_PATTERNS = [
+    "data/raw/*.pdf",
+    "outputs/",
+]
+
+
+def audit_public_artifacts(
+    root: Path,
+    forbidden_patterns: list[str] | None = None,
+    include_globs: list[str] | None = None,
+    exclude_globs: list[str] | None = None,
+    blocked_extensions: list[str] | None = None,
+    max_file_bytes: int = 2_000_000,
+    max_text_scan_bytes: int = 512_000,
+    required_gitignore_patterns: list[str] | None = None,
+) -> PublicArtifactAudit:
+    root = root.resolve()
+    issues: list[AuditIssue] = []
+    include_globs = include_globs or []
+    exclude_globs = [*DEFAULT_PUBLIC_AUDIT_EXCLUDES, *(exclude_globs or [])]
+    blocked_extensions = sorted(
+        normalize_extension(value)
+        for value in (blocked_extensions or sorted(DEFAULT_BLOCKED_PUBLIC_EXTENSIONS))
+        if value
+    )
+    forbidden_terms = [pattern.casefold() for pattern in forbidden_patterns or [] if pattern]
+    scanned_file_count = 0
+    skipped_file_count = 0
+    forbidden_match_count = 0
+    blocked_extension_count = 0
+    large_file_count = 0
+
+    for path in sorted(root.rglob("*")):
+        if not path.is_file():
+            continue
+        relative_path = public_relative_path(path, root)
+        if should_skip_public_audit_path(relative_path, include_globs, exclude_globs):
+            skipped_file_count += 1
+            continue
+        scanned_file_count += 1
+        size = path.stat().st_size
+        suffix = path.suffix.lower()
+        if suffix in blocked_extensions:
+            blocked_extension_count += 1
+            issues.append(
+                AuditIssue(
+                    severity="error",
+                    code="blocked_public_extension",
+                    message="A public repository file uses a blocked artifact extension.",
+                    metadata={"path": relative_path, "extension": suffix, "bytes": size},
+                )
+            )
+        if size > max_file_bytes:
+            large_file_count += 1
+            issues.append(
+                AuditIssue(
+                    severity="error",
+                    code="large_public_file",
+                    message="A public repository file is larger than the configured limit.",
+                    metadata={"path": relative_path, "bytes": size, "max_file_bytes": max_file_bytes},
+                )
+            )
+        if forbidden_terms and size <= max_text_scan_bytes:
+            matches = scan_forbidden_terms(path, relative_path, forbidden_terms)
+            forbidden_match_count += len(matches)
+            issues.extend(matches)
+
+    required_patterns = required_gitignore_patterns or DEFAULT_REQUIRED_GITIGNORE_PATTERNS
+    issues.extend(required_gitignore_checks(root, required_patterns))
+
+    return PublicArtifactAudit(
+        root=str(root),
+        scanned_file_count=scanned_file_count,
+        skipped_file_count=skipped_file_count,
+        forbidden_match_count=forbidden_match_count,
+        blocked_extension_count=blocked_extension_count,
+        large_file_count=large_file_count,
+        issues=issues,
+    )
+
+
+def public_relative_path(path: Path, root: Path) -> str:
+    return path.relative_to(root).as_posix()
+
+
+def should_skip_public_audit_path(
+    relative_path: str,
+    include_globs: list[str],
+    exclude_globs: list[str],
+) -> bool:
+    if include_globs and not matches_any_public_glob(relative_path, include_globs):
+        return True
+    return matches_any_public_glob(relative_path, exclude_globs)
+
+
+def matches_any_public_glob(relative_path: str, patterns: list[str]) -> bool:
+    return any(matches_public_glob(relative_path, pattern) for pattern in patterns)
+
+
+def matches_public_glob(relative_path: str, pattern: str) -> bool:
+    normalized = pattern.strip().replace("\\", "/")
+    if not normalized:
+        return False
+    if normalized.endswith("/"):
+        normalized = f"{normalized}**"
+    if normalized.endswith("/**"):
+        prefix = normalized[:-3].rstrip("/")
+        return relative_path == prefix or relative_path.startswith(f"{prefix}/")
+    return fnmatch(relative_path, normalized) or fnmatch(Path(relative_path).name, normalized)
+
+
+def normalize_extension(value: str) -> str:
+    stripped = value.strip().lower()
+    if not stripped:
+        return ""
+    return stripped if stripped.startswith(".") else f".{stripped}"
+
+
+def scan_forbidden_terms(
+    path: Path,
+    relative_path: str,
+    forbidden_terms: list[str],
+) -> list[AuditIssue]:
+    try:
+        text = path.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        try:
+            text = path.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            return []
+    except OSError:
+        return []
+    issues = []
+    for line_number, line in enumerate(text.splitlines(), start=1):
+        lowered = line.casefold()
+        matches = sorted({term for term in forbidden_terms if term in lowered})
+        if not matches:
+            continue
+        issues.append(
+            AuditIssue(
+                severity="error",
+                code="forbidden_public_text",
+                message="A public repository file contains a forbidden text pattern.",
+                metadata={
+                    "path": relative_path,
+                    "line": line_number,
+                    "patterns": matches,
+                    "sample": line.strip()[:160],
+                },
+            )
+        )
+    return issues
+
+
+def required_gitignore_checks(root: Path, patterns: list[str]) -> list[AuditIssue]:
+    if not patterns:
+        return []
+    gitignore = root / ".gitignore"
+    if not gitignore.exists():
+        return [
+            AuditIssue(
+                severity="error",
+                code="missing_gitignore",
+                message="A public repository should include .gitignore for generated artifacts.",
+                metadata={"required_patterns": patterns},
+            )
+        ]
+    lines = {
+        line.strip()
+        for line in gitignore.read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.strip().startswith("#")
+    }
+    return [
+        AuditIssue(
+            severity="error",
+            code="missing_gitignore_pattern",
+            message="A generated-artifact ignore pattern is missing from .gitignore.",
+            metadata={"pattern": pattern},
+        )
+        for pattern in patterns
+        if pattern not in lines
+    ]
 
 
 def audit_package(
