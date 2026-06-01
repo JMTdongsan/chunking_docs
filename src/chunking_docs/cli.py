@@ -1309,6 +1309,22 @@ def sweep_qdrant_fusion_command(
             "best_by_target_ndcg": report.best_by_target_ndcg,
             "best_by_mrr": report.best_by_mrr,
             "fastest_by_mean_latency": report.fastest_by_mean_latency,
+            "case_group_recommendations": {
+                group_name: {
+                    group_value: {
+                        "recommended": recommendation.recommended,
+                        "best_by_target_coverage": recommendation.best_by_target_coverage,
+                        "best_by_target_ndcg": recommendation.best_by_target_ndcg,
+                        "eligible_count": recommendation.eligible_count,
+                        "top_candidates": [
+                            candidate.name
+                            for candidate in recommendation.top_candidates
+                        ],
+                    }
+                    for group_value, recommendation in group_values.items()
+                }
+                for group_name, group_values in report.case_group_recommendations.items()
+            },
             "candidates": [
                 {
                     "rank": candidate.rank,

@@ -18,6 +18,37 @@ class QdrantFusionSweepCandidate(BaseModel):
     rank: int = 0
 
 
+class QdrantFusionCaseGroupCandidate(BaseModel):
+    name: str
+    fusion_weights: dict[str, float] = Field(default_factory=dict)
+    global_rank: int = 0
+    globally_eligible: bool = True
+    selection_score: float = 0.0
+    case_count: int = 0
+    recall_at_k: float = 0.0
+    target_coverage_at_k: float = 0.0
+    ndcg_at_k: float = 0.0
+    mrr: float = 0.0
+    precision_at_k: float = 0.0
+    mean_latency_ms: float = 0.0
+    failed_query_count: int = 0
+
+
+class QdrantFusionCaseGroupRecommendation(BaseModel):
+    group_name: str
+    group_value: str
+    candidate_count: int = 0
+    eligible_count: int = 0
+    recommended: str | None = None
+    recommended_from_globally_eligible: bool = False
+    best_by_recall: str | None = None
+    best_by_target_coverage: str | None = None
+    best_by_target_ndcg: str | None = None
+    best_by_mrr: str | None = None
+    fastest_by_mean_latency: str | None = None
+    top_candidates: list[QdrantFusionCaseGroupCandidate] = Field(default_factory=list)
+
+
 class QdrantFusionSweepReport(BaseModel):
     vector_names: list[str] = Field(default_factory=list)
     graph_expand: bool = False
@@ -29,6 +60,10 @@ class QdrantFusionSweepReport(BaseModel):
     best_by_target_ndcg: str | None = None
     best_by_mrr: str | None = None
     fastest_by_mean_latency: str | None = None
+    case_group_recommendations: dict[
+        str,
+        dict[str, QdrantFusionCaseGroupRecommendation],
+    ] = Field(default_factory=dict)
     candidates: list[QdrantFusionSweepCandidate] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
@@ -116,6 +151,7 @@ def build_qdrant_fusion_sweep_report(
     precision_weight: float = 0.5,
     failed_query_penalty: float = 0.02,
     latency_weight: float = 0.05,
+    case_group_top_k: int = 3,
     metadata: dict[str, Any] | None = None,
 ) -> QdrantFusionSweepReport:
     ranked = [
@@ -157,6 +193,17 @@ def build_qdrant_fusion_sweep_report(
             ranked,
             "mean_latency_ms",
             prefer_lower=True,
+        ),
+        case_group_recommendations=case_group_recommendations(
+            ranked,
+            recall_weight=recall_weight,
+            target_coverage_weight=target_coverage_weight,
+            target_ndcg_weight=target_ndcg_weight,
+            mrr_weight=mrr_weight,
+            precision_weight=precision_weight,
+            failed_query_penalty=failed_query_penalty,
+            latency_weight=latency_weight,
+            top_k=case_group_top_k,
         ),
         candidates=ranked,
         metadata=metadata or {},
@@ -256,3 +303,131 @@ def best_candidate_name(
     if prefer_lower:
         return min(candidates, key=lambda candidate: getattr(candidate.evaluation, metric_name)).name
     return max(candidates, key=lambda candidate: getattr(candidate.evaluation, metric_name)).name
+
+
+def case_group_recommendations(
+    candidates: list[QdrantFusionSweepCandidate],
+    recall_weight: float,
+    target_coverage_weight: float,
+    target_ndcg_weight: float,
+    mrr_weight: float,
+    precision_weight: float,
+    failed_query_penalty: float,
+    latency_weight: float,
+    top_k: int = 3,
+) -> dict[str, dict[str, QdrantFusionCaseGroupRecommendation]]:
+    grouped: dict[str, dict[str, list[QdrantFusionCaseGroupCandidate]]] = {}
+    for candidate in candidates:
+        for group_name, group_values in candidate.evaluation.case_group_metrics.items():
+            for group_value, metric in group_values.items():
+                group_candidate = QdrantFusionCaseGroupCandidate(
+                    name=candidate.name,
+                    fusion_weights=candidate.fusion_weights,
+                    global_rank=candidate.rank,
+                    globally_eligible=candidate.eligible,
+                    selection_score=case_group_selection_score(
+                        recall_at_k=metric.recall_at_k,
+                        target_coverage_at_k=metric.target_coverage_at_k,
+                        ndcg_at_k=metric.ndcg_at_k,
+                        mrr=metric.mrr,
+                        precision_at_k=metric.precision_at_k,
+                        failed_query_count=metric.failed_count,
+                        mean_latency_ms=metric.mean_latency_ms,
+                        recall_weight=recall_weight,
+                        target_coverage_weight=target_coverage_weight,
+                        target_ndcg_weight=target_ndcg_weight,
+                        mrr_weight=mrr_weight,
+                        precision_weight=precision_weight,
+                        failed_query_penalty=failed_query_penalty,
+                        latency_weight=latency_weight,
+                    ),
+                    case_count=metric.case_count,
+                    recall_at_k=metric.recall_at_k,
+                    target_coverage_at_k=metric.target_coverage_at_k,
+                    ndcg_at_k=metric.ndcg_at_k,
+                    mrr=metric.mrr,
+                    precision_at_k=metric.precision_at_k,
+                    mean_latency_ms=metric.mean_latency_ms,
+                    failed_query_count=metric.failed_count,
+                )
+                grouped.setdefault(group_name, {}).setdefault(group_value, []).append(group_candidate)
+
+    result: dict[str, dict[str, QdrantFusionCaseGroupRecommendation]] = {}
+    for group_name, group_values in sorted(grouped.items()):
+        result[group_name] = {}
+        for group_value, group_candidates in sorted(group_values.items()):
+            ranked = sorted(group_candidates, key=case_group_candidate_rank_key, reverse=True)
+            eligible = [candidate for candidate in ranked if candidate.globally_eligible]
+            recommendation_pool = eligible or ranked
+            recommended = recommendation_pool[0].name if recommendation_pool else None
+            result[group_name][group_value] = QdrantFusionCaseGroupRecommendation(
+                group_name=group_name,
+                group_value=group_value,
+                candidate_count=len(ranked),
+                eligible_count=len(eligible),
+                recommended=recommended,
+                recommended_from_globally_eligible=bool(eligible and recommended),
+                best_by_recall=best_case_group_candidate_name(ranked, "recall_at_k"),
+                best_by_target_coverage=best_case_group_candidate_name(ranked, "target_coverage_at_k"),
+                best_by_target_ndcg=best_case_group_candidate_name(ranked, "ndcg_at_k"),
+                best_by_mrr=best_case_group_candidate_name(ranked, "mrr"),
+                fastest_by_mean_latency=best_case_group_candidate_name(
+                    ranked,
+                    "mean_latency_ms",
+                    prefer_lower=True,
+                ),
+                top_candidates=ranked[: max(top_k, 0)],
+            )
+    return result
+
+
+def case_group_selection_score(
+    recall_at_k: float,
+    target_coverage_at_k: float,
+    ndcg_at_k: float,
+    mrr: float,
+    precision_at_k: float,
+    failed_query_count: int,
+    mean_latency_ms: float,
+    recall_weight: float,
+    target_coverage_weight: float,
+    target_ndcg_weight: float,
+    mrr_weight: float,
+    precision_weight: float,
+    failed_query_penalty: float,
+    latency_weight: float,
+) -> float:
+    return (
+        recall_weight * recall_at_k
+        + target_coverage_weight * target_coverage_at_k
+        + target_ndcg_weight * ndcg_at_k
+        + mrr_weight * mrr
+        + precision_weight * precision_at_k
+        - failed_query_penalty * failed_query_count
+        - latency_weight * (mean_latency_ms / 1000.0)
+    )
+
+
+def case_group_candidate_rank_key(candidate: QdrantFusionCaseGroupCandidate) -> tuple:
+    return (
+        candidate.globally_eligible,
+        candidate.selection_score,
+        candidate.target_coverage_at_k,
+        candidate.ndcg_at_k,
+        candidate.mrr,
+        candidate.recall_at_k,
+        -candidate.mean_latency_ms,
+        candidate.name,
+    )
+
+
+def best_case_group_candidate_name(
+    candidates: list[QdrantFusionCaseGroupCandidate],
+    metric_name: str,
+    prefer_lower: bool = False,
+) -> str | None:
+    if not candidates:
+        return None
+    if prefer_lower:
+        return min(candidates, key=lambda candidate: getattr(candidate, metric_name)).name
+    return max(candidates, key=lambda candidate: getattr(candidate, metric_name)).name

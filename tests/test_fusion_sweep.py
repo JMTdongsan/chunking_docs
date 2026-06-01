@@ -4,7 +4,7 @@ from chunking_docs.evaluation.fusion_sweep import (
     build_qdrant_fusion_sweep_report,
     fusion_weight_candidate_name,
 )
-from chunking_docs.evaluation.retrieval import RetrievalEvaluation
+from chunking_docs.evaluation.retrieval import RetrievalCaseGroupMetric, RetrievalEvaluation
 
 
 def test_build_fusion_weight_grid_combines_fixed_and_grid_values():
@@ -106,6 +106,83 @@ def test_build_qdrant_fusion_sweep_report_recommends_best_eligible_candidate():
     ]
 
 
+def test_build_qdrant_fusion_sweep_report_recommends_case_group_candidates():
+    balanced = QdrantFusionSweepCandidate(
+        name="balanced",
+        fusion_weights={"bm25": 1.0, "qdrant:caption_dense": 1.0},
+        evaluation=evaluation(
+            recall=0.95,
+            coverage=0.95,
+            ndcg=0.9,
+            mrr=0.86,
+            precision=0.2,
+            failed=0,
+            latency=30.0,
+            visual_object_group=case_group_metric(
+                coverage=0.5,
+                ndcg=0.48,
+                mrr=0.5,
+            ),
+        ),
+    )
+    object_weighted = QdrantFusionSweepCandidate(
+        name="object_weighted",
+        fusion_weights={"bm25": 1.0, "qdrant:object_dense": 1.4},
+        evaluation=evaluation(
+            recall=0.9,
+            coverage=0.9,
+            ndcg=0.86,
+            mrr=0.82,
+            precision=0.2,
+            failed=0,
+            latency=35.0,
+            visual_object_group=case_group_metric(
+                coverage=0.9,
+                ndcg=0.88,
+                mrr=0.84,
+            ),
+        ),
+    )
+    ineligible_specialist = QdrantFusionSweepCandidate(
+        name="ineligible_specialist",
+        fusion_weights={"qdrant:object_dense": 2.0},
+        evaluation=evaluation(
+            recall=0.5,
+            coverage=0.5,
+            ndcg=0.5,
+            mrr=0.5,
+            precision=0.1,
+            failed=5,
+            latency=10.0,
+            visual_object_group=case_group_metric(
+                coverage=1.0,
+                ndcg=1.0,
+                mrr=1.0,
+            ),
+        ),
+    )
+
+    report = build_qdrant_fusion_sweep_report(
+        [balanced, object_weighted, ineligible_specialist],
+        vector_names=["text_dense", "caption_dense", "object_dense"],
+        min_recall_at_k=0.8,
+        min_target_coverage_at_k=0.8,
+        max_failed_queries=1,
+    )
+
+    group = report.case_group_recommendations["case_source"]["visual_object_probe"]
+    assert report.recommended == "balanced"
+    assert group.recommended == "object_weighted"
+    assert group.recommended_from_globally_eligible is True
+    assert group.best_by_target_coverage == "ineligible_specialist"
+    assert group.eligible_count == 2
+    assert [candidate.name for candidate in group.top_candidates[:2]] == [
+        "object_weighted",
+        "balanced",
+    ]
+    assert group.top_candidates[0].fusion_weights == {"bm25": 1.0, "qdrant:object_dense": 1.4}
+
+
 def evaluation(
     recall: float,
     coverage: float,
@@ -114,7 +191,11 @@ def evaluation(
     precision: float,
     failed: int,
     latency: float,
+    visual_object_group: RetrievalCaseGroupMetric | None = None,
 ) -> RetrievalEvaluation:
+    case_group_metrics = {}
+    if visual_object_group is not None:
+        case_group_metrics = {"case_source": {"visual_object_probe": visual_object_group}}
     return RetrievalEvaluation(
         case_count=10,
         expected_case_count=10,
@@ -131,5 +212,32 @@ def evaluation(
         mean_latency_ms=latency,
         p95_latency_ms=latency,
         failed_queries=[f"failed-{index}" for index in range(failed)],
+        case_group_metrics=case_group_metrics,
         results=[],
+    )
+
+
+def case_group_metric(
+    coverage: float,
+    ndcg: float,
+    mrr: float,
+    recall: float = 1.0,
+    precision: float = 0.2,
+    failed: int = 0,
+    latency: float = 20.0,
+) -> RetrievalCaseGroupMetric:
+    return RetrievalCaseGroupMetric(
+        case_count=5,
+        expected_case_count=5,
+        passed_count=5 - failed,
+        failed_count=failed,
+        recall_at_k=recall,
+        mrr=mrr,
+        target_count=10,
+        matched_target_count=int(round(coverage * 10)),
+        target_coverage_at_k=coverage,
+        ndcg_at_k=ndcg,
+        precision_at_k=precision,
+        mean_latency_ms=latency,
+        failed_queries=[f"group-failed-{index}" for index in range(failed)],
     )

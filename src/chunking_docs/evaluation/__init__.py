@@ -31,6 +31,8 @@ from .diagnostics import (
 from .delta import PackageDeltaReport, compare_processing_packages
 from .experiment import ArtifactSummary, ExperimentReport, build_experiment_report
 from .fusion_sweep import (
+    QdrantFusionCaseGroupCandidate,
+    QdrantFusionCaseGroupRecommendation,
     QdrantFusionSweepCandidate,
     QdrantFusionSweepReport,
     build_fusion_weight_grid,
@@ -61,6 +63,8 @@ __all__ = [
     "IngestionReadinessReport",
     "PackageAudit",
     "PackageDeltaReport",
+    "QdrantFusionCaseGroupCandidate",
+    "QdrantFusionCaseGroupRecommendation",
     "QdrantFusionSweepCandidate",
     "QdrantFusionSweepReport",
     "ReadinessComponent",
