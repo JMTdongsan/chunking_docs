@@ -42,6 +42,7 @@ from chunking_docs.embeddings.bm25 import asset_text_parts, chunk_lexical_texts
 from chunking_docs.embeddings.tokenizers import LexicalTokenizer, LexicalTokenizerConfig
 from chunking_docs.graph.provenance import chunk_asset_ids
 from chunking_docs.models import ProcessingManifest
+from chunking_docs.runtime import RuntimeReport
 from chunking_docs.storage.postgres_store import manifest_rows
 from chunking_docs.vision.compare import VisualRunComparison
 from chunking_docs.vision.jobs import VisualJobRunResult
@@ -67,6 +68,7 @@ class IngestionReadinessReport(BaseModel):
     artifact_presence: dict[str, bool]
     postgres_row_counts: dict[str, int] = Field(default_factory=dict)
     audit: PackageAudit
+    runtime_report: RuntimeReport | None = None
     visual_quality: VisualQualityReport | None = None
     visual_run_comparison: VisualRunComparison | None = None
     retrieval_case_audit: RetrievalCaseAuditReport | None = None
@@ -89,6 +91,8 @@ def build_ingestion_readiness_report(
     required_vectors: list[str] | None = None,
     require_derived_vector_coverage: bool = False,
     require_postgres_rows: bool = True,
+    runtime_report: RuntimeReport | None = None,
+    require_runtime_report: bool = False,
     require_visual_annotations: bool = False,
     require_visual_derived_triples: bool = False,
     min_visual_text_coverage_ratio: float | None = None,
@@ -153,6 +157,17 @@ def build_ingestion_readiness_report(
             validate_bm25_tokenizer=require_bm25,
         )
     )
+
+    if runtime_report is not None:
+        components.append(runtime_report_component(runtime_report))
+    elif require_runtime_report:
+        components.append(
+            ReadinessComponent(
+                name="runtime_report",
+                passed=False,
+                message="Runtime doctor report is required but no report was supplied.",
+            )
+        )
 
     if require_bm25:
         components.append(bm25_tokens_component(package_dir, manifest))
@@ -649,6 +664,7 @@ def build_ingestion_readiness_report(
         artifact_presence=artifact_presence,
         postgres_row_counts=postgres_row_counts,
         audit=audit,
+        runtime_report=runtime_report,
         visual_quality=visual_quality,
         visual_run_comparison=visual_run_comparison,
         retrieval_case_audit=retrieval_case_audit,
@@ -692,6 +708,45 @@ def required_artifact_component(
         passed=artifact_presence.get(filename, False),
         message=f"Required package artifact exists: {filename}.",
         metadata={"file": filename},
+    )
+
+
+def runtime_report_component(report: RuntimeReport) -> ReadinessComponent:
+    failed_checks = [
+        check.name
+        for check in report.checks
+        if not check.passed and check.severity == "error"
+    ]
+    warning_checks = [
+        check.name
+        for check in report.checks
+        if not check.passed and check.severity == "warning"
+    ]
+    dependency_versions = {
+        name: dependency.version
+        for name, dependency in sorted(report.dependencies.items())
+        if dependency.installed
+    }
+    return ReadinessComponent(
+        name="runtime_report",
+        passed=report.passed,
+        message="Runtime doctor checks passed for configured GPU, VLM, embedding, and storage requirements.",
+        metadata={
+            "failed_checks": failed_checks,
+            "warning_checks": warning_checks,
+            "gpu_count": len(report.gpus),
+            "gpus": [gpu.model_dump() for gpu in report.gpus],
+            "torch_cuda_available": report.torch_cuda_available,
+            "torch_cuda_device_count": report.torch_cuda_device_count,
+            "torch_cuda_device_names": report.torch_cuda_device_names,
+            "torch_cuda_compute_capabilities": report.torch_cuda_compute_capabilities,
+            "torch_cuda_version": report.torch_cuda_version,
+            "torch_cuda_compiled_arches": report.torch_cuda_compiled_arches,
+            "torch_bfloat16_supported": report.torch_bfloat16_supported,
+            "paddle_cuda_available": report.paddle_cuda_available,
+            "paddle_cuda_device_count": report.paddle_cuda_device_count,
+            "dependency_versions": dependency_versions,
+        },
     )
 
 

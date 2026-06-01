@@ -116,7 +116,7 @@ from chunking_docs.retrieval.rerank import (
     LexicalOverlapReranker,
     SentenceTransformerCrossEncoderReranker,
 )
-from chunking_docs.runtime import inspect_runtime
+from chunking_docs.runtime import RuntimeReport, inspect_runtime
 from chunking_docs.storage.records import EmbeddingRecord
 from chunking_docs.vision.annotate import (
     annotate_assets,
@@ -4514,6 +4514,12 @@ def ingestion_readiness_command(
         ),
     ),
     require_postgres_rows: bool = True,
+    runtime_report: Path | None = None,
+    require_runtime_report: bool = typer.Option(
+        False,
+        "--require-runtime-report",
+        help="Fail readiness when no runtime doctor report is supplied.",
+    ),
     require_visual_annotations: bool = False,
     require_visual_derived_triples: bool = typer.Option(
         False,
@@ -5028,6 +5034,11 @@ def ingestion_readiness_command(
         if qdrant_retrieval_config
         else None
     )
+    parsed_runtime_report = (
+        RuntimeReport.model_validate_json(runtime_report.read_text(encoding="utf-8"))
+        if runtime_report
+        else None
+    )
     parsed_rag_context = (
         load_rag_context_evaluation(rag_context_evaluation)
         if rag_context_evaluation
@@ -5160,6 +5171,8 @@ def ingestion_readiness_command(
         required_vectors=required_vectors,
         require_derived_vector_coverage=require_derived_vector_coverage,
         require_postgres_rows=require_postgres_rows,
+        runtime_report=parsed_runtime_report,
+        require_runtime_report=require_runtime_report,
         require_visual_annotations=require_visual_annotations,
         require_visual_derived_triples=require_visual_derived_triples,
         min_visual_text_coverage_ratio=min_visual_text_coverage_ratio,

@@ -52,6 +52,7 @@ from chunking_docs.models import (
     VisualAsset,
 )
 from chunking_docs.retrieval.local_hybrid import HybridSearchHit
+from chunking_docs.runtime import GPUDevice, RuntimeCheck, RuntimeReport
 from chunking_docs.storage.records import EmbeddingRecord
 from chunking_docs.vision.compare import compare_visual_runs
 from chunking_docs.vision.jobs import VisualJobRunResult
@@ -77,6 +78,40 @@ def test_ingestion_readiness_passes_ready_package(tmp_path):
     assert reproducibility_component.metadata["failed_checks"] == []
     assert reproducibility_component.metadata["bm25_tokenizer"]["matches_package_config"] is True
     assert report.failed_components == []
+
+
+def test_ingestion_readiness_includes_runtime_report(tmp_path):
+    package_dir, manifest = write_ready_package(tmp_path)
+
+    report = build_ingestion_readiness_report(
+        package_dir,
+        manifest,
+        runtime_report=ready_runtime_report(),
+        require_runtime_report=True,
+    )
+
+    assert report.passed is True
+    assert report.runtime_report is not None
+    component = next(component for component in report.components if component.name == "runtime_report")
+    assert component.passed is True
+    assert component.metadata["gpu_count"] == 1
+    assert component.metadata["torch_cuda_compute_capabilities"] == ["12.0"]
+    assert component.metadata["torch_cuda_compiled_arches"] == ["sm_120"]
+    assert component.metadata["torch_bfloat16_supported"] is True
+    assert component.metadata["failed_checks"] == []
+
+
+def test_ingestion_readiness_requires_runtime_report(tmp_path):
+    package_dir, manifest = write_ready_package(tmp_path)
+
+    report = build_ingestion_readiness_report(
+        package_dir,
+        manifest,
+        require_runtime_report=True,
+    )
+
+    assert report.passed is False
+    assert "runtime_report" in report.failed_components
 
 
 def test_ingestion_readiness_flags_missing_reproducibility_metadata(tmp_path):
@@ -1696,6 +1731,36 @@ def test_ingestion_readiness_cli_can_require_derived_vector_coverage(tmp_path):
     assert "text_triple_graph" in component["metadata"]["recommended_qdrant_vector_modes"]
 
 
+def test_ingestion_readiness_cli_can_require_runtime_report(tmp_path):
+    package_dir, _ = write_ready_package(tmp_path)
+    runtime_path = tmp_path / "runtime_doctor.json"
+    output = tmp_path / "readiness.json"
+    runtime_path.write_text(ready_runtime_report().model_dump_json(indent=2), encoding="utf-8")
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "ingestion-readiness",
+            "--package-dir",
+            str(package_dir),
+            "--runtime-report",
+            str(runtime_path),
+            "--require-runtime-report",
+            "--output",
+            str(output),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["passed"] is True
+    component = next(
+        component for component in payload["components"] if component["name"] == "runtime_report"
+    )
+    assert component["metadata"]["gpu_count"] == 1
+    assert component["metadata"]["torch_cuda_compute_capabilities"] == ["12.0"]
+
+
 def test_ingestion_readiness_cli_can_gate_qdrant_vector_ablation(tmp_path):
     package_dir, _ = write_ready_package(tmp_path)
     ablation_path = tmp_path / "qdrant_vector_ablation.json"
@@ -2485,6 +2550,38 @@ def qdrant_reranker_ablation_report():
                 evaluation=none_evaluation,
             ),
         ]
+    )
+
+
+def ready_runtime_report():
+    return RuntimeReport(
+        passed=True,
+        gpus=[
+            GPUDevice(
+                name="NVIDIA GeForce RTX 5090",
+                memory_total_mib=32607,
+                driver_version="580.159.03",
+            )
+        ],
+        torch_cuda_available=True,
+        torch_cuda_device_count=1,
+        torch_cuda_device_names=["NVIDIA GeForce RTX 5090"],
+        torch_cuda_compute_capabilities=["12.0"],
+        torch_cuda_version="13.0",
+        torch_cuda_compiled_arches=["sm_120"],
+        torch_bfloat16_supported=True,
+        checks=[
+            RuntimeCheck(
+                name="gpu_available",
+                passed=True,
+                message="At least one NVIDIA GPU is visible through nvidia-smi.",
+            ),
+            RuntimeCheck(
+                name="torch_cuda_arch:12.0",
+                passed=True,
+                message="Torch CUDA build includes an architecture target for the visible GPU.",
+            ),
+        ],
     )
 
 
