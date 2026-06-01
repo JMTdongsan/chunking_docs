@@ -506,7 +506,7 @@ def test_generate_retrieval_case_skeleton_uses_bbox_region_for_object_probes():
         page_start=1,
         page_end=1,
         kind=ChunkKind.TEXT,
-        text="Transit corridor evidence.",
+        text="Transit evidence.",
         asset_ids=["asset-1"],
     )
     asset = VisualAsset(
@@ -538,6 +538,48 @@ def test_generate_retrieval_case_skeleton_uses_bbox_region_for_object_probes():
     assert len(cases) == 1
     assert cases[0].query == "route icon green square upper left"
     assert cases[0].metadata["object_has_bbox"] is True
+
+
+def test_generate_retrieval_case_skeleton_uses_visual_elements_for_object_probes():
+    chunk = DocumentChunk(
+        chunk_id="chunk-1",
+        doc_id="doc",
+        page_start=1,
+        page_end=1,
+        kind=ChunkKind.TEXT,
+        text=(
+            "Transit evidence.\n\n"
+            "[VLM page 1 map]\n"
+            "Visual elements: station access corridor\n\n"
+            "[Visual asset page 1 map asset-1]\n"
+            "Visual elements: station access corridor"
+        ),
+        asset_ids=["asset-1"],
+    )
+    asset = VisualAsset(
+        asset_id="asset-1",
+        doc_id="doc",
+        page_no=1,
+        kind=AssetKind.MAP,
+        metadata={"visual_elements": ["station access corridor"]},
+    )
+
+    cases = generate_retrieval_case_skeleton(
+        [chunk],
+        [asset],
+        [],
+        include_pages=False,
+        include_assets=False,
+        include_triples=False,
+        object_probe_limit=1,
+    )
+
+    assert len(cases) == 1
+    assert cases[0].query == "station access corridor"
+    assert cases[0].metadata["object_label"] == "station access corridor"
+    assert cases[0].metadata["object_source_key"] == "visual_elements"
+    assert cases[0].metadata["object_visual_feature_type"] == "visual_element"
+    assert cases[0].metadata["object_has_bbox"] is False
 
 
 def test_generate_retrieval_case_skeleton_object_probes_prefer_visual_only_terms():

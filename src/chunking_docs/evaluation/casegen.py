@@ -20,7 +20,8 @@ from chunking_docs.vision.spatial import bbox_region_from_bbox
 
 _WHITESPACE_RE = re.compile(r"\s+")
 _MARKDOWN_RE = re.compile(r"[|#*_`>\[\]()]")
-_VISUAL_CONTEXT_RE = re.compile(r"(?:^|\n)Visual context:\s*", flags=re.IGNORECASE)
+_GENERATED_VISUAL_BLOCK_PREFIXES = ("[vlm page ", "[visual asset page ")
+_NON_VISUAL_BLOCK_PREFIXES = ("[ocr page ",)
 _TERM_RE = re.compile(
     r"[A-Za-z][A-Za-z0-9_./%+-]{2,}|"
     r"[0-9]+(?:[.,][0-9]+)*(?:[%A-Za-z가-힣㎡²³]*)?|"
@@ -66,6 +67,7 @@ _STOP_TERMS = {
     "페이지",
 }
 VISUAL_OBJECT_METADATA_KEYS = ("objects", "detected_objects", "visual_objects", "detections", "regions", "areas")
+VISUAL_FEATURE_METADATA_KEYS = ("visual_elements",)
 
 QueryMode = Literal["snippet", "salient_terms"]
 SelectionStrategy = Literal["document_order", "salience"]
@@ -519,6 +521,7 @@ def visual_object_probe_cases(
                         "linked_chunk_ids": [chunk.chunk_id for chunk in linked_chunks],
                         "object_label": label,
                         "object_source_key": visual_object.get("source_key"),
+                        "object_visual_feature_type": visual_object.get("visual_feature_type"),
                         "object_has_bbox": bool(visual_object.get("bbox")),
                         "object_probe_visual_only": visual_only,
                     }
@@ -610,6 +613,19 @@ def asset_visual_objects(asset: VisualAsset) -> list[dict[str, object]]:
             normalized = normalize_visual_object(value, source_key=key)
             if normalized:
                 objects.append(normalized)
+    for key in VISUAL_FEATURE_METADATA_KEYS:
+        value = asset.metadata.get(key)
+        if isinstance(value, list):
+            values = value
+        elif value:
+            values = [value]
+        else:
+            values = []
+        for item in values:
+            normalized = normalize_visual_object(item, source_key=key)
+            if normalized:
+                normalized["visual_feature_type"] = key.removesuffix("s")
+                objects.append(normalized)
     return dedupe_visual_objects(objects)
 
 
@@ -668,6 +684,7 @@ def dedupe_visual_objects(objects: list[dict[str, object]]) -> list[dict[str, ob
             str(item.get("label") or "").casefold(),
             str(item.get("location") or "").casefold(),
             str(item.get("bbox_region") or "").casefold(),
+            str(item.get("visual_feature_type") or "").casefold(),
             " ".join(object_text_items(item.get("attributes"))).casefold(),
         )
         if not key[0] or key in seen:
@@ -781,10 +798,18 @@ def linked_non_visual_term_keys(chunks: list[DocumentChunk]) -> set[str]:
 def non_visual_chunk_text(chunk: DocumentChunk) -> str:
     if chunk.metadata.get("chunking_strategy") == "visual_asset_text":
         return ""
-    match = _VISUAL_CONTEXT_RE.search(chunk.text)
-    if match is None:
-        return chunk.text
-    return chunk.text[: match.start()]
+    kept_lines: list[str] = []
+    skipping_generated_visual = False
+    for line in chunk.text.splitlines():
+        stripped = line.strip().casefold()
+        if stripped.startswith("visual context:") or stripped.startswith(_GENERATED_VISUAL_BLOCK_PREFIXES):
+            skipping_generated_visual = True
+            continue
+        if skipping_generated_visual and stripped.startswith(_NON_VISUAL_BLOCK_PREFIXES):
+            skipping_generated_visual = False
+        if not skipping_generated_visual:
+            kept_lines.append(line)
+    return "\n".join(kept_lines)
 
 
 def triple_cases(
