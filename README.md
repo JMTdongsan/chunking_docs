@@ -92,7 +92,7 @@ chunking-docs plan-ingestion-workflow \
   --output outputs/package/ingestion_workflow_plan.json
 ```
 
-The report includes observations and processing recommendations for visual annotation, multimodal embeddings, graph signals, and retrieval benchmark coverage. `plan-ingestion-workflow` turns those recommendations into an ordered command plan: runtime checks, characterization, page tiling, OCR/VLM jobs, VLM profile experiments, embedding rebuilds, retrieval case generation, chunking comparison, index refresh, metadata refresh, and final ingestion readiness. Dense visual pages are reported as tile candidates with a ready `build-tile-assets` command so maps, tables, and diagrams can be processed as overlapping crops before OCR/VLM evaluation. When rendered assets, VLM object or visual-element metadata, or graph triples are present without matching `image_dense`, `object_dense`, or `triple_dense` records, the report recommends rebuilding those vector families before ablation. When rendered visual assets are present, it recommends generating and gating `visual_image_probe` cases so `qdrant:image_dense` contribution is measured separately from caption and object vectors. When VLM object or visual-element metadata is present, it reports object, visual-feature, and bbox counts and recommends generating and auditing `visual_object_probe` retrieval cases with visual-only, target-diversity, concentration, and query-strength gates so object detections and visual elements are evaluated separately from aggregate retrieval scores.
+The report includes observations and processing recommendations for visual annotation, multimodal embeddings, graph signals, and retrieval benchmark coverage. `plan-ingestion-workflow` turns those recommendations into an ordered command plan: runtime checks, characterization, page tiling, OCR/VLM jobs, VLM profile experiments, embedding rebuilds, retrieval case generation, chunking comparison, index refresh, metadata refresh, and final ingestion readiness. Recommended chunking plans include retrieval-quality, embedding-volume, and latency-efficiency gates so a larger multimodal strategy has to prove downstream search value before it is applied. Dense visual pages are reported as tile candidates with a ready `build-tile-assets` command so maps, tables, and diagrams can be processed as overlapping crops before OCR/VLM evaluation. When rendered assets, VLM object or visual-element metadata, or graph triples are present without matching `image_dense`, `object_dense`, or `triple_dense` records, the report recommends rebuilding those vector families before ablation. When rendered visual assets are present, it recommends generating and gating `visual_image_probe` cases so `qdrant:image_dense` contribution is measured separately from caption and object vectors. When VLM object or visual-element metadata is present, it reports object, visual-feature, and bbox counts and recommends generating and auditing `visual_object_probe` retrieval cases with visual-only, target-diversity, concentration, and query-strength gates so object detections and visual elements are evaluated separately from aggregate retrieval scores.
 
 ## Document Structure
 
@@ -504,6 +504,10 @@ chunking-docs ingestion-readiness \
   --baseline-chunking-candidate baseline \
   --min-chunking-visual-text-coverage-ratio 0.8 \
   --min-chunking-visual-text-part-coverage-ratio 0.8 \
+  --max-chunking-total-chunk-chars 1000000 \
+  --min-chunking-retrieval-score-per-embedding-kchar 0.0008 \
+  --min-chunking-retrieval-score-per-mean-latency-ms 0.0005 \
+  --min-chunking-target-coverage-per-p95-latency-ms 0.0005 \
   --max-chunking-mean-target-rank 3 \
   --min-chunking-result-stability-rate 1.0 \
   --max-chunking-pairwise-mean-target-rank-delta 0 \

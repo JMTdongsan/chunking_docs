@@ -70,6 +70,14 @@ def test_characterize_package_reports_strategy_observations(tmp_path):
         item for item in report.recommendations if item.code == "compare_multimodal_hierarchical_chunking"
     )
     assert "sweep-chunking" in chunking_recommendation.commands[0]
+    assert "--selection-min-retrieval-score-per-embedding-kchar 0.0008" in chunking_recommendation.commands[0]
+    assert "--selection-min-retrieval-score-per-mean-latency-ms 0.0005" in chunking_recommendation.commands[0]
+    assert "--selection-min-target-coverage-per-p95-latency-ms 0.0005" in chunking_recommendation.commands[0]
+    assert "gate-chunking-comparison outputs/package/chunking_sweep.json" in chunking_recommendation.commands[1]
+    assert "--require-retrieval" in chunking_recommendation.commands[1]
+    assert "--min-retrieval-score-per-embedding-kchar 0.0008" in chunking_recommendation.commands[1]
+    assert "--min-retrieval-score-per-mean-latency-ms 0.0005" in chunking_recommendation.commands[1]
+    assert "--min-target-coverage-per-p95-latency-ms 0.0005" in chunking_recommendation.commands[1]
     assert "apply-chunking-sweep" in chunking_recommendation.commands[-1]
     visual_vector_recommendation = next(
         item for item in report.recommendations if item.code == "evaluate_visual_vectors"

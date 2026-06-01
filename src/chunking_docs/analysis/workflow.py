@@ -6,6 +6,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from chunking_docs.analysis.chunking_defaults import CHUNKING_READINESS_GATE_ARGS
 from chunking_docs.analysis.characterize import PackageCharacteristics, ProcessingRecommendation
 
 
@@ -95,7 +96,14 @@ def build_ingestion_workflow_plan(
 
     steps.append(index_refresh_step(package_dir))
     steps.append(metadata_refresh_step(package_dir))
-    steps.append(readiness_step(package_dir, retrieval_cases))
+    steps.append(
+        readiness_step(
+            package_dir,
+            retrieval_cases,
+            include_chunking_comparison="compare_multimodal_hierarchical_chunking"
+            in recommendations_by_code,
+        )
+    )
     return IngestionWorkflowPlan(
         package_dir=path_text(package_dir),
         retrieval_cases=path_text(retrieval_cases),
@@ -196,22 +204,38 @@ def recommendation_step(
     )
 
 
-def readiness_step(package_dir: Path, retrieval_cases: Path) -> WorkflowStep:
+def readiness_step(
+    package_dir: Path,
+    retrieval_cases: Path,
+    include_chunking_comparison: bool = False,
+) -> WorkflowStep:
+    command_parts = [
+        "chunking-docs ingestion-readiness",
+        "--package-dir",
+        path_arg(package_dir),
+        "--require-derived-vector-coverage",
+        "--retrieval-cases",
+        path_arg(retrieval_cases),
+        "--require-retrieval-cases",
+        "--min-retrieval-query-terms-per-case",
+        "3",
+    ]
+    if include_chunking_comparison:
+        command_parts.extend(
+            option.format(
+                chunking_comparison=path_arg(package_dir / "chunking_sweep.json")
+            )
+            for option in CHUNKING_READINESS_GATE_ARGS
+        )
+    command_parts.extend(["--output", path_arg(package_dir / "ingestion_readiness.json")])
     return WorkflowStep(
         step_id="ingestion_readiness",
         title="Gate package before ingestion",
         area="readiness",
         priority="required",
         reason="Run the combined readiness gate before loading Qdrant, PostgreSQL, or a RAG service.",
-        commands=[
-            (
-                f"chunking-docs ingestion-readiness --package-dir {path_arg(package_dir)} "
-                "--require-derived-vector-coverage "
-                f"--retrieval-cases {path_arg(retrieval_cases)} --require-retrieval-cases "
-                "--min-retrieval-query-terms-per-case 3 "
-                f"--output {path_arg(package_dir / 'ingestion_readiness.json')}"
-            )
-        ],
+        commands=[" ".join(command_parts)],
+        metadata={"include_chunking_comparison": include_chunking_comparison},
     )
 
 

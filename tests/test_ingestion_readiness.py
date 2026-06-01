@@ -1830,6 +1830,8 @@ def test_ingestion_readiness_cli_can_gate_chunking_target_coverage(tmp_path):
             "0.8",
             "--max-chunking-mean-target-rank",
             "2.0",
+            "--max-chunking-total-chunk-chars",
+            "2000",
             "--min-chunking-visual-text-coverage-ratio",
             "0.8",
             "--min-chunking-retrieval-score-per-mean-latency-ms",

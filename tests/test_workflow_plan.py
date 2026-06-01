@@ -61,6 +61,24 @@ def test_build_ingestion_workflow_plan_orders_runtime_visual_embedding_and_readi
         for step in plan.steps
         for command in step.commands
     )
+    chunking_commands = next(
+        step.commands
+        for step in plan.steps
+        if step.step_id == "compare_multimodal_hierarchical_chunking"
+    )
+    assert "--selection-min-retrieval-score-per-embedding-kchar 0.0008" in chunking_commands[0]
+    assert "--selection-min-retrieval-score-per-mean-latency-ms 0.0005" in chunking_commands[0]
+    assert "--selection-min-target-coverage-per-p95-latency-ms 0.0005" in chunking_commands[0]
+    assert "gate-chunking-comparison" in chunking_commands[1]
+    assert "--require-retrieval" in chunking_commands[1]
+    assert "--min-retrieval-score-per-embedding-kchar 0.0008" in chunking_commands[1]
+    assert "--min-retrieval-score-per-mean-latency-ms 0.0005" in chunking_commands[1]
+    assert "--min-target-coverage-per-p95-latency-ms 0.0005" in chunking_commands[1]
+    readiness_command = plan.steps[-1].commands[0]
+    assert "--chunking-comparison" in readiness_command
+    assert "--min-chunking-retrieval-score-per-embedding-kchar 0.0008" in readiness_command
+    assert "--min-chunking-retrieval-score-per-mean-latency-ms 0.0005" in readiness_command
+    assert "--min-chunking-target-coverage-per-p95-latency-ms 0.0005" in readiness_command
     assert all("outputs/package" not in command for step in plan.steps for command in step.commands)
     assert any(str(cases) in command for step in plan.steps for command in step.commands)
 

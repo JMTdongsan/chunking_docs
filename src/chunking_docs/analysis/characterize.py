@@ -7,6 +7,10 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from chunking_docs.analysis.chunking_defaults import (
+    CHUNKING_COMPARISON_GATE_ARGS,
+    CHUNKING_SWEEP_SELECTION_ARGS,
+)
 from chunking_docs.embeddings.records import (
     VISUAL_FEATURE_METADATA_KEYS,
     VISUAL_OBJECT_METADATA_KEYS,
@@ -597,13 +601,23 @@ def recommendations(
                     "benchmark cases before changing default chunking settings."
                 ),
                 commands=[
-                    (
-                        "chunking-docs sweep-chunking --package-dir outputs/package "
-                        "--cases examples/retrieval_cases.jsonl "
-                        "--output outputs/package/chunking_sweep.json"
+                    " ".join(
+                        [
+                            "chunking-docs sweep-chunking --package-dir outputs/package",
+                            "--cases examples/retrieval_cases.jsonl",
+                            "--retrieval-repeat 3",
+                            "--output outputs/package/chunking_sweep.json",
+                            *CHUNKING_SWEEP_SELECTION_ARGS,
+                        ]
                     ),
-                    "chunking-docs compare-chunking --package-dir outputs/package --candidate semantic=outputs/package/chunks.semantic.jsonl --candidate multimodal=outputs/package/chunks.multimodal.jsonl --candidate object_aware=outputs/package/chunks.object_aware.jsonl",
-                    "chunking-docs gate-chunking-comparison outputs/package/chunking_comparison.json",
+                    " ".join(
+                        [
+                            "chunking-docs gate-chunking-comparison",
+                            "outputs/package/chunking_sweep.json",
+                            "--output outputs/package/chunking_comparison_gate.json",
+                            *CHUNKING_COMPARISON_GATE_ARGS,
+                        ]
+                    ),
                     (
                         "chunking-docs apply-chunking-sweep --package-dir outputs/package "
                         "--report outputs/package/chunking_sweep.json"

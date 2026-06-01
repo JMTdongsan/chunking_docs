@@ -4125,6 +4125,16 @@ def ingestion_readiness_command(
         "--max-chunking-unstable-result-count",
         help="Limit selected chunking candidate cases with changing repeated top-k results.",
     ),
+    max_chunking_total_chunk_chars: float | None = typer.Option(
+        None,
+        "--max-chunking-total-chunk-chars",
+        help="Limit selected chunking candidate total chunk text characters.",
+    ),
+    max_chunking_embedding_text_kchars: float | None = typer.Option(
+        None,
+        "--max-chunking-embedding-text-kchars",
+        help="Limit selected chunking candidate embedding text volume in thousands of chars.",
+    ),
     min_chunking_visual_text_coverage_ratio: float | None = typer.Option(
         None,
         "--min-chunking-visual-text-coverage-ratio",
@@ -4569,6 +4579,8 @@ def ingestion_readiness_command(
             "max_p95_target_rank": max_chunking_p95_target_rank,
             "min_result_stability_rate": min_chunking_result_stability_rate,
             "max_unstable_result_count": max_chunking_unstable_result_count,
+            "max_total_chunk_chars": max_chunking_total_chunk_chars,
+            "max_embedding_text_kchars": max_chunking_embedding_text_kchars,
             "min_visual_text_coverage_ratio": min_chunking_visual_text_coverage_ratio,
             "min_visual_text_part_coverage_ratio": min_chunking_visual_text_part_coverage_ratio,
             "min_retrieval_score_per_embedding_kchar": (
