@@ -35,6 +35,8 @@ def test_gate_chunking_comparison_passes_selected_candidate_against_baseline():
         min_target_type_coverage={"asset": 0.8},
         min_source_target_coverage={"bm25": 0.8},
         min_source_family_target_coverage={"lexical": 0.8},
+        min_source_precision_at_hits={"bm25": 0.6},
+        min_source_family_precision_at_hits={"lexical": 0.6},
         min_chunk_strategy_target_coverage={"visual_asset_text": 0.8},
         min_retrieval_role_target_coverage={"child": 0.8},
         min_case_group_target_coverage={"case_source:visual_lexical_probe": 0.8},
@@ -43,6 +45,12 @@ def test_gate_chunking_comparison_passes_selected_candidate_against_baseline():
         },
         min_case_group_source_family_target_coverage={
             "case_source:visual_lexical_probe:lexical": 0.8
+        },
+        min_case_group_source_precision_at_hits={
+            "case_source:visual_lexical_probe:bm25": 0.6
+        },
+        min_case_group_source_family_precision_at_hits={
+            "case_source:visual_lexical_probe:lexical": 0.6
         },
         max_failed_queries=0,
         max_total_chunk_chars=2000,
@@ -81,7 +89,9 @@ def test_gate_chunking_comparison_passes_selected_candidate_against_baseline():
     assert report.metrics["visual_text_part_coverage_ratio"] == 0.9
     assert report.metrics["target_type.asset.coverage_at_k"] == 0.85
     assert report.metrics["source.bm25.target_coverage_at_k"] == 0.9
+    assert report.metrics["source.bm25.precision_at_hits"] == 0.65
     assert report.metrics["source_family.lexical.target_coverage_at_k"] == 0.9
+    assert report.metrics["source_family.lexical.precision_at_hits"] == 0.65
     assert report.metrics["chunk_strategy.visual_asset_text.target_coverage_at_k"] == 0.9
     assert report.metrics["retrieval_role.child.target_coverage_at_k"] == 0.9
     assert report.metrics["case_group.case_source.visual_lexical_probe.target_coverage_at_k"] == 0.9
@@ -93,13 +103,27 @@ def test_gate_chunking_comparison_passes_selected_candidate_against_baseline():
     )
     assert (
         report.metrics[
+            "case_group_source.case_source.visual_lexical_probe.bm25.precision_at_hits"
+        ]
+        == 0.65
+    )
+    assert (
+        report.metrics[
             "case_group_source_family.case_source.visual_lexical_probe.lexical.target_coverage_at_k"
         ]
         == 0.9
     )
+    assert (
+        report.metrics[
+            "case_group_source_family.case_source.visual_lexical_probe.lexical.precision_at_hits"
+        ]
+        == 0.65
+    )
     assert report.target_metrics["asset"]["coverage_at_k"] == 0.85
     assert report.source_metrics["bm25"]["target_coverage_at_k"] == 0.9
+    assert report.source_metrics["bm25"]["precision_at_hits"] == 0.65
     assert report.source_family_metrics["lexical"]["target_coverage_at_k"] == 0.9
+    assert report.source_family_metrics["lexical"]["precision_at_hits"] == 0.65
     assert report.chunk_strategy_metrics["visual_asset_text"]["target_coverage_at_k"] == 0.9
     assert report.retrieval_role_metrics["child"]["target_coverage_at_k"] == 0.9
     assert report.case_group_metrics["case_source"]["visual_lexical_probe"][
@@ -108,9 +132,15 @@ def test_gate_chunking_comparison_passes_selected_candidate_against_baseline():
     assert report.case_group_source_metrics["case_source"]["visual_lexical_probe"][
         "bm25"
     ]["target_coverage_at_k"] == 0.9
+    assert report.case_group_source_metrics["case_source"]["visual_lexical_probe"][
+        "bm25"
+    ]["precision_at_hits"] == 0.65
     assert report.case_group_source_family_metrics["case_source"][
         "visual_lexical_probe"
     ]["lexical"]["target_coverage_at_k"] == 0.9
+    assert report.case_group_source_family_metrics["case_source"][
+        "visual_lexical_probe"
+    ]["lexical"]["precision_at_hits"] == 0.65
 
 
 def test_gate_chunking_comparison_flags_retrieval_regressions():
@@ -131,6 +161,8 @@ def test_gate_chunking_comparison_flags_retrieval_regressions():
         min_target_type_coverage={"asset": 0.8},
         min_source_target_coverage={"bm25": 0.8},
         min_source_family_target_coverage={"lexical": 0.8},
+        min_source_precision_at_hits={"bm25": 0.6},
+        min_source_family_precision_at_hits={"lexical": 0.6},
         min_chunk_strategy_target_coverage={"visual_asset_text": 0.8},
         min_retrieval_role_target_coverage={"child": 0.8},
         min_case_group_target_coverage={"case_source:visual_lexical_probe": 0.8},
@@ -139,6 +171,12 @@ def test_gate_chunking_comparison_flags_retrieval_regressions():
         },
         min_case_group_source_family_target_coverage={
             "case_source:visual_lexical_probe:lexical": 0.8
+        },
+        min_case_group_source_precision_at_hits={
+            "case_source:visual_lexical_probe:bm25": 0.6
+        },
+        min_case_group_source_family_precision_at_hits={
+            "case_source:visual_lexical_probe:lexical": 0.6
         },
         max_failed_queries=0,
         max_total_chunk_chars=2000,
@@ -167,6 +205,8 @@ def test_gate_chunking_comparison_flags_retrieval_regressions():
     assert "min_target_type_coverage:asset" in report.failed_checks
     assert "min_source_target_coverage:bm25" in report.failed_checks
     assert "min_source_family_target_coverage:lexical" in report.failed_checks
+    assert "min_source_precision_at_hits:bm25" in report.failed_checks
+    assert "min_source_family_precision_at_hits:lexical" in report.failed_checks
     assert "min_chunk_strategy_target_coverage:visual_asset_text" in report.failed_checks
     assert "min_retrieval_role_target_coverage:child" in report.failed_checks
     assert (
@@ -179,6 +219,15 @@ def test_gate_chunking_comparison_flags_retrieval_regressions():
     )
     assert (
         "min_case_group_source_family_target_coverage:"
+        "case_source:visual_lexical_probe:lexical"
+        in report.failed_checks
+    )
+    assert (
+        "min_case_group_source_precision_at_hits:case_source:visual_lexical_probe:bm25"
+        in report.failed_checks
+    )
+    assert (
+        "min_case_group_source_family_precision_at_hits:"
         "case_source:visual_lexical_probe:lexical"
         in report.failed_checks
     )
@@ -308,12 +357,16 @@ def test_gate_chunking_comparison_cli_writes_json_and_fails(tmp_path):
             "asset=0.8",
             "--min-source-target-coverage",
             "bm25=0.8",
+            "--min-source-precision-at-hits",
+            "bm25=0.6",
             "--min-visual-text-coverage-ratio",
             "0.8",
             "--min-visual-text-part-coverage-ratio",
             "0.8",
             "--min-source-family-target-coverage",
             "lexical=0.8",
+            "--min-source-family-precision-at-hits",
+            "lexical=0.6",
             "--min-chunk-strategy-target-coverage",
             "visual_asset_text=0.8",
             "--min-retrieval-role-target-coverage",
@@ -324,6 +377,10 @@ def test_gate_chunking_comparison_cli_writes_json_and_fails(tmp_path):
             "case_source:visual_lexical_probe:bm25=0.8",
             "--min-case-group-source-family-target-coverage",
             "case_source:visual_lexical_probe:lexical=0.8",
+            "--min-case-group-source-precision-at-hits",
+            "case_source:visual_lexical_probe:bm25=0.6",
+            "--min-case-group-source-family-precision-at-hits",
+            "case_source:visual_lexical_probe:lexical=0.6",
             "--max-recall-drop",
             "0.1",
             "--min-pairwise-win-rate",
@@ -354,6 +411,8 @@ def test_gate_chunking_comparison_cli_writes_json_and_fails(tmp_path):
     assert "min_target_type_coverage:asset" in payload["failed_checks"]
     assert "min_source_target_coverage:bm25" in payload["failed_checks"]
     assert "min_source_family_target_coverage:lexical" in payload["failed_checks"]
+    assert "min_source_precision_at_hits:bm25" in payload["failed_checks"]
+    assert "min_source_family_precision_at_hits:lexical" in payload["failed_checks"]
     assert "min_chunk_strategy_target_coverage:visual_asset_text" in payload["failed_checks"]
     assert "min_retrieval_role_target_coverage:child" in payload["failed_checks"]
     assert (
@@ -369,9 +428,20 @@ def test_gate_chunking_comparison_cli_writes_json_and_fails(tmp_path):
         "case_source:visual_lexical_probe:lexical"
         in payload["failed_checks"]
     )
+    assert (
+        "min_case_group_source_precision_at_hits:case_source:visual_lexical_probe:bm25"
+        in payload["failed_checks"]
+    )
+    assert (
+        "min_case_group_source_family_precision_at_hits:"
+        "case_source:visual_lexical_probe:lexical"
+        in payload["failed_checks"]
+    )
     assert payload["target_metrics"]["asset"]["coverage_at_k"] == 0.2
     assert payload["source_metrics"]["bm25"]["target_coverage_at_k"] == 0.1
+    assert payload["source_metrics"]["bm25"]["precision_at_hits"] == 0.05
     assert payload["source_family_metrics"]["lexical"]["target_coverage_at_k"] == 0.1
+    assert payload["source_family_metrics"]["lexical"]["precision_at_hits"] == 0.05
     assert payload["chunk_strategy_metrics"]["visual_asset_text"]["target_coverage_at_k"] == 0.2
     assert payload["retrieval_role_metrics"]["child"]["target_coverage_at_k"] == 0.1
     assert payload["case_group_metrics"]["case_source"]["visual_lexical_probe"][
@@ -380,9 +450,15 @@ def test_gate_chunking_comparison_cli_writes_json_and_fails(tmp_path):
     assert payload["case_group_source_metrics"]["case_source"]["visual_lexical_probe"][
         "bm25"
     ]["target_coverage_at_k"] == 0.2
+    assert payload["case_group_source_metrics"]["case_source"]["visual_lexical_probe"][
+        "bm25"
+    ]["precision_at_hits"] == 0.05
     assert payload["case_group_source_family_metrics"]["case_source"][
         "visual_lexical_probe"
     ]["lexical"]["target_coverage_at_k"] == 0.2
+    assert payload["case_group_source_family_metrics"]["case_source"][
+        "visual_lexical_probe"
+    ]["lexical"]["precision_at_hits"] == 0.05
     assert "max_recall_at_k_drop" in payload["failed_checks"]
     assert "min_pairwise_win_rate" in payload["failed_checks"]
     assert "min_pairwise_target_coverage_ci_low" in payload["failed_checks"]
@@ -406,8 +482,12 @@ def comparison_report() -> ChunkingComparison:
                 mean_target_rank=1.0,
                 failed_queries=[],
                 target_metrics={"asset": {"coverage_at_k": 0.85}},
-                source_metrics={"bm25": {"target_coverage_at_k": 0.9}},
-                source_family_metrics={"lexical": {"target_coverage_at_k": 0.9}},
+                source_metrics={
+                    "bm25": {"target_coverage_at_k": 0.9, "precision_at_hits": 0.65}
+                },
+                source_family_metrics={
+                    "lexical": {"target_coverage_at_k": 0.9, "precision_at_hits": 0.65}
+                },
                 chunk_strategy_metrics={"visual_asset_text": {"target_coverage_at_k": 0.9}},
                 retrieval_role_metrics={"child": {"target_coverage_at_k": 0.9}},
                 case_group_metrics={
@@ -416,14 +496,20 @@ def comparison_report() -> ChunkingComparison:
                 case_group_source_metrics={
                     "case_source": {
                         "visual_lexical_probe": {
-                            "bm25": {"target_coverage_at_k": 0.9}
+                            "bm25": {
+                                "target_coverage_at_k": 0.9,
+                                "precision_at_hits": 0.65,
+                            }
                         }
                     }
                 },
                 case_group_source_family_metrics={
                     "case_source": {
                         "visual_lexical_probe": {
-                            "lexical": {"target_coverage_at_k": 0.9}
+                            "lexical": {
+                                "target_coverage_at_k": 0.9,
+                                "precision_at_hits": 0.65,
+                            }
                         }
                     }
                 },
@@ -442,8 +528,12 @@ def comparison_report() -> ChunkingComparison:
                 mean_target_rank=6.0,
                 failed_queries=["missing target"],
                 target_metrics={"asset": {"coverage_at_k": 0.2}},
-                source_metrics={"bm25": {"target_coverage_at_k": 0.1}},
-                source_family_metrics={"lexical": {"target_coverage_at_k": 0.1}},
+                source_metrics={
+                    "bm25": {"target_coverage_at_k": 0.1, "precision_at_hits": 0.05}
+                },
+                source_family_metrics={
+                    "lexical": {"target_coverage_at_k": 0.1, "precision_at_hits": 0.05}
+                },
                 chunk_strategy_metrics={"visual_asset_text": {"target_coverage_at_k": 0.2}},
                 retrieval_role_metrics={"child": {"target_coverage_at_k": 0.1}},
                 case_group_metrics={
@@ -452,14 +542,20 @@ def comparison_report() -> ChunkingComparison:
                 case_group_source_metrics={
                     "case_source": {
                         "visual_lexical_probe": {
-                            "bm25": {"target_coverage_at_k": 0.2}
+                            "bm25": {
+                                "target_coverage_at_k": 0.2,
+                                "precision_at_hits": 0.05,
+                            }
                         }
                     }
                 },
                 case_group_source_family_metrics={
                     "case_source": {
                         "visual_lexical_probe": {
-                            "lexical": {"target_coverage_at_k": 0.2}
+                            "lexical": {
+                                "target_coverage_at_k": 0.2,
+                                "precision_at_hits": 0.05,
+                            }
                         }
                     }
                 },

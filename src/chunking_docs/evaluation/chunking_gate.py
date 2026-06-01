@@ -110,11 +110,15 @@ def gate_chunking_comparison(
     min_target_type_coverage: dict[str, float] | None = None,
     min_source_target_coverage: dict[str, float] | None = None,
     min_source_family_target_coverage: dict[str, float] | None = None,
+    min_source_precision_at_hits: dict[str, float] | None = None,
+    min_source_family_precision_at_hits: dict[str, float] | None = None,
     min_chunk_strategy_target_coverage: dict[str, float] | None = None,
     min_retrieval_role_target_coverage: dict[str, float] | None = None,
     min_case_group_target_coverage: dict[str, float] | None = None,
     min_case_group_source_target_coverage: dict[str, float] | None = None,
     min_case_group_source_family_target_coverage: dict[str, float] | None = None,
+    min_case_group_source_precision_at_hits: dict[str, float] | None = None,
+    min_case_group_source_family_precision_at_hits: dict[str, float] | None = None,
     max_quality_drop: float | None = None,
     max_recall_drop: float | None = None,
     max_target_coverage_drop: float | None = None,
@@ -387,6 +391,20 @@ def gate_chunking_comparison(
         )
     )
     checks.extend(
+        source_precision_at_hits_checks(
+            selected_name,
+            metrics,
+            min_source_precision_at_hits or {},
+        )
+    )
+    checks.extend(
+        source_family_precision_at_hits_checks(
+            selected_name,
+            metrics,
+            min_source_family_precision_at_hits or {},
+        )
+    )
+    checks.extend(
         grouped_target_coverage_checks(
             selected_name,
             metrics,
@@ -424,6 +442,22 @@ def gate_chunking_comparison(
             selected_name,
             metrics,
             min_case_group_source_family_target_coverage or {},
+            family=True,
+        )
+    )
+    checks.extend(
+        case_group_source_precision_at_hits_checks(
+            selected_name,
+            metrics,
+            min_case_group_source_precision_at_hits or {},
+            family=False,
+        )
+    )
+    checks.extend(
+        case_group_source_precision_at_hits_checks(
+            selected_name,
+            metrics,
+            min_case_group_source_family_precision_at_hits or {},
             family=True,
         )
     )
@@ -885,6 +919,50 @@ def source_target_coverage_checks(
     return checks
 
 
+def source_precision_at_hits_checks(
+    candidate: str,
+    metrics: dict[str, float | None],
+    thresholds: dict[str, float],
+) -> list[ChunkingComparisonGateCheck]:
+    checks = []
+    for source, threshold in sorted(thresholds.items()):
+        normalized_source = source.strip().lower()
+        metric = source_metric_key(normalized_source, "precision_at_hits")
+        metrics.setdefault(metric, 0.0)
+        checks.append(
+            minimum_check(
+                f"min_source_precision_at_hits:{normalized_source}",
+                candidate,
+                metric,
+                metrics,
+                threshold,
+            )
+        )
+    return checks
+
+
+def source_family_precision_at_hits_checks(
+    candidate: str,
+    metrics: dict[str, float | None],
+    thresholds: dict[str, float],
+) -> list[ChunkingComparisonGateCheck]:
+    checks = []
+    for family, threshold in sorted(thresholds.items()):
+        normalized_family = family.strip().lower()
+        metric = source_family_metric_key(normalized_family, "precision_at_hits")
+        metrics.setdefault(metric, 0.0)
+        checks.append(
+            minimum_check(
+                f"min_source_family_precision_at_hits:{normalized_family}",
+                candidate,
+                metric,
+                metrics,
+                threshold,
+            )
+        )
+    return checks
+
+
 def case_group_source_target_coverage_checks(
     candidate: str,
     metrics: dict[str, float | None],
@@ -905,6 +983,39 @@ def case_group_source_target_coverage_checks(
             "min_case_group_source_family_target_coverage"
             if family
             else "min_case_group_source_target_coverage"
+        )
+        checks.append(
+            minimum_check(
+                f"{check_prefix}:{group_name}:{group_value}:{source}",
+                candidate,
+                metric,
+                metrics,
+                threshold,
+            )
+        )
+    return checks
+
+
+def case_group_source_precision_at_hits_checks(
+    candidate: str,
+    metrics: dict[str, float | None],
+    thresholds: dict[str, float],
+    family: bool = False,
+) -> list[ChunkingComparisonGateCheck]:
+    checks = []
+    for spec, threshold in sorted(thresholds.items()):
+        group_name, group_value, source = parse_case_group_source_spec(spec)
+        metric_key_fn = (
+            case_group_source_family_metric_key
+            if family
+            else case_group_source_metric_key
+        )
+        metric = metric_key_fn(group_name, group_value, source, "precision_at_hits")
+        metrics.setdefault(metric, 0.0)
+        check_prefix = (
+            "min_case_group_source_family_precision_at_hits"
+            if family
+            else "min_case_group_source_precision_at_hits"
         )
         checks.append(
             minimum_check(

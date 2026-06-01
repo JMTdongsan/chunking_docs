@@ -7406,6 +7406,22 @@ def gate_chunking_comparison_command(
         "--min-source-target-coverage",
         help="Require exact retrieval-source target coverage such as bm25=0.8 or qdrant:caption_dense=0.8.",
     ),
+    min_source_precision_at_hits: list[str] = typer.Option(
+        None,
+        "--min-source-precision-at-hits",
+        help=(
+            "Require selected chunking candidate exact-source relevant-hit precision "
+            "such as qdrant:caption_dense=0.2."
+        ),
+    ),
+    min_source_family_precision_at_hits: list[str] = typer.Option(
+        None,
+        "--min-source-family-precision-at-hits",
+        help=(
+            "Require selected chunking candidate source-family relevant-hit precision "
+            "such as visual=0.2."
+        ),
+    ),
     min_chunk_strategy_target_coverage: list[str] = typer.Option(
         None,
         "--min-chunk-strategy-target-coverage",
@@ -7435,6 +7451,22 @@ def gate_chunking_comparison_command(
         help=(
             "Require source-family target coverage inside a case metadata group, "
             "such as case_source:visual_lexical_probe:lexical=0.8."
+        ),
+    ),
+    min_case_group_source_precision_at_hits: list[str] = typer.Option(
+        None,
+        "--min-case-group-source-precision-at-hits",
+        help=(
+            "Require exact-source relevant-hit precision inside a case metadata group, "
+            "such as case_source:visual_object_probe:qdrant:object_dense=0.2."
+        ),
+    ),
+    min_case_group_source_family_precision_at_hits: list[str] = typer.Option(
+        None,
+        "--min-case-group-source-family-precision-at-hits",
+        help=(
+            "Require source-family relevant-hit precision inside a case metadata group, "
+            "such as case_source:visual_object_probe:visual=0.2."
         ),
     ),
     max_quality_drop: float | None = None,
@@ -7479,6 +7511,14 @@ def gate_chunking_comparison_command(
         min_source_target_coverage,
         "source target coverage",
     )
+    source_precision_thresholds = parse_named_float_thresholds(
+        min_source_precision_at_hits,
+        "source precision at hits",
+    )
+    source_family_precision_thresholds = parse_named_float_thresholds(
+        min_source_family_precision_at_hits,
+        "source family precision at hits",
+    )
     chunk_strategy_thresholds = parse_named_float_thresholds(
         min_chunk_strategy_target_coverage,
         "chunk strategy target coverage",
@@ -7498,6 +7538,14 @@ def gate_chunking_comparison_command(
     case_group_source_family_thresholds = parse_named_float_thresholds(
         min_case_group_source_family_target_coverage,
         "case group source family target coverage",
+    )
+    case_group_source_precision_thresholds = parse_named_float_thresholds(
+        min_case_group_source_precision_at_hits,
+        "case group source precision at hits",
+    )
+    case_group_source_family_precision_thresholds = parse_named_float_thresholds(
+        min_case_group_source_family_precision_at_hits,
+        "case group source family precision at hits",
     )
     report = gate_chunking_comparison(
         parsed_comparison,
@@ -7545,11 +7593,17 @@ def gate_chunking_comparison_command(
         min_target_type_coverage=target_type_thresholds,
         min_source_target_coverage=source_thresholds,
         min_source_family_target_coverage=source_family_thresholds,
+        min_source_precision_at_hits=source_precision_thresholds,
+        min_source_family_precision_at_hits=source_family_precision_thresholds,
         min_chunk_strategy_target_coverage=chunk_strategy_thresholds,
         min_retrieval_role_target_coverage=retrieval_role_thresholds,
         min_case_group_target_coverage=case_group_thresholds,
         min_case_group_source_target_coverage=case_group_source_thresholds,
         min_case_group_source_family_target_coverage=case_group_source_family_thresholds,
+        min_case_group_source_precision_at_hits=case_group_source_precision_thresholds,
+        min_case_group_source_family_precision_at_hits=(
+            case_group_source_family_precision_thresholds
+        ),
         max_quality_drop=max_quality_drop,
         max_recall_drop=max_recall_drop,
         max_target_coverage_drop=max_target_coverage_drop,
