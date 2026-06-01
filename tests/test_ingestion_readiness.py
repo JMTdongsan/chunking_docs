@@ -21,6 +21,11 @@ from chunking_docs.evaluation.compare import (
     ChunkingComparisonRow,
     ChunkingPairwiseComparison,
 )
+from chunking_docs.evaluation.context_quality import (
+    RAGContextCaseGroupMetric,
+    RAGContextEvaluation,
+    RAGContextTargetMetric,
+)
 from chunking_docs.evaluation.readiness import build_ingestion_readiness_report, chunks_with_linked_asset_text
 from chunking_docs.evaluation.retrieval import (
     RetrievalCase,
@@ -721,6 +726,53 @@ def test_ingestion_readiness_requires_qdrant_vector_ablation(tmp_path):
 
     assert report.passed is False
     assert "qdrant_vector_ablation_gate" in report.failed_components
+
+
+def test_ingestion_readiness_includes_rag_context_gate(tmp_path):
+    package_dir, manifest = write_ready_package(tmp_path)
+
+    report = build_ingestion_readiness_report(
+        package_dir,
+        manifest,
+        rag_context_evaluation=readiness_rag_context_evaluation(),
+        rag_context_gate_options={
+            "min_case_count": 2,
+            "min_expected_target_count": 2,
+            "min_target_coverage": 0.9,
+            "max_excluded_target_hit_rate": 0.0,
+            "max_mean_context_char_count": 9000,
+            "min_target_type_coverage": {"asset": 1.0},
+            "min_case_group_target_coverage": {
+                "case_source:visual_object_probe": 1.0
+            },
+        },
+    )
+
+    assert report.passed is True
+    assert report.rag_context_gate is not None
+    assert report.rag_context_gate.metrics["target_coverage"] == 1.0
+    assert report.rag_context_gate.target_metrics["asset"]["coverage"] == 1.0
+    assert report.rag_context_gate.case_group_metrics["case_source"][
+        "visual_object_probe"
+    ]["target_coverage"] == 1.0
+    component = next(
+        component for component in report.components if component.name == "rag_context_gate"
+    )
+    assert component.metadata["metrics"]["mean_context_char_count"] == 4200.0
+    assert report.failed_components == []
+
+
+def test_ingestion_readiness_requires_rag_context_evaluation(tmp_path):
+    package_dir, manifest = write_ready_package(tmp_path)
+
+    report = build_ingestion_readiness_report(
+        package_dir,
+        manifest,
+        require_rag_context_evaluation=True,
+    )
+
+    assert report.passed is False
+    assert "rag_context_gate" in report.failed_components
 
 
 def test_ingestion_readiness_can_gate_retrieval_source(tmp_path):
@@ -1504,6 +1556,53 @@ def test_ingestion_readiness_cli_can_gate_qdrant_vector_ablation(tmp_path):
     ] == 1.0
 
 
+def test_ingestion_readiness_cli_can_gate_rag_context(tmp_path):
+    package_dir, _ = write_ready_package(tmp_path)
+    context_eval_path = tmp_path / "rag_context_eval.json"
+    output = tmp_path / "readiness.json"
+    context_eval_path.write_text(
+        readiness_rag_context_evaluation().model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "ingestion-readiness",
+            "--package-dir",
+            str(package_dir),
+            "--rag-context-evaluation",
+            str(context_eval_path),
+            "--min-rag-context-case-count",
+            "2",
+            "--min-rag-context-target-coverage",
+            "1.0",
+            "--min-rag-context-target-type-coverage",
+            "asset=1.0",
+            "--min-rag-context-case-group-target-coverage",
+            "case_source:visual_object_probe=1.0",
+            "--max-rag-context-excluded-target-hit-rate",
+            "0",
+            "--max-rag-context-mean-context-char-count",
+            "9000",
+            "--output",
+            str(output),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["passed"] is True
+    component = next(
+        component for component in payload["components"] if component["name"] == "rag_context_gate"
+    )
+    assert component["metadata"]["metrics"]["target_coverage"] == 1.0
+    assert component["metadata"]["target_metrics"]["asset"]["coverage"] == 1.0
+    assert component["metadata"]["case_group_metrics"]["case_source"][
+        "visual_object_probe"
+    ]["target_coverage"] == 1.0
+
+
 def test_ingestion_readiness_cli_can_gate_retrieval_ablation_lift(tmp_path):
     package_dir, _ = write_ready_package(tmp_path)
     ablation_path = tmp_path / "retrieval_ablation.json"
@@ -2020,5 +2119,57 @@ def readiness_retrieval_evaluation(target_coverage: float) -> RetrievalEvaluatio
         mean_precision_at_k=0.6,
         top_k=5,
         failed_queries=[],
+        results=[],
+    )
+
+
+def readiness_rag_context_evaluation(target_coverage: float = 1.0) -> RAGContextEvaluation:
+    return RAGContextEvaluation(
+        case_count=2,
+        expected_case_count=2,
+        passed_count=2 if target_coverage >= 1.0 else 1,
+        failed_count=0 if target_coverage >= 1.0 else 1,
+        hit_rate=1.0 if target_coverage >= 1.0 else 0.5,
+        target_coverage=target_coverage,
+        excluded_query_count=1,
+        excluded_hit_query_count=0,
+        excluded_query_hit_rate=0.0,
+        excluded_target_count=1,
+        excluded_matched_target_count=0,
+        excluded_target_hit_rate=0.0,
+        mean_latency_ms=25.0,
+        mean_context_char_count=4200.0,
+        max_context_char_count=6500,
+        mean_chunk_count=4.0,
+        mean_asset_count=1.0,
+        mean_triple_count=2.0,
+        target_metrics={
+            "asset": RAGContextTargetMetric(
+                expected_count=2,
+                passed_count=2 if target_coverage >= 1.0 else 1,
+                target_count=2,
+                matched_target_count=2 if target_coverage >= 1.0 else 1,
+                coverage=target_coverage,
+            )
+        },
+        case_group_metrics={
+            "case_source": {
+                "visual_object_probe": RAGContextCaseGroupMetric(
+                    case_count=2,
+                    expected_case_count=2,
+                    passed_count=2 if target_coverage >= 1.0 else 1,
+                    failed_count=0 if target_coverage >= 1.0 else 1,
+                    target_count=2,
+                    matched_target_count=2 if target_coverage >= 1.0 else 1,
+                    target_coverage=target_coverage,
+                    excluded_target_count=1,
+                    excluded_matched_target_count=0,
+                    excluded_target_hit_rate=0.0,
+                    mean_latency_ms=25.0,
+                    mean_context_char_count=4200.0,
+                )
+            }
+        },
+        failed_queries=[] if target_coverage >= 1.0 else ["missing visual object"],
         results=[],
     )

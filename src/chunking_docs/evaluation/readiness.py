@@ -27,6 +27,11 @@ from chunking_docs.evaluation.chunking_quality import (
     visual_text_coverage_stats,
 )
 from chunking_docs.evaluation.compare import ChunkingComparison
+from chunking_docs.evaluation.context_quality import (
+    RAGContextEvaluation,
+    RAGContextGateReport,
+    gate_rag_context_evaluation,
+)
 from chunking_docs.evaluation.gate import RetrievalGateReport, gate_retrieval_evaluation
 from chunking_docs.evaluation.retrieval import RetrievalCase, RetrievalEvaluation
 from chunking_docs.embeddings.bm25 import asset_text_parts, chunk_lexical_texts
@@ -65,6 +70,7 @@ class IngestionReadinessReport(BaseModel):
     chunking_comparison_gate: ChunkingComparisonGateReport | None = None
     retrieval_ablation_gate: RetrievalAblationGateReport | None = None
     qdrant_vector_ablation_gate: QdrantVectorAblationGateReport | None = None
+    rag_context_gate: RAGContextGateReport | None = None
     components: list[ReadinessComponent] = Field(default_factory=list)
     failed_components: list[str] = Field(default_factory=list)
 
@@ -106,6 +112,9 @@ def build_ingestion_readiness_report(
     require_qdrant_vector_ablation: bool = False,
     qdrant_vector_ablation_mode: str | None = None,
     qdrant_vector_ablation_gate_options: dict[str, Any] | None = None,
+    rag_context_evaluation: RAGContextEvaluation | None = None,
+    require_rag_context_evaluation: bool = False,
+    rag_context_gate_options: dict[str, Any] | None = None,
 ) -> IngestionReadinessReport:
     artifact_presence = package_artifact_presence(package_dir)
     audit = audit_package(
@@ -487,6 +496,34 @@ def build_ingestion_readiness_report(
             )
         )
 
+    rag_context_gate = None
+    if rag_context_evaluation is not None:
+        rag_context_gate = gate_rag_context_evaluation(
+            rag_context_evaluation,
+            **(rag_context_gate_options or {}),
+        )
+        components.append(
+            ReadinessComponent(
+                name="rag_context_gate",
+                passed=rag_context_gate.passed,
+                message="Final RAG context bundles meet configured evidence and size thresholds.",
+                metadata={
+                    "failed_checks": rag_context_gate.failed_checks,
+                    "metrics": rag_context_gate.metrics,
+                    "target_metrics": rag_context_gate.target_metrics,
+                    "case_group_metrics": rag_context_gate.case_group_metrics,
+                },
+            )
+        )
+    elif require_rag_context_evaluation:
+        components.append(
+            ReadinessComponent(
+                name="rag_context_gate",
+                passed=False,
+                message="RAG context evaluation is required but was not supplied.",
+            )
+        )
+
     failed_components = [
         component.name
         for component in components
@@ -511,6 +548,7 @@ def build_ingestion_readiness_report(
         chunking_comparison_gate=chunking_comparison_gate,
         retrieval_ablation_gate=retrieval_ablation_gate,
         qdrant_vector_ablation_gate=qdrant_vector_ablation_gate,
+        rag_context_gate=rag_context_gate,
         components=components,
         failed_components=failed_components,
     )

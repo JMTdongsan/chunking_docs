@@ -4052,6 +4052,47 @@ def ingestion_readiness_command(
         "--min-retrieval-case-group-target-coverage",
         help="Require retrieval case group target coverage such as case_source:visual_lexical_probe=0.8.",
     ),
+    rag_context_evaluation: Path | None = typer.Option(
+        None,
+        "--rag-context-evaluation",
+        help="Final RAG context evaluation JSON produced by eval-qdrant-rag-context-config.",
+    ),
+    require_rag_context_evaluation: bool = typer.Option(
+        False,
+        "--require-rag-context-evaluation",
+        help="Fail readiness when no final RAG context evaluation is supplied.",
+    ),
+    min_rag_context_case_count: int = 0,
+    min_rag_context_hit_rate: float = 0.0,
+    min_rag_context_target_coverage: float = 0.0,
+    min_rag_context_expected_case_count: int = 0,
+    min_rag_context_expected_target_count: int = 0,
+    min_rag_context_passed_case_count: int = 0,
+    max_rag_context_failed_cases: int | None = None,
+    max_rag_context_excluded_target_hit_rate: float | None = None,
+    max_rag_context_excluded_query_hit_rate: float | None = None,
+    max_rag_context_excluded_hit_query_count: int | None = None,
+    max_rag_context_mean_latency_ms: float | None = None,
+    max_rag_context_mean_context_char_count: float | None = None,
+    max_rag_context_char_count: int | None = None,
+    max_rag_context_mean_chunk_count: float | None = None,
+    max_rag_context_mean_asset_count: float | None = None,
+    max_rag_context_mean_triple_count: float | None = None,
+    min_rag_context_target_type_coverage: list[str] = typer.Option(
+        None,
+        "--min-rag-context-target-type-coverage",
+        help="Require final-context target-type coverage such as asset=1.0 or triple=1.0.",
+    ),
+    min_rag_context_case_group_target_coverage: list[str] = typer.Option(
+        None,
+        "--min-rag-context-case-group-target-coverage",
+        help="Require final-context case-group coverage such as case_source:visual_object_probe=0.8.",
+    ),
+    max_rag_context_case_group_excluded_target_hit_rate: list[str] = typer.Option(
+        None,
+        "--max-rag-context-case-group-excluded-target-hit-rate",
+        help="Limit final-context case-group hard-negative leakage such as case_source:visual_image_probe=0.0.",
+    ),
     chunking_comparison: Path | None = None,
     require_chunking_comparison: bool = False,
     chunking_candidate: str | None = None,
@@ -4247,6 +4288,11 @@ def ingestion_readiness_command(
     )
     parsed_retrieval_cases = load_retrieval_cases(retrieval_cases) if retrieval_cases else None
     parsed_retrieval = load_retrieval_evaluation(retrieval_evaluation) if retrieval_evaluation else None
+    parsed_rag_context = (
+        load_rag_context_evaluation(rag_context_evaluation)
+        if rag_context_evaluation
+        else None
+    )
     parsed_chunking_comparison = load_chunking_comparison(chunking_comparison) if chunking_comparison else None
     parsed_retrieval_ablation = (
         RetrievalAblationReport.model_validate_json(
@@ -4293,6 +4339,18 @@ def ingestion_readiness_command(
     retrieval_case_group_thresholds = parse_named_float_thresholds(
         min_retrieval_case_group_target_coverage,
         "retrieval case group target coverage",
+    )
+    rag_context_target_type_thresholds = parse_named_float_thresholds(
+        min_rag_context_target_type_coverage,
+        "RAG context target type coverage",
+    )
+    rag_context_case_group_thresholds = parse_named_float_thresholds(
+        min_rag_context_case_group_target_coverage,
+        "RAG context case group target coverage",
+    )
+    rag_context_case_group_excluded_thresholds = parse_named_float_thresholds(
+        max_rag_context_case_group_excluded_target_hit_rate,
+        "RAG context case group excluded-target hit rate",
     )
     retrieval_case_group_count_thresholds = parse_named_int_thresholds(
         min_retrieval_case_group_count,
@@ -4408,6 +4466,31 @@ def ingestion_readiness_command(
             "min_source_target_coverage": retrieval_source_thresholds,
             "min_source_family_target_coverage": retrieval_source_family_thresholds,
             "min_case_group_target_coverage": retrieval_case_group_thresholds,
+        },
+        rag_context_evaluation=parsed_rag_context,
+        require_rag_context_evaluation=require_rag_context_evaluation,
+        rag_context_gate_options={
+            "min_case_count": min_rag_context_case_count,
+            "min_expected_case_count": min_rag_context_expected_case_count,
+            "min_expected_target_count": min_rag_context_expected_target_count,
+            "min_passed_case_count": min_rag_context_passed_case_count,
+            "max_failed_case_count": max_rag_context_failed_cases,
+            "min_hit_rate": min_rag_context_hit_rate,
+            "min_target_coverage": min_rag_context_target_coverage,
+            "max_excluded_target_hit_rate": max_rag_context_excluded_target_hit_rate,
+            "max_excluded_query_hit_rate": max_rag_context_excluded_query_hit_rate,
+            "max_excluded_hit_query_count": max_rag_context_excluded_hit_query_count,
+            "max_mean_latency_ms": max_rag_context_mean_latency_ms,
+            "max_mean_context_char_count": max_rag_context_mean_context_char_count,
+            "max_context_char_count": max_rag_context_char_count,
+            "max_mean_chunk_count": max_rag_context_mean_chunk_count,
+            "max_mean_asset_count": max_rag_context_mean_asset_count,
+            "max_mean_triple_count": max_rag_context_mean_triple_count,
+            "min_target_type_coverage": rag_context_target_type_thresholds,
+            "min_case_group_target_coverage": rag_context_case_group_thresholds,
+            "max_case_group_excluded_target_hit_rate": (
+                rag_context_case_group_excluded_thresholds
+            ),
         },
         chunking_comparison=parsed_chunking_comparison,
         require_chunking_comparison=require_chunking_comparison,
