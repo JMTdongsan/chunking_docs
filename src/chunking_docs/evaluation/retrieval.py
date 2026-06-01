@@ -96,12 +96,18 @@ class RetrievalTargetMetric(BaseModel):
 class RetrievalSourceMetric(BaseModel):
     query_count: int = 0
     relevant_query_count: int = 0
+    excluded_query_count: int = 0
     hit_count: int = 0
     relevant_hit_count: int = 0
+    excluded_hit_count: int = 0
     expected_target_count: int = 0
     matched_target_count: int = 0
+    excluded_target_count: int = 0
+    excluded_matched_target_count: int = 0
     precision_at_hits: float = 0.0
+    excluded_precision_at_hits: float = 0.0
     target_coverage_at_k: float = 0.0
+    excluded_target_hit_rate: float = 0.0
     mean_relevant_rank: float = 0.0
 
 
@@ -898,26 +904,37 @@ def source_metrics(
     family: bool = False,
 ) -> dict[str, RetrievalSourceMetric]:
     total_expected_targets = sum(result.expected_target_count for result in results)
+    total_excluded_targets = sum(result.excluded_target_count for result in results)
     accumulators: dict[str, dict[str, Any]] = {}
 
     for result in results:
         sources_seen_in_query: set[str] = set()
         relevant_sources_seen_in_query: set[str] = set()
+        excluded_sources_seen_in_query: set[str] = set()
         best_rank_by_source: dict[str, int] = {}
         matched_targets_by_source: dict[str, set[str]] = {}
+        excluded_targets_by_source: dict[str, set[str]] = {}
 
         for index, raw_sources in enumerate(result.top_sources):
             rank = index + 1
             matched_targets = set(result.top_matched_targets[index]) if index < len(result.top_matched_targets) else set()
+            excluded_targets = (
+                set(result.top_excluded_targets[index])
+                if index < len(result.top_excluded_targets)
+                else set()
+            )
             for source in metric_source_keys(raw_sources, family=family):
                 accumulator = accumulators.setdefault(
                     source,
                     {
                         "query_count": 0,
                         "relevant_query_count": 0,
+                        "excluded_query_count": 0,
                         "hit_count": 0,
                         "relevant_hit_count": 0,
+                        "excluded_hit_count": 0,
                         "matched_target_count": 0,
+                        "excluded_matched_target_count": 0,
                         "rank_sum": 0,
                         "rank_count": 0,
                     },
@@ -929,6 +946,10 @@ def source_metrics(
                     relevant_sources_seen_in_query.add(source)
                     best_rank_by_source[source] = min(best_rank_by_source.get(source, rank), rank)
                     matched_targets_by_source.setdefault(source, set()).update(matched_targets)
+                if excluded_targets:
+                    accumulator["excluded_hit_count"] += 1
+                    excluded_sources_seen_in_query.add(source)
+                    excluded_targets_by_source.setdefault(source, set()).update(excluded_targets)
 
         for source in sources_seen_in_query:
             accumulators[source]["query_count"] += 1
@@ -936,22 +957,37 @@ def source_metrics(
             accumulators[source]["relevant_query_count"] += 1
             accumulators[source]["rank_sum"] += best_rank_by_source[source]
             accumulators[source]["rank_count"] += 1
+        for source in excluded_sources_seen_in_query:
+            accumulators[source]["excluded_query_count"] += 1
         for source, matched_targets in matched_targets_by_source.items():
             accumulators[source]["matched_target_count"] += len(matched_targets)
+        for source, excluded_targets in excluded_targets_by_source.items():
+            accumulators[source]["excluded_matched_target_count"] += len(excluded_targets)
 
     return {
         source: RetrievalSourceMetric(
             query_count=values["query_count"],
             relevant_query_count=values["relevant_query_count"],
+            excluded_query_count=values["excluded_query_count"],
             hit_count=values["hit_count"],
             relevant_hit_count=values["relevant_hit_count"],
+            excluded_hit_count=values["excluded_hit_count"],
             expected_target_count=total_expected_targets,
             matched_target_count=values["matched_target_count"],
+            excluded_target_count=total_excluded_targets,
+            excluded_matched_target_count=values["excluded_matched_target_count"],
             precision_at_hits=values["relevant_hit_count"] / values["hit_count"]
+            if values["hit_count"]
+            else 0.0,
+            excluded_precision_at_hits=values["excluded_hit_count"] / values["hit_count"]
             if values["hit_count"]
             else 0.0,
             target_coverage_at_k=values["matched_target_count"] / total_expected_targets
             if total_expected_targets
+            else 0.0,
+            excluded_target_hit_rate=values["excluded_matched_target_count"]
+            / total_excluded_targets
+            if total_excluded_targets
             else 0.0,
             mean_relevant_rank=values["rank_sum"] / values["rank_count"]
             if values["rank_count"]

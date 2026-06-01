@@ -1374,6 +1374,13 @@ def test_evaluate_search_results_reports_excluded_target_hits():
     assert result.excluded_target_count == 3
     assert result.excluded_matched_target_count == 3
     assert result.excluded_target_hit_rate == 1.0
+    assert result.source_metrics["test"].excluded_query_count == 1
+    assert result.source_metrics["test"].excluded_hit_count == 1
+    assert result.source_metrics["test"].excluded_target_count == 3
+    assert result.source_metrics["test"].excluded_matched_target_count == 3
+    assert result.source_metrics["test"].excluded_precision_at_hits == 0.5
+    assert result.source_metrics["test"].excluded_target_hit_rate == 1.0
+    assert result.source_family_metrics["test"].excluded_target_hit_rate == 1.0
     assert result.failed_queries == ["hard negative target"]
     assert result.case_group_metrics["graph_expand"]["false"].recall_at_k == 1.0
     assert result.case_group_metrics["graph_expand"]["false"].passed_count == 0

@@ -60,6 +60,8 @@ def gate_retrieval_evaluation(
     min_target_type_coverage: dict[str, float] | None = None,
     min_source_target_coverage: dict[str, float] | None = None,
     min_source_family_target_coverage: dict[str, float] | None = None,
+    max_source_excluded_target_hit_rate: dict[str, float] | None = None,
+    max_source_family_excluded_target_hit_rate: dict[str, float] | None = None,
     min_chunk_strategy_target_coverage: dict[str, float] | None = None,
     min_retrieval_role_target_coverage: dict[str, float] | None = None,
     min_case_group_target_coverage: dict[str, float] | None = None,
@@ -229,6 +231,18 @@ def gate_retrieval_evaluation(
         source_family_target_coverage_checks(
             metrics,
             min_source_family_target_coverage or {},
+        )
+    )
+    checks.extend(
+        source_excluded_target_hit_rate_checks(
+            metrics,
+            max_source_excluded_target_hit_rate or {},
+        )
+    )
+    checks.extend(
+        source_family_excluded_target_hit_rate_checks(
+            metrics,
+            max_source_family_excluded_target_hit_rate or {},
         )
     )
     checks.extend(
@@ -457,12 +471,18 @@ def retrieval_source_metrics(
         source.strip().lower(): {
             "query_count": float(metric.query_count),
             "relevant_query_count": float(metric.relevant_query_count),
+            "excluded_query_count": float(metric.excluded_query_count),
             "hit_count": float(metric.hit_count),
             "relevant_hit_count": float(metric.relevant_hit_count),
+            "excluded_hit_count": float(metric.excluded_hit_count),
             "expected_target_count": float(metric.expected_target_count),
             "matched_target_count": float(metric.matched_target_count),
+            "excluded_target_count": float(metric.excluded_target_count),
+            "excluded_matched_target_count": float(metric.excluded_matched_target_count),
             "precision_at_hits": metric.precision_at_hits,
+            "excluded_precision_at_hits": metric.excluded_precision_at_hits,
             "target_coverage_at_k": metric.target_coverage_at_k,
+            "excluded_target_hit_rate": metric.excluded_target_hit_rate,
             "mean_relevant_rank": metric.mean_relevant_rank,
         }
         for source, metric in sorted(evaluation.source_metrics.items())
@@ -478,12 +498,18 @@ def retrieval_source_family_metrics(
         family: {
             "query_count": float(metric.query_count),
             "relevant_query_count": float(metric.relevant_query_count),
+            "excluded_query_count": float(metric.excluded_query_count),
             "hit_count": float(metric.hit_count),
             "relevant_hit_count": float(metric.relevant_hit_count),
+            "excluded_hit_count": float(metric.excluded_hit_count),
             "expected_target_count": float(metric.expected_target_count),
             "matched_target_count": float(metric.matched_target_count),
+            "excluded_target_count": float(metric.excluded_target_count),
+            "excluded_matched_target_count": float(metric.excluded_matched_target_count),
             "precision_at_hits": metric.precision_at_hits,
+            "excluded_precision_at_hits": metric.excluded_precision_at_hits,
             "target_coverage_at_k": metric.target_coverage_at_k,
+            "excluded_target_hit_rate": metric.excluded_target_hit_rate,
             "mean_relevant_rank": metric.mean_relevant_rank,
         }
         for family, metric in sorted(evaluation.source_family_metrics.items())
@@ -606,6 +632,46 @@ def source_target_coverage_checks(
         checks.append(
             minimum_check(
                 f"min_source_target_coverage:{normalized_source}",
+                metric,
+                metrics,
+                threshold,
+            )
+        )
+    return checks
+
+
+def source_excluded_target_hit_rate_checks(
+    metrics: dict[str, float],
+    thresholds: dict[str, float],
+) -> list[RetrievalGateCheck]:
+    checks = []
+    for source, threshold in sorted(thresholds.items()):
+        normalized_source = source.strip().lower()
+        metric = source_metric_key(normalized_source, "excluded_target_hit_rate")
+        metrics.setdefault(metric, 0.0)
+        checks.append(
+            maximum_check(
+                f"max_source_excluded_target_hit_rate:{normalized_source}",
+                metric,
+                metrics,
+                threshold,
+            )
+        )
+    return checks
+
+
+def source_family_excluded_target_hit_rate_checks(
+    metrics: dict[str, float],
+    thresholds: dict[str, float],
+) -> list[RetrievalGateCheck]:
+    checks = []
+    for family, threshold in sorted(thresholds.items()):
+        normalized_family = family.strip().lower()
+        metric = source_family_metric_key(normalized_family, "excluded_target_hit_rate")
+        metrics.setdefault(metric, 0.0)
+        checks.append(
+            maximum_check(
+                f"max_source_family_excluded_target_hit_rate:{normalized_family}",
                 metric,
                 metrics,
                 threshold,

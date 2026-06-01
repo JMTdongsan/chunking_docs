@@ -26,6 +26,8 @@ def make_evaluation(
     target_type_coverage: dict[str, float] | None = None,
     source_coverage: dict[str, float] | None = None,
     source_family_coverage: dict[str, float] | None = None,
+    source_excluded_hit_rate: dict[str, float] | None = None,
+    source_family_excluded_hit_rate: dict[str, float] | None = None,
     chunk_strategy_coverage: dict[str, float] | None = None,
     retrieval_role_coverage: dict[str, float] | None = None,
     case_group_coverage: dict[str, dict[str, float]] | None = None,
@@ -65,11 +67,19 @@ def make_evaluation(
             for target_type, coverage in (target_type_coverage or {}).items()
         },
         source_metrics={
-            source: source_family_metric(coverage)
+            source: source_family_metric(
+                coverage,
+                excluded_target_hit_rate=(source_excluded_hit_rate or {}).get(source, 0.0),
+            )
             for source, coverage in (source_coverage or {}).items()
         },
         source_family_metrics={
-            family: source_family_metric(coverage)
+            family: source_family_metric(
+                coverage,
+                excluded_target_hit_rate=(source_family_excluded_hit_rate or {}).get(
+                    family, 0.0
+                ),
+            )
             for family, coverage in (source_family_coverage or {}).items()
         },
         chunk_strategy_metrics={
@@ -275,6 +285,37 @@ def test_retrieval_gate_checks_exact_source_target_coverage():
     assert failed.failed_checks == ["min_source_target_coverage:qdrant:image_dense"]
 
 
+def test_retrieval_gate_checks_source_excluded_target_hit_rate():
+    evaluation = make_evaluation(
+        source_coverage={"qdrant:image_dense": 0.8, "bm25": 1.0},
+        source_family_coverage={"visual": 0.8, "lexical": 1.0},
+        source_excluded_hit_rate={"qdrant:image_dense": 0.25, "bm25": 0.0},
+        source_family_excluded_hit_rate={"visual": 0.25, "lexical": 0.0},
+    )
+
+    report = gate_retrieval_evaluation(
+        evaluation,
+        max_source_excluded_target_hit_rate={"bm25": 0.0},
+        max_source_family_excluded_target_hit_rate={"lexical": 0.0},
+    )
+
+    assert report.passed is True
+    assert report.metrics["source.qdrant:image_dense.excluded_target_hit_rate"] == 0.25
+    assert report.source_family_metrics["visual"]["excluded_target_hit_rate"] == 0.25
+
+    failed = gate_retrieval_evaluation(
+        evaluation,
+        max_source_excluded_target_hit_rate={"qdrant:image_dense": 0.0},
+        max_source_family_excluded_target_hit_rate={"visual": 0.0},
+    )
+
+    assert failed.passed is False
+    assert failed.failed_checks == [
+        "max_source_excluded_target_hit_rate:qdrant:image_dense",
+        "max_source_family_excluded_target_hit_rate:visual",
+    ]
+
+
 def test_retrieval_gate_checks_chunk_strategy_and_role_coverage():
     evaluation = make_evaluation(
         chunk_strategy_coverage={"visual_asset_text": 1.0, "hierarchical_child": 0.75},
@@ -468,6 +509,42 @@ def test_gate_retrieval_cli_checks_exact_source_target_coverage(tmp_path):
     assert "min_source_target_coverage:qdrant:image_dense" in result.output
     payload = output.read_text(encoding="utf-8")
     assert "source.qdrant:image_dense.target_coverage_at_k" in payload
+
+
+def test_gate_retrieval_cli_checks_source_excluded_target_hit_rate(tmp_path):
+    evaluation_path = tmp_path / "retrieval_eval.json"
+    output = tmp_path / "retrieval_gate.json"
+    evaluation_path.write_text(
+        make_evaluation(
+            source_coverage={"qdrant:image_dense": 0.8},
+            source_family_coverage={"visual": 0.8},
+            source_excluded_hit_rate={"qdrant:image_dense": 0.5},
+            source_family_excluded_hit_rate={"visual": 0.5},
+        ).model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "gate-retrieval",
+            str(evaluation_path),
+            "--max-source-excluded-target-hit-rate",
+            "qdrant:image_dense=0.0",
+            "--max-source-family-excluded-target-hit-rate",
+            "visual=0.0",
+            "--output",
+            str(output),
+            "--no-fail",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "max_source_excluded_target_hit_rate:qdrant:image_dense" in result.output
+    assert "max_source_family_excluded_target_hit_rate:visual" in result.output
+    payload = output.read_text(encoding="utf-8")
+    assert "source.qdrant:image_dense.excluded_target_hit_rate" in payload
+    assert "source_family.visual.excluded_target_hit_rate" in payload
 
 
 def test_gate_retrieval_cli_checks_chunk_strategy_target_coverage(tmp_path):
@@ -728,16 +805,27 @@ def target_type_metric(target_coverage: float) -> RetrievalTargetMetric:
     )
 
 
-def source_family_metric(target_coverage: float) -> RetrievalSourceMetric:
+def source_family_metric(
+    target_coverage: float,
+    excluded_target_hit_rate: float = 0.0,
+) -> RetrievalSourceMetric:
+    excluded_target_count = 10 if excluded_target_hit_rate else 0
+    excluded_matched_target_count = int(excluded_target_hit_rate * excluded_target_count)
     return RetrievalSourceMetric(
         query_count=10,
         relevant_query_count=int(target_coverage * 10),
+        excluded_query_count=excluded_matched_target_count,
         hit_count=50,
         relevant_hit_count=int(target_coverage * 10),
+        excluded_hit_count=excluded_matched_target_count,
         expected_target_count=10,
         matched_target_count=int(target_coverage * 10),
+        excluded_target_count=excluded_target_count,
+        excluded_matched_target_count=excluded_matched_target_count,
         precision_at_hits=target_coverage,
+        excluded_precision_at_hits=excluded_matched_target_count / 50,
         target_coverage_at_k=target_coverage,
+        excluded_target_hit_rate=excluded_target_hit_rate,
         mean_relevant_rank=1.0,
     )
 

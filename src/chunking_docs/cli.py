@@ -955,6 +955,7 @@ def eval_qdrant_retrieval_command(
                 "unstable_result_count": evaluation.unstable_result_count,
                 "result_stability_rate": evaluation.result_stability_rate,
                 "target_metrics": retrieval_target_metrics_payload(evaluation),
+                "source_metrics": retrieval_source_metrics_payload(evaluation),
                 "source_family_metrics": retrieval_source_family_metrics_payload(evaluation),
                 "chunk_strategy_metrics": retrieval_chunk_strategy_metrics_payload(evaluation),
                 "retrieval_role_metrics": retrieval_role_metrics_payload(evaluation),
@@ -1117,6 +1118,7 @@ def eval_qdrant_vector_ablation_command(
                         "unstable_result_count": row.evaluation.unstable_result_count,
                         "result_stability_rate": row.evaluation.result_stability_rate,
                         "target_metrics": retrieval_target_metrics_payload(row.evaluation),
+                        "source_metrics": retrieval_source_metrics_payload(row.evaluation),
                         "source_family_metrics": retrieval_source_family_metrics_payload(
                             row.evaluation
                         ),
@@ -4039,6 +4041,7 @@ def eval_retrieval_command(
                 "unstable_result_count": evaluation.unstable_result_count,
                 "result_stability_rate": evaluation.result_stability_rate,
                 "target_metrics": retrieval_target_metrics_payload(evaluation),
+                "source_metrics": retrieval_source_metrics_payload(evaluation),
                 "source_family_metrics": retrieval_source_family_metrics_payload(evaluation),
                 "chunk_strategy_metrics": retrieval_chunk_strategy_metrics_payload(evaluation),
                 "retrieval_role_metrics": retrieval_role_metrics_payload(evaluation),
@@ -4429,6 +4432,7 @@ def eval_retrieval_ablation_command(
                     "unstable_result_count": row.evaluation.unstable_result_count,
                     "result_stability_rate": row.evaluation.result_stability_rate,
                     "target_metrics": retrieval_target_metrics_payload(row.evaluation),
+                    "source_metrics": retrieval_source_metrics_payload(row.evaluation),
                     "source_family_metrics": retrieval_source_family_metrics_payload(row.evaluation),
                     "chunk_strategy_metrics": retrieval_chunk_strategy_metrics_payload(
                         row.evaluation
@@ -4776,6 +4780,22 @@ def gate_retrieval_command(
         "--min-source-family-target-coverage",
         help="Require source-family target coverage such as lexical=0.8. Repeat for multiple families.",
     ),
+    max_source_excluded_target_hit_rate: list[str] = typer.Option(
+        None,
+        "--max-source-excluded-target-hit-rate",
+        help=(
+            "Limit exact-source excluded-target hit rate such as "
+            "qdrant:image_dense=0.0. Repeat for multiple sources."
+        ),
+    ),
+    max_source_family_excluded_target_hit_rate: list[str] = typer.Option(
+        None,
+        "--max-source-family-excluded-target-hit-rate",
+        help=(
+            "Limit source-family excluded-target hit rate such as visual=0.0. "
+            "Repeat for multiple families."
+        ),
+    ),
     min_chunk_strategy_target_coverage: list[str] = typer.Option(
         None,
         "--min-chunk-strategy-target-coverage",
@@ -4813,6 +4833,14 @@ def gate_retrieval_command(
     source_thresholds = parse_named_float_thresholds(
         min_source_target_coverage,
         "source target coverage",
+    )
+    source_excluded_thresholds = parse_named_float_thresholds(
+        max_source_excluded_target_hit_rate,
+        "source excluded-target hit rate",
+    )
+    source_family_excluded_thresholds = parse_named_float_thresholds(
+        max_source_family_excluded_target_hit_rate,
+        "source family excluded-target hit rate",
     )
     target_type_thresholds = parse_named_float_thresholds(
         min_target_type_coverage,
@@ -4857,6 +4885,8 @@ def gate_retrieval_command(
         min_target_type_coverage=target_type_thresholds,
         min_source_target_coverage=source_thresholds,
         min_source_family_target_coverage=source_family_thresholds,
+        max_source_excluded_target_hit_rate=source_excluded_thresholds,
+        max_source_family_excluded_target_hit_rate=source_family_excluded_thresholds,
         min_chunk_strategy_target_coverage=chunk_strategy_thresholds,
         min_retrieval_role_target_coverage=retrieval_role_thresholds,
         min_case_group_target_coverage=case_group_thresholds,
@@ -5810,6 +5840,13 @@ def retrieval_target_metrics_payload(evaluation) -> dict:
     return {
         name: metric.model_dump()
         for name, metric in getattr(evaluation, "target_metrics", {}).items()
+    }
+
+
+def retrieval_source_metrics_payload(evaluation) -> dict:
+    return {
+        name: metric.model_dump()
+        for name, metric in getattr(evaluation, "source_metrics", {}).items()
     }
 
 

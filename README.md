@@ -559,6 +559,8 @@ chunking-docs gate-retrieval outputs/package/retrieval_eval.json \
   --min-target-type-coverage triple=0.9 \
   --min-source-family-target-coverage lexical=0.75 \
   --min-source-target-coverage bm25=0.75 \
+  --max-source-family-excluded-target-hit-rate visual=0.0 \
+  --max-source-excluded-target-hit-rate qdrant:image_dense=0.0 \
   --min-chunk-strategy-target-coverage visual_asset_text=0.7 \
   --min-retrieval-role-target-coverage child=0.7 \
   --min-case-group-target-coverage case_source:visual_lexical_probe=0.7 \
@@ -679,7 +681,7 @@ chunking-docs generate-retrieval-cases \
 {"query":"district connects to corridor","expected_triple_ids":["triple-id"],"graph_expand":true}
 ```
 
-Use `excluded_pages`, `excluded_chunk_ids`, `excluded_asset_ids`, or `excluded_triple_ids` for hard-negative cases where a visually or lexically similar target must not appear in the top-k results. `eval-retrieval` reports excluded target hit counts and rates, and `gate-retrieval` can enforce them with `--max-excluded-target-hit-rate`, `--max-excluded-query-hit-rate`, and `--max-excluded-hit-query-count`.
+Use `excluded_pages`, `excluded_chunk_ids`, `excluded_asset_ids`, or `excluded_triple_ids` for hard-negative cases where a visually or lexically similar target must not appear in the top-k results. `eval-retrieval` reports excluded target hit counts and rates, including exact-source and source-family contamination metrics, and `gate-retrieval` can enforce them with `--max-excluded-target-hit-rate`, `--max-excluded-query-hit-rate`, `--max-excluded-hit-query-count`, `--max-source-excluded-target-hit-rate`, and `--max-source-family-excluded-target-hit-rate`.
 
 For portfolio or production use, maintain benchmark cases for each document family and compare chunking strategies before changing defaults.
 
