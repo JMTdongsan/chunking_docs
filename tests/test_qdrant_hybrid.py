@@ -45,6 +45,7 @@ class FakeQdrantStore:
                         "asset_id": "asset-1",
                         "doc_id": "doc",
                         "page_no": 5,
+                        "kind": "figure",
                         "caption": "river corridor diagram",
                     },
                 )
@@ -109,6 +110,46 @@ class FilteringQdrantStore:
                 chunk_id="recent",
                 doc_id="doc",
                 payload={"chunk_id": "recent", "doc_id": "doc", "page_start": 12, "page_end": 12},
+            ),
+        ]
+
+
+class TriplePayloadFilteringQdrantStore:
+    def __init__(self):
+        self.must_payload = None
+
+    def query_vector(self, vector, vector_name, top_k, must_payload=None, score_threshold=None):
+        self.must_payload = must_payload
+        return [
+            VectorSearchHit(
+                point_id="other-triple-point",
+                score=0.95,
+                vector_name=vector_name,
+                chunk_id="target",
+                doc_id="doc",
+                payload={
+                    "record_kind": "graph_triple",
+                    "triple_id": "other-triple",
+                    "chunk_id": "target",
+                    "doc_id": "doc",
+                    "page_start": 9,
+                    "page_end": 9,
+                },
+            ),
+            VectorSearchHit(
+                point_id="target-triple-point",
+                score=0.9,
+                vector_name=vector_name,
+                chunk_id="target",
+                doc_id="doc",
+                payload={
+                    "record_kind": "graph_triple",
+                    "triple_id": "target-triple",
+                    "chunk_id": "target",
+                    "doc_id": "doc",
+                    "page_start": 9,
+                    "page_end": 9,
+                },
             ),
         ]
 
@@ -261,6 +302,42 @@ def test_qdrant_hybrid_payload_filter_matches_source_ref_asset_id():
 
     assert hits[0].item_id == "chunk-1"
     assert hits[0].sources == ["bm25"]
+
+
+def test_qdrant_hybrid_preserves_visual_payload_kind_filtered_hits():
+    chunk = DocumentChunk(
+        chunk_id="chunk-1",
+        doc_id="doc",
+        page_start=5,
+        page_end=5,
+        kind=ChunkKind.TEXT,
+        text="base text",
+        asset_ids=["asset-1"],
+    )
+    asset = VisualAsset(
+        asset_id="asset-1",
+        doc_id="doc",
+        page_no=5,
+        kind=AssetKind.FIGURE,
+        caption="river corridor diagram",
+    )
+
+    searcher = QdrantHybridSearcher(
+        store=FakeQdrantStore(),
+        chunks=[chunk],
+        assets=[asset],
+        embedder=HashingTextEmbedder(embedding_dim=8),
+    )
+    hits = searcher.search(
+        "river corridor",
+        vector_names=["caption_dense"],
+        top_k=1,
+        payload_filter={"kind": "figure"},
+    )
+
+    assert hits[0].item_id == "chunk-1"
+    assert hits[0].sources == ["qdrant:caption_dense"]
+    assert hits[0].payloads[0]["kind"] == "figure"
 
 
 def test_qdrant_hybrid_can_rerank_fused_candidates():
@@ -725,3 +802,33 @@ def test_qdrant_hybrid_applies_payload_filter_to_qdrant_and_local_hits():
 
     assert store.must_payload == {"page_start": {"gte": 10}}
     assert [hit.item_id for hit in hits] == ["recent"]
+
+
+def test_qdrant_hybrid_preserves_payload_only_filtered_graph_vector_hits():
+    target = DocumentChunk(
+        chunk_id="target",
+        doc_id="doc",
+        page_start=9,
+        page_end=9,
+        kind=ChunkKind.TEXT,
+        text="station access map evidence",
+    )
+    store = TriplePayloadFilteringQdrantStore()
+    searcher = QdrantHybridSearcher(
+        store=store,
+        chunks=[target],
+        assets=[],
+        embedder=HashingTextEmbedder(embedding_dim=8),
+    )
+
+    hits = searcher.search(
+        "station access map",
+        vector_names=["triple_dense"],
+        top_k=1,
+        payload_filter={"record_kind": "graph_triple", "triple_id": "target-triple"},
+    )
+
+    assert store.must_payload == {"record_kind": "graph_triple", "triple_id": "target-triple"}
+    assert [hit.item_id for hit in hits] == ["target"]
+    assert hits[0].sources == ["qdrant:triple_dense"]
+    assert hits[0].payloads[0]["triple_id"] == "target-triple"

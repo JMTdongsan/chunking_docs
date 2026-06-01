@@ -105,10 +105,10 @@ class QdrantHybridSearcher:
             ranked_hits = []
             qdrant_evidence: dict[str, list[str]] = {}
             for rank, hit in enumerate(hits, start=1):
+                if filters and not payload_matches_filter(search_hit_payload(hit), filters):
+                    continue
                 raw_item_id = self._asset_canonical_item_id(hit)
                 if not raw_item_id:
-                    continue
-                if allowed_chunk_ids is not None and raw_item_id not in allowed_chunk_ids:
                     continue
                 item_id = canonical_chunk_id(
                     raw_item_id,
@@ -252,6 +252,42 @@ def chunk_filter_value(chunk: DocumentChunk, key: str, expected: Any) -> bool:
     else:
         actual = chunk.metadata.get(key)
     return match_payload_value(actual, expected)
+
+
+def search_hit_payload(hit: VectorSearchHit) -> dict[str, Any]:
+    payload = {}
+    if hit.chunk_id is not None:
+        payload["chunk_id"] = hit.chunk_id
+    if hit.doc_id is not None:
+        payload["doc_id"] = hit.doc_id
+    payload.update(hit.payload)
+    return payload
+
+
+def payload_matches_filter(payload: dict[str, Any], filters: dict[str, Any]) -> bool:
+    return all(payload_filter_value(payload, key, expected) for key, expected in filters.items())
+
+
+def payload_filter_value(payload: dict[str, Any], key: str, expected: Any) -> bool:
+    if key == "asset_id":
+        actual = payload.get("asset_id", payload.get("asset_ids"))
+    elif key == "page_no" and "page_no" not in payload:
+        page_start = payload.get("page_start")
+        page_end = payload.get("page_end")
+        if isinstance(page_start, int) and isinstance(page_end, int):
+            return match_page_value(page_start, page_end, expected)
+        actual = None
+    elif key.startswith("section."):
+        actual = nested_payload_value(payload.get("section"), key.split(".", 1)[1])
+    else:
+        actual = payload.get(key)
+    return match_payload_value(actual, expected)
+
+
+def nested_payload_value(value: Any, key: str) -> Any:
+    if not isinstance(value, dict):
+        return None
+    return value.get(key)
 
 
 def match_page_value(page_start: int, page_end: int, expected: Any) -> bool:
