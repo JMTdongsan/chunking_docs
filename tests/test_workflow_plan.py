@@ -63,6 +63,21 @@ def test_build_ingestion_workflow_plan_orders_runtime_visual_embedding_and_readi
     assert any("visual_annotations.qwen2_5_vl_7b.jsonl" in command for command in visual_commands)
     assert any("visual_job_results.llava_next_7b.jsonl" in command for command in visual_commands)
     assert any("visual_annotations.llava_next_7b.jsonl" in command for command in visual_commands)
+    assert any("runtime_doctor.qwen2_5_vl_7b.json" in command for command in visual_commands)
+    assert any("runtime_doctor.llava_next_7b.json" in command for command in visual_commands)
+    vlm_gate_commands = [
+        command for command in visual_commands if "gate-vlm-experiment-plan" in command
+    ]
+    assert len(vlm_gate_commands) == 2
+    assert "vlm_experiment_plan_gate.runtime.json" in vlm_gate_commands[0]
+    assert "--require-doctor-outputs" in vlm_gate_commands[0]
+    assert "--require-results" not in vlm_gate_commands[0]
+    assert "vlm_experiment_plan_gate.results.json" in vlm_gate_commands[1]
+    assert "--require-doctor-outputs" in vlm_gate_commands[1]
+    assert "--require-results" in vlm_gate_commands[1]
+    assert "--require-annotations" in vlm_gate_commands[1]
+    assert "--min-completed-result-profiles 2" in vlm_gate_commands[1]
+    assert "--require-same-result-jobs" in vlm_gate_commands[1]
     assert any("apply-annotations" in command for command in visual_commands)
     assert any("visual_annotations.qwen2_5_vl_7b.jsonl" in command and "apply-annotations" in command for command in visual_commands)
     assert any("compare-visual-runs" in command for command in visual_commands)
@@ -103,6 +118,9 @@ def test_build_ingestion_workflow_plan_orders_runtime_visual_embedding_and_readi
     assert "--image-query-backend clip" in qdrant_commands[4]
     assert "gate-rag-context" in qdrant_commands[5]
     readiness_command = plan.steps[-1].commands[0]
+    assert "--runtime-report" in readiness_command
+    assert "runtime_doctor.json" in readiness_command
+    assert "--require-runtime-report" in readiness_command
     assert "--require-visual-annotations" in readiness_command
     assert "--require-visual-quality" in readiness_command
     assert "--min-vlm-json-parse-rate 0.9" in readiness_command

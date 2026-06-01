@@ -232,11 +232,33 @@ def visual_annotation_step(
             f"--batch-size 25 --output {path_arg(package_dir / 'vlm_experiment_plan.json')}"
         )
         commands.extend(
+            visual_profile_doctor_command(package_dir, ocr_backend, profile)
+            for profile in profiles
+        )
+        commands.append(
+            vlm_experiment_plan_gate_command(
+                package_dir,
+                min_profile_count=len(profiles),
+                require_doctor_outputs=True,
+                output_name="vlm_experiment_plan_gate.runtime.json",
+            )
+        )
+        commands.extend(
             visual_profile_run_command(package_dir, jobs_path, ocr_backend, profile)
             for profile in profiles
         )
         commands.extend(
             [
+                vlm_experiment_plan_gate_command(
+                    package_dir,
+                    min_profile_count=len(profiles),
+                    require_doctor_outputs=True,
+                    require_results=True,
+                    require_annotations=True,
+                    min_completed_result_profiles=len(profiles),
+                    require_same_result_jobs=True,
+                    output_name="vlm_experiment_plan_gate.results.json",
+                ),
                 f"chunking-docs gate-visual-results --results {path_arg(visual_profile_results_path(package_dir, profiles[0]))}",
                 visual_run_comparison_command(package_dir, profiles),
                 (
@@ -336,6 +358,65 @@ def visual_profile_run_command(
     )
 
 
+def visual_profile_doctor_command(package_dir: Path, ocr_backend: str, profile: str) -> str:
+    command_parts = [
+        "chunking-docs",
+        "doctor",
+        "--output",
+        path_arg(package_dir / f"runtime_doctor.{profile}.json"),
+        "--require-gpu",
+        "--require-vision",
+    ]
+    if ocr_backend != "none":
+        command_parts.append("--require-ocr")
+    command_parts.extend(
+        [
+            "--vlm-profile",
+            shlex.quote(profile),
+            "--vlm-memory-margin-ratio",
+            "0.1",
+        ]
+    )
+    return " ".join(command_parts)
+
+
+def vlm_experiment_plan_gate_command(
+    package_dir: Path,
+    min_profile_count: int,
+    output_name: str,
+    require_doctor_outputs: bool = False,
+    require_results: bool = False,
+    require_annotations: bool = False,
+    min_completed_result_profiles: int = 0,
+    require_same_result_jobs: bool = False,
+) -> str:
+    command_parts = [
+        "chunking-docs",
+        "gate-vlm-experiment-plan",
+        "--plan",
+        path_arg(package_dir / "vlm_experiment_plan.json"),
+        "--min-profile-count",
+        str(min_profile_count),
+    ]
+    if require_doctor_outputs:
+        command_parts.append("--require-doctor-outputs")
+    if require_results:
+        command_parts.append("--require-results")
+    if require_annotations:
+        command_parts.append("--require-annotations")
+    if min_completed_result_profiles:
+        command_parts.extend(
+            [
+                "--min-completed-result-profiles",
+                str(min_completed_result_profiles),
+            ]
+        )
+    if require_same_result_jobs:
+        command_parts.append("--require-same-result-jobs")
+    command_parts.extend(["--output", path_arg(package_dir / output_name)])
+    return " ".join(command_parts)
+
+
 def visual_ocr_run_command(
     package_dir: Path,
     jobs_path: Path,
@@ -415,6 +496,9 @@ def readiness_step(
         "chunking-docs ingestion-readiness",
         "--package-dir",
         path_arg(package_dir),
+        "--runtime-report",
+        path_arg(package_dir / "runtime_doctor.json"),
+        "--require-runtime-report",
         "--require-derived-vector-coverage",
         "--retrieval-cases",
         path_arg(retrieval_cases),
