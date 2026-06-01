@@ -13,8 +13,9 @@ from chunking_docs.ingest.tables import (
     table_text_quality,
     table_to_markdown,
     useful_table,
+    visual_table_chunks_from_assets,
 )
-from chunking_docs.io import read_jsonl
+from chunking_docs.io import read_jsonl, write_jsonl
 from chunking_docs.models import AssetKind, ChunkKind, DocumentChunk, GraphTriple, VisualAsset
 from chunking_docs.pipeline import build_processing_package
 
@@ -57,6 +58,45 @@ def test_extract_pdf_tables_builds_table_asset_and_chunk(tmp_path):
     assert "| Alpha | 10 |" in chunks[0].text
 
 
+def test_visual_table_chunks_from_assets_promotes_annotated_page_table_asset():
+    asset = VisualAsset(
+        asset_id="table-page",
+        doc_id="doc",
+        page_no=3,
+        kind=AssetKind.TABLE,
+        caption="Table page",
+        ocr_text="Name Value\nAlpha 10",
+        metadata={
+            "asset_scope": "page",
+            "section_label": "Reference",
+            "visual_elements": ["Alpha value table"],
+        },
+    )
+
+    chunks = visual_table_chunks_from_assets([asset])
+
+    assert len(chunks) == 1
+    assert chunks[0].kind == ChunkKind.TABLE
+    assert chunks[0].asset_ids == ["table-page"]
+    assert chunks[0].metadata["source"] == "visual_table_asset"
+    assert chunks[0].metadata["table_source"] == "ocr_vlm_asset"
+    assert "Alpha 10" in chunks[0].text
+    assert "Visual elements: Alpha value table" in chunks[0].text
+
+
+def test_visual_table_chunks_from_assets_skips_unannotated_page_render():
+    asset = VisualAsset(
+        asset_id="table-page",
+        doc_id="doc",
+        page_no=3,
+        kind=AssetKind.TABLE,
+        caption="Full page render for page 3",
+        metadata={"asset_scope": "page"},
+    )
+
+    assert visual_table_chunks_from_assets([asset]) == []
+
+
 def test_extract_tables_cli_updates_package(tmp_path):
     pdf_path = make_table_pdf(tmp_path / "tables.pdf")
     package_dir = tmp_path / "package"
@@ -84,7 +124,7 @@ def test_extract_tables_cli_updates_package(tmp_path):
     assets = read_jsonl(package_dir / "assets.jsonl", VisualAsset)
     chunks = read_jsonl(package_dir / "chunks.jsonl", DocumentChunk)
     triples = read_jsonl(package_dir / "triples.jsonl", GraphTriple)
-    payload = json.loads((package_dir / "qdrant_collection.json").read_text(encoding="utf-8"))
+    metadata = json.loads((package_dir / "manifest.json").read_text(encoding="utf-8"))["metadata"]
     table_assets = [asset for asset in assets if asset.kind == AssetKind.TABLE]
     table_chunks = [chunk for chunk in chunks if chunk.kind == ChunkKind.TABLE]
 
@@ -92,7 +132,57 @@ def test_extract_tables_cli_updates_package(tmp_path):
     assert len(table_chunks) == 1
     assert any(table_assets[0].asset_id in chunk.asset_ids for chunk in chunks)
     assert any(triple.chunk_id == table_chunks[0].chunk_id for triple in triples)
-    assert payload["named_vectors"]["caption_dense"]["size"] == 384
+    assert not (package_dir / "qdrant_collection.json").exists()
+    assert not (package_dir / "embedding_manifest.json").exists()
+    assert metadata["table_count"] == 1
+    assert metadata["table_asset_count"] == 1
+
+
+def test_extract_tables_cli_promotes_visual_table_assets(tmp_path):
+    pdf_path = make_table_pdf(tmp_path / "tables.pdf")
+    package_dir = tmp_path / "package"
+    build_processing_package(pdf_path, package_dir, extract_tables=False)
+    assets = read_jsonl(package_dir / "assets.jsonl", VisualAsset)
+    visual_table = VisualAsset(
+        asset_id="visual-table",
+        doc_id=stable_doc_id(pdf_path),
+        page_no=1,
+        kind=AssetKind.TABLE,
+        caption="Visual table",
+        ocr_text="Category Amount\nAlpha 10",
+        metadata={
+            "asset_scope": "page",
+            "section_label": "Reference",
+            "visual_elements": ["Category amount table"],
+        },
+    )
+    write_jsonl(package_dir / "assets.jsonl", [*assets, visual_table])
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "extract-tables",
+            "--package-dir",
+            str(package_dir),
+            "--pdf",
+            str(pdf_path),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    chunks = read_jsonl(package_dir / "chunks.jsonl", DocumentChunk)
+    table_chunks = [
+        chunk
+        for chunk in chunks
+        if chunk.kind == ChunkKind.TABLE and chunk.metadata.get("source") == "visual_table_asset"
+    ]
+
+    assert len(table_chunks) == 1
+    assert table_chunks[0].asset_ids == ["visual-table"]
+    assert "Alpha 10" in table_chunks[0].text
+    metadata = json.loads((package_dir / "manifest.json").read_text(encoding="utf-8"))["metadata"]
+    assert metadata["table_count"] == 2
+    assert metadata["table_asset_count"] == 2
 
 
 def test_build_processing_package_records_reproducible_package_metadata(tmp_path):
@@ -131,6 +221,8 @@ def test_build_processing_package_records_reproducible_package_metadata(tmp_path
             "deduplicate": True,
         },
     }
+    assert metadata["table_count"] == 0
+    assert metadata["table_asset_count"] == 0
 
 
 def test_refresh_package_metadata_cli_repairs_legacy_manifest(tmp_path):
@@ -172,6 +264,8 @@ def test_refresh_package_metadata_cli_repairs_legacy_manifest(tmp_path):
     assert metadata["package_config"]["dry_run_embeddings"] is False
     assert metadata["package_config"]["extract_tables"] is False
     assert metadata["package_config"]["lexical_tokenizer"] == LexicalTokenizerConfig().model_dump()
+    assert metadata["table_count"] == 0
+    assert metadata["table_asset_count"] == 0
 
 
 def make_table_pdf(path: Path) -> Path:

@@ -105,7 +105,7 @@ from chunking_docs.graph.repair import (
     repair_visual_derived_triples,
 )
 from chunking_docs.ingest.pdf_loader import load_source_document, render_pages
-from chunking_docs.ingest.tables import extract_pdf_tables
+from chunking_docs.ingest.tables import extract_pdf_tables, visual_table_chunks_from_assets
 from chunking_docs.io import read_jsonl, write_jsonl
 from chunking_docs.models import AssetKind, DocumentChunk, GraphTriple, VisualAsset
 from chunking_docs.pipeline import (
@@ -3460,6 +3460,7 @@ def extract_tables_command(
     min_rows: int = 2,
     min_cols: int = 2,
     zoom: float = 2.0,
+    promote_visual_tables: bool = True,
     in_place: bool = True,
     rebuild_search: bool = True,
 ):
@@ -3487,10 +3488,19 @@ def extract_tables_command(
     base_chunks = [
         chunk
         for chunk in manifest.chunks
-        if chunk.metadata.get("source") != "pdf_table_detection"
+        if chunk.metadata.get("source") not in {"pdf_table_detection", "visual_table_asset"}
     ]
+    visual_table_chunks = (
+        visual_table_chunks_from_assets(
+            merged_assets,
+            existing_chunks=table_chunks,
+            section_ranges=load_section_ranges(section_map),
+        )
+        if promote_visual_tables
+        else []
+    )
     updated_chunks = sorted(
-        [*attach_assets_to_chunks(base_chunks, merged_assets), *table_chunks],
+        [*attach_assets_to_chunks(base_chunks, merged_assets), *table_chunks, *visual_table_chunks],
         key=lambda chunk: (chunk.page_start, chunk.page_end, str(chunk.kind), chunk.chunk_id),
     )
 
@@ -3500,18 +3510,38 @@ def extract_tables_command(
     triples_path = package_dir / "triples.jsonl"
     existing_triples = read_jsonl(triples_path, GraphTriple) if triples_path.exists() else []
     updated_triples = normalize_graph_triples(
-        [*existing_triples, *section_triples(table_chunks)]
+        [*existing_triples, *section_triples([*table_chunks, *visual_table_chunks])]
     )
     write_jsonl(asset_output, merged_assets)
     write_jsonl(chunk_output, updated_chunks)
     write_jsonl(triple_output, updated_triples)
+    cleared_embedding_artifacts = []
+    updated_manifest = manifest.model_copy(
+        update={
+            "chunks": updated_chunks,
+            "assets": merged_assets,
+            "triples": updated_triples,
+        }
+    )
+    if in_place:
+        updated_manifest = refresh_package_metadata(
+            package_dir,
+            manifest=updated_manifest,
+            pdf_path=pdf_path,
+        )
     if in_place and rebuild_search:
-        rebuild_search_artifacts(package_dir, updated_chunks, assets=merged_assets)
+        index_result = refresh_package_indexes(
+            package_dir,
+            manifest=updated_manifest,
+        )
+        cleared_embedding_artifacts = index_result["cleared_embedding_artifacts"]
 
     print(
         {
             "table_assets": len(table_assets),
-            "table_chunks": len(table_chunks),
+            "pdf_table_chunks": len(table_chunks),
+            "visual_table_chunks": len(visual_table_chunks),
+            "table_chunks": len(table_chunks) + len(visual_table_chunks),
             "total_assets": len(merged_assets),
             "total_chunks": len(updated_chunks),
             "triples": len(updated_triples),
@@ -3519,6 +3549,7 @@ def extract_tables_command(
             "chunk_output": str(chunk_output),
             "triple_output": str(triple_output),
             "rebuilt_search": bool(in_place and rebuild_search),
+            "cleared_embedding_artifacts": cleared_embedding_artifacts,
         }
     )
 

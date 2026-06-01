@@ -47,6 +47,7 @@
    - Reject table text with excessive control-character noise from broken encodings.
    - Store each detected table as a `table` chunk with Markdown table text.
    - Store each detected table as a `table` visual asset with bbox, rendered clip, and caption text.
+   - Promote OCR/VLM-enriched page-level table assets into `table` chunks when cell-level extraction is unavailable.
    - Keep table extraction generic so document-specific schemas remain external data.
 
 7. **OCR/VLM Job Planning**

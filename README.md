@@ -270,7 +270,7 @@ The report shows before/after counts, added and removed IDs, changed chunk/asset
 ## Structured Tables
 
 The package command extracts detected PDF tables by default and stores each table as both a `table` chunk and a `table` visual asset. Table text is serialized as Markdown so dense embeddings, BM25, caption vectors, and downstream RAG context can all use the same structured content.
-Detected tables with noisy encoded text are skipped so broken PDF text layers do not create misleading table chunks. Use OCR/VLM visual jobs for those pages instead.
+Detected tables with noisy encoded text are skipped so broken PDF text layers do not create misleading table chunks. Use OCR/VLM visual jobs for those pages instead. After visual annotation, `extract-tables` can also promote OCR/VLM-enriched page-level `table` assets into separate `table` chunks, which keeps visually recognized tables available as their own retrieval targets even when PDF table detection cannot recover cell structure.
 
 Run table extraction on an existing package:
 

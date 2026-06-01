@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 
 from chunking_docs.chunking.page_chunker import chunk_id
 from chunking_docs.chunking.section_map import SectionRange, section_for_page
+from chunking_docs.embeddings.records import asset_text_parts
 from chunking_docs.models import AssetKind, ChunkKind, DocumentChunk, VisualAsset
 from chunking_docs.vision.assets import make_asset_id
 
@@ -121,6 +122,74 @@ def extract_pdf_tables(
                     )
                 )
     return assets, chunks
+
+
+def visual_table_chunks_from_assets(
+    assets: list[VisualAsset],
+    existing_chunks: list[DocumentChunk] | None = None,
+    section_ranges: list[SectionRange] | None = None,
+) -> list[DocumentChunk]:
+    """Create table chunks from OCR/VLM-enriched page-level table assets."""
+
+    linked_table_asset_ids = {
+        asset_id
+        for chunk in existing_chunks or []
+        if chunk.kind == ChunkKind.TABLE
+        for asset_id in chunk.asset_ids
+    }
+    chunks: list[DocumentChunk] = []
+    table_index_by_page: dict[int, int] = {}
+    for asset in sorted(assets, key=lambda item: (item.page_no, item.asset_id)):
+        if asset.kind != AssetKind.TABLE:
+            continue
+        if asset.asset_id in linked_table_asset_ids:
+            continue
+        if asset.metadata.get("source") == "pdf_table_detection":
+            continue
+        if asset.metadata.get("asset_scope") != "page":
+            continue
+        if not visual_table_asset_has_structured_text(asset):
+            continue
+
+        table_index_by_page[asset.page_no] = table_index_by_page.get(asset.page_no, 0) + 1
+        index = 1000 + table_index_by_page[asset.page_no]
+        section = section_for_page(asset.page_no, section_ranges)
+        text = table_asset_chunk_text(asset)
+        chunks.append(
+            DocumentChunk(
+                chunk_id=chunk_id(asset.doc_id, asset.page_no, asset.page_no, ChunkKind.TABLE, index=index),
+                doc_id=asset.doc_id,
+                page_start=asset.page_no,
+                page_end=asset.page_no,
+                kind=ChunkKind.TABLE,
+                text=text,
+                section=section,
+                asset_ids=[asset.asset_id],
+                metadata={
+                    "asset_scope": "page",
+                    "source": "visual_table_asset",
+                    "table_asset_id": asset.asset_id,
+                    "table_source": "ocr_vlm_asset",
+                    "table_index": table_index_by_page[asset.page_no],
+                    "section_label": asset.metadata.get("section_label") or section.label(),
+                    "requires_ocr": False,
+                    "requires_vlm": False,
+                },
+            )
+        )
+    return chunks
+
+
+def visual_table_asset_has_structured_text(asset: VisualAsset) -> bool:
+    if asset.ocr_text or asset.vlm_summary:
+        return True
+    structured_keys = ["key_points", "entities", "visual_elements", "objects", "detected_objects"]
+    return any(asset.metadata.get(key) for key in structured_keys)
+
+
+def table_asset_chunk_text(asset: VisualAsset) -> str:
+    parts = asset_text_parts(asset)
+    return f"[Visual table page {asset.page_no}]\n" + "\n".join(parts)
 
 
 def find_tables(page) -> list:

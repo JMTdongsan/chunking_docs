@@ -26,7 +26,7 @@ from chunking_docs.embeddings.records import (
 )
 from chunking_docs.graph.heuristics import section_triples
 from chunking_docs.ingest.pdf_loader import load_source_document
-from chunking_docs.ingest.tables import extract_pdf_tables
+from chunking_docs.ingest.tables import extract_pdf_tables, visual_table_chunks_from_assets
 from chunking_docs.io import read_jsonl, write_jsonl
 from chunking_docs.models import (
     DocumentChunk,
@@ -74,7 +74,12 @@ def build_processing_package(
             zoom=render_zoom,
         )
     assets = merge_visual_assets(page_assets, table_assets)
-    chunks = [*attach_assets_to_chunks(page_chunks, assets), *table_chunks]
+    visual_table_chunks = visual_table_chunks_from_assets(
+        assets,
+        existing_chunks=table_chunks,
+        section_ranges=section_ranges,
+    )
+    chunks = [*attach_assets_to_chunks(page_chunks, assets), *table_chunks, *visual_table_chunks]
     triples = section_triples(chunks)
 
     manifest = ProcessingManifest(
@@ -91,7 +96,8 @@ def build_processing_package(
             section_ranges=section_ranges,
             tokenizer_config=tokenizer_config,
             extract_tables=extract_tables,
-            table_count=len(table_chunks),
+            table_count=len(table_chunks) + len(visual_table_chunks),
+            table_asset_count=table_asset_count(assets),
         ),
     )
     write_package(
@@ -156,6 +162,7 @@ def package_metadata(
     tokenizer_config: LexicalTokenizerConfig | None,
     extract_tables: bool,
     table_count: int,
+    table_asset_count: int,
 ) -> dict[str, Any]:
     tokenizer = tokenizer_config or LexicalTokenizerConfig()
     return {
@@ -172,6 +179,7 @@ def package_metadata(
         "embedding_mode": "hashing_dry_run" if dry_run_embeddings else "external",
         "section_map_count": len(section_ranges or []),
         "table_count": table_count,
+        "table_asset_count": table_asset_count,
     }
 
 
@@ -193,6 +201,7 @@ def refresh_package_metadata(
     existing_config = existing_config if isinstance(existing_config, dict) else {}
     source_path = pdf_path or manifest.doc.local_path
     table_count = current_table_count(manifest)
+    asset_table_count = table_asset_count(manifest.assets)
     refreshed_metadata = {
         **existing_metadata,
         "profile_summary": summarize_profiles(manifest.profiles),
@@ -237,6 +246,7 @@ def refresh_package_metadata(
         if section_map_count is not None
         else int(existing_config.get("section_map_count") or 0),
         "table_count": table_count,
+        "table_asset_count": asset_table_count,
     }
     updated = manifest.model_copy(update={"metadata": refreshed_metadata})
     (output_dir / "manifest.json").write_text(
@@ -256,10 +266,11 @@ def source_file_metadata(path: Path) -> dict[str, Any]:
 
 
 def current_table_count(manifest: ProcessingManifest) -> int:
-    table_chunks = sum(1 for chunk in manifest.chunks if str(chunk.kind) == "table")
-    if table_chunks:
-        return table_chunks
-    return sum(1 for asset in manifest.assets if str(asset.kind) == "table")
+    return sum(1 for chunk in manifest.chunks if str(chunk.kind) == "table")
+
+
+def table_asset_count(assets: list[VisualAsset]) -> int:
+    return sum(1 for asset in assets if str(asset.kind) == "table")
 
 
 def package_tokenizer_config(output_dir: Path) -> LexicalTokenizerConfig | None:
