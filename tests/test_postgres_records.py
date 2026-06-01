@@ -168,6 +168,7 @@ def test_visual_object_rows_normalize_vlm_object_metadata():
             "object_index": 0,
             "label": "pump",
             "source_key": "objects",
+            "visual_feature_type": None,
             "bbox": [0.1, 0.2, 0.3, 0.4],
             "bbox_region": "upper left",
             "attributes": ["blue", "main pump"],
@@ -285,6 +286,30 @@ def test_manifest_rows_include_visual_object_rows():
     assert rows["visual_objects"][0]["object_id"] == "asset:object:0"
     assert rows["visual_objects"][0]["label"] == "legend"
     assert rows["visual_objects"][0]["bbox_region"] == "lower right"
+
+
+def test_manifest_rows_include_visual_element_feature_rows():
+    manifest = ProcessingManifest(
+        doc=SourceDocument(doc_id="doc", title="title", local_path=Path("/tmp/doc.pdf")),
+        profiles=[],
+        chunks=[],
+        assets=[
+            VisualAsset(
+                asset_id="asset",
+                doc_id="doc",
+                page_no=1,
+                kind=AssetKind.MAP,
+                metadata={"visual_elements": ["station access corridor"]},
+            )
+        ],
+        triples=[],
+    )
+
+    rows = manifest_rows(manifest)
+
+    assert rows["visual_objects"][0]["label"] == "station access corridor"
+    assert rows["visual_objects"][0]["source_key"] == "visual_elements"
+    assert rows["visual_objects"][0]["visual_feature_type"] == "visual_element"
 
 
 def test_manifest_rows_remap_asset_backed_triples_to_existing_chunks():

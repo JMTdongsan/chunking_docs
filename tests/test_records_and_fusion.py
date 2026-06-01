@@ -192,6 +192,36 @@ def test_make_object_embedding_records_normalizes_visual_objects():
     assert records[1].payload["bbox_region"] == "middle right"
 
 
+def test_make_object_embedding_records_uses_visual_elements_as_features():
+    asset = VisualAsset(
+        asset_id="asset-1",
+        doc_id="doc",
+        page_no=1,
+        kind=AssetKind.MAP,
+        caption="regional structure map",
+        metadata={
+            "page_type": "map",
+            "visual_elements": ["station access corridor", "blue route arrow"],
+        },
+    )
+
+    items = visual_object_embedding_items([asset])
+    records = make_object_embedding_records([asset], HashingTextEmbedder(embedding_dim=8))
+
+    assert [item["label"] for item in items] == ["station access corridor", "blue route arrow"]
+    assert len(records) == 2
+    assert records[0].payload["record_kind"] == "visual_object"
+    assert records[0].payload["source_key"] == "visual_elements"
+    assert records[0].payload["visual_feature_type"] == "visual_element"
+    assert records[0].payload["text"] == (
+        "Visual feature: station access corridor\n"
+        "Feature type: visual_element\n"
+        "Source field: visual_elements\n"
+        "Page type: map\n"
+        "Caption: regional structure map"
+    )
+
+
 def test_make_triple_embedding_records():
     chunk = DocumentChunk(
         chunk_id="chunk-1",

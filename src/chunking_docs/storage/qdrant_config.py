@@ -22,6 +22,7 @@ QDRANT_PAYLOAD_INDEXES = [
     {"field": "label", "schema": "keyword"},
     {"field": "bbox_region", "schema": "keyword"},
     {"field": "source_key", "schema": "keyword"},
+    {"field": "visual_feature_type", "schema": "keyword"},
     {"field": "predicate", "schema": "keyword"},
     {"field": "chunking_strategy", "schema": "keyword"},
     {"field": "retrieval_role", "schema": "keyword"},

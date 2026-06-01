@@ -234,6 +234,7 @@ def test_write_embedding_artifacts_supports_object_vectors(tmp_path):
     assert config["named_vectors"]["object_dense"]["size"] == 7
     assert {"field": "object_id", "schema": "keyword"} in config["payload_indexes"]
     assert {"field": "bbox_region", "schema": "keyword"} in config["payload_indexes"]
+    assert {"field": "visual_feature_type", "schema": "keyword"} in config["payload_indexes"]
     manifest = json.loads((tmp_path / "embedding_manifest.json").read_text(encoding="utf-8"))
     assert manifest["vectors"]["object_dense"]["file"] == "qdrant_object_records.jsonl"
     assert manifest["vectors"]["object_dense"]["record_count"] == 1

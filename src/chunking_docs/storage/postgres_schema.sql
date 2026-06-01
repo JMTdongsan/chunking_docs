@@ -62,6 +62,7 @@ create table if not exists visual_objects (
     object_index integer not null,
     label text not null,
     source_key text,
+    visual_feature_type text,
     bbox double precision[],
     bbox_region text,
     attributes jsonb not null default '[]'::jsonb,
@@ -135,6 +136,7 @@ create index if not exists visual_objects_asset_idx on visual_objects(asset_id, 
 create index if not exists visual_objects_label_idx on visual_objects(label);
 create index if not exists visual_objects_bbox_region_idx on visual_objects(bbox_region);
 create index if not exists visual_objects_source_key_idx on visual_objects(source_key);
+create index if not exists visual_objects_feature_type_idx on visual_objects(visual_feature_type);
 create index if not exists chunk_asset_links_asset_idx on chunk_asset_links(asset_id, chunk_id);
 create index if not exists chunk_asset_links_doc_idx on chunk_asset_links(doc_id, asset_id);
 create index if not exists triples_spo_idx on triples(subject, predicate, object);

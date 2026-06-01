@@ -81,6 +81,7 @@ EXPECTED_POSTGRES_SCHEMA = {
         "object_index": "integer",
         "label": "text",
         "source_key": "text",
+        "visual_feature_type": "text",
         "bbox": "double precision[]",
         "bbox_region": "text",
         "attributes": "jsonb",
@@ -155,6 +156,7 @@ EXPECTED_POSTGRES_INDEXES = {
     "visual_objects_asset_idx": "visual_objects",
     "visual_objects_bbox_region_idx": "visual_objects",
     "visual_objects_doc_idx": "visual_objects",
+    "visual_objects_feature_type_idx": "visual_objects",
     "visual_objects_label_idx": "visual_objects",
     "visual_objects_source_key_idx": "visual_objects",
 }
@@ -523,13 +525,13 @@ def upsert_visual_objects(cursor, rows: list[dict[str, Any]]) -> None:
         """
         insert into visual_objects (
             object_id, doc_id, asset_id, page_no, kind, object_index, label,
-            source_key, bbox, bbox_region, attributes, description, location,
-            confidence, text, metadata
+            source_key, visual_feature_type, bbox, bbox_region, attributes,
+            description, location, confidence, text, metadata
         )
         values (
             %(object_id)s, %(doc_id)s, %(asset_id)s, %(page_no)s, %(kind)s,
-            %(object_index)s, %(label)s, %(source_key)s, %(bbox)s,
-            %(bbox_region)s, %(attributes)s::jsonb, %(description)s,
+            %(object_index)s, %(label)s, %(source_key)s, %(visual_feature_type)s,
+            %(bbox)s, %(bbox_region)s, %(attributes)s::jsonb, %(description)s,
             %(location)s, %(confidence)s, %(text)s, %(metadata)s::jsonb
         )
         on conflict (object_id) do update set
@@ -538,6 +540,7 @@ def upsert_visual_objects(cursor, rows: list[dict[str, Any]]) -> None:
             object_index = excluded.object_index,
             label = excluded.label,
             source_key = excluded.source_key,
+            visual_feature_type = excluded.visual_feature_type,
             bbox = excluded.bbox,
             bbox_region = excluded.bbox_region,
             attributes = excluded.attributes,

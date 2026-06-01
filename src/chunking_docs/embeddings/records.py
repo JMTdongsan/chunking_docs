@@ -25,6 +25,7 @@ VISUAL_OBJECT_METADATA_KEYS = (
     "regions",
     "areas",
 )
+VISUAL_FEATURE_METADATA_KEYS = ("visual_elements",)
 VISUAL_OBJECT_LABEL_KEYS = ["label", "name", "title", "object", "type", "category"]
 VISUAL_OBJECT_BBOX_KEYS = ["bbox", "box", "bounding_box", "boundingBox", "bounds"]
 
@@ -367,6 +368,18 @@ def visual_object_embedding_items(
                     limit=limit_per_asset,
                 )
             )
+        for source_key in VISUAL_FEATURE_METADATA_KEYS:
+            for item in metadata_object_records(
+                asset.metadata.get(source_key),
+                source_key=source_key,
+                limit=limit_per_asset,
+            ):
+                asset_objects.append(
+                    {
+                        **item,
+                        "visual_feature_type": source_key.removesuffix("s"),
+                    }
+                )
         for object_index, visual_object in enumerate(
             dedupe_visual_object_records(asset_objects, limit=limit_per_asset)
         ):
@@ -508,9 +521,13 @@ def dedupe_visual_object_records(objects: list[dict[str, Any]], limit: int) -> l
 
 def visual_object_text(asset: VisualAsset, visual_object: dict[str, Any]) -> str:
     attributes = metadata_text_items(visual_object.get("attributes"), limit=6)
+    feature_type = metadata_text_value(visual_object.get("visual_feature_type"))
+    label_prefix = "Visual feature" if feature_type else "Object"
     parts = [
-        f"Object: {metadata_text_value(visual_object.get('label'))}",
+        f"{label_prefix}: {metadata_text_value(visual_object.get('label'))}",
     ]
+    if feature_type:
+        parts.append(f"Feature type: {feature_type}")
     if attributes:
         parts.append(f"Attributes: {'; '.join(attributes)}")
     description = metadata_text_value(visual_object.get("description"))
