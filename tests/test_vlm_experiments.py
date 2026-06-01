@@ -127,6 +127,11 @@ def test_build_vlm_experiment_plan_summarizes_selected_jobs(tmp_path):
     assert "--limit 1" in plan.recipes[0].batch_commands[0]
     assert "--offset 1" in plan.recipes[0].batch_commands[1]
     assert "--limit 1" in plan.recipes[0].batch_commands[1]
+    assert "merge-visual-results" in plan.recipes[0].merge_command
+    assert "visual_job_results.phi3_5_vision.batch_001.jsonl" in plan.recipes[0].merge_command
+    assert "visual_job_results.phi3_5_vision.batch_002.jsonl" in plan.recipes[0].merge_command
+    assert "visual_job_results.phi3_5_vision.jsonl" in plan.recipes[0].merge_command
+    assert "visual_annotations.phi3_5_vision.jsonl" in plan.recipes[0].merge_command
     assert len(plan.batch_compare_commands) == 2
     assert "visual_run_comparison.batch_001.json" in plan.batch_compare_commands[0]
     assert "--require-ocr" in plan.recipes[0].doctor_command

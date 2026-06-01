@@ -395,6 +395,23 @@ def completed_annotations(results: list[VisualJobRunResult]) -> list[AssetAnnota
     return [result.annotation for result in results if result.annotation is not None]
 
 
+def merge_visual_job_results(results: list[VisualJobRunResult]) -> list[VisualJobRunResult]:
+    merged: dict[str, VisualJobRunResult] = {}
+    order: list[str] = []
+    for result in results:
+        if result.job_id not in merged:
+            order.append(result.job_id)
+            merged[result.job_id] = result
+            continue
+        if visual_result_rank(result) > visual_result_rank(merged[result.job_id]):
+            merged[result.job_id] = result
+    return [merged[job_id] for job_id in order]
+
+
+def visual_result_rank(result: VisualJobRunResult) -> int:
+    return {"skipped": 0, "failed": 1, "completed": 2}.get(result.status, -1)
+
+
 def failed_result(job: VisualAnnotationJob, error: str) -> VisualJobRunResult:
     return VisualJobRunResult(
         job_id=job.job_id,

@@ -63,7 +63,7 @@
    - Summarize visual job results by status, backend latency, output size, VLM prompt usage, parse status, object counts, and triple count.
    - Compare multiple OCR/VLM runs by completion, annotation coverage, parse rate, object coverage, triple density, latency, and whether the same visual job IDs were used.
    - Build VLM experiment recipes that only require OCR dependencies when selected jobs contain OCR work, keeping VLM-only profile comparisons runnable without an OCR engine.
-   - Write VLM experiment plans so several profiles can be run against the same visual job set and compared afterward, including selected job counts, operation mix, per-profile runtime checks, batch offsets and limits, batch comparison commands, and generation-token upper bounds for local GPU sizing.
+   - Write VLM experiment plans so several profiles can be run against the same visual job set and compared afterward, including selected job counts, operation mix, per-profile runtime checks, batch offsets and limits, batch merge commands, batch comparison commands, and generation-token upper bounds for local GPU sizing.
    - Gate visual runs by completion rate, OCR text coverage, VLM summary coverage, JSON parse rate, object coverage, bbox coverage, triple density, and failure counts.
    - Apply annotations back into chunks, assets, graph triples, BM25, and Qdrant records through direct asset links and `asset:` source refs.
    - Preserve compact asset scope, tile parent/grid, text-quality, and OCR/VLM work metadata on visual text chunks so text, caption, and image vectors share the same filter contract.

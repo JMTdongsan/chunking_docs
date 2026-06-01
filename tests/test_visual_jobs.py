@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import pytest
@@ -11,6 +12,7 @@ from chunking_docs.models import AssetKind, ChunkKind, DocumentChunk, SectionPat
 from chunking_docs.vision.jobs import (
     VisualJobRunResult,
     completed_annotations,
+    merge_visual_job_results,
     plan_visual_jobs,
     run_visual_jobs,
 )
@@ -393,6 +395,92 @@ def test_run_visual_jobs_uses_offset_and_limit_window(tmp_path):
     assert results[0].error == "offset not selected"
     assert results[1].asset_id == "map-1"
     assert results[2].error == "limit reached"
+
+
+def test_merge_visual_job_results_prefers_completed_batch_result():
+    skipped = VisualJobRunResult(
+        job_id="job-1",
+        asset_id="asset-1",
+        page_no=1,
+        status="skipped",
+        error="offset not selected",
+    )
+    failed = VisualJobRunResult(
+        job_id="job-2",
+        asset_id="asset-2",
+        page_no=2,
+        status="failed",
+        error="model error",
+    )
+    completed = VisualJobRunResult(
+        job_id="job-1",
+        asset_id="asset-1",
+        page_no=1,
+        status="completed",
+        annotation=AssetAnnotation(asset_id="asset-1", vlm_summary="done"),
+    )
+
+    merged = merge_visual_job_results([skipped, failed, completed])
+
+    assert [result.job_id for result in merged] == ["job-1", "job-2"]
+    assert merged[0].status == "completed"
+    assert merged[0].annotation is not None
+    assert merged[1].status == "failed"
+
+
+def test_merge_visual_results_cli_writes_annotations(tmp_path):
+    first = tmp_path / "batch-1.jsonl"
+    second = tmp_path / "batch-2.jsonl"
+    output = tmp_path / "merged.jsonl"
+    annotations_output = tmp_path / "annotations.jsonl"
+    write_jsonl(
+        first,
+        [
+            VisualJobRunResult(
+                job_id="job-1",
+                asset_id="asset-1",
+                page_no=1,
+                status="skipped",
+                error="limit reached",
+            )
+        ],
+    )
+    write_jsonl(
+        second,
+        [
+            VisualJobRunResult(
+                job_id="job-1",
+                asset_id="asset-1",
+                page_no=1,
+                status="completed",
+                annotation=AssetAnnotation(asset_id="asset-1", vlm_summary="done"),
+            )
+        ],
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "merge-visual-results",
+            "--results",
+            str(first),
+            "--results",
+            str(second),
+            "--output",
+            str(output),
+            "--annotations-output",
+            str(annotations_output),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    merged = [json.loads(line) for line in output.read_text(encoding="utf-8").splitlines()]
+    annotations = [
+        json.loads(line) for line in annotations_output.read_text(encoding="utf-8").splitlines()
+    ]
+    assert merged[0]["status"] == "completed"
+    assert len(annotations) == 1
+    assert annotations[0]["asset_id"] == "asset-1"
 
 
 def test_run_visual_jobs_parses_json_vlm_triples(tmp_path):

@@ -26,6 +26,7 @@ class VLMExperimentRecipe(BaseModel):
     doctor_command: str
     command: str
     batch_commands: list[str] = Field(default_factory=list)
+    merge_command: str = ""
     metadata: dict[str, str | int | float | bool | None] = Field(default_factory=dict)
 
 
@@ -242,6 +243,13 @@ def vlm_experiment_recipe(
         )
         for batch in batches
     ]
+    merge_command = build_merge_visual_results_command(
+        output_dir,
+        profile.name,
+        results_output,
+        annotations_output,
+        batches,
+    )
     return VLMExperimentRecipe(
         name=profile.name,
         profile=profile.name,
@@ -257,6 +265,7 @@ def vlm_experiment_recipe(
         doctor_command=doctor_command,
         command=visual_job_command(results_output, annotations_output, command_limit=limit),
         batch_commands=batch_commands,
+        merge_command=merge_command,
         metadata={
             "profile_notes": profile.notes,
             "min_gpu_memory_mib": profile.min_gpu_memory_mib,
@@ -308,6 +317,29 @@ def build_batch_compare_visual_runs_commands(
         )
         commands.append(quote_command(args))
     return commands
+
+
+def build_merge_visual_results_command(
+    output_dir: Path,
+    profile: str,
+    results_output: Path,
+    annotations_output: Path,
+    batches: list[VLMExperimentBatch],
+) -> str:
+    if not batches:
+        return ""
+    args = ["chunking-docs", "merge-visual-results"]
+    for batch in batches:
+        args.extend(["--results", str(batch_results_path(output_dir, profile, batch.batch_id))])
+    args.extend(
+        [
+            "--output",
+            str(results_output),
+            "--annotations-output",
+            str(annotations_output),
+        ]
+    )
+    return quote_command(args)
 
 
 def summarize_vlm_experiment_jobs(

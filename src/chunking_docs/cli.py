@@ -130,6 +130,7 @@ from chunking_docs.vision.jobs import (
     VisualAnnotationJob,
     VisualJobRunResult,
     completed_annotations,
+    merge_visual_job_results,
     plan_visual_jobs,
     run_visual_jobs,
 )
@@ -2887,6 +2888,44 @@ def run_visual_jobs_command(
             "results_output": str(result_path),
             "applied": applied,
             "rebuilt_search": bool(applied and rebuild_search),
+        }
+    )
+
+
+@app.command(name="merge-visual-results")
+def merge_visual_results_command(
+    results: list[Path] = typer.Option(
+        None,
+        "--results",
+        help="Visual job results JSONL file to merge. Repeat for multiple batch files.",
+    ),
+    output: Path = Path("outputs/package/visual_job_results.jsonl"),
+    annotations_output: Path | None = None,
+):
+    """Merge batch visual job result files into one run-level result file."""
+    if not results:
+        raise typer.BadParameter("At least one --results file is required.")
+    parsed_results: list[VisualJobRunResult] = []
+    for result_path in results:
+        parsed_results.extend(read_jsonl(result_path, VisualJobRunResult))
+    merged_results = merge_visual_job_results(parsed_results)
+    annotations = completed_annotations(merged_results)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    write_jsonl(output, merged_results)
+    if annotations_output is not None:
+        annotations_output.parent.mkdir(parents=True, exist_ok=True)
+        write_jsonl(annotations_output, annotations)
+    print(
+        {
+            "input_file_count": len(results),
+            "input_result_count": len(parsed_results),
+            "output": str(output),
+            "merged_result_count": len(merged_results),
+            "completed": sum(1 for result in merged_results if result.status == "completed"),
+            "failed": sum(1 for result in merged_results if result.status == "failed"),
+            "skipped": sum(1 for result in merged_results if result.status == "skipped"),
+            "annotations": len(annotations),
+            "annotations_output": str(annotations_output) if annotations_output else None,
         }
     )
 
