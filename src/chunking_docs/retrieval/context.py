@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter
+import json
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -177,9 +178,11 @@ def context_chunk(
     if parent_chunk_id:
         metadata["retrieved_parent_chunk_id"] = parent_chunk_id
     retrieval_refs = retrieval_payload_refs(payloads or [])
-    retrieved_asset_ids = sorted(
-        {ref["asset_id"] for ref in retrieval_refs if "asset_id" in ref}
-    )
+    retrieved_asset_ids = set()
+    for ref in retrieval_refs:
+        retrieved_asset_ids.update(string_values(ref.get("asset_id")))
+        retrieved_asset_ids.update(string_values(ref.get("asset_ids")))
+    retrieved_asset_ids = sorted(retrieved_asset_ids)
     if retrieval_refs:
         metadata["retrieval_payload_refs"] = retrieval_refs
     if retrieved_asset_ids:
@@ -303,6 +306,7 @@ def context_asset_ids(chunks: list[RAGContextChunk]) -> set[str]:
         for ref in chunk.metadata.get("retrieval_payload_refs", []):
             if isinstance(ref, dict):
                 asset_ids.update(string_values(ref.get("asset_id")))
+                asset_ids.update(string_values(ref.get("asset_ids")))
     return asset_ids
 
 
@@ -473,7 +477,7 @@ def retrieval_payload_refs(payloads: list[dict[str, Any]]) -> list[dict[str, Any
         ref = retrieval_payload_ref(payload)
         if not ref:
             continue
-        key = tuple(sorted(ref.items()))
+        key = json.dumps(ref, sort_keys=True, default=str)
         if key in seen:
             continue
         seen.add(key)
@@ -509,7 +513,14 @@ def retrieval_payload_ref(payload: dict[str, Any]) -> dict[str, Any]:
     ):
         value = payload.get(key)
         if value is not None:
-            ref[key] = value
+            if key == "asset_id":
+                asset_ids = string_values(value)
+                if len(asset_ids) == 1:
+                    ref["asset_id"] = asset_ids[0]
+                elif asset_ids:
+                    ref["asset_ids"] = asset_ids
+            else:
+                ref[key] = value
     return ref
 
 

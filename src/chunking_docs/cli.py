@@ -823,6 +823,118 @@ def qdrant_rag_context_command(
     print(bundle.model_dump())
 
 
+@app.command(name="qdrant-rag-context-config")
+def qdrant_rag_context_config_command(
+    config: Path,
+    query: str,
+    output: Path | None = None,
+    package_dir: Path | None = typer.Option(
+        None,
+        "--package-dir",
+        help="Override package_dir from the retrieval config.",
+    ),
+    url: str = "http://localhost:6333",
+    collection: str = "",
+    location: str = "",
+    path: str = "",
+    max_chars_per_chunk: int = 1400,
+    max_chars_per_asset_text: int = 1400,
+    include_evidence: bool = True,
+    neighbor_window: int = 0,
+    include_assets: bool = True,
+    include_triples: bool = True,
+    text_backend: str = "hashing",
+    text_model: str = "BAAI/bge-m3",
+    image_query_backend: str = "none",
+    image_query_model: str = "openai/clip-vit-large-patch14",
+    device: str = "cuda",
+    hashing_dim: int = 384,
+    doc_id: str = "",
+    payload_filter: list[str] = typer.Option(
+        None,
+        "--filter",
+        help="Payload filter such as kind=map, page_no=12, page_start<=12. Repeat for multiple filters.",
+    ),
+):
+    """Build a RAG context bundle using an exported Qdrant retrieval config."""
+    retrieval_config = read_qdrant_retrieval_config(config)
+    tokenizer_options = retrieval_config_tokenizer_options(retrieval_config)
+    effective_package_dir = package_dir or Path(
+        retrieval_config.package_dir or "outputs/package"
+    )
+    effective_collection = collection or retrieval_config.collection_name or ""
+    vector_names = ",".join(retrieval_config.vector_names)
+    filters = build_payload_filter(filter_specs=payload_filter)
+    metadata_filters = build_payload_filter(doc_id=doc_id, filter_specs=payload_filter)
+
+    prepared = prepare_qdrant_hybrid_search(
+        package_dir=effective_package_dir,
+        url=url,
+        collection=effective_collection,
+        location=location,
+        path=path,
+        vector_names=vector_names,
+        text_backend=text_backend,
+        text_model=text_model,
+        image_query_backend=image_query_backend,
+        image_query_model=image_query_model,
+        device=device,
+        hashing_dim=hashing_dim,
+        lexical_tokenizer=tokenizer_options["strategy"],
+        ngram_min=tokenizer_options["min_n"],
+        ngram_max=tokenizer_options["max_n"],
+        ngram_cjk_only=tokenizer_options["ngram_cjk_only"],
+        deduplicate_tokens=tokenizer_options["deduplicate"],
+    )
+    hits = prepared["searcher"].search(
+        query=query,
+        vector_names=prepared["selected_vectors"],
+        top_k=retrieval_config.top_k,
+        graph_expand=retrieval_config.graph_expand,
+        doc_id=doc_id or None,
+        payload_filter=filters,
+        collapse_hierarchical=retrieval_config.collapse_hierarchical,
+        fusion_weights=retrieval_config.fusion_weights,
+    )
+    bundle = build_context_bundle(
+        query=query,
+        hits=hits,
+        chunks=prepared["chunks"],
+        assets=prepared["assets"],
+        triples=prepared["triples"],
+        max_chars_per_chunk=max_chars_per_chunk,
+        max_chars_per_asset_text=max_chars_per_asset_text,
+        include_evidence=include_evidence,
+        neighbor_window=neighbor_window,
+        include_assets=include_assets,
+        include_triples=include_triples,
+    )
+    bundle.metadata.update(
+        {
+            "backend": "qdrant_hybrid_config",
+            "config": str(config),
+            "config_selection": retrieval_config.selection.model_dump(),
+            "collection": prepared["collection_name"],
+            "vector_names": prepared["selected_vectors"],
+            "graph_expand": retrieval_config.graph_expand,
+            "query_encoders": prepared["query_encoders"],
+            "query_encoder_details": prepared.get("query_encoder_details", {}),
+            "upserted": prepared["upserted"],
+            "stored_count": prepared["store"].count(),
+            "filters": metadata_filters,
+            "fusion_weights": retrieval_config.fusion_weights,
+            "collapse_hierarchical": retrieval_config.collapse_hierarchical,
+            "lexical_tokenizer": tokenizer_options,
+        }
+    )
+    if output is not None:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(bundle.model_dump_json(indent=2), encoding="utf-8")
+        print({"output": str(output), **bundle.metadata})
+        return
+    print(bundle.model_dump())
+
+
 @app.command(name="eval-qdrant-retrieval")
 def eval_qdrant_retrieval_command(
     cases: Path,
@@ -1001,15 +1113,7 @@ def eval_qdrant_retrieval_config_command(
     ),
 ):
     """Evaluate benchmark cases using an exported Qdrant retrieval config."""
-    try:
-        retrieval_config = QdrantRetrievalConfig.model_validate_json(
-            config.read_text(encoding="utf-8")
-        )
-    except OSError as exc:
-        raise typer.BadParameter(f"Could not read retrieval config: {exc}") from exc
-    except ValueError as exc:
-        raise typer.BadParameter(f"Invalid retrieval config: {exc}") from exc
-
+    retrieval_config = read_qdrant_retrieval_config(config)
     tokenizer_options = retrieval_config_tokenizer_options(retrieval_config)
     effective_package_dir = package_dir or Path(
         retrieval_config.package_dir or "outputs/package"
@@ -6278,6 +6382,15 @@ def retrieval_case_group_metrics_payload(evaluation) -> dict:
         }
         for group_name, group_values in getattr(evaluation, "case_group_metrics", {}).items()
     }
+
+
+def read_qdrant_retrieval_config(config: Path) -> QdrantRetrievalConfig:
+    try:
+        return QdrantRetrievalConfig.model_validate_json(config.read_text(encoding="utf-8"))
+    except OSError as exc:
+        raise typer.BadParameter(f"Could not read retrieval config: {exc}") from exc
+    except ValueError as exc:
+        raise typer.BadParameter(f"Invalid retrieval config: {exc}") from exc
 
 
 def retrieval_config_tokenizer_options(

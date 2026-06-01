@@ -236,6 +236,71 @@ def test_build_context_bundle_records_retrieved_visual_asset_refs():
     assert bundle.metadata["retrieved_asset_count"] == 1
 
 
+def test_build_context_bundle_records_list_payload_asset_refs():
+    chunk = DocumentChunk(
+        chunk_id="chunk-1",
+        doc_id="doc",
+        page_start=4,
+        page_end=4,
+        kind=ChunkKind.TEXT,
+        text="base page text",
+    )
+    assets = [
+        VisualAsset(
+            asset_id="asset-2",
+            doc_id="doc",
+            page_no=4,
+            kind=AssetKind.MAP,
+            caption="first visual evidence",
+        ),
+        VisualAsset(
+            asset_id="asset-3",
+            doc_id="doc",
+            page_no=4,
+            kind=AssetKind.TABLE,
+            caption="second visual evidence",
+        ),
+    ]
+    hit = SimpleNamespace(
+        chunk=chunk,
+        score=0.9,
+        sources=["qdrant:text_dense"],
+        payloads=[
+            {
+                "asset_id": ["asset-2", "asset-3"],
+                "doc_id": "doc",
+                "page_no": 4,
+                "kind": "text",
+            },
+            {
+                "asset_id": ["asset-2", "asset-3"],
+                "doc_id": "doc",
+                "page_no": 4,
+                "kind": "text",
+            },
+        ],
+        evidence_chunks=[],
+    )
+
+    bundle = build_context_bundle(
+        query="visual map",
+        hits=[hit],
+        assets=assets,
+    )
+
+    assert bundle.chunks[0].metadata["retrieved_asset_ids"] == ["asset-2", "asset-3"]
+    assert bundle.chunks[0].metadata["retrieval_payload_refs"] == [
+        {
+            "asset_ids": ["asset-2", "asset-3"],
+            "doc_id": "doc",
+            "page_no": 4,
+            "kind": "text",
+        }
+    ]
+    assert [asset.asset_id for asset in bundle.assets] == ["asset-2", "asset-3"]
+    assert bundle.metadata["retrieved_asset_ids"] == ["asset-2", "asset-3"]
+
+
 def test_build_context_bundle_includes_source_ref_visual_assets():
     chunk = DocumentChunk(
         chunk_id="chunk-1",
