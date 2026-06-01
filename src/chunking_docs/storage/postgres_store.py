@@ -15,6 +15,7 @@ from chunking_docs.storage.postgres_records import (
     chunk_row,
     document_row,
     embedding_artifact_rows,
+    embedding_record_rows,
     page_row,
     triple_row,
     visual_object_rows,
@@ -119,6 +120,17 @@ EXPECTED_POSTGRES_SCHEMA = {
         "sha256": "text",
         "metadata": "jsonb",
     },
+    "embedding_records": {
+        "point_id": "text",
+        "doc_id": "text",
+        "vector_name": "text",
+        "target_id": "text",
+        "target_kind": "text",
+        "vector": "vector",
+        "dimension": "integer",
+        "payload": "jsonb",
+        "metadata": "jsonb",
+    },
 }
 
 EXPECTED_POSTGRES_INDEXES = {
@@ -135,6 +147,9 @@ EXPECTED_POSTGRES_INDEXES = {
     "chunks_text_quality_idx": "chunks",
     "chunks_text_bm25_idx": "chunks",
     "embedding_artifacts_collection_idx": "embedding_artifacts",
+    "embedding_records_doc_vector_idx": "embedding_records",
+    "embedding_records_payload_gin_idx": "embedding_records",
+    "embedding_records_target_idx": "embedding_records",
     "pages_text_quality_idx": "pages",
     "triples_spo_idx": "triples",
     "visual_objects_asset_idx": "visual_objects",
@@ -228,6 +243,7 @@ class PostgresDocumentStore:
                 upsert_chunk_asset_links(cursor, rows["chunk_asset_links"])
                 upsert_triples(cursor, rows["triples"])
                 upsert_embedding_artifacts(cursor, rows["embedding_artifacts"])
+                upsert_embedding_records(cursor, rows["embedding_records"])
         return {
             "documents": 1,
             "pages": len(rows["pages"]),
@@ -238,6 +254,7 @@ class PostgresDocumentStore:
             "chunk_asset_links": len(rows["chunk_asset_links"]),
             "triples": len(rows["triples"]),
             "embedding_artifacts": len(rows["embedding_artifacts"]),
+            "embedding_records": len(rows["embedding_records"]),
         }
 
 
@@ -260,6 +277,7 @@ def manifest_rows(manifest: ProcessingManifest, base_dir: Path | None = None) ->
         ),
         "triples": [triple_row(triple) for triple in triples],
         "embedding_artifacts": embedding_artifact_rows(manifest.doc.doc_id, package_dir=base_dir),
+        "embedding_records": embedding_record_rows(manifest.doc.doc_id, package_dir=base_dir),
     }
 
 
@@ -600,7 +618,44 @@ def upsert_embedding_artifacts(cursor, rows: list[dict[str, Any]]) -> None:
     )
 
 
+def upsert_embedding_records(cursor, rows: list[dict[str, Any]]) -> None:
+    if not rows:
+        return
+    cursor.executemany(
+        """
+        insert into embedding_records (
+            point_id, doc_id, vector_name, target_id, target_kind, vector,
+            dimension, payload, metadata
+        )
+        values (
+            %(point_id)s, %(doc_id)s, %(vector_name)s, %(target_id)s,
+            %(target_kind)s, %(vector)s::vector, %(dimension)s,
+            %(payload)s::jsonb, %(metadata)s::jsonb
+        )
+        on conflict (point_id) do update set
+            doc_id = excluded.doc_id,
+            vector_name = excluded.vector_name,
+            target_id = excluded.target_id,
+            target_kind = excluded.target_kind,
+            vector = excluded.vector,
+            dimension = excluded.dimension,
+            payload = excluded.payload,
+            metadata = excluded.metadata
+        """,
+        [
+            with_pgvector(with_json(with_json(row, "payload"), "metadata"), "vector")
+            for row in rows
+        ],
+    )
+
+
 def with_json(row: dict[str, Any], key: str) -> dict[str, Any]:
     copied = dict(row)
     copied[key] = json_dump(copied[key])
+    return copied
+
+
+def with_pgvector(row: dict[str, Any], key: str) -> dict[str, Any]:
+    copied = dict(row)
+    copied[key] = "[" + ",".join(format(float(value), ".17g") for value in copied[key]) + "]"
     return copied

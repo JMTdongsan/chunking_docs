@@ -393,7 +393,7 @@ Qdrant search, evaluation, ablation, and RAG context outputs include `query_enco
 
 ## PostgreSQL
 
-PostgreSQL is intended for source metadata, page profiles, chunks, BM25 token artifacts, visual asset links, assets, normalized VLM object rows, graph triples, and embedding artifact provenance. Vector search is handled by Qdrant by default, while PostgreSQL stores vector file names, dimensions, counts, checksums, backend/model metadata, and collection names so embedding runs remain auditable.
+PostgreSQL is intended for source metadata, page profiles, chunks, BM25 token artifacts, visual asset links, assets, normalized VLM object rows, graph triples, embedding artifact provenance, and pgvector-compatible embedding record rows. Vector search is handled by Qdrant by default, while PostgreSQL stores vector file names, dimensions, counts, checksums, backend/model metadata, collection names, payloads, and target IDs so embedding runs remain auditable or migratable.
 
 ```bash
 chunking-docs postgres-schema --output outputs/package/postgres_schema.sql
@@ -406,7 +406,7 @@ chunking-docs postgres-upsert "postgresql://user:password@localhost:5432/chunkin
   --package-dir outputs/package
 ```
 
-`postgres-schema` writes the SQL contract without opening a database connection. `postgres-check-schema` validates required tables, columns, column types, indexes, and the pgvector extension before metadata rows are upserted. BM25 token rows from `bm25_tokens.json` are stored in `chunk_lexical_tokens` with the tokenizer config and token array, so lexical experiments can be audited or migrated to a PostgreSQL-backed search service later. Chunk-to-asset links are stored in a normalized `chunk_asset_links` table and also preserved in chunk metadata for auditability. Structured VLM object metadata from visual assets is exported to `visual_objects` with label, bbox region, attributes, description, confidence, object text, and asset/page provenance so object-detection probes can be joined without parsing asset JSON. Embedding artifact rows preserve Qdrant payload index fields and schemas alongside vector file metadata, which keeps filter contracts auditable after Qdrant artifacts are loaded or migrated. Asset-backed graph triples are remapped to an available chunk before PostgreSQL row export while retaining the original chunk ID in qualifiers. Use `--apply-schema` when bootstrapping a new database; omit it when checking an existing schema for drift.
+`postgres-schema` writes the SQL contract without opening a database connection. `postgres-check-schema` validates required tables, columns, column types, indexes, and the pgvector extension before metadata rows are upserted. BM25 token rows from `bm25_tokens.json` are stored in `chunk_lexical_tokens` with the tokenizer config and token array, so lexical experiments can be audited or migrated to a PostgreSQL-backed search service later. Chunk-to-asset links are stored in a normalized `chunk_asset_links` table and also preserved in chunk metadata for auditability. Structured VLM object metadata from visual assets is exported to `visual_objects` with label, bbox region, attributes, description, confidence, object text, and asset/page provenance so object-detection probes can be joined without parsing asset JSON. Embedding artifact rows preserve Qdrant payload index fields and schemas alongside vector file metadata, which keeps filter contracts auditable after Qdrant artifacts are loaded or migrated. `embedding_records` mirrors Qdrant JSONL records into PostgreSQL with `vector`, `dimension`, `payload`, `target_kind`, and `target_id` columns; no ANN index is created by default because named vector families can use different dimensions, but the rows can be filtered, audited, or re-indexed per family in a deployment database. Asset-backed graph triples are remapped to an available chunk before PostgreSQL row export while retaining the original chunk ID in qualifiers. Use `--apply-schema` when bootstrapping a new database; omit it when checking an existing schema for drift.
 
 ## Ingestion Readiness
 
@@ -492,8 +492,8 @@ Correct execution is not enough for a chunking library. Use evaluation commands 
 
 ```bash
 chunking-docs audit-publication . \
-  --forbidden-pattern "internal project codename" \
-  --forbidden-pattern "private source file name" \
+  --forbidden-pattern "<confidential-term>" \
+  --forbidden-pattern "<private-filename>" \
   --output outputs/publication_audit.json
 chunking-docs audit-package --package-dir outputs/package
 chunking-docs audit-package --package-dir outputs/package --require-qdrant-records

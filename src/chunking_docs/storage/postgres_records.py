@@ -6,9 +6,11 @@ from typing import Any
 
 from chunking_docs.embeddings.records import visual_object_embedding_items
 from chunking_docs.graph.provenance import asset_ids_from_ref, chunk_asset_ids
+from chunking_docs.io import read_jsonl
 from chunking_docs.models import DocumentChunk, GraphTriple, PageProfile, SourceDocument, VisualAsset
 from chunking_docs.storage.qdrant_config import qdrant_payload_index_fields
 from chunking_docs.storage.qdrant_config import qdrant_payload_index_schemas
+from chunking_docs.storage.records import EmbeddingRecord
 
 BM25_TOKEN_MANIFEST = "bm25_tokens.json"
 VISUAL_OBJECT_ROW_KEYS = {
@@ -267,3 +269,87 @@ def embedding_artifact_rows(doc_id: str, package_dir: Path | None = None) -> lis
             }
         )
     return rows
+
+
+def embedding_record_rows(doc_id: str, package_dir: Path | None = None) -> list[dict[str, Any]]:
+    if package_dir is None:
+        return []
+    manifest_path = package_dir / "embedding_manifest.json"
+    if not manifest_path.exists():
+        return []
+
+    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    collection = str(payload.get("collection") or "document_chunks")
+    vectors = payload.get("vectors") or {}
+    if not isinstance(vectors, dict):
+        return []
+
+    rows: list[dict[str, Any]] = []
+    for vector_name, vector in sorted(vectors.items()):
+        if not isinstance(vector, dict):
+            continue
+        filename = str(vector.get("file") or "").strip()
+        if not filename:
+            continue
+        record_path = package_record_path(package_dir, filename)
+        if record_path is None:
+            continue
+        if not record_path.exists():
+            continue
+        manifest_dimension = int(vector.get("dimension") or 0)
+        manifest_record_count = int(vector.get("record_count") or 0)
+        for record in read_jsonl(record_path, EmbeddingRecord):
+            target_kind, target_id = embedding_record_target(record)
+            rows.append(
+                {
+                    "point_id": record.point_id,
+                    "doc_id": record.doc_id or doc_id,
+                    "vector_name": record.vector_name or str(vector_name),
+                    "target_id": target_id,
+                    "target_kind": target_kind,
+                    "vector": record.vector,
+                    "dimension": len(record.vector),
+                    "payload": record.payload,
+                    "metadata": {
+                        "collection": collection,
+                        "manifest_file": manifest_path.name,
+                        "record_file": record_path.relative_to(package_dir.resolve()).as_posix(),
+                        "manifest_vector_name": str(vector_name),
+                        "manifest_dimension": manifest_dimension,
+                        "manifest_record_count": manifest_record_count,
+                    },
+                }
+            )
+    return rows
+
+
+def package_record_path(package_dir: Path, filename: str) -> Path | None:
+    package_root = package_dir.resolve()
+    record_path = (package_root / filename).resolve()
+    try:
+        record_path.relative_to(package_root)
+    except ValueError:
+        return None
+    return record_path
+
+
+def embedding_record_target(record: EmbeddingRecord) -> tuple[str, str]:
+    payload = record.payload
+    if payload.get("record_kind") == "graph_triple" or payload.get("triple_id"):
+        return "triple", payload_id(payload.get("triple_id")) or record.chunk_id
+    if record.vector_name == "object_dense" or payload.get("object_id"):
+        return "object", payload_id(payload.get("object_id")) or record.chunk_id
+    if record.vector_name in {"image_dense", "caption_dense"}:
+        return "asset", payload_id(payload.get("asset_id")) or record.chunk_id
+    if payload.get("chunk_id"):
+        return "chunk", payload_id(payload.get("chunk_id")) or record.chunk_id
+    return "record", record.chunk_id
+
+
+def payload_id(value: Any) -> str | None:
+    if isinstance(value, str):
+        stripped = value.strip()
+        return stripped or None
+    if isinstance(value, list) and len(value) == 1:
+        return payload_id(value[0])
+    return None

@@ -1456,6 +1456,7 @@ def postgres_rows_component(
         "chunk_asset_links": len(rows["chunk_asset_links"]),
         "triples": len(rows["triples"]),
         "embedding_artifacts": len(rows["embedding_artifacts"]),
+        "embedding_records": len(rows["embedding_records"]),
     }
     return (
         ReadinessComponent(

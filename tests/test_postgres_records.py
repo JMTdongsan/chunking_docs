@@ -19,6 +19,7 @@ from chunking_docs.storage.postgres_records import (
     chunk_row,
     document_row,
     embedding_artifact_rows,
+    embedding_record_rows,
     page_row,
     triple_row,
     visual_object_rows,
@@ -214,6 +215,7 @@ def test_manifest_rows_counts():
     assert rows["visual_objects"] == []
     assert rows["chunk_asset_links"] == []
     assert rows["embedding_artifacts"] == []
+    assert rows["embedding_records"] == []
 
 
 def test_manifest_rows_include_normalized_chunk_asset_links():
@@ -394,6 +396,155 @@ def test_manifest_rows_includes_embedding_artifact_provenance(tmp_path):
             },
         }
     ]
+
+
+def test_manifest_rows_includes_embedding_record_rows(tmp_path):
+    (tmp_path / "embedding_manifest.json").write_text(
+        json.dumps(
+            {
+                "collection": "custom_documents",
+                "vectors": {
+                    "text_dense": {
+                        "file": "qdrant_text_records.jsonl",
+                        "record_count": 1,
+                        "dimension": 2,
+                        "distance": "Cosine",
+                        "exists": True,
+                    },
+                    "image_dense": {
+                        "file": "qdrant_image_records.jsonl",
+                        "record_count": 1,
+                        "dimension": 2,
+                        "distance": "Cosine",
+                        "exists": True,
+                    },
+                    "object_dense": {
+                        "file": "qdrant_object_records.jsonl",
+                        "record_count": 1,
+                        "dimension": 2,
+                        "distance": "Cosine",
+                        "exists": True,
+                    },
+                    "triple_dense": {
+                        "file": "qdrant_triple_records.jsonl",
+                        "record_count": 1,
+                        "dimension": 2,
+                        "distance": "Cosine",
+                        "exists": True,
+                    },
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    records = {
+        "qdrant_text_records.jsonl": {
+            "point_id": "text-point",
+            "chunk_id": "chunk",
+            "doc_id": "doc",
+            "vector_name": "text_dense",
+            "vector": [0.1, 0.2],
+            "payload": {"chunk_id": "chunk", "doc_id": "doc"},
+        },
+        "qdrant_image_records.jsonl": {
+            "point_id": "image-point",
+            "chunk_id": "asset",
+            "doc_id": "doc",
+            "vector_name": "image_dense",
+            "vector": [0.3, 0.4],
+            "payload": {"asset_id": "asset", "doc_id": "doc"},
+        },
+        "qdrant_object_records.jsonl": {
+            "point_id": "object-point",
+            "chunk_id": "asset",
+            "doc_id": "doc",
+            "vector_name": "object_dense",
+            "vector": [0.5, 0.6],
+            "payload": {"object_id": "asset:object:0", "asset_id": "asset", "doc_id": "doc"},
+        },
+        "qdrant_triple_records.jsonl": {
+            "point_id": "triple-point",
+            "chunk_id": "chunk",
+            "doc_id": "doc",
+            "vector_name": "triple_dense",
+            "vector": [0.7, 0.8],
+            "payload": {
+                "record_kind": "graph_triple",
+                "triple_id": "triple",
+                "chunk_id": "chunk",
+                "doc_id": "doc",
+            },
+        },
+    }
+    for filename, record in records.items():
+        (tmp_path / filename).write_text(json.dumps(record) + "\n", encoding="utf-8")
+    manifest = ProcessingManifest(
+        doc=SourceDocument(doc_id="doc", title="title", local_path=Path("/tmp/doc.pdf")),
+        profiles=[],
+        chunks=[],
+        assets=[],
+        triples=[],
+    )
+
+    rows = manifest_rows(manifest, base_dir=tmp_path)
+    direct_rows = embedding_record_rows("doc", tmp_path)
+
+    assert rows["embedding_records"] == direct_rows
+    assert {row["target_kind"] for row in rows["embedding_records"]} == {
+        "asset",
+        "chunk",
+        "object",
+        "triple",
+    }
+    by_point = {row["point_id"]: row for row in rows["embedding_records"]}
+    assert by_point["text-point"]["target_id"] == "chunk"
+    assert by_point["image-point"]["target_id"] == "asset"
+    assert by_point["object-point"]["target_id"] == "asset:object:0"
+    assert by_point["triple-point"]["target_id"] == "triple"
+    assert by_point["text-point"]["dimension"] == 2
+    assert by_point["text-point"]["metadata"] == {
+        "collection": "custom_documents",
+        "manifest_file": "embedding_manifest.json",
+        "record_file": "qdrant_text_records.jsonl",
+        "manifest_vector_name": "text_dense",
+        "manifest_dimension": 2,
+        "manifest_record_count": 1,
+    }
+
+
+def test_embedding_record_rows_ignores_paths_outside_package(tmp_path):
+    outside_path = tmp_path.parent / "qdrant_outside_records.jsonl"
+    outside_path.write_text(
+        json.dumps(
+            {
+                "point_id": "outside",
+                "chunk_id": "chunk",
+                "doc_id": "doc",
+                "vector_name": "text_dense",
+                "vector": [0.1, 0.2],
+                "payload": {"chunk_id": "chunk", "doc_id": "doc"},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "embedding_manifest.json").write_text(
+        json.dumps(
+            {
+                "collection": "custom_documents",
+                "vectors": {
+                    "text_dense": {
+                        "file": "../qdrant_outside_records.jsonl",
+                        "record_count": 1,
+                        "dimension": 2,
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert embedding_record_rows("doc", tmp_path) == []
 
 
 def test_manifest_rows_includes_bm25_token_rows(tmp_path):
