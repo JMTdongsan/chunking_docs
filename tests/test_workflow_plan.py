@@ -256,6 +256,22 @@ def test_workflow_plan_exports_adaptive_qdrant_route_for_visual_object_graph_pac
     assert "qdrant_retrieval_config_eval.json" in readiness_command
     assert "--rag-context-evaluation" in readiness_command
     assert "qdrant_rag_context_config_eval.json" in readiness_command
+    assert (
+        "--min-retrieval-case-group-target-coverage retrieval_route:graph_triple=0.7"
+        in readiness_command
+    )
+    assert (
+        "--min-retrieval-case-group-target-coverage retrieval_route:visual_object=0.7"
+        in readiness_command
+    )
+    assert (
+        "--min-rag-context-case-group-target-coverage retrieval_route:graph_triple=0.7"
+        in readiness_command
+    )
+    assert (
+        "--min-rag-context-case-group-target-coverage retrieval_route:visual_object=0.7"
+        in readiness_command
+    )
 
 
 def test_workflow_plan_uses_ocr_only_visual_step_when_no_vlm_jobs_pending(tmp_path):

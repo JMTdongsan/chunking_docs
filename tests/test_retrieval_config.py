@@ -389,6 +389,14 @@ def test_eval_qdrant_retrieval_config_cli_routes_visual_queries(tmp_path, monkey
         "default": 1,
     }
     assert payload["metadata"]["route_decisions"][0]["name"] == "visual_object"
+    assert payload["results"][0]["case_metadata"]["retrieval_route"] == "visual_object"
+    assert payload["results"][1]["case_metadata"]["retrieval_route"] == "default"
+    assert payload["case_group_metrics"]["retrieval_route"]["visual_object"][
+        "target_coverage_at_k"
+    ] == 1.0
+    assert payload["case_group_metrics"]["retrieval_route"]["default"][
+        "target_coverage_at_k"
+    ] == 1.0
 
 
 def test_eval_qdrant_retrieval_config_cli_auto_detects_text_query_encoder(
@@ -751,6 +759,15 @@ def test_eval_qdrant_rag_context_config_cli_scores_generated_contexts(
                 "ngram_cjk_only": False,
                 "deduplicate": True,
             },
+            "routes": [
+                QdrantRetrievalRoute(
+                    name="graph_triple",
+                    match_query_terms=["visual"],
+                    vector_names=["text_dense"],
+                    graph_expand=True,
+                    fusion_weights={"bm25": 1.2},
+                )
+            ],
         }
     )
     config_path = tmp_path / "qdrant_retrieval_config.json"
@@ -873,10 +890,12 @@ def test_eval_qdrant_rag_context_config_cli_scores_generated_contexts(
     assert payload["target_metrics"]["triple"]["coverage"] == 1.0
     assert payload["metadata"]["backend"] == "qdrant_rag_context_config"
     assert payload["metadata"]["config_selection"]["candidate"] == "balanced"
+    assert payload["case_group_metrics"]["retrieval_route"]["graph_triple"][
+        "target_coverage"
+    ] == 1.0
     context_payload = json.loads(contexts_path.read_text(encoding="utf-8").splitlines()[0])
-    assert context_payload["metadata"]["case_metadata"] == {
-        "case_source": "visual_object_probe"
-    }
+    assert context_payload["metadata"]["case_metadata"]["case_source"] == "visual_object_probe"
+    assert context_payload["metadata"]["case_metadata"]["retrieval_route"] == "graph_triple"
     assert context_payload["metadata"]["retrieved_asset_ids"] == ["asset-1"]
 
 

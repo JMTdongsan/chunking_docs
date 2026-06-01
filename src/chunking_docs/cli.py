@@ -77,6 +77,7 @@ from chunking_docs.evaluation.fusion_sweep import (
 from chunking_docs.evaluation.gate import gate_retrieval_evaluation, gate_summary_payload
 from chunking_docs.evaluation.readiness import build_ingestion_readiness_report
 from chunking_docs.evaluation.retrieval import (
+    RetrievalCase,
     evaluate_retrieval,
     evaluate_search_results,
     load_retrieval_cases,
@@ -1085,9 +1086,10 @@ def eval_qdrant_rag_context_config_command(
         )
         for case in loaded_cases
     ]
+    routed_cases = retrieval_cases_with_route_metadata(loaded_cases, route_decisions)
     bundles = []
     latencies_ms = []
-    for case, route_decision in zip(loaded_cases, route_decisions):
+    for case, route_decision in zip(routed_cases, route_decisions):
         case_start = perf_counter()
         hits = prepared["searcher"].search(
             query=case.query,
@@ -1141,7 +1143,7 @@ def eval_qdrant_rag_context_config_command(
         )
         bundles.append(bundle)
     evaluation = evaluate_rag_contexts(
-        cases=loaded_cases,
+        cases=routed_cases,
         bundles=bundles,
         latencies_ms=latencies_ms,
     )
@@ -1566,6 +1568,7 @@ def eval_qdrant_retrieval_config_command(
         )
         for case in loaded_cases
     ]
+    routed_cases = retrieval_cases_with_route_metadata(loaded_cases, route_decisions)
 
     def search_with_config(case, graph_expand):
         decision = select_qdrant_retrieval_route(
@@ -1588,7 +1591,7 @@ def eval_qdrant_retrieval_config_command(
         )
 
     evaluation = evaluate_search_results(
-        cases=loaded_cases,
+        cases=routed_cases,
         search_fn=search_with_config,
         top_k=retrieval_config.top_k,
         repeat=effective_repeat,
@@ -7838,6 +7841,21 @@ def qdrant_route_usage(route_decisions: list) -> dict[str, object]:
         "counts": counts,
         "reasons": reasons,
     }
+
+
+def retrieval_cases_with_route_metadata(
+    cases: list[RetrievalCase],
+    route_decisions: list,
+) -> list[RetrievalCase]:
+    routed_cases = []
+    for case, decision in zip(cases, route_decisions):
+        metadata = {
+            **case.metadata,
+            "retrieval_route": decision.name or "default",
+            "retrieval_route_reason": decision.reason,
+        }
+        routed_cases.append(case.model_copy(update={"metadata": metadata}))
+    return routed_cases
 
 
 def retrieval_config_tokenizer_options(

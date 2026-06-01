@@ -159,3 +159,11 @@ QDRANT_RAG_READINESS_GATE_ARGS = [
     "--max-rag-context-excluded-target-hit-rate 0",
     "--max-rag-context-mean-context-char-count 12000",
 ]
+
+
+QDRANT_ADAPTIVE_ROUTE_READINESS_GATE_ARGS = [
+    "--min-retrieval-case-group-target-coverage retrieval_route:graph_triple=0.7",
+    "--min-retrieval-case-group-target-coverage retrieval_route:visual_object=0.7",
+    "--min-rag-context-case-group-target-coverage retrieval_route:graph_triple=0.7",
+    "--min-rag-context-case-group-target-coverage retrieval_route:visual_object=0.7",
+]

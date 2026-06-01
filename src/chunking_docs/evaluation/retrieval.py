@@ -170,6 +170,8 @@ CASE_GROUP_METADATA_KEYS = (
     "difficulty",
     "modality",
     "evidence_family",
+    "retrieval_route",
+    "retrieval_route_reason",
 )
 
 SearchResultSignature = tuple[

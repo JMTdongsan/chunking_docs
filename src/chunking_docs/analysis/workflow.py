@@ -8,7 +8,10 @@ from pydantic import BaseModel, Field
 
 from chunking_docs.analysis.chunking_defaults import CHUNKING_READINESS_GATE_ARGS
 from chunking_docs.analysis.characterize import PackageCharacteristics, ProcessingRecommendation
-from chunking_docs.analysis.qdrant_defaults import QDRANT_RAG_READINESS_GATE_ARGS
+from chunking_docs.analysis.qdrant_defaults import (
+    QDRANT_ADAPTIVE_ROUTE_READINESS_GATE_ARGS,
+    QDRANT_RAG_READINESS_GATE_ARGS,
+)
 
 
 class WorkflowStep(BaseModel):
@@ -147,6 +150,9 @@ def build_ingestion_workflow_plan(
         handled_codes.add(recommendation.code)
 
     steps.append(metadata_refresh_step(package_dir))
+    qdrant_route_preset = qdrant_retrieval_route_preset(
+        recommendations_by_code.get("validate_qdrant_rag_context")
+    )
     steps.append(
         readiness_step(
             package_dir,
@@ -165,6 +171,7 @@ def build_ingestion_workflow_plan(
             include_chunking_comparison="compare_multimodal_hierarchical_chunking"
             in recommendations_by_code,
             include_qdrant_rag_context=needs_qdrant_rag_context,
+            qdrant_route_preset=qdrant_route_preset,
         )
     )
     return IngestionWorkflowPlan(
@@ -320,6 +327,13 @@ def requires_vlm_quality_gate(
     recommendation: ProcessingRecommendation | None,
 ) -> bool:
     return pending_visual_vlm_count(recommendation) > 0 or characteristics.visual.vlm_object_count > 0
+
+
+def qdrant_retrieval_route_preset(recommendation: ProcessingRecommendation | None) -> str:
+    if recommendation is None:
+        return ""
+    value = recommendation.metadata.get("retrieval_route_preset")
+    return str(value).strip() if value is not None else ""
 
 
 def plan_visual_jobs_command(
@@ -491,6 +505,7 @@ def readiness_step(
     include_visual_run_comparison: bool = False,
     include_chunking_comparison: bool = False,
     include_qdrant_rag_context: bool = False,
+    qdrant_route_preset: str = "",
 ) -> WorkflowStep:
     command_parts = [
         "chunking-docs ingestion-readiness",
@@ -527,6 +542,9 @@ def readiness_step(
             for option in CHUNKING_READINESS_GATE_ARGS
         )
     if include_qdrant_rag_context:
+        qdrant_gate_args = list(QDRANT_RAG_READINESS_GATE_ARGS)
+        if qdrant_route_preset in {"adaptive", "visual-object-graph"}:
+            qdrant_gate_args.extend(QDRANT_ADAPTIVE_ROUTE_READINESS_GATE_ARGS)
         command_parts.extend(
             option.format(
                 qdrant_retrieval_config=path_arg(package_dir / "qdrant_retrieval_config.json"),
@@ -537,7 +555,7 @@ def readiness_step(
                     package_dir / "qdrant_rag_context_config_eval.json"
                 ),
             )
-            for option in QDRANT_RAG_READINESS_GATE_ARGS
+            for option in qdrant_gate_args
         )
     command_parts.extend(["--output", path_arg(package_dir / "ingestion_readiness.json")])
     return WorkflowStep(
@@ -551,6 +569,7 @@ def readiness_step(
             "include_visual_quality": include_visual_quality,
             "include_chunking_comparison": include_chunking_comparison,
             "include_qdrant_rag_context": include_qdrant_rag_context,
+            "qdrant_route_preset": qdrant_route_preset or None,
         },
     )
 
