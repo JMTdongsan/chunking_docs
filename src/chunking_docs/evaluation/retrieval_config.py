@@ -134,6 +134,18 @@ def candidate_metrics(candidate: QdrantFusionSweepCandidate) -> dict[str, float]
         "mean_target_ndcg_at_k": evaluation.mean_target_ndcg_at_k,
         "mrr": evaluation.mrr,
         "mean_precision_at_k": evaluation.mean_precision_at_k,
+        "excluded_query_hit_rate": evaluation.excluded_query_hit_rate,
+        "excluded_target_hit_rate": evaluation.excluded_target_hit_rate,
+        "max_source_excluded_target_hit_rate": candidate.max_source_excluded_target_hit_rate,
+        "max_source_family_excluded_target_hit_rate": (
+            candidate.max_source_family_excluded_target_hit_rate
+        ),
+        "max_chunk_strategy_excluded_target_hit_rate": (
+            candidate.max_chunk_strategy_excluded_target_hit_rate
+        ),
+        "max_retrieval_role_excluded_target_hit_rate": (
+            candidate.max_retrieval_role_excluded_target_hit_rate
+        ),
         "mean_latency_ms": evaluation.mean_latency_ms,
         "p95_latency_ms": evaluation.p95_latency_ms,
         "failed_query_count": float(len(evaluation.failed_queries)),

@@ -1199,6 +1199,38 @@ def sweep_qdrant_fusion_command(
         "--max-excluded-hit-query-count",
         help="Reject fusion candidates with more hard-negative hit queries than this count.",
     ),
+    max_source_excluded_target_hit_rate: list[str] = typer.Option(
+        None,
+        "--max-source-excluded-target-hit-rate",
+        help=(
+            "Reject fusion candidates whose exact-source excluded-target hit rate exceeds "
+            "name=value, such as qdrant:image_dense=0.0."
+        ),
+    ),
+    max_source_family_excluded_target_hit_rate: list[str] = typer.Option(
+        None,
+        "--max-source-family-excluded-target-hit-rate",
+        help=(
+            "Reject fusion candidates whose source-family excluded-target hit rate exceeds "
+            "name=value, such as visual=0.0."
+        ),
+    ),
+    max_chunk_strategy_excluded_target_hit_rate: list[str] = typer.Option(
+        None,
+        "--max-chunk-strategy-excluded-target-hit-rate",
+        help=(
+            "Reject fusion candidates whose chunking-strategy excluded-target hit rate "
+            "exceeds name=value, such as visual_asset_text=0.0."
+        ),
+    ),
+    max_retrieval_role_excluded_target_hit_rate: list[str] = typer.Option(
+        None,
+        "--max-retrieval-role-excluded-target-hit-rate",
+        help=(
+            "Reject fusion candidates whose retrieval-role excluded-target hit rate exceeds "
+            "name=value, such as child=0.0."
+        ),
+    ),
     recall_weight: float = 1.0,
     target_coverage_weight: float = 2.0,
     target_ndcg_weight: float = 1.0,
@@ -1215,6 +1247,29 @@ def sweep_qdrant_fusion_command(
         "--excluded-target-hit-penalty",
         help="Selection-score penalty applied to explicit excluded target hit rate.",
     ),
+    source_excluded_target_hit_penalty: float = typer.Option(
+        0.0,
+        "--source-excluded-target-hit-penalty",
+        help="Selection-score penalty applied to the worst exact-source excluded-target hit rate.",
+    ),
+    source_family_excluded_target_hit_penalty: float = typer.Option(
+        0.0,
+        "--source-family-excluded-target-hit-penalty",
+        help="Selection-score penalty applied to the worst source-family excluded-target hit rate.",
+    ),
+    chunk_strategy_excluded_target_hit_penalty: float = typer.Option(
+        0.0,
+        "--chunk-strategy-excluded-target-hit-penalty",
+        help=(
+            "Selection-score penalty applied to the worst chunking-strategy "
+            "excluded-target hit rate."
+        ),
+    ),
+    retrieval_role_excluded_target_hit_penalty: float = typer.Option(
+        0.0,
+        "--retrieval-role-excluded-target-hit-penalty",
+        help="Selection-score penalty applied to the worst retrieval-role excluded-target hit rate.",
+    ),
     latency_weight: float = 0.05,
     lexical_tokenizer: TokenizerStrategy = "mixed",
     ngram_min: int = 2,
@@ -1226,6 +1281,22 @@ def sweep_qdrant_fusion_command(
     """Sweep Qdrant/BM25/graph fusion weights and recommend a retrieval configuration."""
     grid = parse_fusion_weight_grid(weight_grid)
     fixed_weights = parse_fusion_weights(fixed_fusion_weight)
+    source_excluded_thresholds = parse_named_float_thresholds(
+        max_source_excluded_target_hit_rate,
+        "--max-source-excluded-target-hit-rate",
+    )
+    source_family_excluded_thresholds = parse_named_float_thresholds(
+        max_source_family_excluded_target_hit_rate,
+        "--max-source-family-excluded-target-hit-rate",
+    )
+    chunk_strategy_excluded_thresholds = parse_named_float_thresholds(
+        max_chunk_strategy_excluded_target_hit_rate,
+        "--max-chunk-strategy-excluded-target-hit-rate",
+    )
+    retrieval_role_excluded_thresholds = parse_named_float_thresholds(
+        max_retrieval_role_excluded_target_hit_rate,
+        "--max-retrieval-role-excluded-target-hit-rate",
+    )
     try:
         candidate_weights = build_fusion_weight_grid(
             grid,
@@ -1325,6 +1396,10 @@ def sweep_qdrant_fusion_command(
         max_excluded_target_hit_rate=max_excluded_target_hit_rate,
         max_excluded_query_hit_rate=max_excluded_query_hit_rate,
         max_excluded_hit_query_count=max_excluded_hit_query_count,
+        max_source_excluded_target_hit_rate=source_excluded_thresholds,
+        max_source_family_excluded_target_hit_rate=source_family_excluded_thresholds,
+        max_chunk_strategy_excluded_target_hit_rate=chunk_strategy_excluded_thresholds,
+        max_retrieval_role_excluded_target_hit_rate=retrieval_role_excluded_thresholds,
         recall_weight=recall_weight,
         target_coverage_weight=target_coverage_weight,
         target_ndcg_weight=target_ndcg_weight,
@@ -1333,6 +1408,10 @@ def sweep_qdrant_fusion_command(
         failed_query_penalty=failed_query_penalty,
         excluded_query_hit_penalty=excluded_query_hit_penalty,
         excluded_target_hit_penalty=excluded_target_hit_penalty,
+        source_excluded_target_hit_penalty=source_excluded_target_hit_penalty,
+        source_family_excluded_target_hit_penalty=source_family_excluded_target_hit_penalty,
+        chunk_strategy_excluded_target_hit_penalty=chunk_strategy_excluded_target_hit_penalty,
+        retrieval_role_excluded_target_hit_penalty=retrieval_role_excluded_target_hit_penalty,
         latency_weight=latency_weight,
         metadata={
             "weight_grid": grid,
@@ -1349,8 +1428,16 @@ def sweep_qdrant_fusion_command(
             "max_excluded_target_hit_rate": max_excluded_target_hit_rate,
             "max_excluded_query_hit_rate": max_excluded_query_hit_rate,
             "max_excluded_hit_query_count": max_excluded_hit_query_count,
+            "max_source_excluded_target_hit_rate": source_excluded_thresholds,
+            "max_source_family_excluded_target_hit_rate": source_family_excluded_thresholds,
+            "max_chunk_strategy_excluded_target_hit_rate": chunk_strategy_excluded_thresholds,
+            "max_retrieval_role_excluded_target_hit_rate": retrieval_role_excluded_thresholds,
             "excluded_query_hit_penalty": excluded_query_hit_penalty,
             "excluded_target_hit_penalty": excluded_target_hit_penalty,
+            "source_excluded_target_hit_penalty": source_excluded_target_hit_penalty,
+            "source_family_excluded_target_hit_penalty": source_family_excluded_target_hit_penalty,
+            "chunk_strategy_excluded_target_hit_penalty": chunk_strategy_excluded_target_hit_penalty,
+            "retrieval_role_excluded_target_hit_penalty": retrieval_role_excluded_target_hit_penalty,
             "lexical_tokenizer": {
                 "strategy": lexical_tokenizer,
                 "min_n": ngram_min,
@@ -1405,6 +1492,30 @@ def sweep_qdrant_fusion_command(
                     "excluded_query_hit_rate": candidate.evaluation.excluded_query_hit_rate,
                     "excluded_target_hit_rate": candidate.evaluation.excluded_target_hit_rate,
                     "excluded_hit_query_count": candidate.evaluation.excluded_hit_query_count,
+                    "max_source_excluded_target_hit_rate": (
+                        candidate.max_source_excluded_target_hit_rate
+                    ),
+                    "max_source_excluded_target_hit_rate_name": (
+                        candidate.max_source_excluded_target_hit_rate_name
+                    ),
+                    "max_source_family_excluded_target_hit_rate": (
+                        candidate.max_source_family_excluded_target_hit_rate
+                    ),
+                    "max_source_family_excluded_target_hit_rate_name": (
+                        candidate.max_source_family_excluded_target_hit_rate_name
+                    ),
+                    "max_chunk_strategy_excluded_target_hit_rate": (
+                        candidate.max_chunk_strategy_excluded_target_hit_rate
+                    ),
+                    "max_chunk_strategy_excluded_target_hit_rate_name": (
+                        candidate.max_chunk_strategy_excluded_target_hit_rate_name
+                    ),
+                    "max_retrieval_role_excluded_target_hit_rate": (
+                        candidate.max_retrieval_role_excluded_target_hit_rate
+                    ),
+                    "max_retrieval_role_excluded_target_hit_rate_name": (
+                        candidate.max_retrieval_role_excluded_target_hit_rate_name
+                    ),
                     "mean_latency_ms": candidate.evaluation.mean_latency_ms,
                     "failed_query_count": len(candidate.evaluation.failed_queries),
                 }

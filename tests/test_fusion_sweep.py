@@ -4,7 +4,11 @@ from chunking_docs.evaluation.fusion_sweep import (
     build_qdrant_fusion_sweep_report,
     fusion_weight_candidate_name,
 )
-from chunking_docs.evaluation.retrieval import RetrievalCaseGroupMetric, RetrievalEvaluation
+from chunking_docs.evaluation.retrieval import (
+    RetrievalCaseGroupMetric,
+    RetrievalEvaluation,
+    RetrievalSourceMetric,
+)
 
 
 def test_build_fusion_weight_grid_combines_fixed_and_grid_values():
@@ -158,6 +162,105 @@ def test_build_qdrant_fusion_sweep_report_penalizes_excluded_hits():
     assert leaky_row.selection_score < clean_row.selection_score
 
 
+def test_build_qdrant_fusion_sweep_report_rejects_named_excluded_target_hits():
+    clean = QdrantFusionSweepCandidate(
+        name="clean",
+        fusion_weights={"bm25": 1.0},
+        evaluation=evaluation(
+            recall=0.95,
+            coverage=0.95,
+            ndcg=0.9,
+            mrr=0.85,
+            precision=0.2,
+            failed=0,
+            latency=30.0,
+        ),
+    )
+    leaky = QdrantFusionSweepCandidate(
+        name="leaky",
+        fusion_weights={"qdrant:image_dense": 2.0},
+        evaluation=evaluation(
+            recall=1.0,
+            coverage=1.0,
+            ndcg=0.98,
+            mrr=0.95,
+            precision=0.2,
+            failed=0,
+            latency=20.0,
+            source_metrics={"qdrant:image_dense": source_metric(excluded_rate=1.0)},
+            source_family_metrics={"visual": source_metric(excluded_rate=1.0)},
+            chunk_strategy_metrics={"visual_asset_text": source_metric(excluded_rate=1.0)},
+            retrieval_role_metrics={"child": source_metric(excluded_rate=1.0)},
+        ),
+    )
+
+    report = build_qdrant_fusion_sweep_report(
+        [clean, leaky],
+        vector_names=["text_dense", "image_dense"],
+        max_source_excluded_target_hit_rate={"qdrant:image_dense": 0.0},
+        max_source_family_excluded_target_hit_rate={"visual": 0.0},
+        max_chunk_strategy_excluded_target_hit_rate={"visual_asset_text": 0.0},
+        max_retrieval_role_excluded_target_hit_rate={"child": 0.0},
+    )
+
+    assert report.recommended == "clean"
+    leaky_row = next(candidate for candidate in report.candidates if candidate.name == "leaky")
+    assert leaky_row.eligibility_failures == [
+        "max_source_excluded_target_hit_rate:qdrant:image_dense",
+        "max_source_family_excluded_target_hit_rate:visual",
+        "max_chunk_strategy_excluded_target_hit_rate:visual_asset_text",
+        "max_retrieval_role_excluded_target_hit_rate:child",
+    ]
+    assert leaky_row.max_source_excluded_target_hit_rate == 1.0
+    assert leaky_row.max_source_excluded_target_hit_rate_name == "qdrant:image_dense"
+    assert leaky_row.max_source_family_excluded_target_hit_rate_name == "visual"
+    assert leaky_row.max_chunk_strategy_excluded_target_hit_rate_name == "visual_asset_text"
+    assert leaky_row.max_retrieval_role_excluded_target_hit_rate_name == "child"
+
+
+def test_build_qdrant_fusion_sweep_report_penalizes_named_excluded_target_hits():
+    clean = QdrantFusionSweepCandidate(
+        name="clean",
+        fusion_weights={"bm25": 1.0},
+        evaluation=evaluation(
+            recall=0.95,
+            coverage=0.95,
+            ndcg=0.9,
+            mrr=0.85,
+            precision=0.2,
+            failed=0,
+            latency=30.0,
+        ),
+    )
+    leaky = QdrantFusionSweepCandidate(
+        name="leaky",
+        fusion_weights={"qdrant:object_dense": 2.0},
+        evaluation=evaluation(
+            recall=1.0,
+            coverage=1.0,
+            ndcg=0.98,
+            mrr=0.95,
+            precision=0.2,
+            failed=0,
+            latency=20.0,
+            source_family_metrics={"visual": source_metric(excluded_rate=1.0)},
+        ),
+    )
+
+    report = build_qdrant_fusion_sweep_report(
+        [clean, leaky],
+        vector_names=["text_dense", "object_dense"],
+        source_family_excluded_target_hit_penalty=2.0,
+    )
+
+    assert report.recommended == "clean"
+    assert report.eligible_count == 2
+    clean_row = next(candidate for candidate in report.candidates if candidate.name == "clean")
+    leaky_row = next(candidate for candidate in report.candidates if candidate.name == "leaky")
+    assert leaky_row.eligible is True
+    assert leaky_row.selection_score < clean_row.selection_score
+
+
 def test_build_qdrant_fusion_sweep_report_recommends_case_group_candidates():
     balanced = QdrantFusionSweepCandidate(
         name="balanced",
@@ -248,6 +351,10 @@ def evaluation(
     excluded_hit_query_count: int = 0,
     excluded_target_count: int = 0,
     excluded_matched_target_count: int = 0,
+    source_metrics: dict[str, RetrievalSourceMetric] | None = None,
+    source_family_metrics: dict[str, RetrievalSourceMetric] | None = None,
+    chunk_strategy_metrics: dict[str, RetrievalSourceMetric] | None = None,
+    retrieval_role_metrics: dict[str, RetrievalSourceMetric] | None = None,
 ) -> RetrievalEvaluation:
     case_group_metrics = {}
     if visual_object_group is not None:
@@ -277,9 +384,27 @@ def evaluation(
         total_query_latency_ms=latency * 10,
         mean_latency_ms=latency,
         p95_latency_ms=latency,
+        source_metrics=source_metrics or {},
+        source_family_metrics=source_family_metrics or {},
+        chunk_strategy_metrics=chunk_strategy_metrics or {},
+        retrieval_role_metrics=retrieval_role_metrics or {},
         failed_queries=[f"failed-{index}" for index in range(failed)],
         case_group_metrics=case_group_metrics,
         results=[],
+    )
+
+
+def source_metric(excluded_rate: float = 0.0) -> RetrievalSourceMetric:
+    excluded_target_count = 10 if excluded_rate else 0
+    return RetrievalSourceMetric(
+        query_count=1,
+        excluded_query_count=1 if excluded_rate else 0,
+        hit_count=1,
+        excluded_hit_count=1 if excluded_rate else 0,
+        excluded_target_count=excluded_target_count,
+        excluded_matched_target_count=int(round(excluded_rate * excluded_target_count)),
+        excluded_precision_at_hits=excluded_rate,
+        excluded_target_hit_rate=excluded_rate,
     )
 
 
