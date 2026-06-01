@@ -774,11 +774,24 @@ def validate_qdrant_target_coverage(
             issues=issues,
         )
     if "image_dense" in named_vectors:
+        image_payload_fields_by_asset_id = {
+            asset.asset_id: image_asset_payload_fields(asset)
+            for asset in assets
+            if asset.path is not None
+        }
         validate_target_record_ids(
             vector_name="image_dense",
             target_label="image_asset",
             payload_key="asset_id",
-            expected_ids={asset.asset_id for asset in assets if asset.path is not None},
+            expected_ids=set(image_payload_fields_by_asset_id),
+            package_dir=package_dir,
+            issues=issues,
+        )
+        validate_target_payload_fields(
+            vector_name="image_dense",
+            target_label="image_asset",
+            payload_key="asset_id",
+            expected_fields_by_id=image_payload_fields_by_asset_id,
             package_dir=package_dir,
             issues=issues,
         )
@@ -789,11 +802,24 @@ def validate_qdrant_target_coverage(
             for text in [asset_text(asset)]
             if text
         }
+        caption_payload_fields_by_asset_id = {
+            asset.asset_id: caption_asset_payload_fields(asset)
+            for asset in assets
+            if asset.asset_id in caption_text_by_asset_id
+        }
         validate_target_record_ids(
             vector_name="caption_dense",
             target_label="caption_asset",
             payload_key="asset_id",
             expected_ids=set(caption_text_by_asset_id),
+            package_dir=package_dir,
+            issues=issues,
+        )
+        validate_target_payload_fields(
+            vector_name="caption_dense",
+            target_label="caption_asset",
+            payload_key="asset_id",
+            expected_fields_by_id=caption_payload_fields_by_asset_id,
             package_dir=package_dir,
             issues=issues,
         )
@@ -900,6 +926,112 @@ def validate_target_payload_text(
                 },
             )
         )
+
+
+def validate_target_payload_fields(
+    vector_name: str,
+    target_label: str,
+    payload_key: str,
+    expected_fields_by_id: dict[str, dict[str, Any]],
+    package_dir: Path,
+    issues: list[AuditIssue],
+) -> None:
+    record_file = package_dir / qdrant_record_filename(vector_name)
+    if not record_file.exists():
+        return
+    mismatches = []
+    for record in read_jsonl(record_file, EmbeddingRecord):
+        if record.vector_name != vector_name:
+            continue
+        target_id = record.payload.get(payload_key)
+        if target_id in {None, ""}:
+            continue
+        expected_fields = expected_fields_by_id.get(str(target_id))
+        if expected_fields is None:
+            continue
+        stale_fields = [
+            field
+            for field, expected_value in sorted(expected_fields.items())
+            if not payload_values_equal(record.payload.get(field), expected_value)
+        ]
+        if stale_fields:
+            mismatches.append(
+                {
+                    "id": str(target_id),
+                    "point_id": record.point_id,
+                    "fields": stale_fields,
+                }
+            )
+    if mismatches:
+        issues.append(
+            AuditIssue(
+                severity="error",
+                code=f"qdrant_stale_{target_label}_payload_fields",
+                message=f"Some {vector_name} records have stale payload fields for current {target_label} data.",
+                metadata={
+                    "vector_name": vector_name,
+                    "mismatches": mismatches[:50],
+                    "count": len(mismatches),
+                },
+            )
+        )
+
+
+def image_asset_payload_fields(asset: VisualAsset) -> dict[str, Any]:
+    return non_empty_payload_fields(
+        {
+            "caption": asset.caption,
+            "ocr_text": asset.ocr_text,
+            "vlm_summary": asset.vlm_summary,
+            **asset.metadata,
+        }
+    )
+
+
+def caption_asset_payload_fields(asset: VisualAsset) -> dict[str, Any]:
+    return non_empty_payload_fields(
+        {
+            "caption": asset.caption,
+            **asset.metadata,
+        }
+    )
+
+
+def non_empty_payload_fields(fields: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: value
+        for key, value in fields.items()
+        if not payload_value_is_empty(value)
+    }
+
+
+def payload_values_equal(actual: Any, expected: Any) -> bool:
+    return normalized_payload_value(actual) == normalized_payload_value(expected)
+
+
+def normalized_payload_value(value: Any) -> Any:
+    if isinstance(value, str):
+        return normalized_payload_text(value)
+    if isinstance(value, list):
+        return [normalized_payload_value(item) for item in value]
+    if isinstance(value, dict):
+        return {
+            str(key): normalized_payload_value(item)
+            for key, item in sorted(value.items(), key=lambda pair: str(pair[0]))
+        }
+    if isinstance(value, (int, float, bool)) or value is None:
+        return value
+    return str(value)
+
+
+def payload_value_is_empty(value: Any) -> bool:
+    if value is None:
+        return True
+    if isinstance(value, str):
+        return not value.strip()
+    if isinstance(value, (list, dict, tuple, set)):
+        return len(value) == 0
+    return False
 
 
 def normalized_payload_text(text: str) -> str:

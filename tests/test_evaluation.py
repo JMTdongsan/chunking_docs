@@ -518,6 +518,8 @@ def test_audit_package_validates_qdrant_target_coverage(tmp_path):
 
 
 def test_audit_package_detects_stale_qdrant_payload_text(tmp_path):
+    image_path = tmp_path / "asset.png"
+    image_path.write_bytes(b"image")
     profiles = [
         PageProfile(
             doc_id="doc",
@@ -549,7 +551,9 @@ def test_audit_package_detects_stale_qdrant_payload_text(tmp_path):
             doc_id="doc",
             page_no=1,
             kind=AssetKind.FIGURE,
+            path=image_path,
             caption="current caption",
+            ocr_text="current OCR text",
             vlm_summary="current VLM object summary",
             metadata={"objects": [{"label": "current object", "description": "visible marker"}]},
         )
@@ -560,6 +564,7 @@ def test_audit_package_detects_stale_qdrant_payload_text(tmp_path):
                 "collection": "documents",
                 "named_vectors": {
                     "text_dense": {"size": 2},
+                    "image_dense": {"size": 2},
                     "caption_dense": {"size": 2},
                 },
                 "payload_indexes": [
@@ -586,6 +591,28 @@ def test_audit_package_detects_stale_qdrant_payload_text(tmp_path):
                     "page_end": 1,
                     "kind": "text",
                     "text": "old chunk evidence",
+                },
+            )
+        ],
+    )
+    write_jsonl(
+        tmp_path / "qdrant_image_records.jsonl",
+        [
+            EmbeddingRecord(
+                point_id="image-a",
+                chunk_id="asset-a",
+                doc_id="doc",
+                vector_name="image_dense",
+                vector=[0.25, 0.75],
+                payload={
+                    "asset_id": "asset-a",
+                    "doc_id": "doc",
+                    "page_no": 1,
+                    "kind": "figure",
+                    "caption": "current caption",
+                    "ocr_text": "old OCR text",
+                    "vlm_summary": "old VLM object summary",
+                    "objects": [{"label": "old object", "description": "old marker"}],
                 },
             )
         ],
@@ -622,7 +649,17 @@ def test_audit_package_detects_stale_qdrant_payload_text(tmp_path):
 
     assert not audit.passed
     assert "qdrant_stale_chunk_payload_text" in codes
+    assert "qdrant_stale_image_asset_payload_fields" in codes
     assert "qdrant_stale_caption_asset_payload_text" in codes
+    assert "qdrant_stale_caption_asset_payload_fields" in codes
+    stale_image = next(
+        issue for issue in audit.issues if issue.code == "qdrant_stale_image_asset_payload_fields"
+    )
+    assert stale_image.metadata["mismatches"][0]["fields"] == [
+        "objects",
+        "ocr_text",
+        "vlm_summary",
+    ]
     stale_caption = next(
         issue for issue in audit.issues if issue.code == "qdrant_stale_caption_asset_payload_text"
     )

@@ -226,7 +226,7 @@ Chunking changes should be judged by retrieval behavior, not only by successful 
 Recommended checks:
 
 - `audit-publication`: public repository scan for forbidden text, accidental binary/document artifacts, oversized files, and required generated-artifact ignore patterns.
-- `audit-package`: structural completeness, orphan checks, OCR/VLM gaps, Qdrant vector dimensions, required payload fields, payload index definitions, text/caption payload freshness, and embedding manifest count/checksum consistency.
+- `audit-package`: structural completeness, orphan checks, OCR/VLM gaps, Qdrant vector dimensions, required payload fields, payload index definitions, text/caption/image payload freshness, and embedding manifest count/checksum consistency.
 - `qdrant-check-collection`: live Qdrant collection contract validation for named-vector dimensions and payload indexes.
 - `postgres-schema`: offline PostgreSQL SQL contract export for review or migration tooling.
 - `postgres-check-schema`: live PostgreSQL schema contract validation for required extensions, tables, columns, column types, and indexes.
