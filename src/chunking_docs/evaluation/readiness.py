@@ -991,9 +991,15 @@ def derived_vector_rebuild_commands(
 
     modes = derived_vector_ablation_modes(expected_vectors)
     if modes:
+        image_query_options = (
+            " --image-query-backend clip --image-query-model openai/clip-vit-large-patch14"
+            if "image_dense" in expected_vectors
+            else ""
+        )
         commands.append(
             "chunking-docs eval-qdrant-vector-ablation examples/retrieval_cases.jsonl "
             f"--package-dir outputs/package --modes {','.join(modes)}"
+            f"{image_query_options}"
         )
     return commands
 

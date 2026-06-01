@@ -545,7 +545,9 @@ chunking-docs eval-qdrant-retrieval examples/retrieval_cases.jsonl \
 chunking-docs eval-qdrant-vector-ablation examples/retrieval_cases.jsonl \
   --package-dir outputs/package \
   --location ':memory:' \
-  --modes text,caption,text_caption,text_caption_graph \
+  --modes text,caption,image,text_image,caption_image,all,text_caption_graph \
+  --image-query-backend clip \
+  --image-query-model openai/clip-vit-large-patch14 \
   --top-k 5 \
   --repeat 3 \
   --output outputs/package/qdrant_vector_ablation.json

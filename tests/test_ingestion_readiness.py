@@ -262,6 +262,10 @@ def test_ingestion_readiness_warns_when_image_vector_for_visual_asset_is_missing
         ),
     }
     assert "--image-backend clip" in component.metadata["rebuild_commands"][0]
+    assert "--image-query-backend clip" in component.metadata["rebuild_commands"][-1]
+    assert "--image-query-model openai/clip-vit-large-patch14" in (
+        component.metadata["rebuild_commands"][-1]
+    )
     assert "image" in component.metadata["recommended_qdrant_vector_modes"]
     assert "text_image" in component.metadata["recommended_qdrant_vector_modes"]
     assert "caption_image" in component.metadata["recommended_qdrant_vector_modes"]
@@ -327,7 +331,8 @@ def test_ingestion_readiness_warns_when_derived_triple_vector_is_missing(tmp_pat
             "--package-dir outputs/package "
             "--modes text,caption,text_caption,image,text_image,caption_image,all,triple,"
             "text_triple,all_with_triple,text_caption_graph,text_triple_graph,all_graph,"
-            "all_with_triple_graph"
+            "all_with_triple_graph --image-query-backend clip "
+            "--image-query-model openai/clip-vit-large-patch14"
         ),
     ]
     assert component.metadata["expectations"]["triple_dense"]["source_count"] == 1
@@ -395,7 +400,8 @@ def test_ingestion_readiness_can_require_derived_object_vector_coverage(tmp_path
         (
             "chunking-docs eval-qdrant-vector-ablation examples/retrieval_cases.jsonl "
             "--package-dir outputs/package --modes text,caption,text_caption,object,text_object,"
-            "caption_object,image,text_image,caption_image,all,all_with_object"
+            "caption_object,image,text_image,caption_image,all,all_with_object "
+            "--image-query-backend clip --image-query-model openai/clip-vit-large-patch14"
         ),
     ]
     assert component.metadata["expectations"]["object_dense"]["source_count"] == 1
@@ -1431,6 +1437,7 @@ def test_ingestion_readiness_cli_can_require_derived_vector_coverage(tmp_path):
         "triple_dense",
     ]
     assert "--image-backend clip" in component["metadata"]["rebuild_commands"][1]
+    assert "--image-query-backend clip" in component["metadata"]["rebuild_commands"][-1]
     assert "--triple-backend same-as-text" in component["metadata"]["rebuild_commands"][1]
     assert "image_dense" in component["metadata"]["expected_vectors"]
     assert "text_image" in component["metadata"]["recommended_qdrant_vector_modes"]
